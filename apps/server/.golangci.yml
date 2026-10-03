@@ -1,0 +1,62 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+    - sqlclosecheck
+    - unconvert
+  settings:
+    depguard:
+      rules:
+        # platform/ is infrastructure and must not know business modules
+        # (docs/00 §6.1). New modules are added to this list.
+        platform-is-infrastructure:
+          files: ["**/internal/platform/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tenancy
+              desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
+              desc: platform must not import the HTTP layer
+        # Business modules do not know about HTTP.
+        modules-without-http:
+          files: ["**/internal/tenancy/**"]
+          deny:
+            - pkg: net/http
+              desc: HTTP lives in internal/api
+            - pkg: github.com/go-chi/chi/v5
+              desc: HTTP lives in internal/api
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
+              desc: modules must not import the HTTP layer
+        # Another module's generated store is private to it.
+        no-foreign-store:
+          files: ["!**/internal/tenancy/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tenancy/store
+              desc: use the tenancy facade, not its store
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+  exclusions:
+    generated: strict
+    presets: [std-error-handling]
+    rules:
+      - path: _test\.go
+        linters: [gosec, noctx]
+
+formatters:
+  enable: [gofmt, goimports]
+  settings:
+    goimports:
+      local-prefixes: [github.com/tolkovo/tolkovo]
