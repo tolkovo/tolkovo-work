@@ -1,0 +1,26 @@
+# Build output
+/bin/
+dist/
+*.test
+*.out
+coverage.*
+
+# Node
+node_modules/
+.pnpm-store/
+.turbo/
+.astro/
+
+# Env and secrets: only *.example files are committed
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local Claude Code state and third-party skills (own licenses, binary fonts)
+.claude/
