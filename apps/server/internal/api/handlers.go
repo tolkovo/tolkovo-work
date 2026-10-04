@@ -6,16 +6,18 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
 // server implements the generated oapi.ServerInterface.
 type server struct {
-	log     *slog.Logger
-	tenancy *tenancy.Service
-	auth    *auth.Service
-	cookies sessionCookies
+	log           *slog.Logger
+	tenancy       *tenancy.Service
+	auth          *auth.Service
+	conversations *conversations.Service
+	cookies       sessionCookies
 }
 
 var _ oapi.ServerInterface = (*server)(nil)

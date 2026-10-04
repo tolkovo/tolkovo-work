@@ -16,8 +16,10 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdbtest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -27,6 +29,7 @@ type env struct {
 	t       *testing.T
 	h       http.Handler
 	tenancy *tenancy.Service
+	files   *storage.FS
 	ownerDB string // bypasses RLS: test fixtures only
 }
 
@@ -48,11 +51,20 @@ func newEnv(t *testing.T, o envOptions) *env {
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
 	}
-	h := NewRouter(Deps{
-		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pinger{}, Version: "test",
-		Tenancy: ten, Auth: a, SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted,
+	files, err := storage.NewFS(storage.FSOptions{
+		Root: t.TempDir(), LinkBaseURL: "http://example.test" + FilesPath,
+		SigningKey: bytes.Repeat([]byte("k"), storage.MinSigningKeyLen),
 	})
-	return &env{t: t, h: h, tenancy: ten, ownerDB: d.OwnerURL}
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	t.Cleanup(func() { _ = files.Close() })
+	h := NewRouter(Deps{
+		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pinger{}, Version: "test", Files: files,
+		Tenancy: ten, Auth: a, Conversations: conversations.New(app, files),
+		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted,
+	})
+	return &env{t: t, h: h, tenancy: ten, files: files, ownerDB: d.OwnerURL}
 }
 
 // client is one browser: it keeps the session cookie and the CSRF token.
