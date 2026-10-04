@@ -56,18 +56,120 @@ func TestAdd_RejectsInvalidTopic(t *testing.T) {
 	}
 }
 
-func TestAppRole_CannotReadOutbox(t *testing.T) {
+func TestAppRole_ReadsOnlyOwnWorkspaceAndCannotChangeEvents(t *testing.T) {
 	d := dbtest.New(t)
 	app := d.OpenApp(t)
+	a, b := newWorkspace(t, d), newWorkspace(t, d)
+	ctx := context.Background()
+	add(t, app, a, "test.thing.created")
+	add(t, app, b, "test.thing.created")
+
+	// RLS is the second line: even a query without the workspace filter
+	// sees only the transaction's workspace (docs/00 §11.3).
+	var n int
+	if err := app.InTenantTx(ctx, a, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT count(*) FROM outbox_events").Scan(&n)
+	}); err != nil || n != 1 {
+		t.Fatalf("want 1 own event visible, got %d (%v)", n, err)
+	}
+	for _, stmt := range []string{
+		"UPDATE outbox_events SET topic = 'test.thing.changed'",
+		"DELETE FROM outbox_events",
+		"UPDATE outbox_watermark SET pruned_seq = 0",
+	} {
+		err := app.InTenantTx(ctx, a, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, stmt)
+			return err
+		})
+		if err == nil {
+			t.Errorf("the application role must not run %q", stmt)
+		}
+	}
+}
+
+func TestSince_ReturnsPublishedEventsOfOneWorkspaceAfterSeq(t *testing.T) {
+	d := dbtest.New(t)
+	app, sys := d.OpenApp(t), d.OpenSystem(t)
+	a, b := newWorkspace(t, d), newWorkspace(t, d)
+	ctx := context.Background()
+	add(t, app, a, "conversation.created")
+	add(t, app, b, "conversation.created")
+	add(t, app, a, "contact.created")
+	add(t, app, a, "conversation.assigned")
+
+	pub := &recorder{}
+	stop := runRelay(t, sys, pub)
+	all := pub.waitFor(t, 4)
+	stop()
+	add(t, app, a, "conversation.updated") // unpublished: never returned
+
+	var got []outbox.Event
+	var latest int64
+	if err := app.InTenantTx(ctx, a, func(tx pgx.Tx) error {
+		var err error
+		if got, err = outbox.Since(ctx, tx, a, all[0].Seq, []string{"conversation.%"}, 100); err != nil {
+			return err
+		}
+		latest, err = outbox.LatestSeq(ctx, tx, a)
+		return err
+	}); err != nil {
+		t.Fatalf("catch-up: %v", err)
+	}
+	if len(got) != 1 || got[0].Topic != "conversation.assigned" || got[0].Seq != all[3].Seq || got[0].WorkspaceID != a {
+		t.Fatalf("want only the later conversation event of workspace A, got %+v", got)
+	}
+	if latest != all[3].Seq {
+		t.Fatalf("latest seq: want %d, got %d", all[3].Seq, latest)
+	}
+
+	// Workspace B asking with A's id sees nothing: RLS hides A's rows.
+	if err := app.InTenantTx(ctx, b, func(tx pgx.Tx) error {
+		var err error
+		got, err = outbox.Since(ctx, tx, a, 0, []string{"%"}, 100)
+		return err
+	}); err != nil || len(got) != 0 {
+		t.Fatalf("foreign workspace must see no events, got %d (%v)", len(got), err)
+	}
+}
+
+func TestPrune_RaisesWatermarkToHighestDeletedSeq(t *testing.T) {
+	d := dbtest.New(t)
+	app, sys := d.OpenApp(t), d.OpenSystem(t)
 	a := newWorkspace(t, d)
 	ctx := context.Background()
+	for range 3 {
+		add(t, app, a, "conversation.created")
+	}
+	pub := &recorder{}
+	stop := runRelay(t, sys, pub)
+	all := pub.waitFor(t, 3)
+	stop()
 
-	err := app.InTenantTx(ctx, a, func(tx pgx.Tx) error {
-		var n int
-		return tx.QueryRow(ctx, "SELECT count(*) FROM outbox_events").Scan(&n)
-	})
-	if err == nil {
-		t.Fatal("the application role only appends events; reading must be denied")
+	if _, err := ownerConn(t, d).Exec(ctx, `UPDATE outbox_events SET published_at = now() - interval '48 hours'
+		WHERE seq <= $1`, all[1].Seq); err != nil {
+		t.Fatalf("age events: %v", err)
+	}
+	n, err := outbox.Prune(ctx, sys.Pool(), time.Now().Add(-24*time.Hour))
+	if err != nil || n != 2 {
+		t.Fatalf("want 2 pruned, got %d (%v)", n, err)
+	}
+	var pruned, latest int64
+	if err := app.InTenantTx(ctx, a, func(tx pgx.Tx) error {
+		var err error
+		if pruned, err = outbox.PrunedSeq(ctx, tx); err != nil {
+			return err
+		}
+		latest, err = outbox.LatestSeq(ctx, tx, a)
+		return err
+	}); err != nil {
+		t.Fatalf("read watermark: %v", err)
+	}
+	if pruned != all[1].Seq || latest != all[2].Seq {
+		t.Fatalf("want watermark %d and latest %d, got %d and %d", all[1].Seq, all[2].Seq, pruned, latest)
+	}
+	// Pruning nothing keeps the watermark.
+	if n, err := outbox.Prune(ctx, sys.Pool(), time.Now().Add(-24*time.Hour)); err != nil || n != 0 {
+		t.Fatalf("second prune: %d (%v)", n, err)
 	}
 }
 
