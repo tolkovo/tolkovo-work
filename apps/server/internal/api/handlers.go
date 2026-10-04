@@ -32,7 +32,7 @@ func (s *server) Register(w http.ResponseWriter, r *http.Request) {
 	in, err := s.auth.Register(r.Context(), auth.RegisterInput{
 		Email: req.Email, Password: req.Password, Name: req.Name, Locale: string(deref(req.Locale)),
 		WorkspaceName: req.WorkspaceName, WorkspaceSlug: req.WorkspaceSlug, Timezone: deref(req.Timezone),
-	}, clientIP(r))
+	}, browser(r))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -49,7 +49,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	in, err := s.auth.Login(r.Context(), req.Email, req.Password, clientIP(r))
+	in, err := s.auth.Login(r.Context(), req.Email, req.Password, browser(r))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -97,7 +97,7 @@ func (s *server) SwitchWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	in, err := s.auth.SwitchWorkspace(r.Context(), st.token, st.session.UserID, req.WorkspaceId)
+	in, err := s.auth.SwitchWorkspace(r.Context(), st.token, st.session, req.WorkspaceId)
 	if err != nil {
 		s.writeError(w, r, err)
 		return

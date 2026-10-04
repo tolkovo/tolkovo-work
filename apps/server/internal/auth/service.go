@@ -28,6 +28,9 @@ var (
 	ErrNoSession          = errors.New("auth: no valid session")
 	ErrNoWorkspace        = errors.New("auth: user has no active workspace")
 	ErrWorkspaceNotFound  = errors.New("auth: workspace not found")
+	ErrWrongPassword      = errors.New("auth: current password does not match")
+	ErrSessionNotFound    = errors.New("auth: session not found")
+	ErrCurrentSession     = errors.New("auth: this is the current session")
 )
 
 // RateLimitedError is returned when too many attempts were made.
@@ -45,7 +48,17 @@ var (
 	loginPerIPAndEmail = ratelimit.Rule{Limit: 10, Window: time.Minute}
 	loginPerEmail      = ratelimit.Rule{Limit: 50, Window: time.Hour} // guesses spread over many IPs
 	registerPerIP      = ratelimit.Rule{Limit: 10, Window: time.Hour}
+	// Someone with a stolen session cookie must not be able to guess the
+	// password and take the account over.
+	passwordChangePerUser = ratelimit.Rule{Limit: 10, Window: time.Hour}
 )
+
+// Client describes the browser that signs in. IP feeds the rate limits and
+// is never stored; UserAgent is kept, shortened, in the session list.
+type Client struct {
+	IP        string
+	UserAgent string
+}
 
 // Options configure the service.
 type Options struct {
@@ -122,8 +135,8 @@ type RegisterInput struct {
 
 // Register creates the account, the workspace and the owner membership
 // atomically and signs the owner in (docs/06 A-01).
-func (s *Service) Register(ctx context.Context, in RegisterInput, clientIP string) (SignIn, error) {
-	if err := s.allow(ctx, "register:ip:"+digest(clientIP), registerPerIP); err != nil {
+func (s *Service) Register(ctx context.Context, in RegisterInput, c Client) (SignIn, error) {
+	if err := s.allow(ctx, "register:ip:"+digest(c.IP), registerPerIP); err != nil {
 		return SignIn{}, err
 	}
 	if err := validatePassword(in.Password); err != nil {
@@ -140,16 +153,16 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, clientIP strin
 	if err != nil {
 		return SignIn{}, err // tenancy errors are part of this contract
 	}
-	return s.start(ctx, m)
+	return s.start(ctx, m, c.UserAgent)
 }
 
 // Login checks the password and starts a session in the user's first
 // workspace. Unknown email, wrong password and disabled account all give
 // ErrInvalidCredentials after the same amount of work.
-func (s *Service) Login(ctx context.Context, email, password, clientIP string) (SignIn, error) {
+func (s *Service) Login(ctx context.Context, email, password string, c Client) (SignIn, error) {
 	email = strings.TrimSpace(email)
 	emailKey := digest(strings.ToLower(email))
-	if err := s.allow(ctx, "login:ie:"+digest(clientIP+"|"+emailKey), loginPerIPAndEmail); err != nil {
+	if err := s.allow(ctx, "login:ie:"+digest(c.IP+"|"+emailKey), loginPerIPAndEmail); err != nil {
 		return SignIn{}, err
 	}
 	if err := s.allow(ctx, "login:e:"+emailKey, loginPerEmail); err != nil {
@@ -188,7 +201,7 @@ func (s *Service) Login(ctx context.Context, email, password, clientIP string) (
 	if err := s.tenancy.TouchLastLogin(ctx, creds.UserID); err != nil {
 		return SignIn{}, err
 	}
-	return s.start(ctx, m)
+	return s.start(ctx, m, c.UserAgent)
 }
 
 // Authenticate resolves a session token and re-checks the membership on
@@ -216,15 +229,15 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, tena
 // SwitchWorkspace moves the user to another workspace they are an active
 // member of. The old session is revoked and a new one is issued, because
 // the role and permissions change. Not a member: ErrWorkspaceNotFound.
-func (s *Service) SwitchWorkspace(ctx context.Context, token string, userID, workspaceID uuid.UUID) (SignIn, error) {
-	m, err := s.tenancy.Membership(ctx, workspaceID, userID)
+func (s *Service) SwitchWorkspace(ctx context.Context, token string, cur Session, workspaceID uuid.UUID) (SignIn, error) {
+	m, err := s.tenancy.Membership(ctx, workspaceID, cur.UserID)
 	if errors.Is(err, tenancy.ErrNotFound) {
 		return SignIn{}, ErrWorkspaceNotFound
 	}
 	if err != nil {
 		return SignIn{}, err
 	}
-	in, err := s.start(ctx, m)
+	in, err := s.start(ctx, m, cur.UserAgent) // the same browser
 	if err != nil {
 		return SignIn{}, err
 	}
@@ -239,8 +252,8 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return s.sessions.delete(ctx, token)
 }
 
-func (s *Service) start(ctx context.Context, m tenancy.Membership) (SignIn, error) {
-	token, sess, err := s.sessions.create(ctx, m.User.ID, m.Workspace.ID)
+func (s *Service) start(ctx context.Context, m tenancy.Membership, userAgent string) (SignIn, error) {
+	token, sess, err := s.sessions.create(ctx, m.User.ID, m.Workspace.ID, userAgent)
 	if err != nil {
 		return SignIn{}, err
 	}

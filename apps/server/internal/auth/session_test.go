@@ -40,7 +40,7 @@ func TestSessionStore_CreateGetDelete(t *testing.T) {
 	ctx := context.Background()
 	uid, wid := uuid.New(), uuid.New()
 
-	token, sess, err := s.create(ctx, uid, wid)
+	token, sess, err := s.create(ctx, uid, wid, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -67,13 +67,13 @@ func TestSessionStore_CreateGetDelete(t *testing.T) {
 func TestSessionStore_KeyIsTokenHash(t *testing.T) {
 	s, _ := newStore(t, time.Hour, 24*time.Hour)
 	ctx := context.Background()
-	token, _, err := s.create(ctx, uuid.New(), uuid.New())
+	token, _, err := s.create(ctx, uuid.New(), uuid.New(), "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	keys, err := s.rdb.Keys(ctx, s.prefix+"*").Result()
+	keys, err := s.rdb.Keys(ctx, s.prefix+"sess:*").Result()
 	if err != nil || len(keys) != 1 {
-		t.Fatalf("want 1 key, got %v %v", keys, err)
+		t.Fatalf("want 1 session key, got %v %v", keys, err)
 	}
 	sum := sha256.Sum256([]byte(token))
 	if keys[0] != s.prefix+"sess:"+hex.EncodeToString(sum[:]) || strings.Contains(keys[0], token) {
@@ -82,6 +82,12 @@ func TestSessionStore_KeyIsTokenHash(t *testing.T) {
 	body, _ := s.rdb.Get(ctx, keys[0]).Result()
 	if strings.Contains(body, token) {
 		t.Fatal("the value must not contain the token")
+	}
+	all, _ := s.rdb.Keys(ctx, s.prefix+"*").Result()
+	for _, k := range all {
+		if strings.Contains(k, token) {
+			t.Fatalf("a key contains the token: %s", k)
+		}
 	}
 }
 
@@ -97,7 +103,7 @@ func TestSessionStore_RejectsUnknownAndOversizedTokens(t *testing.T) {
 func TestSessionStore_IdleTimeoutSlides(t *testing.T) {
 	s, _ := newStore(t, 400*time.Millisecond, time.Hour)
 	ctx := context.Background()
-	token, _, err := s.create(ctx, uuid.New(), uuid.New())
+	token, _, err := s.create(ctx, uuid.New(), uuid.New(), "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -118,7 +124,7 @@ func TestSessionStore_IdleTimeoutSlides(t *testing.T) {
 func TestSessionStore_AbsoluteExpiry(t *testing.T) {
 	s, clk := newStore(t, time.Hour, 2*time.Hour)
 	ctx := context.Background()
-	token, _, err := s.create(ctx, uuid.New(), uuid.New())
+	token, _, err := s.create(ctx, uuid.New(), uuid.New(), "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
