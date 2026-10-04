@@ -162,9 +162,9 @@ func (r *Relay) publishBatch(ctx context.Context, q *store.Queries) (int, error)
 	return len(events), nil
 }
 
-// LogPublisher logs event metadata at debug level. It stands in until the
-// realtime transport is built (docs/adr/0005-realtime-transport.md) and never
-// logs payloads, which may reference personal data.
+// LogPublisher logs event metadata at debug level: a stand-in for the
+// realtime publisher (internal/realtime) when debugging the relay alone. It
+// never logs payloads, which may reference personal data.
 type LogPublisher struct {
 	Log *slog.Logger
 }

@@ -10,7 +10,67 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const eventsAfter = `-- name: EventsAfter :many
+SELECT id, seq, topic, payload, created_at
+FROM outbox_events
+WHERE workspace_id = $1
+  AND seq > $2::bigint
+  AND topic LIKE ANY ($3::text[])
+ORDER BY seq
+LIMIT $4
+`
+
+type EventsAfterParams struct {
+	WorkspaceID   uuid.UUID
+	AfterSeq      int64
+	TopicPatterns []string
+	MaxRows       int32
+}
+
+type EventsAfterRow struct {
+	ID        int64
+	Seq       pgtype.Int8
+	Topic     string
+	Payload   []byte
+	CreatedAt time.Time
+}
+
+// EventsAfter is the catch-up read of the application role inside
+// InTenantTx: published events of one workspace after a seq, only topics
+// the caller may see (LIKE patterns such as 'conversation.%').
+func (q *Queries) EventsAfter(ctx context.Context, arg EventsAfterParams) ([]EventsAfterRow, error) {
+	rows, err := q.db.Query(ctx, eventsAfter,
+		arg.WorkspaceID,
+		arg.AfterSeq,
+		arg.TopicPatterns,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EventsAfterRow
+	for rows.Next() {
+		var i EventsAfterRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Seq,
+			&i.Topic,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const insertEvent = `-- name: InsertEvent :exec
 INSERT INTO outbox_events (workspace_id, topic, payload)
@@ -39,6 +99,23 @@ func (q *Queries) IsSystemMember(ctx context.Context) (bool, error) {
 	return pg_has_role, err
 }
 
+const latestSeq = `-- name: LatestSeq :one
+SELECT GREATEST(
+    COALESCE((SELECT max(e.seq) FROM outbox_events AS e
+              WHERE e.workspace_id = $1 AND e.seq IS NOT NULL), 0),
+    (SELECT w.pruned_seq FROM outbox_watermark AS w WHERE w.id)
+)::bigint AS seq
+`
+
+// LatestSeq is where a fresh client starts: the newest published seq of the
+// workspace, or the prune watermark if that is higher.
+func (q *Queries) LatestSeq(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, latestSeq, workspaceID)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
+}
+
 const markPublished = `-- name: MarkPublished :execrows
 UPDATE outbox_events AS o
 SET published_at = now(), seq = t.seq
@@ -62,14 +139,21 @@ func (q *Queries) MarkPublished(ctx context.Context, arg MarkPublishedParams) (i
 	return result.RowsAffected(), nil
 }
 
-const prunePublished = `-- name: PrunePublished :execrows
-DELETE FROM outbox_events
-WHERE id IN (
-    SELECT p.id FROM outbox_events AS p
-    WHERE p.published_at < $1::timestamptz
-    ORDER BY p.published_at
-    LIMIT $2
+const prunePublished = `-- name: PrunePublished :one
+WITH deleted AS (
+    DELETE FROM outbox_events
+    WHERE id IN (
+        SELECT p.id FROM outbox_events AS p
+        WHERE p.published_at < $1::timestamptz
+        ORDER BY p.published_at
+        LIMIT $2
+    )
+    RETURNING seq
 )
+UPDATE outbox_watermark
+SET pruned_seq = GREATEST(pruned_seq, COALESCE((SELECT max(d.seq) FROM deleted AS d), 0))
+WHERE id
+RETURNING (SELECT count(*) FROM deleted)::bigint AS deleted
 `
 
 type PrunePublishedParams struct {
@@ -77,12 +161,25 @@ type PrunePublishedParams struct {
 	MaxRows int32
 }
 
+// PrunePublished deletes one batch and raises the watermark to the highest
+// deleted seq in the same statement, so catch-up never misses a gap that
+// retention made (it answers resync_required instead).
 func (q *Queries) PrunePublished(ctx context.Context, arg PrunePublishedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, prunePublished, arg.Before, arg.MaxRows)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, prunePublished, arg.Before, arg.MaxRows)
+	var deleted int64
+	err := row.Scan(&deleted)
+	return deleted, err
+}
+
+const prunedSeq = `-- name: PrunedSeq :one
+SELECT pruned_seq FROM outbox_watermark WHERE id
+`
+
+func (q *Queries) PrunedSeq(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, prunedSeq)
+	var pruned_seq int64
+	err := row.Scan(&pruned_seq)
+	return pruned_seq, err
 }
 
 const reserveSeq = `-- name: ReserveSeq :one

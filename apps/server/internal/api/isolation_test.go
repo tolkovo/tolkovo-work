@@ -17,7 +17,7 @@ import (
 // ones answers 401 without a session. A new operation in api/openapi.yaml
 // is protected without anyone remembering to protect it.
 func TestEveryRouteRequiresSessionExceptPublic(t *testing.T) {
-	e := newEnv(t, envOptions{})
+	e := newEnv(t, envOptions{withWS: true}) // the WebSocket endpoint too
 	routes := 0
 	err := chi.Walk(e.h.(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		if !strings.HasPrefix(route, "/api/v1/") {
