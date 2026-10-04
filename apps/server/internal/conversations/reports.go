@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations/store"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 )
 
 // AppReport is a problem report from a company app (docs/02 §11.6) that
@@ -214,4 +217,162 @@ func (r *AppReport) validate() error {
 		}
 	}
 	return nil
+}
+
+// Replies of a report conversation to the app user (docs/02 §11.6).
+const (
+	// MaxReportReplies is the most replies one call returns.
+	MaxReportReplies = 50
+	// replySettle: a reply is returned this long after it is stored, when
+	// every transaction that took a smaller id has committed.
+	replySettle = 5 * time.Second
+)
+
+// ReportReply is what an operator or the bot wrote to the app user: no
+// names, no notes, no events.
+type ReportReply struct {
+	ID         uuid.UUID
+	SenderType string // SenderOperator or SenderBot
+	Body       string
+	CreatedAt  time.Time
+	// Files that can be downloaded, with a fresh signed request each.
+	Files []ReplyFile
+}
+
+// ReplyFile is a file of a reply.
+type ReplyFile struct {
+	FileName    string
+	ContentType string
+	Size        int64
+	Download    storage.SignedRequest
+}
+
+// ReportReplies is a page of replies.
+type ReportReplies struct {
+	Items []ReportReply
+	// Cursor follows the last item; it is since when nothing is new.
+	Cursor string
+	More   bool
+}
+
+// ReportReplies returns the replies of a report conversation after since,
+// oldest first.
+func (s *Service) ReportReplies(ctx context.Context, workspaceID, conversationID uuid.UUID, since string) (ReportReplies, error) {
+	after, err := decodeIDCursor(since)
+	if err != nil {
+		return ReportReplies{}, err
+	}
+	var (
+		rows []store.Message
+		atts []store.Attachment
+	)
+	err = s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
+		var err error
+		rows, err = q.ReportReplies(ctx, store.ReportRepliesParams{
+			WorkspaceID: workspaceID, ConversationID: conversationID, AfterID: after,
+			Settled: s.now().Add(-replySettle), Lim: MaxReportReplies + 1,
+		})
+		if err != nil || len(rows) == 0 {
+			return err
+		}
+		ids := make([]uuid.UUID, 0, len(rows))
+		for _, m := range rows {
+			ids = append(ids, m.ID)
+		}
+		atts, err = q.MessageAttachments(ctx, store.MessageAttachmentsParams{WorkspaceID: workspaceID, MessageIds: ids})
+		return err
+	})
+	if err != nil {
+		return ReportReplies{}, wrap(err, "list report replies")
+	}
+	out := ReportReplies{Cursor: since, More: len(rows) > MaxReportReplies}
+	rows = rows[:min(len(rows), MaxReportReplies)]
+	byMessage := make(map[uuid.UUID][]store.Attachment, len(atts))
+	for _, a := range atts {
+		if a.Status == AttachmentReady {
+			byMessage[*a.MessageID] = append(byMessage[*a.MessageID], a)
+		}
+	}
+	// Signing needs no network for either driver; it stays out of the
+	// transaction anyway (docs/00 §6.5).
+	for _, m := range rows {
+		r := ReportReply{ID: m.ID, SenderType: m.SenderType, Body: m.Body, CreatedAt: m.CreatedAt, Files: []ReplyFile{}}
+		for _, a := range byMessage[m.ID] {
+			req, err := s.files.PresignGet(ctx, a.StorageKey, storage.PresignGetOptions{Filename: a.FileName, ContentType: a.Mime})
+			if err != nil {
+				return ReportReplies{}, fmt.Errorf("presign reply file: %w", err)
+			}
+			r.Files = append(r.Files, ReplyFile{FileName: a.FileName, ContentType: a.Mime, Size: a.Size, Download: req})
+		}
+		out.Items = append(out.Items, r)
+		out.Cursor = encodeIDCursor(m.ID)
+	}
+	return out, nil
+}
+
+// ReportMessage is what the app user wrote back about their report.
+type ReportMessage struct {
+	ConversationID uuid.UUID
+	// Key names the message: a retry with the same key finds the first one.
+	Key  string
+	Body string
+}
+
+// ReportMessageReceived is a stored message of the app user.
+type ReportMessageReceived struct {
+	MessageID uuid.UUID
+	CreatedAt time.Time
+	// Created is false when Key named an earlier message.
+	Created bool
+}
+
+// ReceiveReportMessage stores a message of the app user in the report's
+// conversation as a message of the customer. The conversation wakes up as
+// for any customer message, and a closed one reopens: one report is one
+// conversation for good (docs/02 §8). A retry with the same key and text
+// returns the first message; with another text, ErrIdempotencyMismatch.
+func (s *Service) ReceiveReportMessage(ctx context.Context, workspaceID uuid.UUID, m ReportMessage) (ReportMessageReceived, error) {
+	m.Body = strings.TrimSpace(m.Body)
+	switch {
+	case m.Body == "" || utf8.RuneCountInString(m.Body) > MaxBodyLength:
+		return ReportMessageReceived{}, fmt.Errorf("%w: a message must be 1 to %d characters", ErrInvalid, MaxBodyLength)
+	case m.Key == "" || len(m.Key) > 255:
+		return ReportMessageReceived{}, fmt.Errorf("%w: a message needs a key of at most 255 bytes", ErrInvalid)
+	}
+	// The prefix keeps the app's keys apart from the report's own message.
+	in := Inbound{ExternalID: "msg:" + m.Key, Body: m.Body}
+	var out ReportMessageReceived
+	err := s.tx(ctx, workspaceID, func(q *store.Queries, tx pgx.Tx) error {
+		conv, err := q.LockConversation(ctx, store.LockConversationParams{WorkspaceID: workspaceID, ID: m.ConversationID})
+		if err != nil {
+			return err
+		}
+		if conv.ChannelID == nil || conv.ExternalThreadID == nil {
+			return ErrNotFound // not a report conversation
+		}
+		prev, err := q.MessageByExternalID(ctx, store.MessageByExternalIDParams{
+			WorkspaceID: workspaceID, ConversationID: conv.ID, ExternalID: &in.ExternalID,
+		})
+		if err == nil {
+			if prev.Body != in.Body || prev.Direction != DirectionIn {
+				return ErrIdempotencyMismatch
+			}
+			out = ReportMessageReceived{MessageID: prev.ID, CreatedAt: prev.CreatedAt}
+			return nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		now := s.now()
+		if conv, err = s.wakeUp(ctx, q, tx, conv, now); err != nil {
+			return err
+		}
+		id, err := s.storeCustomerMessage(ctx, q, tx, conv, in, now)
+		out = ReportMessageReceived{MessageID: id, CreatedAt: now, Created: true}
+		return err
+	})
+	if err != nil {
+		return ReportMessageReceived{}, wrap(err, "receive report message")
+	}
+	return out, nil
 }

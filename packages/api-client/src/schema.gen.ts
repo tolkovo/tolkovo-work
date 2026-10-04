@@ -778,7 +778,7 @@ export interface paths {
          *     `application/octet-stream`: it is taken as `text/plain`, so upload it with the
          *     headers of its link. Each upload link lives 15 minutes and fixes the size, the
          *     type and the SHA-256. `report_token` is shown once: send it to complete the report
-         *     and, later, to read the replies.
+         *     and, later, to read the replies and write back (`/replies`, `/messages`).
          *
          *     With `contact.identity_token` = hex HMAC-SHA256 of `contact.external_id` under the
          *     channel's identity secret, signed by the company's backend, the contact is
@@ -817,6 +817,70 @@ export interface paths {
          *     channel's report or a wrong token answers `404`. Rate: 30 a minute per IP.
          */
         post: operations["completeIngestReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ingest/reports/{id}/replies": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `report_token` from the answer that created the report. */
+                "X-Report-Token": components["parameters"]["ReportToken"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Replies to the app user, oldest first
+         * @description What operators and the bot wrote to the user of the app in the report's conversation
+         *     (docs/02 §11.6): no internal notes, no events of the conversation, no names of
+         *     staff. Each file comes with a signed download request that lives 15 minutes; ask
+         *     again for a fresh one. A reply shows up here a few seconds after it is sent.
+         *
+         *     Poll when the app starts and at most once a minute while the report is open. Pass
+         *     `cursor` of the answer as `since` next time; with `more` true, ask again at once.
+         *     Until the report becomes a conversation the list is empty. Another channel's report
+         *     or a wrong token answers `404`. Rate: 2 a minute per report, 120 a minute per IP.
+         */
+        get: operations["listIngestReportReplies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ingest/reports/{id}/messages": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `report_token` from the answer that created the report. */
+                "X-Report-Token": components["parameters"]["ReportToken"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The app user writes into the report's conversation
+         * @description Text only, up to 10 000 characters. The message lands in the same conversation as a
+         *     message of the customer; a resolved or closed conversation reopens (docs/02 §8). A
+         *     retry with the same `Idempotency-Key` and text answers `200` with the first message.
+         *
+         *     Before the report becomes a conversation the answer is `409 report_processing`: try
+         *     again in a few seconds. Another channel's report or a wrong token answers `404`.
+         *     Rate: 10 an hour per report, 120 a minute per IP.
+         */
+        post: operations["postIngestReportMessage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1862,6 +1926,42 @@ export interface components {
             name: string;
             upload: components["schemas"]["SignedRequest"];
         };
+        IngestReplies: {
+            items: components["schemas"]["IngestReply"][];
+            /** @description Send as `since` next time. The same `since` when nothing is new; empty before the first reply. */
+            cursor: string;
+            /** @description More replies wait: ask again at once. */
+            more: boolean;
+        };
+        IngestReply: {
+            id: string;
+            /**
+             * @description Who wrote it, without the name.
+             * @enum {string}
+             */
+            sender: "operator" | "bot";
+            /** @description Empty for a reply of files only. */
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The files of the reply that can be downloaded, in their order. */
+            files: components["schemas"]["IngestReplyFile"][];
+        };
+        IngestReplyFile: {
+            name: string;
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+            download: components["schemas"]["SignedRequest"];
+        };
+        IngestMessageRequest: {
+            message: string;
+        };
+        IngestMessage: {
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+        };
         RenameChannelRequest: {
             name: string;
         };
@@ -1989,6 +2089,17 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description `too_many_requests`: the rate of this endpoint for the report or the IP. */
+        ReportLimited: {
+            headers: {
+                /** @description Seconds until the next attempt is allowed. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description `channel_exists`: this bot or account is a channel already, here or in another workspace. */
         ChannelExists: {
             headers: {
@@ -2070,6 +2181,12 @@ export interface components {
         RateLimitRemaining: number;
         /** @description Seconds until the hour starts over. */
         RateLimitReset: number;
+        /** @description Requests to this endpoint allowed per window for the report. */
+        ReportRateLimitLimit: number;
+        /** @description Requests left in the current window. */
+        ReportRateLimitRemaining: number;
+        /** @description Seconds until the window starts over. */
+        ReportRateLimitReset: number;
         /** @description The session cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` outside development). */
         SetSessionCookie: string;
     };
@@ -3249,6 +3366,114 @@ export interface operations {
                 };
             };
             429: components["responses"]["IngestLimited"];
+        };
+    };
+    listIngestReportReplies: {
+        parameters: {
+            query?: {
+                /** @description `cursor` of the previous answer; without it, from the first reply. */
+                since?: string;
+            };
+            header: {
+                /** @description `report_token` from the answer that created the report. */
+                "X-Report-Token": components["parameters"]["ReportToken"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Replies after `since`, up to 50. */
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["ReportRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["ReportRateLimitRemaining"];
+                    "RateLimit-Reset": components["headers"]["ReportRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestReplies"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["InvalidIngestKey"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["ReportLimited"];
+        };
+    };
+    postIngestReportMessage: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `report_token` from the answer that created the report. */
+                "X-Report-Token": components["parameters"]["ReportToken"];
+                /**
+                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 *     reused key with a different body answers `422`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description A retry with the same `Idempotency-Key` and text. */
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["ReportRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["ReportRateLimitRemaining"];
+                    "RateLimit-Reset": components["headers"]["ReportRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestMessage"];
+                };
+            };
+            /** @description Stored in the conversation. */
+            201: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["ReportRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["ReportRateLimitRemaining"];
+                    "RateLimit-Reset": components["headers"]["ReportRateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestMessage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["InvalidIngestKey"];
+            404: components["responses"]["NotFound"];
+            /** @description `report_processing`: the report is not a conversation yet. */
+            409: {
+                headers: {
+                    /** @description Seconds to wait before trying again. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `idempotency_key_reused`: the key was used with a different text. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["ReportLimited"];
         };
     };
     downloadFile: {

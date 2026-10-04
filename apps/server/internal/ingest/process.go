@@ -42,11 +42,13 @@ const (
 	CheckMissing = conversations.FileMissing
 )
 
-// Inbox stores reports as conversations; *conversations.Service
-// implements it.
+// Inbox stores reports as conversations and carries the app user's side
+// of them (replies.go); *conversations.Service implements it.
 type Inbox interface {
 	ReceiveReport(ctx context.Context, workspaceID uuid.UUID, r conversations.AppReport) (conversations.Received, error)
 	ExpireAttachments(ctx context.Context, workspaceID uuid.UUID, storageKeys []string) error
+	ReportReplies(ctx context.Context, workspaceID, conversationID uuid.UUID, since string) (conversations.ReportReplies, error)
+	ReceiveReportMessage(ctx context.Context, workspaceID uuid.UUID, m conversations.ReportMessage) (conversations.ReportMessageReceived, error)
 }
 
 // Scanner is the optional antivirus; *clamav.Scanner implements it.

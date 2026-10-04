@@ -61,6 +61,57 @@ func (s *server) CompleteIngestReport(w http.ResponseWriter, r *http.Request, id
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// ListIngestReportReplies implements GET /ingest/reports/{id}/replies.
+func (s *server) ListIngestReportReplies(w http.ResponseWriter, r *http.Request, id oapi.Id, params oapi.ListIngestReportRepliesParams) {
+	if s.ingest == nil {
+		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
+		return
+	}
+	page, err := s.ingest.Replies(r.Context(), s.ingestCaller(r), id, params.XReportToken, deref(params.Since))
+	setRateHeaders(w, page.Rate)
+	if err != nil {
+		s.writeIngestError(w, r, err)
+		return
+	}
+	items := make([]oapi.IngestReply, 0, len(page.Items))
+	for _, m := range page.Items {
+		files := make([]oapi.IngestReplyFile, 0, len(m.Files))
+		for _, f := range m.Files {
+			files = append(files, oapi.IngestReplyFile{
+				Name: f.FileName, ContentType: f.ContentType, Size: f.Size, Download: signedBody(f.Download),
+			})
+		}
+		items = append(items, oapi.IngestReply{
+			Id: m.ID, Sender: oapi.IngestReplySender(m.SenderType), Body: m.Body, CreatedAt: m.CreatedAt, Files: files,
+		})
+	}
+	writeJSON(w, http.StatusOK, oapi.IngestReplies{Items: items, Cursor: page.Cursor, More: page.More})
+}
+
+// PostIngestReportMessage implements POST /ingest/reports/{id}/messages.
+func (s *server) PostIngestReportMessage(w http.ResponseWriter, r *http.Request, id oapi.Id, params oapi.PostIngestReportMessageParams) {
+	if s.ingest == nil {
+		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
+		return
+	}
+	var req oapi.IngestMessageRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeIngestError(w, r, err)
+		return
+	}
+	out, err := s.ingest.Reply(r.Context(), s.ingestCaller(r), id, params.XReportToken, deref(params.IdempotencyKey), req.Message)
+	setRateHeaders(w, out.Rate)
+	if err != nil {
+		s.writeIngestError(w, r, err)
+		return
+	}
+	status := http.StatusCreated
+	if !out.Created {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, oapi.IngestMessage{Id: out.MessageID, CreatedAt: out.CreatedAt})
+}
+
 // ingestCaller reads the bearer key and the client address. Only the
 // Bearer scheme counts (case-insensitive, RFC 9110 §11.1).
 func (s *server) ingestCaller(r *http.Request) ingest.Caller {
@@ -92,7 +143,8 @@ func reportInput(req oapi.IngestReportRequest) ingest.Report {
 	return in
 }
 
-// setRateHeaders reports the key's hourly rate (RateLimit-* draft headers).
+// setRateHeaders reports a rate of the key or the report (RateLimit-* draft
+// headers).
 func setRateHeaders(w http.ResponseWriter, rate ratelimit.Result) {
 	if rate.Limit == 0 {
 		return
@@ -109,8 +161,9 @@ func seconds(d time.Duration) int { return int(math.Ceil(d.Seconds())) }
 // to writeError. Bodies name the broken limit, never the user's data.
 func (s *server) writeIngestError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
-		limited  *ingest.RateLimitedError
-		tooLarge *ingest.TooLargeError
+		limited    *ingest.RateLimitedError
+		tooLarge   *ingest.TooLargeError
+		processing *ingest.ProcessingError
 	)
 	switch {
 	case errors.Is(err, channels.ErrInvalidKey):
@@ -151,6 +204,12 @@ func (s *server) writeIngestError(w http.ResponseWriter, r *http.Request, err er
 		writeProblem(w, r, Problem{
 			Status: http.StatusConflict, Code: "upload_incomplete", Title: "Conflict",
 			Detail: "not uploaded: " + ingestDetail(err, ingest.ErrNotUploaded),
+		})
+	case errors.As(err, &processing):
+		w.Header().Set("Retry-After", strconv.Itoa(seconds(processing.RetryAfter)))
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "report_processing", Title: "Conflict",
+			Detail: "the report is not a conversation yet, try again shortly",
 		})
 	case errors.Is(err, ingest.ErrSubmitted):
 		writeProblem(w, r, Problem{

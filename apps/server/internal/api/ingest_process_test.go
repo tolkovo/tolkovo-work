@@ -22,6 +22,12 @@ import (
 // app does; it returns the report id.
 func (e *env) sendReport(a ingestApp, app *client, body map[string]any, files ...reportFile) uuid.UUID {
 	e.t.Helper()
+	return e.submitReport(a, app, body, files...).ReportId
+}
+
+// submitReport is sendReport that also returns the report's token.
+func (e *env) submitReport(a ingestApp, app *client, body map[string]any, files ...reportFile) oapi.IngestReportCreated {
+	e.t.Helper()
 	rec := app.do(http.MethodPost, "/api/v1/ingest/reports", body, bearer(a.key))
 	if rec.Code != http.StatusCreated {
 		e.t.Fatalf("create report: %d %s", rec.Code, rec.Body)
@@ -37,7 +43,7 @@ func (e *env) sendReport(a ingestApp, app *client, body map[string]any, files ..
 	if rec.Code != http.StatusAccepted {
 		e.t.Fatalf("complete: %d %s", rec.Code, rec.Body)
 	}
-	return created.ReportId
+	return created
 }
 
 // workspaceOf returns the workspace of the app channel.

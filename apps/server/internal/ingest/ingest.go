@@ -154,8 +154,9 @@ type Options struct {
 	KeyPrefix string
 	// Jobs queues ingest.process on Complete (role api).
 	Jobs *jobs.Client
-	// Inbox and Scanner are used by the jobs (role worker); Scanner is
-	// nil without ClamAV.
+	// Inbox turns reports into conversations (role worker) and serves the
+	// app user's replies and messages (role api). Scanner is used by the
+	// jobs and is nil without ClamAV.
 	Inbox   Inbox
 	Scanner Scanner
 	Log     *slog.Logger

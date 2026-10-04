@@ -329,8 +329,9 @@ func apiDeps(
 		Notifications: notifs,
 		Channels:      chans,
 		// Reports from company apps (AP-02): keys come from the channels
-		// module; complete queues ingest.process for the worker (AP-03).
-		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter}),
+		// module; complete queues ingest.process for the worker (AP-03); the
+		// app user reads replies and writes back through convs (AP-06).
+		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

@@ -92,6 +92,21 @@ func transition(cur state, to Status, now time.Time) (state, error) {
 	return next, nil
 }
 
+// reopenClosed computes a closed conversation reopened by its customer, to
+// the queue or to its assignee. The state machine has no way out of closed:
+// only the app channel reopens one (wakeUp), never an operator.
+func reopenClosed(cur state, to Status) (state, error) {
+	next := cur
+	next.Status, next.ResolvedAt, next.ClosedAt = to, nil, nil
+	switch {
+	case to == StatusQueued:
+		next.AssigneeID = nil
+	case to != StatusAssigned || cur.AssigneeID == nil:
+		return state{}, fmt.Errorf("%w: %s → %s", ErrTransition, cur.Status, to)
+	}
+	return next, nil
+}
+
 // assign computes the state after giving the conversation to assignee, or
 // releasing it to the queue when assignee is nil.
 //

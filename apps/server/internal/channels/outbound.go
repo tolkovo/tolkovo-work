@@ -160,6 +160,11 @@ func (s *Service) send(ctx context.Context, a SendArgs, last bool) error {
 	if err != nil {
 		return err
 	}
+	if ch.Type == TypeApp {
+		// The app fetches its replies itself (docs/02 §11.6, AP-06): a stored
+		// reply is out.
+		return s.opts.Inbox.SetDelivery(ctx, a.WorkspaceID, a.MessageID, conversations.Delivery{Status: conversations.DeliverySent})
+	}
 	chatID, err := strconv.ParseInt(out.Thread, 10, 64)
 	if err != nil {
 		return fail(conversations.DeliveryChatNotFound)

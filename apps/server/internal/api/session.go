@@ -36,6 +36,8 @@ var publicOperations = map[string]bool{
 	// Apps authenticate with an ingest key, checked by the handler.
 	"POST /api/v1/ingest/reports":               true,
 	"POST /api/v1/ingest/reports/{id}/complete": true,
+	"GET /api/v1/ingest/reports/{id}/replies":   true,
+	"POST /api/v1/ingest/reports/{id}/messages": true,
 }
 
 // sessionCookies writes and reads the session cookie.

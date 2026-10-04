@@ -57,6 +57,9 @@ type env struct {
 	app    *db.DB
 	convs  *conversations.Service
 	ingest *ingest.Service
+	// rdb and prefix reach the rate counters of the test.
+	rdb    *redis.Client
+	prefix string
 }
 
 type envOptions struct {
@@ -161,7 +164,15 @@ func newEnv(t *testing.T, o envOptions) *env {
 	}
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
-		db: d, app: app, convs: convs, ingest: reports,
+		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix,
+	}
+}
+
+// resetRate empties a rate counter (ratelimit keys are prefix + "rl:" + key).
+func (e *env) resetRate(key string) {
+	e.t.Helper()
+	if err := e.rdb.Del(context.Background(), e.prefix+"rl:"+key).Err(); err != nil {
+		e.t.Fatalf("reset rate: %v", err)
 	}
 }
 

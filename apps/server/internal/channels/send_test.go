@@ -179,6 +179,29 @@ func TestSend_Bot(t *testing.T) {
 	}
 }
 
+// A reply in a report conversation is out once stored: the app fetches it
+// (AP-06); nothing goes to Telegram.
+func TestSend_App(t *testing.T) {
+	f := sendSetup(t)
+	app, err := f.svc.ConnectApp(f.ctx, f.wsA, f.ownerA, "Зерно")
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	got, err := f.inbox.ReceiveReport(f.ctx, f.wsA, conversations.AppReport{
+		ChannelID: app.Channel.ID, ReportID: uuid.Must(uuid.NewV7()), Body: "Не синхронизируется корзина",
+	})
+	if err != nil {
+		t.Fatalf("report: %v", err)
+	}
+	m := f.reply(got.ConversationID, "Исправили в 2.4.2")
+	if err := f.deliver(m.ID, false); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if status(f.message(got.ConversationID, m.ID)) != conversations.DeliverySent || len(f.bots.SnapshotSent()) != 0 {
+		t.Fatalf("delivered: %q, %d sent to Telegram", status(f.message(got.ConversationID, m.ID)), len(f.bots.SnapshotSent()))
+	}
+}
+
 func TestSend_BotFailures(t *testing.T) {
 	f := sendSetup(t)
 	ch, conv := f.botConversation()

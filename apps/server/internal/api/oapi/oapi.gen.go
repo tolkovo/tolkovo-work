@@ -218,6 +218,24 @@ func (e EmailDelayMinutes) Valid() bool {
 	}
 }
 
+// Defines values for IngestReplySender.
+const (
+	IngestReplySenderBot      IngestReplySender = "bot"
+	IngestReplySenderOperator IngestReplySender = "operator"
+)
+
+// Valid indicates whether the value is a known member of the IngestReplySender enum.
+func (e IngestReplySender) Valid() bool {
+	switch e {
+	case IngestReplySenderBot:
+		return true
+	case IngestReplySenderOperator:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Locale.
 const (
 	En Locale = "en"
@@ -919,6 +937,52 @@ type IngestKeyList struct {
 	Items []IngestKey `json:"items"`
 }
 
+// IngestMessage defines model for IngestMessage.
+type IngestMessage struct {
+	CreatedAt time.Time `json:"created_at"`
+	Id        uuid.UUID `json:"id"`
+}
+
+// IngestMessageRequest defines model for IngestMessageRequest.
+type IngestMessageRequest struct {
+	Message string `json:"message"`
+}
+
+// IngestReplies defines model for IngestReplies.
+type IngestReplies struct {
+	// Cursor Send as `since` next time. The same `since` when nothing is new; empty before the first reply.
+	Cursor string        `json:"cursor"`
+	Items  []IngestReply `json:"items"`
+
+	// More More replies wait: ask again at once.
+	More bool `json:"more"`
+}
+
+// IngestReply defines model for IngestReply.
+type IngestReply struct {
+	// Body Empty for a reply of files only.
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Files The files of the reply that can be downloaded, in their order.
+	Files []IngestReplyFile `json:"files"`
+	Id    uuid.UUID         `json:"id"`
+
+	// Sender Who wrote it, without the name.
+	Sender IngestReplySender `json:"sender"`
+}
+
+// IngestReplySender Who wrote it, without the name.
+type IngestReplySender string
+
+// IngestReplyFile defines model for IngestReplyFile.
+type IngestReplyFile struct {
+	ContentType string        `json:"content_type"`
+	Download    SignedRequest `json:"download"`
+	Name        string        `json:"name"`
+	Size        int64         `json:"size"`
+}
+
 // IngestReportCreated defines model for IngestReportCreated.
 type IngestReportCreated struct {
 	ContactVerified bool      `json:"contact_verified"`
@@ -1404,6 +1468,9 @@ type LoginStep = Problem
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
 
+// ReportLimited RFC 9457 problem details.
+type ReportLimited = Problem
+
 // ReportTooLarge RFC 9457 problem details.
 type ReportTooLarge = Problem
 
@@ -1472,6 +1539,25 @@ type CreateIngestReportParams struct {
 
 // CompleteIngestReportParams defines parameters for CompleteIngestReport.
 type CompleteIngestReportParams struct {
+	// XReportToken `report_token` from the answer that created the report.
+	XReportToken ReportToken `json:"X-Report-Token"`
+}
+
+// PostIngestReportMessageParams defines parameters for PostIngestReportMessage.
+type PostIngestReportMessageParams struct {
+	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// reused key with a different body answers `422`.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+
+	// XReportToken `report_token` from the answer that created the report.
+	XReportToken ReportToken `json:"X-Report-Token"`
+}
+
+// ListIngestReportRepliesParams defines parameters for ListIngestReportReplies.
+type ListIngestReportRepliesParams struct {
+	// Since `cursor` of the previous answer; without it, from the first reply.
+	Since *string `form:"since,omitempty" json:"since,omitempty"`
+
 	// XReportToken `report_token` from the answer that created the report.
 	XReportToken ReportToken `json:"X-Report-Token"`
 }
@@ -1553,6 +1639,9 @@ type SetConversationTagsJSONRequestBody = SetTagsRequest
 
 // CreateIngestReportJSONRequestBody defines body for CreateIngestReport for application/json ContentType.
 type CreateIngestReportJSONRequestBody = IngestReportRequest
+
+// PostIngestReportMessageJSONRequestBody defines body for PostIngestReportMessage for application/json ContentType.
+type PostIngestReportMessageJSONRequestBody = IngestMessageRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
@@ -1697,6 +1786,12 @@ type ServerInterface interface {
 	// CompleteIngestReport Finish a report after its files are uploaded
 	// (POST /ingest/reports/{id}/complete)
 	CompleteIngestReport(w http.ResponseWriter, r *http.Request, id Id, params CompleteIngestReportParams)
+	// PostIngestReportMessage The app user writes into the report's conversation
+	// (POST /ingest/reports/{id}/messages)
+	PostIngestReportMessage(w http.ResponseWriter, r *http.Request, id Id, params PostIngestReportMessageParams)
+	// ListIngestReportReplies Replies to the app user, oldest first
+	// (GET /ingest/reports/{id}/replies)
+	ListIngestReportReplies(w http.ResponseWriter, r *http.Request, id Id, params ListIngestReportRepliesParams)
 	// ListInvitations Open invitations of the current workspace
 	// (GET /invitations)
 	ListInvitations(w http.ResponseWriter, r *http.Request)
@@ -2000,6 +2095,18 @@ func (_ Unimplemented) CreateIngestReport(w http.ResponseWriter, r *http.Request
 // CompleteIngestReport Finish a report after its files are uploaded
 // (POST /ingest/reports/{id}/complete)
 func (_ Unimplemented) CompleteIngestReport(w http.ResponseWriter, r *http.Request, id Id, params CompleteIngestReportParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PostIngestReportMessage The app user writes into the report's conversation
+// (POST /ingest/reports/{id}/messages)
+func (_ Unimplemented) PostIngestReportMessage(w http.ResponseWriter, r *http.Request, id Id, params PostIngestReportMessageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListIngestReportReplies Replies to the app user, oldest first
+// (GET /ingest/reports/{id}/replies)
+func (_ Unimplemented) ListIngestReportReplies(w http.ResponseWriter, r *http.Request, id Id, params ListIngestReportRepliesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3187,6 +3294,146 @@ func (siw *ServerInterfaceWrapper) CompleteIngestReport(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// PostIngestReportMessage operation middleware
+func (siw *ServerInterfaceWrapper) PostIngestReportMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostIngestReportMessageParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	// ------------- Required header parameter "X-Report-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Report-Token")]; found {
+		var XReportToken ReportToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Report-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Report-Token", valueList[0], &XReportToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Report-Token", Err: err})
+			return
+		}
+
+		params.XReportToken = XReportToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Report-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Report-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIngestReportMessage(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIngestReportReplies operation middleware
+func (siw *ServerInterfaceWrapper) ListIngestReportReplies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIngestReportRepliesParams
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Report-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Report-Token")]; found {
+		var XReportToken ReportToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Report-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Report-Token", valueList[0], &XReportToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Report-Token", Err: err})
+			return
+		}
+
+		params.XReportToken = XReportToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Report-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Report-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIngestReportReplies(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListInvitations operation middleware
 func (siw *ServerInterfaceWrapper) ListInvitations(w http.ResponseWriter, r *http.Request) {
 
@@ -3707,6 +3954,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ingest/reports/{id}/complete", wrapper.CompleteIngestReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ingest/reports/{id}/replies", wrapper.ListIngestReportReplies)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/ingest/reports/{id}/messages", wrapper.PostIngestReportMessage)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

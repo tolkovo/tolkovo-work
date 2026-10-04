@@ -97,3 +97,21 @@ WHERE workspace_id = @workspace_id AND id = @id
 UPDATE attachments
 SET status = 'expired', updated_at = now()
 WHERE workspace_id = @workspace_id AND storage_key = ANY(@storage_keys::text[]) AND status <> 'expired';
+
+-- name: ReportReplies :many
+-- What the user of an app sees of a report conversation (docs/02 §11.6):
+-- replies of operators and the bot, oldest first after the cursor. Notes and
+-- events stay inside. A reply younger than settled is left for the next
+-- poll: a transaction that took a smaller id may not have committed yet.
+SELECT * FROM messages
+WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id
+  AND direction = 'out' AND sender_type IN ('operator', 'bot') AND kind IN ('text', 'media')
+  AND NOT is_private AND deleted_at IS NULL
+  AND (sqlc.narg(after_id)::uuid IS NULL OR id > sqlc.narg(after_id)::uuid)
+  AND created_at < @settled
+ORDER BY id
+LIMIT @lim;
+
+-- name: MessageByExternalID :one
+SELECT * FROM messages
+WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id AND external_id = @external_id;

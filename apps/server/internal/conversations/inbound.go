@@ -163,7 +163,17 @@ func (s *Service) receive(ctx context.Context, q *store.Queries, tx pgx.Tx, work
 		return Received{}, err
 	}
 	out.ConversationID = conv.ID
+	if out.MessageID, err = s.storeCustomerMessage(ctx, q, tx, conv, in, now); err != nil {
+		return Received{}, err
+	}
+	return out, nil
+}
 
+// storeCustomerMessage adds what the customer wrote to their conversation,
+// the event, and a reminder for the assignee.
+func (s *Service) storeCustomerMessage(
+	ctx context.Context, q *store.Queries, tx pgx.Tx, conv store.Conversation, in Inbound, now time.Time,
+) (uuid.UUID, error) {
 	kind := KindText
 	if in.Body == "" && len(in.Files) > 0 {
 		kind = KindMedia
@@ -172,25 +182,24 @@ func (s *Service) receive(ctx context.Context, q *store.Queries, tx pgx.Tx, work
 		Direction: DirectionIn, SenderType: SenderContact, SenderID: &conv.ContactID, Kind: kind,
 	}, now)
 	if err != nil {
-		return Received{}, err
+		return uuid.Nil, err
 	}
-	out.MessageID = msg
-	if err := q.TouchConversation(ctx, store.TouchConversationParams{WorkspaceID: workspaceID, ID: conv.ID, At: now}); err != nil {
-		return Received{}, err
+	if err := q.TouchConversation(ctx, store.TouchConversationParams{WorkspaceID: conv.WorkspaceID, ID: conv.ID, At: now}); err != nil {
+		return uuid.Nil, err
 	}
-	if err := outbox.Add(ctx, tx, workspaceID, "message.created", map[string]any{
+	if err := outbox.Add(ctx, tx, conv.WorkspaceID, "message.created", map[string]any{
 		"conversation_id": conv.ID, "message_id": msg, "kind": kind, "is_private": false,
 		"sender_type": SenderContact, "sender_id": conv.ContactID,
 	}); err != nil {
-		return Received{}, err
+		return uuid.Nil, err
 	}
 	// The assignee may be away from the panel (docs/04 §5.5).
 	if s.notifier != nil && conv.AssigneeID != nil {
-		if err := s.notifier.NeedsAttention(ctx, tx, workspaceID, conv.ID, *conv.AssigneeID); err != nil {
-			return Received{}, err
+		if err := s.notifier.NeedsAttention(ctx, tx, conv.WorkspaceID, conv.ID, *conv.AssigneeID); err != nil {
+			return uuid.Nil, err
 		}
 	}
-	return out, nil
+	return msg, nil
 }
 
 // identify returns the contact of the sender in the channel, creating the
@@ -260,14 +269,16 @@ func (s *Service) openThread(
 // wakeUp applies what a customer message means for the state: waiting for
 // the customer is over (pending → assigned), a resolved conversation
 // reopens — to its operator while they are a member, otherwise to the
-// queue. Presence (Q-02) will add "if online".
+// queue. Presence (Q-02) will add "if online". A closed one reopens the
+// same way; only an app report brings one here (ReceiveReportMessage),
+// since a report keeps its conversation for good (docs/02 §8).
 func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv store.Conversation, now time.Time) (store.Conversation, error) {
 	cur := state{Status: Status(conv.Status), AssigneeID: conv.AssigneeID, ResolvedAt: conv.ResolvedAt, ClosedAt: conv.ClosedAt}
 	to := cur.Status
 	switch cur.Status {
 	case StatusPending:
 		to = StatusAssigned
-	case StatusResolved:
+	case StatusResolved, StatusClosed:
 		to = StatusQueued
 		if cur.AssigneeID != nil {
 			ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: conv.WorkspaceID, UserID: *cur.AssigneeID})
@@ -283,6 +294,9 @@ func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv 
 		return conv, nil
 	}
 	next, err := transition(cur, to, now)
+	if cur.Status == StatusClosed {
+		next, err = reopenClosed(cur, to)
+	}
 	if err != nil {
 		return conv, err
 	}

@@ -391,6 +391,44 @@ func (q *Queries) LockOpenThread(ctx context.Context, arg LockOpenThreadParams) 
 	return i, err
 }
 
+const messageByExternalID = `-- name: MessageByExternalID :one
+SELECT id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error FROM messages
+WHERE workspace_id = $1 AND conversation_id = $2 AND external_id = $3
+`
+
+type MessageByExternalIDParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	ExternalID     *string
+}
+
+func (q *Queries) MessageByExternalID(ctx context.Context, arg MessageByExternalIDParams) (Message, error) {
+	row := q.db.QueryRow(ctx, messageByExternalID, arg.WorkspaceID, arg.ConversationID, arg.ExternalID)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.Direction,
+		&i.SenderType,
+		&i.SenderID,
+		&i.Kind,
+		&i.Body,
+		&i.BodyFormat,
+		&i.AttachmentsCount,
+		&i.IsPrivate,
+		&i.ExternalID,
+		&i.DeliveryStatus,
+		&i.IdempotencyKey,
+		&i.Meta,
+		&i.CreatedAt,
+		&i.EditedAt,
+		&i.DeletedAt,
+		&i.DeliveryError,
+	)
+	return i, err
+}
+
 const openThreadExists = `-- name: OpenThreadExists :one
 SELECT EXISTS (
     SELECT 1 FROM conversations
@@ -410,6 +448,75 @@ func (q *Queries) OpenThreadExists(ctx context.Context, arg OpenThreadExistsPara
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const reportReplies = `-- name: ReportReplies :many
+SELECT id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error FROM messages
+WHERE workspace_id = $1 AND conversation_id = $2
+  AND direction = 'out' AND sender_type IN ('operator', 'bot') AND kind IN ('text', 'media')
+  AND NOT is_private AND deleted_at IS NULL
+  AND ($3::uuid IS NULL OR id > $3::uuid)
+  AND created_at < $4
+ORDER BY id
+LIMIT $5
+`
+
+type ReportRepliesParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	AfterID        *uuid.UUID
+	Settled        time.Time
+	Lim            int32
+}
+
+// What the user of an app sees of a report conversation (docs/02 §11.6):
+// replies of operators and the bot, oldest first after the cursor. Notes and
+// events stay inside. A reply younger than settled is left for the next
+// poll: a transaction that took a smaller id may not have committed yet.
+func (q *Queries) ReportReplies(ctx context.Context, arg ReportRepliesParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, reportReplies,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.AfterID,
+		arg.Settled,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ConversationID,
+			&i.Direction,
+			&i.SenderType,
+			&i.SenderID,
+			&i.Kind,
+			&i.Body,
+			&i.BodyFormat,
+			&i.AttachmentsCount,
+			&i.IsPrivate,
+			&i.ExternalID,
+			&i.DeliveryStatus,
+			&i.IdempotencyKey,
+			&i.Meta,
+			&i.CreatedAt,
+			&i.EditedAt,
+			&i.DeletedAt,
+			&i.DeliveryError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const threadMessageConversation = `-- name: ThreadMessageConversation :one
