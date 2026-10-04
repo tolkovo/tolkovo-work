@@ -2,6 +2,7 @@ import { hasPermission, type Session } from "@tolkovo/api-client";
 
 export type SettingsPath =
   | "/settings/general"
+  | "/settings/channels"
   | "/settings/team"
   | "/settings/profile"
   | "/settings/appearance"
@@ -12,6 +13,7 @@ type SettingsSection = {
   to: SettingsPath;
   label:
     | "settings.general.title"
+    | "settings.channels.title"
     | "settings.team.title"
     | "settings.profile.title"
     | "settings.appearance.title"
@@ -39,6 +41,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
     label: "settings.groups.workspace",
     sections: [
       { to: "/settings/general", label: "settings.general.title", permission: "workspace.manage", landing: true },
+      { to: "/settings/channels", label: "settings.channels.title", permission: "channels.view" },
       { to: "/settings/team", label: "settings.team.title", permission: "members.view" },
     ],
   },

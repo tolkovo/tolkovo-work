@@ -33,6 +33,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -53,6 +55,8 @@ linters:
               desc: realtime relays outbox events, it does not call business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications
               desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
           files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**"]
@@ -61,6 +65,19 @@ linters:
               desc: HTTP lives in internal/api
             - pkg: github.com/go-chi/chi/v5
               desc: HTTP lives in internal/api
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
+              desc: modules must not import the HTTP layer
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
+              desc: modules publish through the outbox, not to the realtime transport
+            - pkg: github.com/coder/websocket
+              desc: WebSocket lives in internal/realtime
+        # channels talks to Telegram over HTTP and MTProto (its adapters are
+        # clients), but serving HTTP stays in internal/api.
+        channels-without-http-layer:
+          files: ["**/internal/channels/**"]
+          deny:
+            - pkg: github.com/go-chi/chi/v5
+              desc: HTTP routes live in internal/api
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
               desc: modules must not import the HTTP layer
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
@@ -83,6 +100,17 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications/store
               desc: use the notifications facade, not its store
+        no-foreign-channels-store:
+          files: ["!**/internal/channels/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels/store
+              desc: use the channels facade, not its store
+        # Inbound messages flow from channels into conversations (T-02), never back.
+        conversations-without-channels:
+          files: ["**/internal/conversations/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels
+              desc: channels calls conversations, not the other way round
         # notifications reads conversations; conversations only knows its
         # Notifier interface.
         conversations-without-notifications:

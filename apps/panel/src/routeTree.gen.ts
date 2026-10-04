@@ -29,6 +29,7 @@ import { Route as AppInboxIndexRouteImport } from "./routes/_app/inbox/index"
 import { Route as AppInboxConversationIdRouteImport } from "./routes/_app/inbox/$conversationId"
 import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
 import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
+import { Route as AppSettingsChannelsRouteImport } from "./routes/_app/settings/channels"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
 import { Route as AppSettingsNotificationsRouteImport } from "./routes/_app/settings/notifications"
 import { Route as AppSettingsProfileRouteImport } from "./routes/_app/settings/profile"
@@ -132,6 +133,11 @@ const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
   path: "/appearance",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsChannelsRoute = AppSettingsChannelsRouteImport.update({
+  id: "/channels",
+  path: "/channels",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsGeneralRoute = AppSettingsGeneralRouteImport.update({
   id: "/general",
   path: "/general",
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   "/verify-email": typeof LinkVerifyEmailRoute
   "/inbox/$conversationId": typeof AppInboxConversationIdRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
+  "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
@@ -197,6 +204,7 @@ export interface FileRoutesByTo {
   "/verify-email": typeof LinkVerifyEmailRoute
   "/inbox/$conversationId": typeof AppInboxConversationIdRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
+  "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
@@ -225,6 +233,7 @@ export interface FileRoutesById {
   "/_link/verify-email": typeof LinkVerifyEmailRoute
   "/_app/inbox/$conversationId": typeof AppInboxConversationIdRoute
   "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
+  "/_app/settings/channels": typeof AppSettingsChannelsRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
   "/_app/settings/notifications": typeof AppSettingsNotificationsRoute
   "/_app/settings/profile": typeof AppSettingsProfileRoute
@@ -251,6 +260,7 @@ export interface FileRouteTypes {
     | "/verify-email"
     | "/inbox/$conversationId"
     | "/settings/appearance"
+    | "/settings/channels"
     | "/settings/general"
     | "/settings/notifications"
     | "/settings/profile"
@@ -273,6 +283,7 @@ export interface FileRouteTypes {
     | "/verify-email"
     | "/inbox/$conversationId"
     | "/settings/appearance"
+    | "/settings/channels"
     | "/settings/general"
     | "/settings/notifications"
     | "/settings/profile"
@@ -300,6 +311,7 @@ export interface FileRouteTypes {
     | "/_link/verify-email"
     | "/_app/inbox/$conversationId"
     | "/_app/settings/appearance"
+    | "/_app/settings/channels"
     | "/_app/settings/general"
     | "/_app/settings/notifications"
     | "/_app/settings/profile"
@@ -458,6 +470,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsAppearanceRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/channels": {
+      id: "/_app/settings/channels"
+      path: "/channels"
+      fullPath: "/settings/channels"
+      preLoaderRoute: typeof AppSettingsChannelsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/general": {
       id: "/_app/settings/general"
       path: "/general"
@@ -512,6 +531,7 @@ const AppInboxRouteWithChildren = AppInboxRoute._addFileChildren(
 
 interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
+  AppSettingsChannelsRoute: typeof AppSettingsChannelsRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
@@ -522,6 +542,7 @@ interface AppSettingsRouteChildren {
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
+  AppSettingsChannelsRoute: AppSettingsChannelsRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,

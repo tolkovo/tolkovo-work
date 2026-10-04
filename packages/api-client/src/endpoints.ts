@@ -1,6 +1,8 @@
 import { parseAnswer, unwrap, type ApiClient } from "./client";
 import { isApiError } from "./errors";
 import {
+  channelListSchema,
+  channelSchema,
   contactSchema,
   conversationPageSchema,
   conversationSchema,
@@ -16,6 +18,7 @@ import {
   sessionSchema,
   tagListSchema,
   tagSchema,
+  telegramLoginSchema,
   workspaceListSchema,
   workspaceSchema,
 } from "./schemas";
@@ -53,6 +56,10 @@ export type InboxCounts = Schemas["InboxCounts"];
 export type NotificationSettings = Schemas["NotificationSettings"];
 export type NotificationSettingsInput = Schemas["UpdateNotificationSettingsRequest"];
 export type EmailDelayMinutes = Schemas["EmailDelayMinutes"];
+export type Channel = Schemas["Channel"];
+export type ChannelList = Schemas["ChannelList"];
+export type TelegramLogin = Schemas["TelegramLogin"];
+export type ConnectTelegramBotRequest = Schemas["ConnectTelegramBotRequest"];
 export type Message = Schemas["Message"];
 export type MessageEvent = Schemas["MessageEvent"];
 export type MessagePage = Schemas["MessagePage"];
@@ -335,6 +342,48 @@ export async function updateNotificationSettings(
   body: NotificationSettingsInput,
 ): Promise<NotificationSettings> {
   return parseAnswer(notificationSettingsSchema, await unwrap(client.PATCH("/me/notifications", { body })));
+}
+
+/** Channels of the workspace and what this server can connect (docs/02 §11, ADR-0014). */
+export async function fetchChannels(client: ApiClient): Promise<ChannelList> {
+  return parseAnswer(channelListSchema, await unwrap(client.GET("/channels")));
+}
+
+/** Connects a bot by its token from @BotFather. */
+export async function connectTelegramBot(client: ApiClient, body: ConnectTelegramBotRequest): Promise<Channel> {
+  return parseAnswer(channelSchema, await unwrap(client.POST("/channels/telegram-bot", { body })), 201);
+}
+
+/** Starts connecting a personal account: Telegram sends a login code to it. */
+export async function startTelegramUserLogin(client: ApiClient, phone: string): Promise<TelegramLogin> {
+  return parseAnswer(telegramLoginSchema, await unwrap(client.POST("/channels/telegram-user", { body: { phone } })), 201);
+}
+
+export async function submitTelegramUserCode(client: ApiClient, id: string, code: string): Promise<TelegramLogin> {
+  return parseAnswer(
+    telegramLoginSchema,
+    await unwrap(client.POST("/channels/{id}/telegram-user/code", { params: { path: { id } }, body: { code } })),
+  );
+}
+
+/** The cloud password is used once by the server for Telegram's proof and never stored. */
+export async function submitTelegramUserPassword(client: ApiClient, id: string, password: string): Promise<TelegramLogin> {
+  return parseAnswer(
+    telegramLoginSchema,
+    await unwrap(client.POST("/channels/{id}/telegram-user/password", { params: { path: { id } }, body: { password } })),
+  );
+}
+
+export async function renameChannel(client: ApiClient, id: string, name: string): Promise<Channel> {
+  return parseAnswer(
+    channelSchema,
+    await unwrap(client.PATCH("/channels/{id}", { params: { path: { id } }, body: { name } })),
+  );
+}
+
+/** Disconnects a channel or cancels a login in progress. */
+export async function disconnectChannel(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/channels/{id}", { params: { path: { id } } }));
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

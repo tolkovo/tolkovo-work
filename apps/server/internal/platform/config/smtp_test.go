@@ -34,7 +34,7 @@ func TestLoadFrom_SMTPIsOffByDefault(t *testing.T) {
 
 func TestLoadFrom_ProductionSMTPOverTLS(t *testing.T) {
 	_, err := LoadFrom(smtpVars(
-		"TOLKOVO_ENV", "production", "TOLKOVO_STORAGE_SIGNING_KEY", strings.Repeat("k", 32),
+		"TOLKOVO_ENV", "production", "TOLKOVO_STORAGE_SIGNING_KEY", strings.Repeat("k", 32), "TOLKOVO_MASTER_KEY", prodMasterKey,
 		"TOLKOVO_SMTP_HOST", "smtp.example.com", "TOLKOVO_SMTP_PORT", "0", "TOLKOVO_SMTP_TLS", "starttls",
 		"TOLKOVO_SMTP_USER", "mailer", "TOLKOVO_SMTP_PASSWORD", "s3cret",
 	))

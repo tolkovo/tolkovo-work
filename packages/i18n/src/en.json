@@ -75,6 +75,108 @@
       "saved": "Saved",
       "readOnly": "Only the owner and admins can change workspace settings."
     },
+    "channels": {
+      "title": "Channels",
+      "lead": "Where customer messages come from. Connect a Telegram bot or a personal Telegram account, and the chats show up in the Inbox.",
+      "noKey": "The server has no encryption key (TOLKOVO_MASTER_KEY), so channels cannot be connected: tokens and sessions are stored encrypted only. Ask your server administrator.",
+      "empty": "No channels yet.",
+      "listLabel": "Connected channels",
+      "connect": "Connect Telegram",
+      "type": {
+        "telegram_bot": "Telegram bot",
+        "telegram_user": "Personal account"
+      },
+      "status": {
+        "active": "Working",
+        "pending": "Login not finished",
+        "error": "Error"
+      },
+      "delivery": {
+        "webhook": "messages arrive by webhook",
+        "polling": "the server fetches messages itself"
+      },
+      "pendingHint": "The login is cancelled automatically 15 minutes after the phone was entered.",
+      "rename": "Rename",
+      "renameLabel": "Name in the panel",
+      "save": "Save",
+      "cancel": "Cancel",
+      "disconnect": "Disconnect",
+      "keep": "Keep",
+      "cancelLogin": "Cancel login",
+      "cancelLoginConfirm": "Cancel the unfinished login? The phone and code are removed from the server.",
+      "disconnectConfirm": {
+        "telegram_bot": "Disconnect “{name}”? The bot stops sending messages to Tolkovo. The chats stay in the Inbox.",
+        "telegram_user": "Disconnect “{name}”? The Tolkovo session ends in Telegram and disappears from Devices. The chats stay in the Inbox."
+      },
+      "disconnected": "Channel “{name}” is disconnected.",
+      "wizard": {
+        "steps": {
+          "choose": "What to connect",
+          "bot": "Connect a bot",
+          "phone": "Connect a personal account",
+          "code": "Code from Telegram",
+          "password": "Cloud password"
+        },
+        "close": "Close",
+        "next": "Next",
+        "back": "Back",
+        "bot": {
+          "title": "Bot",
+          "text": "Customers message your bot.",
+          "needs": "You need a token from @BotFather."
+        },
+        "user": {
+          "title": "Personal account",
+          "text": "Customers message the account directly, and your team replies from the panel on its behalf. No Telegram Premium needed.",
+          "needs": "You need the phone where this account is open.",
+          "unavailable": "Not set up on this server: the administrator needs to set TOLKOVO_TELEGRAM_API_ID and TOLKOVO_TELEGRAM_API_HASH (my.telegram.org)."
+        },
+        "token": {
+          "step1": "Open @BotFather in Telegram.",
+          "step2": "Send /newbot to create a bot, or /token to get the token of an existing one.",
+          "step3": "Copy the token that looks like 123456789:AA… and paste it below.",
+          "label": "Bot token",
+          "name": "Name in the panel",
+          "nameHint": "Optional. Defaults to the bot's name in Telegram.",
+          "submit": "Connect bot",
+          "pending": "Checking the token…"
+        },
+        "risk": {
+          "title": "Before you connect",
+          "work": "Connect a separate work account: operators will see all of its private chats.",
+          "limit": "Telegram may restrict accounts run by software. You connect at your own risk.",
+          "code": "The login code arrives in Telegram on this account, so keep the phone at hand.",
+          "agree": "I understand, I am connecting a work account"
+        },
+        "phone": {
+          "label": "Phone number",
+          "hint": "International format, e.g. +44 20 7946 0958.",
+          "submit": "Get code",
+          "pending": "Sending the code…"
+        },
+        "code": {
+          "label": "Code",
+          "app": "Telegram sent the code to the app: open the “Telegram” chat on the account {phone}.",
+          "sms": "The code was sent by SMS to {phone}.",
+          "call": "Telegram will call {phone} and read out the code.",
+          "other": "The code was sent to {phone}.",
+          "submit": "Confirm",
+          "pending": "Checking…",
+          "otherNumber": "Use another number"
+        },
+        "password": {
+          "text": "The account has two-step verification: enter its Telegram cloud password.",
+          "label": "Cloud password",
+          "hint": "Used once and never stored.",
+          "submit": "Sign in",
+          "pending": "Signing in…"
+        },
+        "done": {
+          "telegram_bot": "Bot “{name}” is connected. New messages will appear in the Inbox.",
+          "telegram_user": "Account “{name}” is connected. Telegram lists it under Devices as Tolkovo."
+        }
+      }
+    },
     "team": {
       "title": "Team",
       "count": "{count, plural, one {# member} other {# members}}",
@@ -265,7 +367,20 @@
     "invalidToken": "This link is no longer valid: it was used, revoked or has expired.",
     "emailDisabled": "Outgoing email is not set up on this server. Contact the administrator.",
     "alreadyMember": "This person is already on the team.",
-    "emailVerified": "The email is already confirmed."
+    "emailVerified": "The email is already confirmed.",
+    "channelExists": "This bot or account is already connected, here or in another workspace.",
+    "telegramTokenInvalid": "Telegram does not know this token. Copy it from @BotFather again.",
+    "telegramPhoneInvalid": "Telegram did not accept the number. Check it and the format: +44 20 7946 0958.",
+    "telegramNoAccount": "No Telegram account is registered for this number.",
+    "telegramBanned": "Telegram has banned or deleted this account.",
+    "telegramCodeInvalid": "Wrong code. Check the message from Telegram and enter the code again.",
+    "telegramCodeExpired": "The code has expired. Close the wizard and start the login again.",
+    "telegramPasswordInvalid": "Wrong cloud password.",
+    "loginStep": "This login is already finished or cancelled. Close the wizard and start again.",
+    "loginExpired": "More than 15 minutes have passed. Close the wizard and start the login again.",
+    "telegramUnavailable": "Telegram did not answer. Try again in a minute.",
+    "encryptionUnavailable": "The server has no encryption key (TOLKOVO_MASTER_KEY). Ask your server administrator.",
+    "telegramUserUnavailable": "Personal accounts are not set up on this server. Ask your server administrator."
   },
   "error": {
     "title": "Something went wrong",

@@ -13,8 +13,11 @@ import type { ApiClient } from "./client";
 import {
   acceptInvitation,
   changePassword,
+  connectTelegramBot,
   createInvitation,
   createTag,
+  disconnectChannel,
+  fetchChannels,
   fetchContact,
   fetchConversation,
   fetchConversations,
@@ -33,12 +36,16 @@ import {
   logout,
   previewInvitation,
   register,
+  renameChannel,
   resendEmailVerification,
   resendInvitation,
   resetPassword,
   revokeInvitation,
   revokeOtherSessions,
   revokeSession,
+  startTelegramUserLogin,
+  submitTelegramUserCode,
+  submitTelegramUserPassword,
   switchWorkspace,
   updateContact,
   updateNotificationSettings,
@@ -47,6 +54,7 @@ import {
   verifyEmail,
   type AcceptInvitationRequest,
   type ChangePasswordRequest,
+  type ConnectTelegramBotRequest,
   type Contact,
   type NotificationSettingsInput,
   type ContactInput,
@@ -85,6 +93,7 @@ export const queryKeys = {
   invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
   myNotifications: ["me", "notifications"] as const,
+  channels: ["channels"] as const,
   /**
    * Roots for conversation and contact queries (lists, details, message feeds nest under them):
    * realtime events invalidate by these prefixes (docs/02 §10, apps/panel/src/lib/realtime).
@@ -306,6 +315,47 @@ export function useVerifyEmail() {
     mutationFn: (token: string) => verifyEmail(client, token),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.session }),
   });
+}
+
+export function useChannels() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.channels, queryFn: () => fetchChannels(client) });
+}
+
+/** Mutations of channels refresh the list whatever the outcome: a failed step may still change it. */
+function useChannelMutation<TArgs, TResult>(fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+  });
+}
+
+export function useConnectTelegramBot() {
+  return useChannelMutation((client, body: ConnectTelegramBotRequest) => connectTelegramBot(client, body));
+}
+
+export function useStartTelegramUserLogin() {
+  return useChannelMutation((client, phone: string) => startTelegramUserLogin(client, phone));
+}
+
+export function useSubmitTelegramUserCode() {
+  return useChannelMutation((client, { id, code }: { id: string; code: string }) => submitTelegramUserCode(client, id, code));
+}
+
+export function useSubmitTelegramUserPassword() {
+  return useChannelMutation((client, { id, password }: { id: string; password: string }) =>
+    submitTelegramUserPassword(client, id, password),
+  );
+}
+
+export function useRenameChannel() {
+  return useChannelMutation((client, { id, name }: { id: string; name: string }) => renameChannel(client, id, name));
+}
+
+export function useDisconnectChannel() {
+  return useChannelMutation((client, id: string) => disconnectChannel(client, id));
 }
 
 export function useInvitations({ enabled = true }: { enabled?: boolean } = {}) {

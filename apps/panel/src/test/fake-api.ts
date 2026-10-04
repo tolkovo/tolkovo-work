@@ -6,7 +6,14 @@ export const ownerSession: Session = {
   user: { id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", locale: "ru", email_verified: true },
   workspace: { id: "w-zerno", slug: "zerno", name: "Зерно", locale: "ru", timezone: "Europe/Moscow" },
   role: "owner",
-  permissions: ["members.manage", "members.view", "workspace.delete", "workspace.manage"],
+  permissions: [
+    "channels.manage",
+    "channels.view",
+    "members.manage",
+    "members.view",
+    "workspace.delete",
+    "workspace.manage",
+  ],
   csrf_token: "csrf-owner",
 };
 
@@ -75,6 +82,7 @@ export function fakeApi(
     "GET /conversations/counts": () => json(200, { mine: 0, mine_unread: 0, unassigned: 0, open: 0 }),
     "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true }),
     "GET /tags": () => json(200, { items: [] }),
+    "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {
       if (!session) return problem(401, "unauthenticated");

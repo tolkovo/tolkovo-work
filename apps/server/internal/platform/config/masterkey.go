@@ -16,8 +16,9 @@ const DevMasterKey = "dG9sa292by1kZXYtb25seS1tYXN0ZXIta2V5LTAwMDE="
 const masterKeySize = 32
 
 // MasterKey configures encryption of secrets at rest (docs/02 §13.3):
-// TOLKOVO_MASTER_KEY and friends. Empty Key: features that store secrets
-// (Telegram bots, AI keys, GitHub) refuse to start.
+// TOLKOVO_MASTER_KEY and friends. Production refuses to start without it,
+// since channels store secrets (T-01); in development an empty key only
+// disables connecting channels.
 type MasterKey struct {
 	// Key is base64 of 32 random bytes (`tolkovo keygen`).
 	Key Secret `env:"KEY"`
@@ -32,6 +33,9 @@ func (c Config) validateMasterKey() []error {
 	m, p := c.MasterKey, Prefix+"MASTER_"
 	var errs []error
 	if m.Key == "" {
+		if c.Env == EnvProduction {
+			errs = append(errs, fmt.Errorf("%sKEY is required in production: it encrypts bot tokens and Telegram sessions (generate with `tolkovo keygen`)", p))
+		}
 		if m.Retired != "" {
 			errs = append(errs, fmt.Errorf("%sKEYS_RETIRED is set but %sKEY is empty", p, p))
 		}

@@ -19,7 +19,7 @@ func TestRegister_CreatesOwnerAndSignsIn(t *testing.T) {
 		t.Fatalf("unexpected session: %+v", s)
 	}
 	if !slices.Equal(s.Permissions, []string{
-		"contacts.edit", "contacts.view", "conversations.assign", "conversations.create", "conversations.manage",
+		"channels.manage", "channels.view", "contacts.edit", "contacts.view", "conversations.assign", "conversations.create", "conversations.manage",
 		"conversations.note", "conversations.reply", "conversations.tag", "conversations.take", "conversations.view",
 		"members.manage", "members.view", "tags.manage", "workspace.delete", "workspace.manage",
 	}) {

@@ -14,6 +14,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
@@ -29,11 +31,23 @@ var errBadRequest = errors.New("bad request")
 // writeError maps domain errors to problem+json. Unknown errors are logged
 // with the request id and answered with a generic 500.
 func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
-	var limited *auth.RateLimitedError
+	if s.writeChannelError(w, r, err) {
+		return
+	}
+	var (
+		limited *auth.RateLimitedError
+		flood   *telegram.FloodWaitError
+	)
 	switch {
 	case errors.As(err, &limited):
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(limited.RetryAfter.Seconds()))))
 		writeProblem(w, r, Problem{Status: http.StatusTooManyRequests, Code: "too_many_requests", Title: "Too Many Requests"})
+	case errors.As(err, &flood):
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(flood.Wait.Seconds()))))
+		writeProblem(w, r, Problem{
+			Status: http.StatusTooManyRequests, Code: "too_many_requests", Title: "Too Many Requests",
+			Detail: "Telegram asks to wait before the next attempt",
+		})
 	case errors.Is(err, auth.ErrNoSession), errors.Is(err, authz.ErrUnauthenticated):
 		writeProblem(w, r, Problem{Status: http.StatusUnauthorized, Code: "unauthenticated", Title: "Unauthorized"})
 	case errors.Is(err, auth.ErrInvalidCredentials):
@@ -81,7 +95,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail: "the conversation is not assigned to you",
 		})
 	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, tenancy.ErrNotFound),
-		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound):
+		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound), errors.Is(err, channels.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	case errors.Is(err, tenancy.ErrEmailTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_taken", Title: "Conflict"})
@@ -109,7 +123,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail: "the Idempotency-Key was used with a different request",
 		})
 	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid),
-		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid):
+		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid), errors.Is(err, channels.ErrInvalid):
 		writeProblem(w, r, Problem{
 			Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err),
 		})
@@ -127,7 +141,7 @@ func detail(err error) string {
 	msg := err.Error()
 	for _, sentinel := range []error{
 		errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition,
-		notifications.ErrInvalid,
+		notifications.ErrInvalid, channels.ErrInvalid,
 	} {
 		if after, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
 			return after
@@ -163,4 +177,53 @@ func decodeJSONLimit(w http.ResponseWriter, r *http.Request, dst any, limit int6
 		return fmt.Errorf("%w: body must be a single JSON object", errBadRequest)
 	}
 	return nil
+}
+
+// channelProblems are the channel and Telegram errors with their answers.
+var channelProblems = []struct {
+	err  error
+	prob Problem
+}{
+	{channels.ErrAlreadyConnected, Problem{
+		Status: http.StatusConflict, Code: "channel_exists", Title: "Conflict",
+		Detail: "this bot or account is already connected, here or in another workspace",
+	}},
+	{channels.ErrLoginStep, Problem{Status: http.StatusConflict, Code: "login_step", Title: "Conflict"}},
+	{channels.ErrLoginExpired, Problem{
+		Status: http.StatusConflict, Code: "login_expired", Title: "Conflict", Detail: "the login has expired, start again",
+	}},
+	{channels.ErrBotToken, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_token_invalid", Title: "Unprocessable Content"}},
+	{telegram.ErrPhoneInvalid, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_phone_invalid", Title: "Unprocessable Content"}},
+	{telegram.ErrNoAccount, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_no_account", Title: "Unprocessable Content"}},
+	{telegram.ErrBanned, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_banned", Title: "Unprocessable Content"}},
+	{telegram.ErrCodeInvalid, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_code_invalid", Title: "Unprocessable Content"}},
+	{telegram.ErrCodeExpired, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_code_expired", Title: "Unprocessable Content"}},
+	{telegram.ErrPasswordInvalid, Problem{Status: http.StatusUnprocessableEntity, Code: "telegram_password_invalid", Title: "Unprocessable Content"}},
+	{channels.ErrNoEncryption, Problem{
+		Status: http.StatusServiceUnavailable, Code: "encryption_unavailable", Title: "Service Unavailable",
+		Detail: "TOLKOVO_MASTER_KEY is not set on this server",
+	}},
+	{channels.ErrUserUnavailable, Problem{
+		Status: http.StatusServiceUnavailable, Code: "telegram_user_unavailable", Title: "Service Unavailable",
+		Detail: "TOLKOVO_TELEGRAM_API_ID and TOLKOVO_TELEGRAM_API_HASH are not set on this server",
+	}},
+}
+
+// writeChannelError answers the errors of the channels module and reports
+// whether err was one. Telegram outages are logged with their cause, which
+// never holds tokens, phones or codes.
+func (s *server) writeChannelError(w http.ResponseWriter, r *http.Request, err error) bool {
+	for _, c := range channelProblems {
+		if errors.Is(err, c.err) {
+			writeProblem(w, r, c.prob)
+			return true
+		}
+	}
+	if errors.Is(err, channels.ErrTelegram) {
+		s.log.WarnContext(r.Context(), "telegram request failed",
+			slog.String("request_id", middleware.GetReqID(r.Context())), slog.String("error", err.Error()))
+		writeProblem(w, r, Problem{Status: http.StatusBadGateway, Code: "telegram_unavailable", Title: "Bad Gateway"})
+		return true
+	}
+	return false
 }

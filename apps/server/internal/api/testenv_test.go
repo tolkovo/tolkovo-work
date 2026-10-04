@@ -21,8 +21,12 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels/channelstest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
@@ -118,9 +122,20 @@ func newEnv(t *testing.T, o envOptions) *env {
 	notifs := notifications.New(app, mailJobs)
 	convs := conversations.New(app, files)
 	convs.SetNotifier(notifs)
+	keys, err := crypto.ParseLocalKeys(config.DevMasterKey, 1, "")
+	if err != nil {
+		t.Fatalf("keys: %v", err)
+	}
+	sealer, err := crypto.NewSealer(keys)
+	if err != nil {
+		t.Fatalf("sealer: %v", err)
+	}
+	chans := channels.New(app, channels.Options{
+		Sealer: sealer, Bots: &channelstest.Bots{}, Users: &channelstest.Users{}, HookBaseURL: "https://support.example.com",
+	})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
-		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs,
+		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {

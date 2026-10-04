@@ -28,6 +28,8 @@ func TestAllowed_Matrix(t *testing.T) {
 		ConversationsTag:    {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 		TagsManage:          {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		ContactsView:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		ChannelsView:        {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		ChannelsManage:      {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		ContactsEdit:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 	}
 	for role, perms := range rolePermissions {

@@ -53,6 +53,9 @@ const (
 	TagsManage          Permission = "tags.manage"       // create tags
 	ContactsView        Permission = "contacts.view"     // see contacts with email and phone
 	ContactsEdit        Permission = "contacts.edit"     // create and change contacts
+
+	ChannelsView   Permission = "channels.view"   // see connected channels and their status
+	ChannelsManage Permission = "channels.manage" // connect, rename and disconnect channels (tokens, sessions)
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
@@ -62,12 +65,14 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
+		ChannelsView, ChannelsManage,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
+		ChannelsView, ChannelsManage,
 	},
 	RoleOperator: {
 		MembersView,

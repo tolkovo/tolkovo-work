@@ -495,6 +495,149 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Channels of the current workspace
+         * @description Connected channels and personal-account logins in progress (`pending`), oldest
+         *     first. Requires `channels.view`.
+         */
+        get: operations["listChannels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/telegram-bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect a Telegram bot by its token
+         * @description `getMe` checks the token; then the bot's updates are pointed at this server — a
+         *     webhook when `TOLKOVO_PUBLIC_URL` is https on a port Telegram accepts, otherwise
+         *     polling by the worker (`details.delivery`). The bot's name is used when `name` is
+         *     absent. Requires `channels.manage`.
+         */
+        post: operations["connectTelegramBot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/telegram-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting a personal Telegram account
+         * @description Telegram sends a login code to the account (`code_via`: usually the Telegram app,
+         *     sometimes SMS or a call). The channel stays `pending` until the code — and the
+         *     cloud password, if the account has one — is entered, at most 15 minutes. Only
+         *     one-to-one chats with people reach the inbox, only messages after the connection
+         *     (ADR-0014). Requires `channels.manage`.
+         */
+        post: operations["startTelegramUserLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/telegram-user/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the login code of a personal account
+         * @description `next: done` — the channel is active; `next: password` — the account has a cloud
+         *     password. A wrong code (`telegram_code_invalid`) may be entered again. Requires
+         *     `channels.manage`.
+         */
+        post: operations["submitTelegramUserCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/telegram-user/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the cloud password of a personal account
+         * @description Used once for Telegram's SRP proof and never stored. Requires `channels.manage`.
+         */
+        post: operations["submitTelegramUserPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a channel
+         * @description A bot stops sending updates here (`deleteWebhook`); a personal account's session is
+         *     ended in Telegram (`auth.logOut`) and disappears from its devices. Telegram's answer
+         *     does not block the removal. The secret is deleted; conversations of the channel
+         *     stay. A login in progress is cancelled. Requires `channels.manage`.
+         */
+        delete: operations["disconnectChannel"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a channel in the panel
+         * @description The name customers see in Telegram does not change. Requires `channels.manage`.
+         */
+        patch: operations["renameChannel"];
+        trace?: never;
+    };
     "/files/{key}": {
         parameters: {
             query: {
@@ -1284,6 +1427,75 @@ export interface components {
             /** @description `ru` or `en`; empty clears it on update. */
             locale?: string;
         };
+        /** @enum {string} */
+        ChannelType: "telegram_bot" | "telegram_user";
+        /**
+         * @description `pending` — a personal-account login in progress; `active` — works; `error` — needs
+         *     the admin, `error_code` says why.
+         * @enum {string}
+         */
+        ChannelStatus: "pending" | "active" | "error";
+        /** @description What may be shown about the channel. Never secrets. */
+        ChannelDetails: {
+            /** @description Without "@". */
+            username: string | null;
+            /** @description The bot's or the account's name in Telegram. */
+            display_name: string | null;
+            /** @description Personal accounts: e.g. "+79•••••••67". */
+            phone_masked: string | null;
+            /**
+             * @description Bots only: Telegram pushes updates to a webhook, or the worker polls.
+             * @enum {string}
+             */
+            delivery?: "webhook" | "polling";
+        };
+        Channel: {
+            id: string;
+            type: components["schemas"]["ChannelType"];
+            /** @description Name in the panel. */
+            name: string;
+            status: components["schemas"]["ChannelStatus"];
+            error_code: string | null;
+            details: components["schemas"]["ChannelDetails"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        ChannelList: {
+            items: components["schemas"]["Channel"][];
+            /** @description Personal Telegram accounts can be connected on this server. */
+            telegram_user_available: boolean;
+            /** @description `TOLKOVO_MASTER_KEY` is set; without it nothing can be connected. */
+            encryption_available: boolean;
+        };
+        ConnectTelegramBotRequest: {
+            /** @description The token from @BotFather. */
+            token: string;
+            name?: string;
+        };
+        StartTelegramUserLoginRequest: {
+            /** @description International format, e.g. "+7 900 123-45-67". */
+            phone: string;
+        };
+        TelegramCodeRequest: {
+            code: string;
+        };
+        TelegramPasswordRequest: {
+            /** Format: password */
+            password: string;
+        };
+        TelegramLogin: {
+            channel: components["schemas"]["Channel"];
+            /** @enum {string} */
+            next: "code" | "password" | "done";
+            /**
+             * @description Where Telegram sent the code; present after the phone step.
+             * @enum {string}
+             */
+            code_via?: "app" | "sms" | "call" | "other";
+        };
+        RenameChannelRequest: {
+            name: string;
+        };
     };
     responses: {
         /** @description `invalid_request`: malformed JSON, unknown fields or invalid values. */
@@ -1367,6 +1579,62 @@ export interface components {
             headers: {
                 /** @description Seconds until the next attempt is allowed. */
                 "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `channel_exists`: this bot or account is a channel already, here or in another workspace. */
+        ChannelExists: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `login_step` (the login is finished, cancelled or waits for another step) or
+         *     `login_expired` (more than 15 minutes since the phone was entered: start again).
+         */
+        LoginStep: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description Telegram refused the login: `telegram_phone_invalid`, `telegram_no_account` (no
+         *     Telegram account for the number), `telegram_banned`, `telegram_code_invalid`,
+         *     `telegram_code_expired` or `telegram_password_invalid`.
+         */
+        TelegramLoginRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `telegram_unavailable`: Telegram could not be reached or answered unexpectedly. */
+        TelegramUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `encryption_unavailable` (`TOLKOVO_MASTER_KEY` is not set, secrets cannot be stored)
+         *     or `telegram_user_unavailable` (no Telegram application for personal accounts:
+         *     `TOLKOVO_TELEGRAM_API_ID`, `TOLKOVO_TELEGRAM_API_HASH`).
+         */
+        ChannelsUnavailable: {
+            headers: {
                 [name: string]: unknown;
             };
             content: {
@@ -2064,6 +2332,222 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The channels and what can be connected on this server. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    connectTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectTelegramBotRequest"];
+            };
+        };
+        responses: {
+            /** @description The active channel. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["ChannelExists"];
+            /** @description `telegram_token_invalid`: Telegram does not know the token. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            502: components["responses"]["TelegramUnavailable"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    startTelegramUserLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartTelegramUserLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description The pending login, waiting for the code. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLogin"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["TelegramLoginRejected"];
+            429: components["responses"]["TooManyRequests"];
+            502: components["responses"]["TelegramUnavailable"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    submitTelegramUserCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The login after the code. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLogin"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["LoginStep"];
+            422: components["responses"]["TelegramLoginRejected"];
+            429: components["responses"]["TooManyRequests"];
+            502: components["responses"]["TelegramUnavailable"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    submitTelegramUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description The finished login. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLogin"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["LoginStep"];
+            422: components["responses"]["TelegramLoginRejected"];
+            429: components["responses"]["TooManyRequests"];
+            502: components["responses"]["TelegramUnavailable"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    disconnectChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description The renamed channel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

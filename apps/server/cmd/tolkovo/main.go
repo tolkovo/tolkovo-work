@@ -28,6 +28,8 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
@@ -189,7 +191,8 @@ func startWorker(
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
-	periodic := []*river.PeriodicJob{outbox.PrunePeriodic()}
+	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
+	periodic := []*river.PeriodicJob{outbox.PrunePeriodic(), channels.PruneLoginsPeriodic()}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
 	}
@@ -275,6 +278,10 @@ func apiDeps(
 	if cfg.MailEnabled() {
 		mailJobs = inserter
 	}
+	chans, err := channelsService(cfg, log, pool)
+	if err != nil {
+		return api.Deps{}, err
+	}
 	notifs := notifications.New(pool, mailJobs)
 	convs := conversations.New(pool, store)
 	convs.SetNotifier(notifs)
@@ -285,6 +292,7 @@ func apiDeps(
 		Auth:          authSvc,
 		Conversations: convs,
 		Notifications: notifs,
+		Channels:      chans,
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -298,6 +306,31 @@ func apiDeps(
 		deps.Files = fsStore
 	}
 	return deps, nil
+}
+
+// channelsService wires Telegram into the channels module (T-01,
+// ADR-0014). Without TOLKOVO_MASTER_KEY (development only) nothing can be
+// connected; without a Telegram application personal accounts are off.
+func channelsService(cfg config.Config, log *slog.Logger, pool *db.DB) (*channels.Service, error) {
+	opts := channels.Options{
+		Bots:        telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil),
+		HookBaseURL: cfg.PublicURL,
+	}
+	if cfg.MasterKey.Key == "" {
+		log.Warn("TOLKOVO_MASTER_KEY is not set: channels cannot be connected (generate a key with `tolkovo keygen`)")
+	} else {
+		keys, err := crypto.ParseLocalKeys(cfg.MasterKey.Key.Reveal(), cfg.MasterKey.Version, cfg.MasterKey.Retired.Reveal())
+		if err != nil {
+			return nil, err
+		}
+		if opts.Sealer, err = crypto.NewSealer(keys); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.TelegramUserEnabled() {
+		opts.Users = telegram.NewUserAuth(cfg.Telegram.APIID, cfg.Telegram.APIHash.Reveal(), version)
+	}
+	return channels.New(pool, opts), nil
 }
 
 // pingFunc adapts a function to api.Pinger.

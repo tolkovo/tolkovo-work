@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -38,6 +39,7 @@ func TestLoadFrom_SecureCookiesOutsideDevelopment(t *testing.T) {
 	cfg, err := LoadFrom(map[string]string{
 		"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_ENV": "production",
 		"TOLKOVO_STORAGE_SIGNING_KEY": strings.Repeat("k", 32),
+		"TOLKOVO_MASTER_KEY":          prodMasterKey,
 		"TOLKOVO_TRUSTED_ORIGINS":     "https://panel.example.com,http://localhost:5173",
 	})
 	if err != nil {
@@ -227,6 +229,9 @@ func TestLoadFrom_MasterKey(t *testing.T) {
 		{"retired without current", map[string]string{"TOLKOVO_MASTER_KEYS_RETIRED": "1:" + key}},
 		{"retired reuses version", map[string]string{"TOLKOVO_MASTER_KEY": key, "TOLKOVO_MASTER_KEYS_RETIRED": "1:" + DevMasterKey}},
 		{"retired malformed", map[string]string{"TOLKOVO_MASTER_KEY": key, "TOLKOVO_MASTER_KEY_VERSION": "2", "TOLKOVO_MASTER_KEYS_RETIRED": DevMasterKey}},
+		{"no key in production", map[string]string{
+			"TOLKOVO_ENV": "production", "TOLKOVO_STORAGE_SIGNING_KEY": strings.Repeat("k", 32),
+		}},
 		{"example key in production", map[string]string{
 			"TOLKOVO_MASTER_KEY": DevMasterKey, "TOLKOVO_ENV": "production",
 			"TOLKOVO_STORAGE_SIGNING_KEY": strings.Repeat("k", 32),
@@ -278,6 +283,44 @@ func TestLoadFrom_EgressAllowPrivate(t *testing.T) {
 			}
 			if _, err := LoadFrom(v); err == nil || !strings.Contains(err.Error(), "TOLKOVO_EGRESS_ALLOW_PRIVATE") {
 				t.Fatalf("want an error naming TOLKOVO_EGRESS_ALLOW_PRIVATE, got %v", err)
+			}
+		})
+	}
+}
+
+// prodMasterKey is a valid key that is not the public example.
+var prodMasterKey = base64.StdEncoding.EncodeToString([]byte(strings.Repeat("p", 32)))
+
+func TestLoadFrom_Telegram(t *testing.T) {
+	cfg, err := LoadFrom(map[string]string{"TOLKOVO_DATABASE_URL": dsn})
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if cfg.TelegramUserEnabled() || cfg.Telegram.BotAPIURL != "https://api.telegram.org" {
+		t.Fatalf("defaults: %+v", cfg.Telegram)
+	}
+	hash := "0123456789abcdef0123456789abcdef"
+	cfg, err = LoadFrom(map[string]string{
+		"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_TELEGRAM_API_ID": "12345", "TOLKOVO_TELEGRAM_API_HASH": hash,
+		"TOLKOVO_TELEGRAM_BOT_API_URL": "http://telegram-bot-api:8081",
+	})
+	if err != nil || !cfg.TelegramUserEnabled() || cfg.Telegram.APIID != 12345 {
+		t.Fatalf("configured: %+v %v", cfg.Telegram, err)
+	}
+
+	for name, vars := range map[string]map[string]string{
+		"id without hash": {"TOLKOVO_TELEGRAM_API_ID": "12345"},
+		"hash without id": {"TOLKOVO_TELEGRAM_API_HASH": hash},
+		"short hash":      {"TOLKOVO_TELEGRAM_API_ID": "12345", "TOLKOVO_TELEGRAM_API_HASH": "abc"},
+		"bad bot api url": {"TOLKOVO_TELEGRAM_BOT_API_URL": "api.telegram.org"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := LoadFrom(with(vars, "TOLKOVO_DATABASE_URL", dsn))
+			if err == nil || !strings.Contains(err.Error(), "TOLKOVO_TELEGRAM_") {
+				t.Fatalf("want an error naming TOLKOVO_TELEGRAM_*, got %v", err)
+			}
+			if strings.Contains(err.Error(), hash) {
+				t.Fatalf("error leaks the api hash: %v", err)
 			}
 		})
 	}

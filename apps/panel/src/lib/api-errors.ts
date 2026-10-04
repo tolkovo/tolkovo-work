@@ -56,6 +56,32 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.alreadyMember"), ...(field ? { field } : {}) };
     case "email_verified":
       return { message: t("errors.emailVerified") };
+    case "channel_exists":
+      return { message: t("errors.channelExists"), ...(field ? { field } : {}) };
+    case "telegram_token_invalid":
+      return { message: t("errors.telegramTokenInvalid"), ...(field ? { field } : {}) };
+    case "telegram_phone_invalid":
+      return { message: t("errors.telegramPhoneInvalid"), ...(field ? { field } : {}) };
+    case "telegram_no_account":
+      return { message: t("errors.telegramNoAccount"), ...(field ? { field } : {}) };
+    case "telegram_banned":
+      return { message: t("errors.telegramBanned"), ...(field ? { field } : {}) };
+    case "telegram_code_invalid":
+      return { message: t("errors.telegramCodeInvalid"), ...(field ? { field } : {}) };
+    case "telegram_code_expired":
+      return { message: t("errors.telegramCodeExpired") };
+    case "telegram_password_invalid":
+      return { message: t("errors.telegramPasswordInvalid"), ...(field ? { field } : {}) };
+    case "login_step":
+      return { message: t("errors.loginStep") };
+    case "login_expired":
+      return { message: t("errors.loginExpired") };
+    case "telegram_unavailable":
+      return { message: t("errors.telegramUnavailable") };
+    case "encryption_unavailable":
+      return { message: t("errors.encryptionUnavailable") };
+    case "telegram_user_unavailable":
+      return { message: t("errors.telegramUserUnavailable") };
     default:
       return { message: t("errors.unknown") };
   }

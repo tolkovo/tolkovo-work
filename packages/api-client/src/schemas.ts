@@ -223,6 +223,33 @@ export const tagSchema = z.object({
 
 export const tagListSchema = z.object({ items: z.array(tagSchema) }) satisfies z.ZodType<Schemas["TagList"]>;
 
+export const channelSchema = z.object({
+  id: z.string(),
+  type: z.enum(["telegram_bot", "telegram_user"]),
+  name: z.string(),
+  status: z.enum(["pending", "active", "error"]),
+  error_code: z.string().nullable(),
+  details: z.object({
+    username: z.string().nullable(),
+    display_name: z.string().nullable(),
+    phone_masked: z.string().nullable(),
+    delivery: z.enum(["webhook", "polling"]).optional(),
+  }),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["Channel"]>;
+
+export const channelListSchema = z.object({
+  items: z.array(channelSchema),
+  telegram_user_available: z.boolean(),
+  encryption_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["ChannelList"]>;
+
+export const telegramLoginSchema = z.object({
+  channel: channelSchema,
+  next: z.enum(["code", "password", "done"]),
+  code_via: z.enum(["app", "sms", "call", "other"]).optional(),
+}) satisfies z.ZodType<Schemas["TelegramLogin"]>;
+
 export const notificationSettingsSchema = z.object({
   email_missed: z.boolean(),
   email_delay_minutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),

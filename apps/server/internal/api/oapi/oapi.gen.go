@@ -41,6 +41,63 @@ func (e AttachmentStatus) Valid() bool {
 	}
 }
 
+// Defines values for ChannelDetailsDelivery.
+const (
+	Polling ChannelDetailsDelivery = "polling"
+	Webhook ChannelDetailsDelivery = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the ChannelDetailsDelivery enum.
+func (e ChannelDetailsDelivery) Valid() bool {
+	switch e {
+	case Polling:
+		return true
+	case Webhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChannelStatus.
+const (
+	ChannelStatusActive  ChannelStatus = "active"
+	ChannelStatusError   ChannelStatus = "error"
+	ChannelStatusPending ChannelStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ChannelStatus enum.
+func (e ChannelStatus) Valid() bool {
+	switch e {
+	case ChannelStatusActive:
+		return true
+	case ChannelStatusError:
+		return true
+	case ChannelStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChannelType.
+const (
+	TelegramBot  ChannelType = "telegram_bot"
+	TelegramUser ChannelType = "telegram_user"
+)
+
+// Valid indicates whether the value is a known member of the ChannelType enum.
+func (e ChannelType) Valid() bool {
+	switch e {
+	case TelegramBot:
+		return true
+	case TelegramUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationPreviewKind.
 const (
 	ConversationPreviewKindMedia ConversationPreviewKind = "media"
@@ -314,6 +371,51 @@ func (e TagColor) Valid() bool {
 	}
 }
 
+// Defines values for TelegramLoginCodeVia.
+const (
+	App   TelegramLoginCodeVia = "app"
+	Call  TelegramLoginCodeVia = "call"
+	Other TelegramLoginCodeVia = "other"
+	Sms   TelegramLoginCodeVia = "sms"
+)
+
+// Valid indicates whether the value is a known member of the TelegramLoginCodeVia enum.
+func (e TelegramLoginCodeVia) Valid() bool {
+	switch e {
+	case App:
+		return true
+	case Call:
+		return true
+	case Other:
+		return true
+	case Sms:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TelegramLoginNext.
+const (
+	Code     TelegramLoginNext = "code"
+	Done     TelegramLoginNext = "done"
+	Password TelegramLoginNext = "password"
+)
+
+// Valid indicates whether the value is a known member of the TelegramLoginNext enum.
+func (e TelegramLoginNext) Valid() bool {
+	switch e {
+	case Code:
+		return true
+	case Done:
+		return true
+	case Password:
+		return true
+	default:
+		return false
+	}
+}
+
 // AcceptInvitationRequest defines model for AcceptInvitationRequest.
 type AcceptInvitationRequest struct {
 	// Locale Interface language of a new account; the workspace's when absent.
@@ -367,6 +469,67 @@ type ChangeStatusRequest struct {
 
 	// Version When set, must equal the current version, otherwise `409 version_conflict`.
 	Version *int `json:"version,omitempty"`
+}
+
+// Channel defines model for Channel.
+type Channel struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Details What may be shown about the channel. Never secrets.
+	Details   ChannelDetails `json:"details"`
+	ErrorCode *string        `json:"error_code"`
+	Id        uuid.UUID      `json:"id"`
+
+	// Name Name in the panel.
+	Name string `json:"name"`
+
+	// Status `pending` — a personal-account login in progress; `active` — works; `error` — needs
+	// the admin, `error_code` says why.
+	Status ChannelStatus `json:"status"`
+	Type   ChannelType   `json:"type"`
+}
+
+// ChannelDetails What may be shown about the channel. Never secrets.
+type ChannelDetails struct {
+	// Delivery Bots only: Telegram pushes updates to a webhook, or the worker polls.
+	Delivery *ChannelDetailsDelivery `json:"delivery,omitempty"`
+
+	// DisplayName The bot's or the account's name in Telegram.
+	DisplayName *string `json:"display_name"`
+
+	// PhoneMasked Personal accounts: e.g. "+79•••••••67".
+	PhoneMasked *string `json:"phone_masked"`
+
+	// Username Without "@".
+	Username *string `json:"username"`
+}
+
+// ChannelDetailsDelivery Bots only: Telegram pushes updates to a webhook, or the worker polls.
+type ChannelDetailsDelivery string
+
+// ChannelList defines model for ChannelList.
+type ChannelList struct {
+	// EncryptionAvailable `TOLKOVO_MASTER_KEY` is set; without it nothing can be connected.
+	EncryptionAvailable bool      `json:"encryption_available"`
+	Items               []Channel `json:"items"`
+
+	// TelegramUserAvailable Personal Telegram accounts can be connected on this server.
+	TelegramUserAvailable bool `json:"telegram_user_available"`
+}
+
+// ChannelStatus `pending` — a personal-account login in progress; `active` — works; `error` — needs
+// the admin, `error_code` says why.
+type ChannelStatus string
+
+// ChannelType defines model for ChannelType.
+type ChannelType string
+
+// ConnectTelegramBotRequest defines model for ConnectTelegramBotRequest.
+type ConnectTelegramBotRequest struct {
+	Name *string `json:"name,omitempty"`
+
+	// Token The token from @BotFather.
+	Token string `json:"token"`
 }
 
 // Contact defines model for Contact.
@@ -733,6 +896,11 @@ type RegisterRequest struct {
 	WorkspaceSlug string  `json:"workspace_slug"`
 }
 
+// RenameChannelRequest defines model for RenameChannelRequest.
+type RenameChannelRequest struct {
+	Name string `json:"name"`
+}
+
 // ResetPasswordRequest defines model for ResetPasswordRequest.
 type ResetPasswordRequest struct {
 	Password string `json:"password"`
@@ -774,6 +942,12 @@ type SignedRequest struct {
 	Url     string            `json:"url"`
 }
 
+// StartTelegramUserLoginRequest defines model for StartTelegramUserLoginRequest.
+type StartTelegramUserLoginRequest struct {
+	// Phone International format, e.g. "+7 900 123-45-67".
+	Phone string `json:"phone"`
+}
+
 // SwitchWorkspaceRequest defines model for SwitchWorkspaceRequest.
 type SwitchWorkspaceRequest struct {
 	WorkspaceId uuid.UUID `json:"workspace_id"`
@@ -793,6 +967,31 @@ type TagColor string
 // TagList defines model for TagList.
 type TagList struct {
 	Items []Tag `json:"items"`
+}
+
+// TelegramCodeRequest defines model for TelegramCodeRequest.
+type TelegramCodeRequest struct {
+	Code string `json:"code"`
+}
+
+// TelegramLogin defines model for TelegramLogin.
+type TelegramLogin struct {
+	Channel Channel `json:"channel"`
+
+	// CodeVia Where Telegram sent the code; present after the phone step.
+	CodeVia *TelegramLoginCodeVia `json:"code_via,omitempty"`
+	Next    TelegramLoginNext     `json:"next"`
+}
+
+// TelegramLoginCodeVia Where Telegram sent the code; present after the phone step.
+type TelegramLoginCodeVia string
+
+// TelegramLoginNext defines model for TelegramLogin.Next.
+type TelegramLoginNext string
+
+// TelegramPasswordRequest defines model for TelegramPasswordRequest.
+type TelegramPasswordRequest struct {
+	Password string `json:"password"`
 }
 
 // TokenRequest defines model for TokenRequest.
@@ -872,6 +1071,12 @@ type IdempotencyKey = string
 // Limit defines model for Limit.
 type Limit = int
 
+// ChannelExists RFC 9457 problem details.
+type ChannelExists = Problem
+
+// ChannelsUnavailable RFC 9457 problem details.
+type ChannelsUnavailable = Problem
+
 // Conflict RFC 9457 problem details.
 type Conflict = Problem
 
@@ -887,8 +1092,17 @@ type Invalid = Problem
 // InvalidToken RFC 9457 problem details.
 type InvalidToken = Problem
 
+// LoginStep RFC 9457 problem details.
+type LoginStep = Problem
+
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
+
+// TelegramLoginRejected RFC 9457 problem details.
+type TelegramLoginRejected = Problem
+
+// TelegramUnavailable RFC 9457 problem details.
+type TelegramUnavailable = Problem
 
 // TooManyRequests RFC 9457 problem details.
 type TooManyRequests = Problem
@@ -963,6 +1177,21 @@ type RegisterJSONRequestBody = RegisterRequest
 
 // SwitchWorkspaceJSONRequestBody defines body for SwitchWorkspace for application/json ContentType.
 type SwitchWorkspaceJSONRequestBody = SwitchWorkspaceRequest
+
+// ConnectTelegramBotJSONRequestBody defines body for ConnectTelegramBot for application/json ContentType.
+type ConnectTelegramBotJSONRequestBody = ConnectTelegramBotRequest
+
+// StartTelegramUserLoginJSONRequestBody defines body for StartTelegramUserLogin for application/json ContentType.
+type StartTelegramUserLoginJSONRequestBody = StartTelegramUserLoginRequest
+
+// RenameChannelJSONRequestBody defines body for RenameChannel for application/json ContentType.
+type RenameChannelJSONRequestBody = RenameChannelRequest
+
+// SubmitTelegramUserCodeJSONRequestBody defines body for SubmitTelegramUserCode for application/json ContentType.
+type SubmitTelegramUserCodeJSONRequestBody = TelegramCodeRequest
+
+// SubmitTelegramUserPasswordJSONRequestBody defines body for SubmitTelegramUserPassword for application/json ContentType.
+type SubmitTelegramUserPasswordJSONRequestBody = TelegramPasswordRequest
 
 // CreateContactJSONRequestBody defines body for CreateContact for application/json ContentType.
 type CreateContactJSONRequestBody = ContactInput
@@ -1041,6 +1270,27 @@ type ServerInterface interface {
 	// SwitchWorkspace Switch the session to another workspace of the user
 	// (POST /auth/workspace)
 	SwitchWorkspace(w http.ResponseWriter, r *http.Request)
+	// ListChannels Channels of the current workspace
+	// (GET /channels)
+	ListChannels(w http.ResponseWriter, r *http.Request)
+	// ConnectTelegramBot Connect a Telegram bot by its token
+	// (POST /channels/telegram-bot)
+	ConnectTelegramBot(w http.ResponseWriter, r *http.Request)
+	// StartTelegramUserLogin Start connecting a personal Telegram account
+	// (POST /channels/telegram-user)
+	StartTelegramUserLogin(w http.ResponseWriter, r *http.Request)
+	// DisconnectChannel Disconnect a channel
+	// (DELETE /channels/{id})
+	DisconnectChannel(w http.ResponseWriter, r *http.Request, id Id)
+	// RenameChannel Rename a channel in the panel
+	// (PATCH /channels/{id})
+	RenameChannel(w http.ResponseWriter, r *http.Request, id Id)
+	// SubmitTelegramUserCode Enter the login code of a personal account
+	// (POST /channels/{id}/telegram-user/code)
+	SubmitTelegramUserCode(w http.ResponseWriter, r *http.Request, id Id)
+	// SubmitTelegramUserPassword Enter the cloud password of a personal account
+	// (POST /channels/{id}/telegram-user/password)
+	SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id)
 	// ListContacts Contacts, newest first
 	// (GET /contacts)
 	ListContacts(w http.ResponseWriter, r *http.Request, params ListContactsParams)
@@ -1203,6 +1453,48 @@ func (_ Unimplemented) Register(w http.ResponseWriter, r *http.Request) {
 // SwitchWorkspace Switch the session to another workspace of the user
 // (POST /auth/workspace)
 func (_ Unimplemented) SwitchWorkspace(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListChannels Channels of the current workspace
+// (GET /channels)
+func (_ Unimplemented) ListChannels(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ConnectTelegramBot Connect a Telegram bot by its token
+// (POST /channels/telegram-bot)
+func (_ Unimplemented) ConnectTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartTelegramUserLogin Start connecting a personal Telegram account
+// (POST /channels/telegram-user)
+func (_ Unimplemented) StartTelegramUserLogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DisconnectChannel Disconnect a channel
+// (DELETE /channels/{id})
+func (_ Unimplemented) DisconnectChannel(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RenameChannel Rename a channel in the panel
+// (PATCH /channels/{id})
+func (_ Unimplemented) RenameChannel(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SubmitTelegramUserCode Enter the login code of a personal account
+// (POST /channels/{id}/telegram-user/code)
+func (_ Unimplemented) SubmitTelegramUserCode(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SubmitTelegramUserPassword Enter the cloud password of a personal account
+// (POST /channels/{id}/telegram-user/password)
+func (_ Unimplemented) SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1556,6 +1848,152 @@ func (siw *ServerInterfaceWrapper) SwitchWorkspace(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SwitchWorkspace(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListChannels operation middleware
+func (siw *ServerInterfaceWrapper) ListChannels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChannels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConnectTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) ConnectTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConnectTelegramBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartTelegramUserLogin operation middleware
+func (siw *ServerInterfaceWrapper) StartTelegramUserLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartTelegramUserLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisconnectChannel operation middleware
+func (siw *ServerInterfaceWrapper) DisconnectChannel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisconnectChannel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameChannel operation middleware
+func (siw *ServerInterfaceWrapper) RenameChannel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameChannel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitTelegramUserCode operation middleware
+func (siw *ServerInterfaceWrapper) SubmitTelegramUserCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitTelegramUserCode(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitTelegramUserPassword operation middleware
+func (siw *ServerInterfaceWrapper) SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitTelegramUserPassword(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2526,6 +2964,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/invitations/{id}", wrapper.RevokeInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/channels", wrapper.ListChannels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/telegram-bot", wrapper.ConnectTelegramBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/telegram-user", wrapper.StartTelegramUserLogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/{id}/telegram-user/code", wrapper.SubmitTelegramUserCode)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/{id}/telegram-user/password", wrapper.SubmitTelegramUserPassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/channels/{id}", wrapper.DisconnectChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/channels/{id}", wrapper.RenameChannel)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

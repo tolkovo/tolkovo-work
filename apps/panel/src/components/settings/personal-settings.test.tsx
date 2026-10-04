@@ -38,7 +38,15 @@ describe("settings tree", () => {
   it("gives the owner both groups and opens General first", async () => {
     const { router } = renderApp("/settings");
     const nav = await settingsNav();
-    expect(navLinks(nav)).toEqual(["Общие", "Команда", "Профиль", "Внешний вид", "Уведомления", "Безопасность и вход"]);
+    expect(navLinks(nav)).toEqual([
+      "Общие",
+      "Каналы",
+      "Команда",
+      "Профиль",
+      "Внешний вид",
+      "Уведомления",
+      "Безопасность и вход",
+    ]);
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/general"));
   });
 });
