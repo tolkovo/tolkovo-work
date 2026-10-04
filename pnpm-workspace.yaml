@@ -1,0 +1,6 @@
+# JS workspaces of the monorepo (docs/adr/0007-repository-structure.md).
+packages:
+  - apps/panel
+  - apps/widget
+  - apps/landing
+  - packages/*
