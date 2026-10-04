@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -57,7 +59,8 @@ func TestIngest_ProcessReport(t *testing.T) {
 	a := e.connectApp("owner@example.test", "zerno")
 	ws := e.workspaceOf(a)
 	app := e.appClient("198.51.100.1")
-	logFile := reportFile{"app.log", "text/plain", []byte("2026-10-05 12:00:01 ERROR sync failed\n")}
+	// Node and Electron give a .log file no type: it is taken as text/plain.
+	logFile := reportFile{"app.log", "application/octet-stream", []byte("2026-10-05 12:00:01 ERROR sync failed\n")}
 	shot := reportFile{"screen.png", "image/png", []byte("\x89PNG\r\n\x1a\nnot really")}
 	// Declared a screenshot, really a page: rejected by its bytes.
 	page := reportFile{"fake.png", "image/png", []byte("<html><script>alert(1)</script></html>")}
@@ -120,6 +123,28 @@ func TestIngest_ProcessReport(t *testing.T) {
 	e.ownerScan(&attID, "SELECT id FROM attachments WHERE storage_key = $1", keys[1])
 	if rec := a.owner.do(http.MethodGet, "/api/v1/attachments/"+attID.String()+"/download-link", nil); rec.Code != http.StatusOK {
 		t.Fatalf("download link: %d %s", rec.Code, rec.Body)
+	}
+	// The operator sees what the app said and why a file is missing, in the
+	// order of the attachments.
+	var convID uuid.UUID
+	e.ownerScan(&convID, "SELECT conversation_id FROM app_reports WHERE id = $1", first)
+	rec := a.owner.do(http.MethodGet, "/api/v1/conversations/"+convID.String()+"/messages", nil)
+	feed := decode[oapi.MessagePage](t, rec)
+	if len(feed.Items) != 1 || feed.Items[0].Report == nil {
+		t.Fatalf("feed: %s", rec.Body)
+	}
+	m := feed.Items[0]
+	rep := m.Report
+	if rep.ReportId != first || !rep.ContactVerified || deref(rep.App.Version) != "2.4.1" || deref(rep.App.Os) != "Windows" ||
+		deref(rep.App.OsVersion) != "11 23H2" || rep.App.Extra == nil || (*rep.App.Extra)["build"] != "1187" || rep.App.Locale != nil {
+		t.Fatalf("report: %s", rec.Body)
+	}
+	got := []string{}
+	for i, at := range m.Attachments {
+		got = append(got, fmt.Sprintf("%s %s %s %s", at.FileName, at.ContentType, at.Status, rep.Files[i]))
+	}
+	if want := []string{"app.log text/plain ready ok", "screen.png image/png ready ok", "fake.png image/png rejected type_mismatch"}; !slices.Equal(got, want) {
+		t.Fatalf("attachments: %q", got)
 	}
 
 	// A second verified report goes to the same contact; an unverified one

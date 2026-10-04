@@ -542,7 +542,26 @@ func messageBody(m conversations.Message) oapi.Message {
 		v := oapi.MessageDeliveryError(m.DeliveryError)
 		body.DeliveryError = &v
 	}
+	body.Report = reportBody(m.Report)
 	return body
+}
+
+func reportBody(r *conversations.ReportInfo) *oapi.MessageReport {
+	if r == nil {
+		return nil
+	}
+	files := make([]oapi.MessageReportFiles, 0, len(r.Files))
+	for _, f := range r.Files {
+		files = append(files, oapi.MessageReportFiles(f))
+	}
+	app := oapi.IngestApp{
+		Name: nonEmpty(r.App.Name), Version: nonEmpty(r.App.Version), Os: nonEmpty(r.App.OS),
+		OsVersion: nonEmpty(r.App.OSVersion), Locale: nonEmpty(r.App.Locale),
+	}
+	if len(r.App.Extra) > 0 {
+		app.Extra = &r.App.Extra
+	}
+	return &oapi.MessageReport{ReportId: r.ReportID, App: app, ContactVerified: r.ContactVerified, Files: files}
 }
 
 func eventBody(e *conversations.Event) *oapi.MessageEvent {

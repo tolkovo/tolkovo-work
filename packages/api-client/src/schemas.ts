@@ -191,6 +191,27 @@ export const messageEventSchema = z.object({
   previous_assignee_id: z.string().nullable(),
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
+export const signedRequestSchema = z.object({
+  method: z.string(),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()),
+  expires_at: z.string(),
+}) satisfies z.ZodType<Schemas["SignedRequest"]>;
+
+export const messageReportSchema = z.object({
+  report_id: z.string(),
+  app: z.object({
+    name: z.string().optional(),
+    version: z.string().optional(),
+    os: z.string().optional(),
+    os_version: z.string().optional(),
+    locale: z.string().optional(),
+    extra: z.record(z.string(), z.string()).optional(),
+  }),
+  contact_verified: z.boolean(),
+  files: z.array(z.enum(["ok", "type_mismatch", "infected", "not_scanned", "missing"])),
+}) satisfies z.ZodType<Schemas["MessageReport"]>;
+
 export const messageSchema = z.object({
   id: z.string(),
   conversation_id: z.string(),
@@ -208,6 +229,7 @@ export const messageSchema = z.object({
   event: messageEventSchema.nullable(),
   unsupported: z.enum(["sticker", "location", "contact", "poll", "other"]).optional(),
   sent_outside_panel: z.boolean().optional(),
+  report: messageReportSchema.optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["Message"]>;
 

@@ -1,6 +1,6 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { applySignal, resetSignals } from "../../lib/realtime/signals";
 import { fakeApi, json, operatorSession, problem, type FakeRoutes } from "../../test/fake-api";
@@ -87,9 +87,69 @@ describe("inbox", () => {
     renderApp("/inbox/c1", { api });
     const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
     const articles = await within(feed).findAllByRole("article");
-    expect(articles[0]).toHaveTextContent("видео.mp4 — файл не получен: больше лимита или недоступен в Telegram");
+    expect(articles[0]).toHaveTextContent("видео.mp4файл не получен: больше лимита или недоступен в Telegram");
+    expect(within(articles[0]!).queryByRole("button", { name: /Скачать/ })).not.toBeInTheDocument();
     expect(articles[1]).toHaveTextContent(/^Отправлено из Telegram · \d{2}:\d{2}Отправил на почту$/);
     expect(articles[2]).toHaveTextContent("Стикер — панель такие сообщения не показывает.");
+  });
+
+  it("shows an app report: app details, a log to download, a screenshot and why a file is missing", async () => {
+    const user = userEvent.setup();
+    const followed: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      followed.push(this.getAttribute("href") ?? "");
+    });
+    const link = (id: string) => ({ method: "GET", url: `/api/v1/files/ws/w1/reports/${id}?exp=1&sig=s`, headers: {}, expires_at: "2026-10-05T12:15:00Z" });
+    const api = inboxApi({
+      "GET /conversations/c1/messages": () =>
+        json(200, {
+          items: [
+            msg("r1", {
+              body: "Не синхронизируется корзина",
+              report: {
+                report_id: "rep1",
+                app: { name: "Зерно", version: "2.4.1", os: "Windows", os_version: "11 23H2", extra: { build: "1187" } },
+                contact_verified: false,
+                files: ["ok", "ok", "type_mismatch"],
+              },
+              attachments: [
+                { id: "a-log", file_name: "app.log", content_type: "text/plain", size: 38912, status: "ready" },
+                { id: "a-shot", file_name: "screen.png", content_type: "image/png", size: 204800, status: "ready" },
+                { id: "a-fake", file_name: "fake.png", content_type: "image/png", size: 40, status: "rejected" },
+              ],
+            }),
+          ],
+          next_cursor: null,
+        }),
+      "GET /attachments/a-log/download-link": () => json(200, link("log")),
+      "GET /attachments/a-shot/download-link": () => json(200, link("shot")),
+    });
+    renderApp("/inbox/c1", { api });
+    const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
+    const report = (await within(feed).findAllByRole("article"))[0]!;
+    expect(report).toHaveTextContent("Отчёт из приложенияЗерно 2.4.1Windows 11 23H2");
+    expect(within(report).getByText("Личность не подтверждена")).toBeInTheDocument();
+
+    // The log is a file to download, never shown as a page.
+    expect(report).toHaveTextContent(/app\.log38\sкБСкачать/);
+    await user.click(within(report).getByRole("button", { name: "Скачать app.log" }));
+    expect(followed).toEqual(["/api/v1/files/ws/w1/reports/log?exp=1&sig=s"]);
+
+    // The screenshot shows in the feed and opens larger.
+    const shot = await within(report).findByRole("button", { name: "Открыть скриншот screen.png" });
+    await waitFor(() => expect(shot.querySelector("img")).toHaveAttribute("src", "/api/v1/files/ws/w1/reports/shot?exp=1&sig=s"));
+    await user.click(shot);
+    const viewer = screen.getByRole("dialog", { name: "Скриншот screen.png" });
+    expect(within(viewer).getByRole("img", { name: "screen.png" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(shot).toHaveFocus();
+
+    // The rejected file stays with the reason and no download.
+    expect(report).toHaveTextContent("fake.pngотклонён: содержимое не совпадает с типом файла");
+    expect(within(report).queryByRole("button", { name: "Скачать fake.png" })).not.toBeInTheDocument();
+    expect(api.calls.some((c) => c.path.includes("a-fake"))).toBe(false);
+    click.mockRestore();
   });
 
   it("shows how far replies got through Telegram and sends a failed one again", async () => {

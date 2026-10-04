@@ -19,6 +19,7 @@ import {
   createInvitation,
   createTag,
   disconnectChannel,
+  fetchAttachmentLink,
   fetchChannels,
   fetchContact,
   fetchIngestKeys,
@@ -117,6 +118,7 @@ export const queryKeys = {
   inboxCounts: ["conversations", "counts"] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
+  attachmentLink: (id: string) => ["attachments", "link", id] as const,
 };
 
 /** The current session; `null` when signed out. */
@@ -472,6 +474,22 @@ export function useMessages(id: string) {
     queryFn: ({ pageParam }) => fetchMessages(client, id, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+}
+
+/**
+ * The signed link of an attachment, for showing a picture. Links live 15 minutes: a cached one is
+ * used for 10, then a new one is asked for.
+ */
+export function useAttachmentLink(id: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.attachmentLink(id),
+    queryFn: () => fetchAttachmentLink(client, id),
+    enabled,
+    staleTime: 10 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

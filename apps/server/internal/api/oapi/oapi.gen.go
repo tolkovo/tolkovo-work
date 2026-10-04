@@ -377,6 +377,33 @@ func (e MessageEventType) Valid() bool {
 	}
 }
 
+// Defines values for MessageReportFiles.
+const (
+	Infected     MessageReportFiles = "infected"
+	Missing      MessageReportFiles = "missing"
+	NotScanned   MessageReportFiles = "not_scanned"
+	Ok           MessageReportFiles = "ok"
+	TypeMismatch MessageReportFiles = "type_mismatch"
+)
+
+// Valid indicates whether the value is a known member of the MessageReportFiles enum.
+func (e MessageReportFiles) Valid() bool {
+	switch e {
+	case Infected:
+		return true
+	case Missing:
+		return true
+	case NotScanned:
+		return true
+	case Ok:
+		return true
+	case TypeMismatch:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	RoleAdmin    Role = "admin"
@@ -1028,8 +1055,12 @@ type Message struct {
 	Id    uuid.UUID     `json:"id"`
 
 	// IsPrivate Internal note; never shown to the customer.
-	IsPrivate  bool              `json:"is_private"`
-	Kind       MessageKind       `json:"kind"`
+	IsPrivate bool        `json:"is_private"`
+	Kind      MessageKind `json:"kind"`
+
+	// Report Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+	// absent otherwise. What the app said about itself and how its files were checked.
+	Report     *MessageReport    `json:"report,omitempty"`
 	SenderId   *uuid.UUID        `json:"sender_id"`
 	SenderType MessageSenderType `json:"sender_type"`
 
@@ -1087,6 +1118,24 @@ type MessagePage struct {
 	Items      []Message `json:"items"`
 	NextCursor *string   `json:"next_cursor"`
 }
+
+// MessageReport Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+// absent otherwise. What the app said about itself and how its files were checked.
+type MessageReport struct {
+	App IngestApp `json:"app"`
+
+	// ContactVerified The company's backend signed the user's id; otherwise the contact is new and unverified.
+	ContactVerified bool `json:"contact_verified"`
+
+	// Files The check of each file, in the order of `attachments`: `ok`, `type_mismatch` (the
+	// bytes are not the declared type), `infected`, `not_scanned` (the antivirus stayed
+	// unreachable), `missing`. Every value but `ok` comes with a `rejected` attachment.
+	Files    []MessageReportFiles `json:"files"`
+	ReportId uuid.UUID            `json:"report_id"`
+}
+
+// MessageReportFiles defines model for MessageReport.Files.
+type MessageReportFiles string
 
 // NotificationSettings defines model for NotificationSettings.
 type NotificationSettings struct {

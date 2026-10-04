@@ -774,7 +774,9 @@ export interface paths {
          * @description The body is limited by the channel's settings: up to 5 files (`413 too_many_files`),
          *     a file up to 25 MB (`413 file_too_large`), up to 50 MB a report (`413
          *     report_too_large`); allowed types are text, CSV, JSON, XML, ZIP, GZIP, PNG and JPEG
-         *     (`415 unsupported_type`). Each upload link lives 15 minutes and fixes the size, the
+         *     (`415 unsupported_type`). A `.log` or `.txt` file may also come as `text/x-log` or
+         *     `application/octet-stream`: it is taken as `text/plain`, so upload it with the
+         *     headers of its link. Each upload link lives 15 minutes and fixes the size, the
          *     type and the SHA-256. `report_token` is shown once: send it to complete the report
          *     and, later, to read the replies.
          *
@@ -1566,8 +1568,25 @@ export interface components {
              *     their own Telegram app (`sender_id` is `null`); absent otherwise.
              */
             sent_outside_panel?: boolean;
+            report?: components["schemas"]["MessageReport"];
             /** Format: date-time */
             created_at: string;
+        };
+        /**
+         * @description Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+         *     absent otherwise. What the app said about itself and how its files were checked.
+         */
+        MessageReport: {
+            report_id: string;
+            app: components["schemas"]["IngestApp"];
+            /** @description The company's backend signed the user's id; otherwise the contact is new and unverified. */
+            contact_verified: boolean;
+            /**
+             * @description The check of each file, in the order of `attachments`: `ok`, `type_mismatch` (the
+             *     bytes are not the declared type), `infected`, `not_scanned` (the antivirus stayed
+             *     unreachable), `missing`. Every value but `ok` comes with a `rejected` attachment.
+             */
+            files: ("ok" | "type_mismatch" | "infected" | "not_scanned" | "missing")[];
         };
         MessageEvent: {
             /**

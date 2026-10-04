@@ -20,6 +20,7 @@ import {
   messagePageSchema,
   messageSchema,
   sessionSchema,
+  signedRequestSchema,
   tagListSchema,
   tagSchema,
   telegramLoginSchema,
@@ -69,6 +70,9 @@ export type AppChannelCreated = Schemas["AppChannelCreated"];
 export type IngestKey = Schemas["IngestKey"];
 export type IngestKeyCreated = Schemas["IngestKeyCreated"];
 export type Message = Schemas["Message"];
+export type MessageReport = Schemas["MessageReport"];
+export type Attachment = Schemas["Attachment"];
+export type SignedRequest = Schemas["SignedRequest"];
 export type MessageEvent = Schemas["MessageEvent"];
 export type MessagePage = Schemas["MessagePage"];
 export type Tag = Schemas["Tag"];
@@ -270,6 +274,17 @@ export async function retryMessageDelivery(client: ApiClient, conversationId: st
     }),
   );
   return parseAnswer(messageSchema, data);
+}
+
+/**
+ * A signed GET for a sent attachment, valid 15 minutes. The file always comes as an attachment
+ * (`Content-Disposition`), so following the link downloads it; an `<img>` shows a picture.
+ */
+export async function fetchAttachmentLink(client: ApiClient, id: string): Promise<SignedRequest> {
+  return parseAnswer(
+    signedRequestSchema,
+    await unwrap(client.GET("/attachments/{id}/download-link", { params: { path: { id } } })),
+  );
 }
 
 /** Moves the conversation along the state machine; `version` guards against concurrent changes. */

@@ -2,13 +2,14 @@ import { isApiError, type Conversation, type Message, type MessageEvent } from "
 import { useConversation, useMessages, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { AlertCircle, Check, CheckCheck, ChevronLeft, Clock, Paperclip, UserRound } from "lucide-react";
+import { AlertCircle, Check, CheckCheck, ChevronLeft, Clock, UserRound } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAbilities, useConversationChange, useMarkRead, useRetryDelivery } from "../../lib/inbox/actions";
 import type { InboxTab } from "../../lib/inbox/tabs";
 import { useViewingSignal } from "../../lib/realtime/signals";
+import { MessageAttachments, ReportDetails } from "./attachments";
 import { Composer } from "./composer";
 import { ActionErrorLine, ConversationActions } from "./conversation-actions";
 import { CUSTOMER_CARD_ID, CustomerCard } from "./customer-card";
@@ -331,21 +332,10 @@ function MessageItem({ message: m, conversation }: { message: Message; conversat
                 : "rounded-tl-sm border-line bg-surface",
         )}
       >
+        {m.report && <ReportDetails report={m.report} />}
         {m.body}
         {m.unsupported ? <span className="text-[13px] text-ink-2 italic">{t(`inbox.unsupported.${m.unsupported}`)}</span> : null}
-        {m.attachments.length > 0 && (
-          <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0 text-[13px] text-ink-2">
-            {m.attachments.map((a) => (
-              <li key={a.id} className="flex items-center gap-1">
-                <Paperclip aria-hidden="true" className="size-3.5 shrink-0" />
-                <span className="min-w-0 break-words">
-                  {a.file_name}
-                  {a.status === "rejected" ? ` — ${t("inbox.attachmentRejected")}` : null}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <MessageAttachments message={m} />
       </div>
       {!note && outgoing && !m.sent_outside_panel && m.delivery_status && (
         <Delivery message={m} conversation={conversation} />

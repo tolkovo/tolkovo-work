@@ -31,15 +31,15 @@ import (
 // off between attempts (about a day in total).
 const processAttempts = 10
 
-// File check results, in the message meta in file order.
+// File check results, stored with the message in file order.
 const (
-	CheckOK           = "ok"
-	CheckTypeMismatch = "type_mismatch"
-	CheckInfected     = "infected"
+	CheckOK           = conversations.FileOK
+	CheckTypeMismatch = conversations.FileTypeMismatch
+	CheckInfected     = conversations.FileInfected
 	// CheckNotScanned: clamd gave no verdict even on the last attempt.
-	CheckNotScanned = "not_scanned"
+	CheckNotScanned = conversations.FileNotScanned
 	// CheckMissing: the object disappeared after complete.
-	CheckMissing = "missing"
+	CheckMissing = conversations.FileMissing
 )
 
 // Inbox stores reports as conversations; *conversations.Service
@@ -90,17 +90,6 @@ func (w *processWorker) Work(ctx context.Context, job *river.Job[ProcessArgs]) e
 	return w.svc.Process(ctx, job.Args, job.Attempt >= job.MaxAttempts)
 }
 
-// reportMeta is the "report" object of the message meta: what the panel
-// shows next to the conversation (AP-04). No contact data: that is on the
-// contact.
-type reportMeta struct {
-	ReportID        uuid.UUID       `json:"report_id"`
-	ChannelID       uuid.UUID       `json:"channel_id"`
-	App             json.RawMessage `json:"app"`
-	ContactVerified bool            `json:"contact_verified"`
-	Files           []string        `json:"files,omitempty"`
-}
-
 // Process turns a submitted report into a conversation; anything else
 // (processed, deleted) is left alone, so a repeated job does nothing. last
 // is the final attempt: a file clamd still cannot scan is then rejected
@@ -133,14 +122,16 @@ func (s *Service) Process(ctx context.Context, a ProcessArgs, last bool) error {
 	}
 
 	// Storage and clamd stay outside transactions (docs/00 §6.5).
-	meta := reportMeta{ReportID: report.ID, ChannelID: report.ChannelID, App: report.App, ContactVerified: report.ContactVerified}
 	in := conversations.AppReport{
 		ChannelID: report.ChannelID, ReportID: report.ID, Body: report.Message,
 		Contact: conversations.ReportContact{
 			Verified: report.ContactVerified, ExternalID: deref(report.ContactExternalID),
 			Name: deref(report.ContactName), Email: deref(report.ContactEmail),
 		},
+		Info: conversations.ReportInfo{ContactVerified: report.ContactVerified},
 	}
+	// Create stored App; a row it cannot read shows without app details.
+	_ = json.Unmarshal(report.App, &in.Info.App)
 	var rejected []string
 	for _, f := range files {
 		check, err := s.check(ctx, f, last)
@@ -151,13 +142,10 @@ func (s *Service) Process(ctx context.Context, a ProcessArgs, last bool) error {
 			s.log().Warn("report file rejected", "workspace_id", a.WorkspaceID, "report_id", report.ID, "position", f.Position, "check", check)
 			rejected = append(rejected, f.StorageKey)
 		}
-		meta.Files = append(meta.Files, check)
+		in.Info.Files = append(in.Info.Files, check)
 		in.Files = append(in.Files, conversations.ReceivedFile{
 			StorageKey: f.StorageKey, FileName: f.FileName, ContentType: f.ContentType, Size: f.Size, Rejected: check != CheckOK,
 		})
-	}
-	if in.Meta, err = json.Marshal(meta); err != nil {
-		return fmt.Errorf("ingest: encode report meta: %w", err)
 	}
 	res, err := s.opts.Inbox.ReceiveReport(ctx, a.WorkspaceID, in)
 	if errors.Is(err, conversations.ErrInvalid) {

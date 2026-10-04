@@ -54,9 +54,11 @@ type Message struct {
 	// SentOutsidePanel: an operator message the owner of a personal
 	// account wrote in their own Telegram app.
 	SentOutsidePanel bool
-	CreatedAt        time.Time
-	EditedAt         *time.Time
-	DeletedAt        *time.Time
+	// Report: the message is a problem report from an app (docs/02 §11.6).
+	Report    *ReportInfo
+	CreatedAt time.Time
+	EditedAt  *time.Time
+	DeletedAt *time.Time
 }
 
 // MessageInput is an operator reply or an internal note.
@@ -327,7 +329,7 @@ func messageFrom(m store.Message, atts []store.Attachment) Message {
 	if m.Kind != KindEvent && len(m.Meta) > 2 {
 		var meta messageMeta
 		if json.Unmarshal(m.Meta, &meta) == nil {
-			out.Unsupported, out.SentOutsidePanel = meta.Unsupported, meta.OutsidePanel
+			out.Unsupported, out.SentOutsidePanel, out.Report = meta.Unsupported, meta.OutsidePanel, meta.Report
 		}
 	}
 	for _, a := range atts {

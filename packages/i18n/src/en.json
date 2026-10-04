@@ -719,6 +719,30 @@
     },
     "noText": "Message without text",
     "attachmentRejected": "file not received: over the limit or unavailable in Telegram",
+    "attachment": {
+      "download": "Download",
+      "downloadName": "Download {name}",
+      "open": "Open screenshot {name}",
+      "viewer": "Screenshot {name}",
+      "close": "Close",
+      "linkError": "Couldn't get the file. Try again.",
+      "expired": "deleted: the file retention period has ended",
+      "pending": "still uploading",
+      "rejected": {
+        "type_mismatch": "rejected: the content doesn't match the file type",
+        "infected": "rejected: the antivirus found a threat",
+        "not_scanned": "rejected: the antivirus couldn't check the file",
+        "missing": "rejected: the file never reached storage",
+        "other": "rejected by the check"
+      }
+    },
+    "report": {
+      "title": "Report from the app",
+      "verified": "Identity verified by the app",
+      "unverified": "Identity not verified",
+      "unverifiedHint": "The app didn't sign the user's id, so this is a new contact, not merged with other conversations.",
+      "more": "More app details: {count}"
+    },
     "unsupported": {
       "sticker": "A sticker — the panel does not show these messages.",
       "location": "A location — the panel does not show these messages.",

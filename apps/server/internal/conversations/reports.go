@@ -2,7 +2,6 @@ package conversations
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,11 +22,43 @@ type AppReport struct {
 	ReportID uuid.UUID
 	Body     string
 	Contact  ReportContact
-	// Meta is stored in the message meta as "report": the app, its version
-	// and OS, whether the contact is verified. The panel shows it.
-	Meta  json.RawMessage
+	// Info is stored with the message (Message.Report); the panel shows it.
+	Info  ReportInfo
 	Files []ReceivedFile
 }
+
+// ReportInfo is what the panel shows about a report: the app, its version
+// and OS, whether the contact is verified, how each file was checked. No
+// contact data: that is on the contact.
+type ReportInfo struct {
+	ReportID        uuid.UUID `json:"report_id"`
+	ChannelID       uuid.UUID `json:"channel_id"`
+	App             ReportApp `json:"app"`
+	ContactVerified bool      `json:"contact_verified"`
+	// Files: the check of each file in the order of the attachments
+	// (FileOK…).
+	Files []string `json:"files,omitempty"`
+}
+
+// ReportApp is what the app said about itself.
+type ReportApp struct {
+	Name      string            `json:"name,omitempty"`
+	Version   string            `json:"version,omitempty"`
+	OS        string            `json:"os,omitempty"`
+	OSVersion string            `json:"os_version,omitempty"`
+	Locale    string            `json:"locale,omitempty"`
+	Extra     map[string]string `json:"extra,omitempty"`
+}
+
+// The check of a report file (ReportInfo.Files); every one but FileOK comes
+// with a rejected attachment.
+const (
+	FileOK           = "ok"
+	FileTypeMismatch = "type_mismatch"
+	FileInfected     = "infected"
+	FileNotScanned   = "not_scanned"
+	FileMissing      = "missing"
+)
 
 // ReportContact is who the app user says they are.
 type ReportContact struct {
@@ -88,9 +119,11 @@ func (s *Service) receiveReport(
 	if in.Body == "" {
 		kind = KindMedia
 	}
+	info := r.Info
+	info.ReportID, info.ChannelID = r.ReportID, r.ChannelID
 	now := s.now()
 	msg, err := s.insertInbound(ctx, q, conv, in, inboundMessage{
-		Direction: DirectionIn, SenderType: SenderContact, SenderID: &contactID, Kind: kind, Report: r.Meta,
+		Direction: DirectionIn, SenderType: SenderContact, SenderID: &contactID, Kind: kind, Report: &info,
 	}, now)
 	if err != nil {
 		return Received{}, err
@@ -165,8 +198,8 @@ func (r *AppReport) validate() error {
 		return fmt.Errorf("%w: a verified contact needs an external id", ErrInvalid)
 	case len(r.Contact.Email) > 254:
 		return fmt.Errorf("%w: contact email is too long", ErrInvalid)
-	case len(r.Meta) > 0 && !json.Valid(r.Meta):
-		return fmt.Errorf("%w: report meta is not JSON", ErrInvalid)
+	case len(r.Info.Files) > 0 && len(r.Info.Files) != len(r.Files):
+		return fmt.Errorf("%w: a file check for each file", ErrInvalid)
 	}
 	for i, f := range r.Files {
 		r.Files[i].FileName = truncate(strings.TrimSpace(f.FileName), 255)

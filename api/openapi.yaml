@@ -1007,7 +1007,9 @@ paths:
         The body is limited by the channel's settings: up to 5 files (`413 too_many_files`),
         a file up to 25 MB (`413 file_too_large`), up to 50 MB a report (`413
         report_too_large`); allowed types are text, CSV, JSON, XML, ZIP, GZIP, PNG and JPEG
-        (`415 unsupported_type`). Each upload link lives 15 minutes and fixes the size, the
+        (`415 unsupported_type`). A `.log` or `.txt` file may also come as `text/x-log` or
+        `application/octet-stream`: it is taken as `text/plain`, so upload it with the
+        headers of its link. Each upload link lives 15 minutes and fixes the size, the
         type and the SHA-256. `report_token` is shown once: send it to complete the report
         and, later, to read the replies.
 
@@ -2449,7 +2451,33 @@ components:
           description: |
             `true` on an operator message the owner of a personal Telegram account wrote in
             their own Telegram app (`sender_id` is `null`); absent otherwise.
+        report: { $ref: '#/components/schemas/MessageReport' }
         created_at: { type: string, format: date-time }
+
+    MessageReport:
+      type: object
+      description: |
+        Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+        absent otherwise. What the app said about itself and how its files were checked.
+      required: [report_id, app, contact_verified, files]
+      properties:
+        report_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        app: { $ref: '#/components/schemas/IngestApp' }
+        contact_verified:
+          type: boolean
+          description: The company's backend signed the user's id; otherwise the contact is new and unverified.
+        files:
+          type: array
+          description: |
+            The check of each file, in the order of `attachments`: `ok`, `type_mismatch` (the
+            bytes are not the declared type), `infected`, `not_scanned` (the antivirus stayed
+            unreachable), `missing`. Every value but `ok` comes with a `rejected` attachment.
+          items:
+            type: string
+            enum: [ok, type_mismatch, infected, not_scanned, missing]
 
     MessageEvent:
       type: object

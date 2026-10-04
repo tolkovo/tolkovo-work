@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"mime"
+	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -71,6 +72,23 @@ var (
 var allowedTypes = map[string]bool{
 	"text/plain": true, "text/csv": true, "application/json": true, "application/xml": true, "text/xml": true,
 	"application/zip": true, "application/gzip": true, "image/png": true, "image/jpeg": true,
+}
+
+// logAliases are types apps and libraries give a .log file; with a .log or
+// .txt name such a file is taken as text/plain.
+var logAliases = map[string]bool{"text/x-log": true, "application/octet-stream": true}
+
+// fileType is the type a file is stored with: the declared one without
+// parameters, text/plain for a log under an alias.
+func fileType(name, declared string) (string, error) {
+	ct, _, err := mime.ParseMediaType(declared)
+	if err != nil {
+		return "", err
+	}
+	if ext := strings.ToLower(path.Ext(name)); logAliases[ct] && (ext == ".log" || ext == ".txt") {
+		return "text/plain", nil
+	}
+	return ct, nil
 }
 
 // Errors of the module.
@@ -522,7 +540,7 @@ func (in *Report) validate(l channels.AppLimits) ([]fileInput, int64, error) {
 	out := make([]fileInput, 0, len(in.Files))
 	var total int64
 	for i, f := range in.Files {
-		ct, _, err := mime.ParseMediaType(f.ContentType)
+		ct, err := fileType(f.Name, f.ContentType)
 		sum, herr := hex.DecodeString(f.SHA256)
 		switch {
 		case f.Name == "" || len(f.Name) > 1024:
