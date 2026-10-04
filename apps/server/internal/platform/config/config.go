@@ -102,6 +102,10 @@ type Config struct {
 	// to user-configured URLs, e.g. a local Ollama on self-host
 	// (docs/00 §9.5). Link-local stays closed; not allowed in SaaS.
 	EgressAllowPrivate []string `env:"EGRESS_ALLOW_PRIVATE" envSeparator:","`
+
+	// ClamAVAddr is the host:port of clamd (TCP). When set, the worker scans
+	// files of app reports before they reach the inbox (docs/02 §11.6).
+	ClamAVAddr string `env:"CLAMAV_ADDR"`
 }
 
 // Storage configures file storage: TOLKOVO_STORAGE_*.

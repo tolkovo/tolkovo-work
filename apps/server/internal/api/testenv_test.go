@@ -52,6 +52,11 @@ type env struct {
 	mail *mailtest.Sender
 	// bots is the fake Bot API behind the channels module.
 	bots *channelstest.Bots
+	// For the jobs of app reports, which the worker role runs (AP-03).
+	db     dbtest.Database
+	app    *db.DB
+	convs  *conversations.Service
+	ingest *ingest.Service
 }
 
 type envOptions struct {
@@ -144,16 +149,20 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Inbox: convs, Files: files, Jobs: inserter, Redis: rc,
 	})
 	convs.SetDeliverer(chans)
+	reports := ingest.New(app, ingest.Options{Files: files, Keys: chans, Redis: rc, KeyPrefix: prefix, Jobs: inserter, Inbox: convs})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
-		Ingest:        ingest.New(app, ingest.Options{Files: files, Keys: chans, Redis: rc, KeyPrefix: prefix}),
+		Ingest:        reports,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
 		deps.Realtime = startRealtime(t, d, app, rc, prefix, o)
 	}
-	return &env{t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots}
+	return &env{
+		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
+		db: d, app: app, convs: convs, ingest: reports,
+	}
 }
 
 // waitMail waits for the next email to the address and returns it along
@@ -304,6 +313,20 @@ func (e *env) ownerExec(sql string, args ...any) {
 	defer func() { _ = conn.Close(ctx) }()
 	if _, err := conn.Exec(ctx, sql, args...); err != nil {
 		e.t.Fatalf("exec %q: %v", sql, err)
+	}
+}
+
+// ownerScan reads one value behind the application's back.
+func (e *env) ownerScan(dst any, sql string, args ...any) {
+	e.t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, e.ownerDB)
+	if err != nil {
+		e.t.Fatalf("connect owner: %v", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	if err := conn.QueryRow(ctx, sql, args...).Scan(dst); err != nil {
+		e.t.Fatalf("query %q: %v", sql, err)
 	}
 }
 

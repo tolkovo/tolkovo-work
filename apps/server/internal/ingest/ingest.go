@@ -2,7 +2,9 @@
 // §11.6, AP-02): text, who the user is, what the app is, and log files. The
 // app authenticates with an ingest key of an app channel (internal/channels),
 // registers the report, uploads each file by its signed link and calls
-// Complete. A submitted report becomes a conversation in AP-03.
+// Complete. Complete queues the job ingest.process, which turns the report
+// into a conversation (process.go, AP-03); a periodic job removes what was
+// never completed and files past their retention (cleanup.go).
 //
 // The key is extractable from the app, so everything here is bounded: per
 // IP and per key rates, the channel's limits on files and its daily quota.
@@ -20,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"mime"
 	"strings"
 	"time"
@@ -33,6 +36,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest/store"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/ratelimit"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 )
@@ -41,6 +45,8 @@ import (
 const (
 	StatusUploading = "uploading"
 	StatusSubmitted = "submitted"
+	StatusProcessed = "processed"
+	StatusExpired   = "expired"
 )
 
 // Input bounds (docs/02 §11.6).
@@ -61,7 +67,7 @@ var (
 )
 
 // allowedTypes are the file types an app may send: text logs, structured
-// logs, archives and screenshots. AP-03 checks the real type by its bytes.
+// logs, archives and screenshots. Process checks the real type by its bytes.
 var allowedTypes = map[string]bool{
 	"text/plain": true, "text/csv": true, "application/json": true, "application/xml": true, "text/xml": true,
 	"application/zip": true, "application/gzip": true, "image/png": true, "image/jpeg": true,
@@ -128,6 +134,13 @@ type Options struct {
 	Redis *redis.Client
 	// KeyPrefix separates Redis keys of tests.
 	KeyPrefix string
+	// Jobs queues ingest.process on Complete (role api).
+	Jobs *jobs.Client
+	// Inbox and Scanner are used by the jobs (role worker); Scanner is
+	// nil without ClamAV.
+	Inbox   Inbox
+	Scanner Scanner
+	Log     *slog.Logger
 }
 
 // Service is the module facade.
@@ -317,6 +330,7 @@ func (s *Service) insert(
 			IdempotencyKey: optional(idempotencyKey), RequestHash: requestHash, Message: in.Message,
 			ContactExternalID: optional(in.Contact.ExternalID), ContactEmail: optional(in.Contact.Email),
 			ContactName: optional(in.Contact.Name), ContactVerified: verified, App: appJSON, TotalSize: total, CreatedAt: s.now(),
+			RetentionDays: int16(min(max(app.Limits.RetentionDays, 1), 365)), //nolint:gosec // G115: clamped to the column's range
 		}); err != nil {
 			return err
 		}
@@ -396,7 +410,8 @@ func (s *Service) sign(ctx context.Context, files []store.AppReportFile) ([]Uplo
 }
 
 // Complete checks that every file of the report is in storage with its
-// size and marks the report submitted. Completing twice is not an error.
+// size, marks the report submitted and queues ingest.process in the same
+// transaction. Completing twice is not an error.
 // The report token proves the caller registered the report; a wrong token
 // is ErrNotFound, like a report of another channel.
 func (s *Service) Complete(ctx context.Context, c Caller, reportID uuid.UUID, token string) error {
@@ -431,8 +446,8 @@ func (s *Service) Complete(ctx context.Context, c Caller, reportID uuid.UUID, to
 	if err != nil {
 		return fmt.Errorf("load report: %w", err)
 	}
-	if report.Status == StatusSubmitted {
-		return nil
+	if report.Status != StatusUploading {
+		return nil // submitted or processed already; expired reports end with their files
 	}
 	// Storage calls stay outside the transaction (docs/00 §6.5).
 	for _, f := range files {
@@ -444,15 +459,29 @@ func (s *Service) Complete(ctx context.Context, c Caller, reportID uuid.UUID, to
 			return fmt.Errorf("stat report file: %w", err)
 		}
 	}
+	if s.opts.Jobs == nil {
+		return errors.New("ingest: no job queue to process reports")
+	}
 	err = s.db.InTenantTx(ctx, app.WorkspaceID, func(tx pgx.Tx) error {
-		// A concurrent Complete may have won; either way it is submitted.
-		_, err := store.New(tx).SubmitReport(ctx, store.SubmitReportParams{WorkspaceID: app.WorkspaceID, ID: reportID, SubmittedAt: ptr(s.now())})
+		n, err := store.New(tx).SubmitReport(ctx, store.SubmitReportParams{WorkspaceID: app.WorkspaceID, ID: reportID, SubmittedAt: ptr(s.now())})
+		if err != nil || n == 0 {
+			// A concurrent Complete won and queued the job.
+			return err
+		}
+		_, err = s.opts.Jobs.InsertTx(ctx, tx, ProcessArgs{WorkspaceID: app.WorkspaceID, ReportID: reportID}, nil)
 		return err
 	})
 	if err != nil {
 		return fmt.Errorf("submit report: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) log() *slog.Logger {
+	if s.opts.Log == nil {
+		return slog.New(slog.DiscardHandler)
+	}
+	return s.opts.Log
 }
 
 func (s *Service) allow(ctx context.Context, key string, rule ratelimit.Rule) error {

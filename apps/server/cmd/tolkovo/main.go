@@ -33,6 +33,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/clamav"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
@@ -205,11 +206,22 @@ func startWorker(
 		return err
 	}
 
+	// Reports from company apps become conversations; unfinished ones and
+	// files past their retention are removed (AP-03).
+	reportOpts := ingest.Options{Files: store, Keys: chans, Redis: redisClient, Inbox: convs, Log: log}
+	if cfg.ClamAVAddr != "" {
+		reportOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
+	} else {
+		log.Info("TOLKOVO_CLAMAV_ADDR is not set: files of app reports are checked by type only")
+	}
+	reports := ingest.New(pool, reportOpts)
+
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
 	chans.AddWorkers(workers)
-	periodic := []*river.PeriodicJob{outbox.PrunePeriodic(), channels.PruneLoginsPeriodic()}
+	reports.AddWorkers(workers, sys.Pool())
+	periodic := []*river.PeriodicJob{outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic()}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
 	}
@@ -316,8 +328,9 @@ func apiDeps(
 		Conversations: convs,
 		Notifications: notifs,
 		Channels:      chans,
-		// Reports from company apps (AP-02): keys come from the channels module.
-		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient}),
+		// Reports from company apps (AP-02): keys come from the channels
+		// module; complete queues ingest.process for the worker (AP-03).
+		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter}),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

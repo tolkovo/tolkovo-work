@@ -340,12 +340,16 @@ type inboundMessage struct {
 	SenderID                    *uuid.UUID
 	Delivery                    *string
 	OutsidePanel                bool
+	// Report is what an app said about itself (AppReport.Meta).
+	Report json.RawMessage
 }
 
 // messageMeta is the meta of a message that came through a channel.
 type messageMeta struct {
 	Unsupported  string `json:"unsupported,omitempty"`
 	OutsidePanel bool   `json:"sent_outside_panel,omitempty"`
+	// Report: the message is a problem report from an app (docs/02 §11.6).
+	Report json.RawMessage `json:"report,omitempty"`
 }
 
 func (s *Service) insertInbound(
@@ -355,7 +359,7 @@ func (s *Service) insertInbound(
 	if err != nil {
 		return uuid.Nil, err
 	}
-	meta, err := json.Marshal(messageMeta{Unsupported: in.Unsupported, OutsidePanel: m.OutsidePanel})
+	meta, err := json.Marshal(messageMeta{Unsupported: in.Unsupported, OutsidePanel: m.OutsidePanel, Report: m.Report})
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("encode meta: %w", err)
 	}

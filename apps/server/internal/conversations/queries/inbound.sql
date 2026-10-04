@@ -59,3 +59,41 @@ RETURNING *;
 INSERT INTO attachments (id, workspace_id, conversation_id, message_id, storage_key, file_name, mime, size, status)
 VALUES (@id, @workspace_id, @conversation_id, @message_id, @storage_key, @file_name, @mime, @size, @status)
 RETURNING *;
+
+-- name: ThreadMessageConversation :one
+-- The conversation that holds a message of the chat (a retried report).
+SELECT m.conversation_id FROM messages m
+JOIN conversations c ON c.workspace_id = m.workspace_id AND c.id = m.conversation_id
+WHERE c.workspace_id = @workspace_id AND c.channel_id = @channel_id AND c.external_thread_id = @external_thread_id
+  AND m.external_id = @external_id
+LIMIT 1;
+
+-- name: LockExternalID :exec
+-- Serialises the first reports of one verified user, so they find one
+-- contact instead of creating two.
+SELECT pg_advisory_xact_lock(hashtextextended(@workspace_id::text || ':' || @external_id::text, 0));
+
+-- name: ContactByExternalID :one
+-- The verified contact of an app or site user; the oldest wins if an
+-- operator created a second one by hand.
+SELECT * FROM contacts
+WHERE workspace_id = @workspace_id AND external_id = @external_id AND deleted_at IS NULL
+ORDER BY id
+LIMIT 1;
+
+-- name: FillContact :exec
+-- A verified report fills what the contact lacks; it never overwrites
+-- what an operator entered.
+UPDATE contacts
+SET name = CASE WHEN name = '' THEN @name::text ELSE name END,
+    email = COALESCE(email, sqlc.narg(email)::citext),
+    updated_at = now()
+WHERE workspace_id = @workspace_id AND id = @id
+  AND (name = '' AND @name::text <> '' OR email IS NULL AND sqlc.narg(email)::citext IS NOT NULL);
+
+-- name: ExpireAttachments :execrows
+-- Files past the retention of their channel: the objects are deleted, the
+-- rows stay so the conversation shows that a file was there.
+UPDATE attachments
+SET status = 'expired', updated_at = now()
+WHERE workspace_id = @workspace_id AND storage_key = ANY(@storage_keys::text[]) AND status <> 'expired';

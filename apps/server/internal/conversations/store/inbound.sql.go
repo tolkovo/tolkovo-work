@@ -12,6 +12,40 @@ import (
 	"github.com/google/uuid"
 )
 
+const contactByExternalID = `-- name: ContactByExternalID :one
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at FROM contacts
+WHERE workspace_id = $1 AND external_id = $2 AND deleted_at IS NULL
+ORDER BY id
+LIMIT 1
+`
+
+type ContactByExternalIDParams struct {
+	WorkspaceID uuid.UUID
+	ExternalID  *string
+}
+
+// The verified contact of an app or site user; the oldest wins if an
+// operator created a second one by hand.
+func (q *Queries) ContactByExternalID(ctx context.Context, arg ContactByExternalIDParams) (Contact, error) {
+	row := q.db.QueryRow(ctx, contactByExternalID, arg.WorkspaceID, arg.ExternalID)
+	var i Contact
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.Locale,
+		&i.ExternalID,
+		&i.Attributes,
+		&i.BlockedAt,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createIdentity = `-- name: CreateIdentity :one
 INSERT INTO contact_identities (id, workspace_id, contact_id, channel_id, external_user_id, username)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -222,6 +256,55 @@ func (q *Queries) CreateThreadConversation(ctx context.Context, arg CreateThread
 	return i, err
 }
 
+const expireAttachments = `-- name: ExpireAttachments :execrows
+UPDATE attachments
+SET status = 'expired', updated_at = now()
+WHERE workspace_id = $1 AND storage_key = ANY($2::text[]) AND status <> 'expired'
+`
+
+type ExpireAttachmentsParams struct {
+	WorkspaceID uuid.UUID
+	StorageKeys []string
+}
+
+// Files past the retention of their channel: the objects are deleted, the
+// rows stay so the conversation shows that a file was there.
+func (q *Queries) ExpireAttachments(ctx context.Context, arg ExpireAttachmentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireAttachments, arg.WorkspaceID, arg.StorageKeys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const fillContact = `-- name: FillContact :exec
+UPDATE contacts
+SET name = CASE WHEN name = '' THEN $1::text ELSE name END,
+    email = COALESCE(email, $2::citext),
+    updated_at = now()
+WHERE workspace_id = $3 AND id = $4
+  AND (name = '' AND $1::text <> '' OR email IS NULL AND $2::citext IS NOT NULL)
+`
+
+type FillContactParams struct {
+	Name        string
+	Email       *string
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// A verified report fills what the contact lacks; it never overwrites
+// what an operator entered.
+func (q *Queries) FillContact(ctx context.Context, arg FillContactParams) error {
+	_, err := q.db.Exec(ctx, fillContact,
+		arg.Name,
+		arg.Email,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	return err
+}
+
 const getIdentity = `-- name: GetIdentity :one
 
 SELECT id, workspace_id, contact_id, channel_id, external_user_id, username, created_at, updated_at FROM contact_identities
@@ -249,6 +332,22 @@ func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (Conta
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const lockExternalID = `-- name: LockExternalID :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))
+`
+
+type LockExternalIDParams struct {
+	WorkspaceID string
+	ExternalID  string
+}
+
+// Serialises the first reports of one verified user, so they find one
+// contact instead of creating two.
+func (q *Queries) LockExternalID(ctx context.Context, arg LockExternalIDParams) error {
+	_, err := q.db.Exec(ctx, lockExternalID, arg.WorkspaceID, arg.ExternalID)
+	return err
 }
 
 const lockOpenThread = `-- name: LockOpenThread :one
@@ -311,6 +410,34 @@ func (q *Queries) OpenThreadExists(ctx context.Context, arg OpenThreadExistsPara
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const threadMessageConversation = `-- name: ThreadMessageConversation :one
+SELECT m.conversation_id FROM messages m
+JOIN conversations c ON c.workspace_id = m.workspace_id AND c.id = m.conversation_id
+WHERE c.workspace_id = $1 AND c.channel_id = $2 AND c.external_thread_id = $3
+  AND m.external_id = $4
+LIMIT 1
+`
+
+type ThreadMessageConversationParams struct {
+	WorkspaceID      uuid.UUID
+	ChannelID        *uuid.UUID
+	ExternalThreadID *string
+	ExternalID       *string
+}
+
+// The conversation that holds a message of the chat (a retried report).
+func (q *Queries) ThreadMessageConversation(ctx context.Context, arg ThreadMessageConversationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, threadMessageConversation,
+		arg.WorkspaceID,
+		arg.ChannelID,
+		arg.ExternalThreadID,
+		arg.ExternalID,
+	)
+	var conversation_id uuid.UUID
+	err := row.Scan(&conversation_id)
+	return conversation_id, err
 }
 
 const threadMessageExists = `-- name: ThreadMessageExists :one

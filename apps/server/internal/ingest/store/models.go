@@ -28,6 +28,11 @@ type AppReport struct {
 	TotalSize         int64
 	CreatedAt         time.Time
 	SubmittedAt       *time.Time
+	RetentionDays     int16
+	ConversationID    *uuid.UUID
+	ProcessedAt       *time.Time
+	FilesExpireAt     *time.Time
+	FilesExpiredAt    *time.Time
 }
 
 type AppReportFile struct {

@@ -12,8 +12,47 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteExpiredReport = `-- name: DeleteExpiredReport :execrows
+DELETE FROM app_reports
+WHERE workspace_id = $1 AND id = $2 AND status = 'expired'
+`
+
+type DeleteExpiredReportParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) DeleteExpiredReport(ctx context.Context, arg DeleteExpiredReportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredReport, arg.WorkspaceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const expireReport = `-- name: ExpireReport :execrows
+UPDATE app_reports
+SET status = 'expired'
+WHERE workspace_id = $1 AND id = $2 AND status = 'uploading' AND created_at < $3
+`
+
+type ExpireReportParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	Before      time.Time
+}
+
+// An unfinished report can no longer be completed.
+func (q *Queries) ExpireReport(ctx context.Context, arg ExpireReportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireReport, arg.WorkspaceID, arg.ID, arg.Before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getReport = `-- name: GetReport :one
-SELECT id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at FROM app_reports
+SELECT id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at, retention_days, conversation_id, processed_at, files_expire_at, files_expired_at FROM app_reports
 WHERE workspace_id = $1 AND channel_id = $2 AND id = $3
 `
 
@@ -44,12 +83,17 @@ func (q *Queries) GetReport(ctx context.Context, arg GetReportParams) (AppReport
 		&i.TotalSize,
 		&i.CreatedAt,
 		&i.SubmittedAt,
+		&i.RetentionDays,
+		&i.ConversationID,
+		&i.ProcessedAt,
+		&i.FilesExpireAt,
+		&i.FilesExpiredAt,
 	)
 	return i, err
 }
 
 const getReportByIdempotencyKey = `-- name: GetReportByIdempotencyKey :one
-SELECT id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at FROM app_reports
+SELECT id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at, retention_days, conversation_id, processed_at, files_expire_at, files_expired_at FROM app_reports
 WHERE workspace_id = $1 AND channel_id = $2 AND idempotency_key = $3
 `
 
@@ -80,6 +124,52 @@ func (q *Queries) GetReportByIdempotencyKey(ctx context.Context, arg GetReportBy
 		&i.TotalSize,
 		&i.CreatedAt,
 		&i.SubmittedAt,
+		&i.RetentionDays,
+		&i.ConversationID,
+		&i.ProcessedAt,
+		&i.FilesExpireAt,
+		&i.FilesExpiredAt,
+	)
+	return i, err
+}
+
+const getReportForProcessing = `-- name: GetReportForProcessing :one
+SELECT id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at, retention_days, conversation_id, processed_at, files_expire_at, files_expired_at FROM app_reports
+WHERE workspace_id = $1 AND id = $2
+FOR UPDATE
+`
+
+type GetReportForProcessingParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) GetReportForProcessing(ctx context.Context, arg GetReportForProcessingParams) (AppReport, error) {
+	row := q.db.QueryRow(ctx, getReportForProcessing, arg.WorkspaceID, arg.ID)
+	var i AppReport
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ChannelID,
+		&i.IngestKeyID,
+		&i.Status,
+		&i.TokenHash,
+		&i.IdempotencyKey,
+		&i.RequestHash,
+		&i.Message,
+		&i.ContactExternalID,
+		&i.ContactEmail,
+		&i.ContactName,
+		&i.ContactVerified,
+		&i.App,
+		&i.TotalSize,
+		&i.CreatedAt,
+		&i.SubmittedAt,
+		&i.RetentionDays,
+		&i.ConversationID,
+		&i.ProcessedAt,
+		&i.FilesExpireAt,
+		&i.FilesExpiredAt,
 	)
 	return i, err
 }
@@ -87,9 +177,9 @@ func (q *Queries) GetReportByIdempotencyKey(ctx context.Context, arg GetReportBy
 const insertReport = `-- name: InsertReport :one
 INSERT INTO app_reports (
     id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message,
-    contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at
-) VALUES ($1, $2, $3, $4, 'uploading', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-RETURNING id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at
+    contact_external_id, contact_email, contact_name, contact_verified, app, total_size, retention_days, created_at
+) VALUES ($1, $2, $3, $4, 'uploading', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING id, workspace_id, channel_id, ingest_key_id, status, token_hash, idempotency_key, request_hash, message, contact_external_id, contact_email, contact_name, contact_verified, app, total_size, created_at, submitted_at, retention_days, conversation_id, processed_at, files_expire_at, files_expired_at
 `
 
 type InsertReportParams struct {
@@ -107,6 +197,7 @@ type InsertReportParams struct {
 	ContactVerified   bool
 	App               []byte
 	TotalSize         int64
+	RetentionDays     int16
 	CreatedAt         time.Time
 }
 
@@ -126,6 +217,7 @@ func (q *Queries) InsertReport(ctx context.Context, arg InsertReportParams) (App
 		arg.ContactVerified,
 		arg.App,
 		arg.TotalSize,
+		arg.RetentionDays,
 		arg.CreatedAt,
 	)
 	var i AppReport
@@ -147,6 +239,11 @@ func (q *Queries) InsertReport(ctx context.Context, arg InsertReportParams) (App
 		&i.TotalSize,
 		&i.CreatedAt,
 		&i.SubmittedAt,
+		&i.RetentionDays,
+		&i.ConversationID,
+		&i.ProcessedAt,
+		&i.FilesExpireAt,
+		&i.FilesExpiredAt,
 	)
 	return i, err
 }
@@ -194,6 +291,54 @@ func (q *Queries) InsertReportFile(ctx context.Context, arg InsertReportFilePara
 		&i.Sha256,
 	)
 	return i, err
+}
+
+const markFilesExpired = `-- name: MarkFilesExpired :execrows
+UPDATE app_reports
+SET files_expired_at = $1
+WHERE workspace_id = $2 AND id = $3 AND status = 'processed' AND files_expired_at IS NULL
+`
+
+type MarkFilesExpiredParams struct {
+	ExpiredAt   *time.Time
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) MarkFilesExpired(ctx context.Context, arg MarkFilesExpiredParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markFilesExpired, arg.ExpiredAt, arg.WorkspaceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markProcessed = `-- name: MarkProcessed :execrows
+UPDATE app_reports
+SET status = 'processed', conversation_id = $1, processed_at = $2, files_expire_at = $3
+WHERE workspace_id = $4 AND id = $5 AND status = 'submitted'
+`
+
+type MarkProcessedParams struct {
+	ConversationID *uuid.UUID
+	ProcessedAt    *time.Time
+	FilesExpireAt  *time.Time
+	WorkspaceID    uuid.UUID
+	ID             uuid.UUID
+}
+
+func (q *Queries) MarkProcessed(ctx context.Context, arg MarkProcessedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markProcessed,
+		arg.ConversationID,
+		arg.ProcessedAt,
+		arg.FilesExpireAt,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const replaceReportToken = `-- name: ReplaceReportToken :execrows
@@ -258,6 +403,43 @@ func (q *Queries) ReportFiles(ctx context.Context, arg ReportFilesParams) ([]App
 	return items, nil
 }
 
+const reportsWithExpiredFiles = `-- name: ReportsWithExpiredFiles :many
+SELECT workspace_id, id FROM app_reports
+WHERE status = 'processed' AND files_expired_at IS NULL AND files_expire_at < $1
+ORDER BY files_expire_at
+LIMIT $2
+`
+
+type ReportsWithExpiredFilesParams struct {
+	Now *time.Time
+	Lim int32
+}
+
+type ReportsWithExpiredFilesRow struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) ReportsWithExpiredFiles(ctx context.Context, arg ReportsWithExpiredFilesParams) ([]ReportsWithExpiredFilesRow, error) {
+	rows, err := q.db.Query(ctx, reportsWithExpiredFiles, arg.Now, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportsWithExpiredFilesRow
+	for rows.Next() {
+		var i ReportsWithExpiredFilesRow
+		if err := rows.Scan(&i.WorkspaceID, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const submitReport = `-- name: SubmitReport :execrows
 UPDATE app_reports
 SET status = 'submitted', submitted_at = $3
@@ -276,4 +458,43 @@ func (q *Queries) SubmitReport(ctx context.Context, arg SubmitReportParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const unfinishedReports = `-- name: UnfinishedReports :many
+
+SELECT workspace_id, id FROM app_reports
+WHERE status IN ('uploading', 'expired') AND created_at < $1
+ORDER BY created_at
+LIMIT $2
+`
+
+type UnfinishedReportsParams struct {
+	Before time.Time
+	Lim    int32
+}
+
+type UnfinishedReportsRow struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// Queries of the system role (policy system_cleanup): ids only.
+func (q *Queries) UnfinishedReports(ctx context.Context, arg UnfinishedReportsParams) ([]UnfinishedReportsRow, error) {
+	rows, err := q.db.Query(ctx, unfinishedReports, arg.Before, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UnfinishedReportsRow
+	for rows.Next() {
+		var i UnfinishedReportsRow
+		if err := rows.Scan(&i.WorkspaceID, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
