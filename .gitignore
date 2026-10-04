@@ -5,6 +5,9 @@ dist/
 *.out
 coverage.*
 
+# Local files of the fs storage driver (TOLKOVO_STORAGE_FS_ROOT default)
+/apps/server/data/
+
 # Node
 node_modules/
 .pnpm-store/

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 // Pinger reports whether a dependency is reachable.
@@ -22,6 +21,8 @@ type Deps struct {
 	Log     *slog.Logger
 	DB      Pinger
 	Version string
+	// Files serves signed links of the fs storage driver; nil with s3.
+	Files LocalFiles
 }
 
 // NewRouter builds the root handler.
@@ -30,12 +31,15 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(requestID)
 	r.Use(requestLogger(d.Log))
 	r.Use(recoverer(d.Log))
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(requestTimeout(30 * time.Second))
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": d.Version})
 	})
 	r.Get("/readyz", readyz(d.DB))
+	if d.Files != nil {
+		mountFiles(r, d.Files, d.Log)
+	}
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})

@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/migrate"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 )
 
 // version is set at build time: -ldflags "-X main.version=v0.1.0".
@@ -94,6 +97,12 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 	}
 	log := logging.New(stderr, cfg.LogLevel, cfg.LogFormat)
 
+	store, closeStore, err := openStorage(cfg, log)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	pool, err := db.Open(ctx, cfg.DatabaseURL.Reveal())
 	if err != nil {
 		return err
@@ -112,7 +121,7 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 		}
 	}
 	if runHTTP {
-		startHTTP(gctx, g, cfg, log, pool, *role)
+		startHTTP(gctx, g, cfg, log, pool, store, *role)
 	}
 	log.Info("started", "role", *role, "version", version, "env", cfg.Env)
 
@@ -161,10 +170,16 @@ func startWorker(ctx context.Context, g *errgroup.Group, cfg config.Config, log 
 }
 
 // startHTTP serves the API until ctx is done, then drains connections.
-func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool *db.DB, role string) {
+func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage, role string) {
+	deps := api.Deps{Log: log, DB: pool, Version: version}
+	// Only the fs driver needs the api to carry file bytes; s3 clients go
+	// straight to the bucket.
+	if fsStore, ok := store.(*storage.FS); ok {
+		deps.Files = fsStore
+	}
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.NewRouter(api.Deps{Log: log, DB: pool, Version: version}),
+		Handler:           api.NewRouter(deps),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -188,6 +203,40 @@ func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *s
 		}
 		return nil
 	})
+}
+
+// openStorage builds the file storage driver from the configuration
+// (docs/adr/0009-file-storage.md). It makes no network calls.
+func openStorage(cfg config.Config, log *slog.Logger) (storage.Storage, func(), error) {
+	sc := cfg.Storage
+	if sc.Driver == config.StorageS3 {
+		s, err := storage.NewS3(storage.S3Options{
+			Endpoint: sc.S3Endpoint, Region: sc.S3Region, Bucket: sc.S3Bucket,
+			AccessKeyID: sc.S3AccessKeyID, SecretAccessKey: sc.S3SecretAccessKey.Reveal(),
+			UsePathStyle: sc.S3PathStyle, TTL: sc.URLTTL,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return s, func() {}, nil
+	}
+	key := []byte(sc.SigningKey.Reveal())
+	if len(key) == 0 {
+		// Config allows this only in development (it fails in production).
+		key = make([]byte, storage.MinSigningKeyLen)
+		if _, err := rand.Read(key); err != nil {
+			return nil, nil, fmt.Errorf("generate storage signing key: %w", err)
+		}
+		log.Warn("TOLKOVO_STORAGE_SIGNING_KEY is not set: using a random key, file links stop working after restart")
+	}
+	s, err := storage.NewFS(storage.FSOptions{
+		Root: sc.FSRoot, LinkBaseURL: strings.TrimRight(cfg.PublicURL, "/") + api.FilesPath,
+		SigningKey: key, TTL: sc.URLTTL,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return s, func() { _ = s.Close() }, nil
 }
 
 func runMigrate(ctx context.Context, args []string, stdout io.Writer) error {
