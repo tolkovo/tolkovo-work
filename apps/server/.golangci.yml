@@ -35,6 +35,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -57,9 +59,11 @@ linters:
               desc: realtime relays outbox events, it does not call business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels
               desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
@@ -105,6 +109,18 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels/store
               desc: use the channels facade, not its store
+        no-foreign-ingest-store:
+          files: ["!**/internal/ingest/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest/store
+              desc: use the ingest facade, not its store
+        # Reports flow from ingest into channels (keys) and, in AP-03,
+        # conversations; neither knows ingest.
+        ingest-is-a-leaf:
+          files: ["**/internal/channels/**", "**/internal/conversations/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest
+              desc: ingest calls channels and conversations, not the other way round
         # Inbound messages flow from channels into conversations (T-02), never back.
         conversations-without-channels:
           files: ["**/internal/conversations/**"]

@@ -56,6 +56,15 @@ tags:
       token, or a personal Telegram account signed in by phone over MTProto. Secrets (the
       token, the account session) are encrypted and never returned. Requires
       `channels.view` to read and `channels.manage` to change (owner, admin).
+  - name: ingest
+    description: |
+      Problem reports from company apps (docs/02 §11.6). Authenticated by an ingest key of
+      an app channel in `Authorization: Bearer tk_ingest_…`, not by a session; call these
+      from the app's main process or backend (no CORS yet). The key only creates
+      reports. Create the report, upload every file with exactly the returned method, URL
+      and headers, then complete it. Rates: 10 reports a minute per IP and 60 an hour per
+      key; the channel's daily quota of reports and megabytes. Errors carry a `code`;
+      `429` carries `Retry-After`.
 
 paths:
   /auth/register:
@@ -989,6 +998,102 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /ingest/reports:
+    post:
+      tags: [ingest]
+      operationId: createIngestReport
+      summary: Register a problem report and get upload links for its files
+      description: |
+        The body is limited by the channel's settings: up to 5 files (`413 too_many_files`),
+        a file up to 25 MB (`413 file_too_large`), up to 50 MB a report (`413
+        report_too_large`); allowed types are text, CSV, JSON, XML, ZIP, GZIP, PNG and JPEG
+        (`415 unsupported_type`). Each upload link lives 15 minutes and fixes the size, the
+        type and the SHA-256. `report_token` is shown once: send it to complete the report
+        and, later, to read the replies.
+
+        With `contact.identity_token` = hex HMAC-SHA256 of `contact.external_id` under the
+        channel's identity secret, signed by the company's backend, the contact is
+        verified. A missing or wrong token makes an unverified contact, never an error:
+        `contact_verified` says which.
+
+        A retry with the same `Idempotency-Key` and body, before the report is completed,
+        answers `200` with the same report, a new token (the first stops working) and fresh
+        links.
+      security:
+        - ingestKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngestReportRequest' }
+      responses:
+        '200':
+          description: A retry with the same `Idempotency-Key` and body.
+          headers:
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestReportCreated' }
+        '201':
+          description: Registered; upload the files next.
+          headers:
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestReportCreated' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/InvalidIngestKey' }
+        '409':
+          description: '`report_submitted`: the `Idempotency-Key` names a report already completed.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413': { $ref: '#/components/responses/ReportTooLarge' }
+        '415':
+          description: '`unsupported_type`: a file type is not allowed.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`idempotency_key_reused`: the key was used with a different body.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/IngestLimited' }
+
+  /ingest/reports/{id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/ReportToken'
+    post:
+      tags: [ingest]
+      operationId: completeIngestReport
+      summary: Finish a report after its files are uploaded
+      description: |
+        Checks that every file is in storage with its declared size and submits the report;
+        it then becomes a conversation. Completing twice answers `202` again. Another
+        channel's report or a wrong token answers `404`. Rate: 30 a minute per IP.
+      security:
+        - ingestKey: []
+      responses:
+        '202':
+          description: Submitted.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/InvalidIngestKey' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`upload_incomplete`: a file is missing or of another size; `detail` names it.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/IngestLimited' }
+
   /files/{key}:
     parameters:
       - name: key
@@ -1594,6 +1699,12 @@ paths:
 
 components:
   parameters:
+    ReportToken:
+      name: X-Report-Token
+      in: header
+      required: true
+      description: '`report_token` from the answer that created the report.'
+      schema: { type: string, minLength: 1, maxLength: 128 }
     Id:
       name: id
       in: path
@@ -1640,6 +1751,10 @@ components:
       schema: { type: string, minLength: 1, maxLength: 255 }
 
   securitySchemes:
+    ingestKey:
+      type: http
+      scheme: bearer
+      description: An ingest key of an app channel, `tk_ingest_…` (docs/02 §11.6).
     sessionCookie:
       type: apiKey
       in: cookie
@@ -1652,6 +1767,15 @@ components:
       description: '`csrf_token` of the current session. Required on every unsafe method.'
 
   headers:
+    RateLimitLimit:
+      description: Reports allowed per hour for the ingest key.
+      schema: { type: integer }
+    RateLimitRemaining:
+      description: Reports left in the current hour.
+      schema: { type: integer }
+    RateLimitReset:
+      description: Seconds until the hour starts over.
+      schema: { type: integer }
     SetSessionCookie:
       description: The session cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` outside development).
       schema: { type: string }
@@ -1702,6 +1826,30 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     TooManyRequests:
       description: '`too_many_requests`; see `Retry-After`.'
+      headers:
+        Retry-After:
+          description: Seconds until the next attempt is allowed.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    InvalidIngestKey:
+      description: '`invalid_key`: the ingest key is missing, malformed, unknown or revoked.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ReportTooLarge:
+      description: |
+        `too_many_files`, `file_too_large` or `report_too_large`: the report breaks a limit
+        of the channel; `detail` gives it.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IngestLimited:
+      description: |
+        `too_many_requests` (a rate per IP or key) or `daily_quota_exceeded` (the channel's
+        reports or megabytes for the UTC day).
       headers:
         Retry-After:
           description: Seconds until the next attempt is allowed.
@@ -2655,6 +2803,79 @@ components:
         channel: { $ref: '#/components/schemas/Channel' }
         ingest_key: { $ref: '#/components/schemas/IngestKeyCreated' }
         identity_secret: { type: string, description: See `IdentitySecret`. }
+
+    IngestReportRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 10000, description: What the user wrote. }
+        contact: { $ref: '#/components/schemas/IngestContact' }
+        app: { $ref: '#/components/schemas/IngestApp' }
+        files:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/IngestFile' }
+
+    IngestContact:
+      type: object
+      additionalProperties: false
+      description: Who the app user says they are. Every field is optional.
+      properties:
+        external_id: { type: string, maxLength: 255, description: The user's id in the company's system. }
+        email: { type: string, maxLength: 254 }
+        name: { type: string, maxLength: 120 }
+        identity_token:
+          type: string
+          maxLength: 128
+          description: Hex HMAC-SHA256 of `external_id` under the channel's identity secret.
+
+    IngestApp:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        version: { type: string, maxLength: 50 }
+        os: { type: string, maxLength: 50 }
+        os_version: { type: string, maxLength: 100 }
+        locale: { type: string, maxLength: 35 }
+        extra:
+          type: object
+          description: Up to 20 more facts, values up to 500 characters.
+          maxProperties: 20
+          additionalProperties: { type: string, maxLength: 500 }
+
+    IngestFile:
+      type: object
+      additionalProperties: false
+      required: [name, size, content_type, sha256]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 1024 }
+        size: { type: integer, format: int64, minimum: 1 }
+        content_type: { type: string, maxLength: 255 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: Hex SHA-256 of the file. }
+
+    IngestReportCreated:
+      type: object
+      required: [report_id, report_token, contact_verified, uploads]
+      properties:
+        report_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        report_token: { type: string, description: 'Shown once; send it as `X-Report-Token`.' }
+        contact_verified: { type: boolean }
+        uploads:
+          type: array
+          description: One per file, in the order of `files`.
+          items: { $ref: '#/components/schemas/IngestUpload' }
+
+    IngestUpload:
+      type: object
+      required: [name, upload]
+      properties:
+        name: { type: string }
+        upload: { $ref: '#/components/schemas/SignedRequest' }
 
     RenameChannelRequest:
       type: object

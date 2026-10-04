@@ -59,3 +59,20 @@ func TestAllow_ParallelBurstIsLimited(t *testing.T) {
 		t.Fatalf("counter must have a TTL, got %v (%v)", ttl, err)
 	}
 }
+
+func TestHit_ReportsRemainingAndReset(t *testing.T) {
+	c, prefix := rdbtest.New(t)
+	l := ratelimit.New(c, prefix)
+	rule := ratelimit.Rule{Limit: 2, Window: time.Minute}
+	for i, want := range []ratelimit.Result{
+		{Allowed: true, Limit: 2, Remaining: 1},
+		{Allowed: true, Limit: 2, Remaining: 0},
+		{Allowed: false, Limit: 2, Remaining: 0},
+	} {
+		got, err := l.Hit(context.Background(), "h", rule)
+		if err != nil || got.Allowed != want.Allowed || got.Limit != want.Limit || got.Remaining != want.Remaining ||
+			got.Reset <= 0 || got.Reset > rule.Window {
+			t.Fatalf("attempt %d: want %+v, got %+v (%v)", i+1, want, got, err)
+		}
+	}
+}

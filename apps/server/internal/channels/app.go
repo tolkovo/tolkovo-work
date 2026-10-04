@@ -2,12 +2,15 @@ package channels
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +45,14 @@ const (
 
 // ErrTooManyKeys means MaxIngestKeys keys are in use.
 var ErrTooManyKeys = errors.New("channels: too many ingest keys, revoke one first")
+
+// ErrInvalidKey means the ingest key is malformed, unknown, revoked or of a
+// disconnected channel. The ingest API does not say which.
+var ErrInvalidKey = errors.New("channels: invalid ingest key")
+
+// keyTouchEvery is how often last_used_at is rewritten: the panel shows it
+// to the minute, and a write per report would be wasted.
+const keyTouchEvery = time.Minute
 
 // AppLimits are the limits of an app channel, set by the admin within the
 // platform's maximums (docs/02 §11.6).
@@ -296,6 +307,97 @@ func (s *Service) SetAppLimits(ctx context.Context, workspaceID, channelID uuid.
 		return Channel{}, fmt.Errorf("set app limits: %w", err)
 	}
 	return ch, nil
+}
+
+// IngestApp is the app channel an ingest key belongs to.
+type IngestApp struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	KeyID       uuid.UUID
+	Limits      AppLimits
+}
+
+// AuthenticateIngestKey finds the app channel of a key (AP-02). The key
+// names its workspace, so the hash is looked up inside that tenant's
+// transaction; a forged workspace finds nothing. Any failure is
+// ErrInvalidKey.
+func (s *Service) AuthenticateIngestKey(ctx context.Context, key string) (IngestApp, error) {
+	workspaceID, ok := parseIngestKey(key)
+	if !ok {
+		return IngestApp{}, ErrInvalidKey
+	}
+	hash := sha256.Sum256([]byte(key))
+	var out IngestApp
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		row, err := q.GetIngestKeyByHash(ctx, store.GetIngestKeyByHashParams{WorkspaceID: workspaceID, KeyHash: hash[:]})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidKey
+		}
+		if err != nil {
+			return err
+		}
+		var details Details
+		_ = json.Unmarshal(row.Config, &details) // written only by this module
+		out = IngestApp{WorkspaceID: workspaceID, ChannelID: row.ChannelID, KeyID: row.ID, Limits: DefaultAppLimits}
+		if details.AppLimits != nil {
+			out.Limits = *details.AppLimits
+		}
+		now := s.now()
+		if row.LastUsedAt != nil && now.Sub(*row.LastUsedAt) < keyTouchEvery {
+			return nil
+		}
+		return q.TouchIngestKey(ctx, store.TouchIngestKeyParams{WorkspaceID: workspaceID, ID: row.ID, LastUsedAt: &now})
+	})
+	if err != nil {
+		return IngestApp{}, fmt.Errorf("authenticate ingest key: %w", err)
+	}
+	return out, nil
+}
+
+// VerifyIdentity reports whether token is HMAC-SHA256(externalID) under the
+// channel's identity secret, in hex, as the company's backend signs it.
+// Without encryption the secret cannot be read and nothing is verified.
+func (s *Service) VerifyIdentity(ctx context.Context, workspaceID, channelID uuid.UUID, externalID, token string) (bool, error) {
+	// A malformed token is just not a signature: the contact stays unverified.
+	got, decodeErr := hex.DecodeString(token)
+	if decodeErr != nil || len(got) != sha256.Size || externalID == "" || s.opts.Sealer == nil {
+		return false, nil //nolint:nilerr // see above
+	}
+	ch, raw, err := s.load(ctx, workspaceID, channelID)
+	if err != nil {
+		return false, err
+	}
+	var sec appSecret
+	if ch.Type != TypeApp || raw == nil {
+		return false, nil
+	}
+	if err := json.Unmarshal(raw, &sec); err != nil {
+		return false, fmt.Errorf("decode app secret: %w", err)
+	}
+	if sec.IdentitySecret == "" {
+		return false, nil
+	}
+	mac := hmac.New(sha256.New, []byte(sec.IdentitySecret))
+	mac.Write([]byte(externalID))
+	return hmac.Equal(mac.Sum(nil), got), nil
+}
+
+// parseIngestKey checks the format and returns the workspace the key names.
+func parseIngestKey(key string) (uuid.UUID, bool) {
+	rest, ok := strings.CutPrefix(key, ingestKeyPrefix)
+	if !ok {
+		return uuid.Nil, false
+	}
+	b, err := base64.RawURLEncoding.Strict().DecodeString(rest)
+	if err != nil || len(b) != 48 {
+		return uuid.Nil, false
+	}
+	ws, err := uuid.FromBytes(b[32:])
+	if err != nil || ws == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return ws, true
 }
 
 // appChannel returns the app channel or ErrNotFound, also for channels of

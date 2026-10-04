@@ -19,6 +19,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
@@ -42,6 +43,8 @@ type Deps struct {
 	Conversations *conversations.Service
 	Notifications *notifications.Service
 	Channels      *channels.Service
+	// Ingest takes reports from company apps; nil leaves its routes answering 404.
+	Ingest *ingest.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -77,6 +80,7 @@ func NewRouter(d Deps) http.Handler {
 
 	srv := &server{
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations, notifications: d.Notifications, channels: d.Channels,
+		ingest:  d.Ingest,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
 	}

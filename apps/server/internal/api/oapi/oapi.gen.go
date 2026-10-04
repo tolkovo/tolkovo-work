@@ -834,6 +834,39 @@ type InboxCounts struct {
 	Unassigned int64 `json:"unassigned"`
 }
 
+// IngestApp defines model for IngestApp.
+type IngestApp struct {
+	// Extra Up to 20 more facts, values up to 500 characters.
+	Extra     *map[string]string `json:"extra,omitempty"`
+	Locale    *string            `json:"locale,omitempty"`
+	Name      *string            `json:"name,omitempty"`
+	Os        *string            `json:"os,omitempty"`
+	OsVersion *string            `json:"os_version,omitempty"`
+	Version   *string            `json:"version,omitempty"`
+}
+
+// IngestContact Who the app user says they are. Every field is optional.
+type IngestContact struct {
+	Email *string `json:"email,omitempty"`
+
+	// ExternalId The user's id in the company's system.
+	ExternalId *string `json:"external_id,omitempty"`
+
+	// IdentityToken Hex HMAC-SHA256 of `external_id` under the channel's identity secret.
+	IdentityToken *string `json:"identity_token,omitempty"`
+	Name          *string `json:"name,omitempty"`
+}
+
+// IngestFile defines model for IngestFile.
+type IngestFile struct {
+	ContentType string `json:"content_type"`
+	Name        string `json:"name"`
+
+	// Sha256 Hex SHA-256 of the file.
+	Sha256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
 // IngestKey defines model for IngestKey.
 type IngestKey struct {
 	CreatedAt  time.Time  `json:"created_at"`
@@ -857,6 +890,36 @@ type IngestKeyCreated struct {
 // IngestKeyList defines model for IngestKeyList.
 type IngestKeyList struct {
 	Items []IngestKey `json:"items"`
+}
+
+// IngestReportCreated defines model for IngestReportCreated.
+type IngestReportCreated struct {
+	ContactVerified bool      `json:"contact_verified"`
+	ReportId        uuid.UUID `json:"report_id"`
+
+	// ReportToken Shown once; send it as `X-Report-Token`.
+	ReportToken string `json:"report_token"`
+
+	// Uploads One per file, in the order of `files`.
+	Uploads []IngestUpload `json:"uploads"`
+}
+
+// IngestReportRequest defines model for IngestReportRequest.
+type IngestReportRequest struct {
+	App *IngestApp `json:"app,omitempty"`
+
+	// Contact Who the app user says they are. Every field is optional.
+	Contact *IngestContact `json:"contact,omitempty"`
+	Files   *[]IngestFile  `json:"files,omitempty"`
+
+	// Message What the user wrote.
+	Message string `json:"message"`
+}
+
+// IngestUpload defines model for IngestUpload.
+type IngestUpload struct {
+	Name   string        `json:"name"`
+	Upload SignedRequest `json:"upload"`
 }
 
 // Invitation defines model for Invitation.
@@ -1256,6 +1319,9 @@ type Limit = int
 // MessageId defines model for MessageId.
 type MessageId = uuid.UUID
 
+// ReportToken defines model for ReportToken.
+type ReportToken = string
+
 // ChannelExists RFC 9457 problem details.
 type ChannelExists = Problem
 
@@ -1271,8 +1337,14 @@ type EmailDisabled = Problem
 // Forbidden RFC 9457 problem details.
 type Forbidden = Problem
 
+// IngestLimited RFC 9457 problem details.
+type IngestLimited = Problem
+
 // Invalid RFC 9457 problem details.
 type Invalid = Problem
+
+// InvalidIngestKey RFC 9457 problem details.
+type InvalidIngestKey = Problem
 
 // InvalidToken RFC 9457 problem details.
 type InvalidToken = Problem
@@ -1282,6 +1354,9 @@ type LoginStep = Problem
 
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
+
+// ReportTooLarge RFC 9457 problem details.
+type ReportTooLarge = Problem
 
 // TelegramLoginRejected RFC 9457 problem details.
 type TelegramLoginRejected = Problem
@@ -1337,6 +1412,19 @@ type PostMessageParams struct {
 	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CreateIngestReportParams defines parameters for CreateIngestReport.
+type CreateIngestReportParams struct {
+	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// reused key with a different body answers `422`.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// CompleteIngestReportParams defines parameters for CompleteIngestReport.
+type CompleteIngestReportParams struct {
+	// XReportToken `report_token` from the answer that created the report.
+	XReportToken ReportToken `json:"X-Report-Token"`
 }
 
 // VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
@@ -1413,6 +1501,9 @@ type ChangeConversationStatusJSONRequestBody = ChangeStatusRequest
 
 // SetConversationTagsJSONRequestBody defines body for SetConversationTags for application/json ContentType.
 type SetConversationTagsJSONRequestBody = SetTagsRequest
+
+// CreateIngestReportJSONRequestBody defines body for CreateIngestReport for application/json ContentType.
+type CreateIngestReportJSONRequestBody = IngestReportRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
@@ -1551,6 +1642,12 @@ type ServerInterface interface {
 	// SetConversationTags Replace the tags of the conversation
 	// (PUT /conversations/{id}/tags)
 	SetConversationTags(w http.ResponseWriter, r *http.Request, id Id)
+	// CreateIngestReport Register a problem report and get upload links for its files
+	// (POST /ingest/reports)
+	CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams)
+	// CompleteIngestReport Finish a report after its files are uploaded
+	// (POST /ingest/reports/{id}/complete)
+	CompleteIngestReport(w http.ResponseWriter, r *http.Request, id Id, params CompleteIngestReportParams)
 	// ListInvitations Open invitations of the current workspace
 	// (GET /invitations)
 	ListInvitations(w http.ResponseWriter, r *http.Request)
@@ -1842,6 +1939,18 @@ func (_ Unimplemented) ChangeConversationStatus(w http.ResponseWriter, r *http.R
 // SetConversationTags Replace the tags of the conversation
 // (PUT /conversations/{id}/tags)
 func (_ Unimplemented) SetConversationTags(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateIngestReport Register a problem report and get upload links for its files
+// (POST /ingest/reports)
+func (_ Unimplemented) CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CompleteIngestReport Finish a report after its files are uploaded
+// (POST /ingest/reports/{id}/complete)
+func (_ Unimplemented) CompleteIngestReport(w http.ResponseWriter, r *http.Request, id Id, params CompleteIngestReportParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2934,6 +3043,101 @@ func (siw *ServerInterfaceWrapper) SetConversationTags(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// CreateIngestReport operation middleware
+func (siw *ServerInterfaceWrapper) CreateIngestReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateIngestReportParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateIngestReport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteIngestReport operation middleware
+func (siw *ServerInterfaceWrapper) CompleteIngestReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteIngestReportParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Report-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Report-Token")]; found {
+		var XReportToken ReportToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Report-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Report-Token", valueList[0], &XReportToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Report-Token", Err: err})
+			return
+		}
+
+		params.XReportToken = XReportToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Report-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Report-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteIngestReport(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListInvitations operation middleware
 func (siw *ServerInterfaceWrapper) ListInvitations(w http.ResponseWriter, r *http.Request) {
 
@@ -3448,6 +3652,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/channels/{id}/app-limits", wrapper.SetAppLimits)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/ingest/reports", wrapper.CreateIngestReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/ingest/reports/{id}/complete", wrapper.CompleteIngestReport)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

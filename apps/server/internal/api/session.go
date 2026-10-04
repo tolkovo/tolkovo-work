@@ -33,6 +33,9 @@ var publicOperations = map[string]bool{
 	"POST /api/v1/auth/password/forgot":    true,
 	"POST /api/v1/auth/password/reset":     true,
 	"POST /api/v1/auth/email/verify":       true,
+	// Apps authenticate with an ingest key, checked by the handler.
+	"POST /api/v1/ingest/reports":               true,
+	"POST /api/v1/ingest/reports/{id}/complete": true,
 }
 
 // sessionCookies writes and reads the session cookie.

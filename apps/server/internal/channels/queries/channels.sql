@@ -141,3 +141,16 @@ UPDATE channels
 SET config = $3, updated_at = $4
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 RETURNING *;
+
+-- name: GetIngestKeyByHash :one
+-- A key that works: not revoked, of an app channel that is not disconnected.
+SELECT k.id, k.channel_id, k.last_used_at, c.config
+FROM ingest_keys k
+JOIN channels c ON c.workspace_id = k.workspace_id AND c.id = k.channel_id
+WHERE k.workspace_id = $1 AND k.key_hash = $2 AND k.revoked_at IS NULL
+  AND c.type = 'app' AND c.deleted_at IS NULL;
+
+-- name: TouchIngestKey :exec
+UPDATE ingest_keys
+SET last_used_at = $3
+WHERE workspace_id = $1 AND id = $2;

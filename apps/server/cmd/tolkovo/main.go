@@ -31,6 +31,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
@@ -315,6 +316,8 @@ func apiDeps(
 		Conversations: convs,
 		Notifications: notifs,
 		Channels:      chans,
+		// Reports from company apps (AP-02): keys come from the channels module.
+		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient}),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

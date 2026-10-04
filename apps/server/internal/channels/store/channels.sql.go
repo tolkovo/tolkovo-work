@@ -183,6 +183,39 @@ func (q *Queries) GetChannelForUpdate(ctx context.Context, arg GetChannelForUpda
 	return i, err
 }
 
+const getIngestKeyByHash = `-- name: GetIngestKeyByHash :one
+SELECT k.id, k.channel_id, k.last_used_at, c.config
+FROM ingest_keys k
+JOIN channels c ON c.workspace_id = k.workspace_id AND c.id = k.channel_id
+WHERE k.workspace_id = $1 AND k.key_hash = $2 AND k.revoked_at IS NULL
+  AND c.type = 'app' AND c.deleted_at IS NULL
+`
+
+type GetIngestKeyByHashParams struct {
+	WorkspaceID uuid.UUID
+	KeyHash     []byte
+}
+
+type GetIngestKeyByHashRow struct {
+	ID         uuid.UUID
+	ChannelID  uuid.UUID
+	LastUsedAt *time.Time
+	Config     []byte
+}
+
+// A key that works: not revoked, of an app channel that is not disconnected.
+func (q *Queries) GetIngestKeyByHash(ctx context.Context, arg GetIngestKeyByHashParams) (GetIngestKeyByHashRow, error) {
+	row := q.db.QueryRow(ctx, getIngestKeyByHash, arg.WorkspaceID, arg.KeyHash)
+	var i GetIngestKeyByHashRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelID,
+		&i.LastUsedAt,
+		&i.Config,
+	)
+	return i, err
+}
+
 const getPeer = `-- name: GetPeer :one
 SELECT access_hash FROM channel_peers
 WHERE workspace_id = $1 AND channel_id = $2 AND user_id = $3
@@ -699,6 +732,23 @@ type SoftDeleteChannelParams struct {
 
 func (q *Queries) SoftDeleteChannel(ctx context.Context, arg SoftDeleteChannelParams) error {
 	_, err := q.db.Exec(ctx, softDeleteChannel, arg.WorkspaceID, arg.ID, arg.DeletedAt)
+	return err
+}
+
+const touchIngestKey = `-- name: TouchIngestKey :exec
+UPDATE ingest_keys
+SET last_used_at = $3
+WHERE workspace_id = $1 AND id = $2
+`
+
+type TouchIngestKeyParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	LastUsedAt  *time.Time
+}
+
+func (q *Queries) TouchIngestKey(ctx context.Context, arg TouchIngestKeyParams) error {
+	_, err := q.db.Exec(ctx, touchIngestKey, arg.WorkspaceID, arg.ID, arg.LastUsedAt)
 	return err
 }
 

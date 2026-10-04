@@ -101,6 +101,30 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
+    queries: internal/ingest/queries
+    gen:
+      go:
+        package: store
+        out: internal/ingest/store
+        sql_package: pgx/v5
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: text
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
     queries: internal/platform/outbox/queries
     gen:
       go:

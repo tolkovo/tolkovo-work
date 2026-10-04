@@ -760,6 +760,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ingest/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a problem report and get upload links for its files
+         * @description The body is limited by the channel's settings: up to 5 files (`413 too_many_files`),
+         *     a file up to 25 MB (`413 file_too_large`), up to 50 MB a report (`413
+         *     report_too_large`); allowed types are text, CSV, JSON, XML, ZIP, GZIP, PNG and JPEG
+         *     (`415 unsupported_type`). Each upload link lives 15 minutes and fixes the size, the
+         *     type and the SHA-256. `report_token` is shown once: send it to complete the report
+         *     and, later, to read the replies.
+         *
+         *     With `contact.identity_token` = hex HMAC-SHA256 of `contact.external_id` under the
+         *     channel's identity secret, signed by the company's backend, the contact is
+         *     verified. A missing or wrong token makes an unverified contact, never an error:
+         *     `contact_verified` says which.
+         *
+         *     A retry with the same `Idempotency-Key` and body, before the report is completed,
+         *     answers `200` with the same report, a new token (the first stops working) and fresh
+         *     links.
+         */
+        post: operations["createIngestReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ingest/reports/{id}/complete": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `report_token` from the answer that created the report. */
+                "X-Report-Token": components["parameters"]["ReportToken"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish a report after its files are uploaded
+         * @description Checks that every file is in storage with its declared size and submits the report;
+         *     it then becomes a conversation. Completing twice answers `202` again. Another
+         *     channel's report or a wrong token answers `404`. Rate: 30 a minute per IP.
+         */
+        post: operations["completeIngestReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/{key}": {
         parameters: {
             query: {
@@ -1735,6 +1796,53 @@ export interface components {
             /** @description See `IdentitySecret`. */
             identity_secret: string;
         };
+        IngestReportRequest: {
+            /** @description What the user wrote. */
+            message: string;
+            contact?: components["schemas"]["IngestContact"];
+            app?: components["schemas"]["IngestApp"];
+            files?: components["schemas"]["IngestFile"][];
+        };
+        /** @description Who the app user says they are. Every field is optional. */
+        IngestContact: {
+            /** @description The user's id in the company's system. */
+            external_id?: string;
+            email?: string;
+            name?: string;
+            /** @description Hex HMAC-SHA256 of `external_id` under the channel's identity secret. */
+            identity_token?: string;
+        };
+        IngestApp: {
+            name?: string;
+            version?: string;
+            os?: string;
+            os_version?: string;
+            locale?: string;
+            /** @description Up to 20 more facts, values up to 500 characters. */
+            extra?: {
+                [key: string]: string;
+            };
+        };
+        IngestFile: {
+            name: string;
+            /** Format: int64 */
+            size: number;
+            content_type: string;
+            /** @description Hex SHA-256 of the file. */
+            sha256: string;
+        };
+        IngestReportCreated: {
+            report_id: string;
+            /** @description Shown once; send it as `X-Report-Token`. */
+            report_token: string;
+            contact_verified: boolean;
+            /** @description One per file, in the order of `files`. */
+            uploads: components["schemas"]["IngestUpload"][];
+        };
+        IngestUpload: {
+            name: string;
+            upload: components["schemas"]["SignedRequest"];
+        };
         RenameChannelRequest: {
             name: string;
         };
@@ -1827,6 +1935,41 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description `invalid_key`: the ingest key is missing, malformed, unknown or revoked. */
+        InvalidIngestKey: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `too_many_files`, `file_too_large` or `report_too_large`: the report breaks a limit
+         *     of the channel; `detail` gives it.
+         */
+        ReportTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `too_many_requests` (a rate per IP or key) or `daily_quota_exceeded` (the channel's
+         *     reports or megabytes for the UTC day).
+         */
+        IngestLimited: {
+            headers: {
+                /** @description Seconds until the next attempt is allowed. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description `channel_exists`: this bot or account is a channel already, here or in another workspace. */
         ChannelExists: {
             headers: {
@@ -1885,6 +2028,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description `report_token` from the answer that created the report. */
+        ReportToken: string;
         Id: string;
         MessageId: string;
         KeyId: string;
@@ -1900,6 +2045,12 @@ export interface components {
     };
     requestBodies: never;
     headers: {
+        /** @description Reports allowed per hour for the ingest key. */
+        RateLimitLimit: number;
+        /** @description Reports left in the current hour. */
+        RateLimitRemaining: number;
+        /** @description Seconds until the hour starts over. */
+        RateLimitReset: number;
         /** @description The session cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` outside development). */
         SetSessionCookie: string;
     };
@@ -2967,6 +3118,118 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    createIngestReport: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 *     reused key with a different body answers `422`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestReportRequest"];
+            };
+        };
+        responses: {
+            /** @description A retry with the same `Idempotency-Key` and body. */
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
+                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestReportCreated"];
+                };
+            };
+            /** @description Registered; upload the files next. */
+            201: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["RateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["RateLimitRemaining"];
+                    "RateLimit-Reset": components["headers"]["RateLimitReset"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestReportCreated"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["InvalidIngestKey"];
+            /** @description `report_submitted`: the `Idempotency-Key` names a report already completed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["ReportTooLarge"];
+            /** @description `unsupported_type`: a file type is not allowed. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `idempotency_key_reused`: the key was used with a different body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["IngestLimited"];
+        };
+    };
+    completeIngestReport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `report_token` from the answer that created the report. */
+                "X-Report-Token": components["parameters"]["ReportToken"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submitted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["InvalidIngestKey"];
+            404: components["responses"]["NotFound"];
+            /** @description `upload_incomplete`: a file is missing or of another size; `detail` names it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["IngestLimited"];
         };
     };
     downloadFile: {
