@@ -165,4 +165,25 @@ export interface Dict {
     cols: ReadonlyArray<{ title: string; links: ReadonlyArray<{ label: string; href: string }> }>;
     bottom: string;
   };
+  /** Pages opened from the confirmation email: /waitlist/confirm/ and /waitlist/unsubscribe/ */
+  waitlistAction: {
+    home: string;
+    confirm: WaitlistActionCopy;
+    unsubscribe: WaitlistActionCopy;
+    sending: string;
+    errNoToken: string;
+    errInvalid: string;
+    errRateLimited: string;
+    errUnavailable: string;
+  };
+}
+
+export interface WaitlistActionCopy {
+  /** <title> of the page */
+  title: string;
+  heading: string;
+  text: string;
+  button: string;
+  doneTitle: string;
+  doneText: string;
 }
