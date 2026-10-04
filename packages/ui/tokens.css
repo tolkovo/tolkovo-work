@@ -1,0 +1,131 @@
+/*
+ * Tolkovo design tokens — the single source of truth for colors and fonts (docs/07 §2).
+ * Values come from the approved prototype design/panel.html.
+ *
+ * Color carries meaning and is never decoration (docs/07 §1):
+ *   teal   — a person / operator, "all good";
+ *   ai     — the AI assistant;
+ *   lamp   — waiting for a person, handoff, attention;
+ *   danger — violation (SLA breached, no connection, channel error).
+ *
+ * Theme: system by default; [data-theme="light" | "dark"] on <html> overrides it.
+ * Dark is a separately tuned palette, not an inversion.
+ */
+
+:root {
+  /* surfaces */
+  --paper: #f1f4f2;
+  --surface: #ffffff;
+  --sunk: #e8edea;
+  --hover: #f5f8f6;
+  --sel: #e3f1ee;
+
+  /* text and lines */
+  --ink: #14212a;
+  --ink-2: #4b5a64;
+  --ink-3: #77858d;
+  --line: #d6ddd9;
+  --line-2: #e6ebe8;
+
+  /* person / operator */
+  --teal: #0d7a69;
+  --teal-ink: #ffffff;
+  --teal-soft: #d7eee9;
+
+  /* attention / waiting for a person */
+  --lamp: #c47f0c;
+  --lamp-glow: #f2b544;
+  --lamp-soft: #fbebcb;
+  --lamp-ink: #6b4300;
+  --lamp-on: #ffffff;
+
+  /* AI */
+  --ai: #5f4bc4;
+  --ai-soft: #ece8fb;
+  --ai-ink: #3c2d8f;
+
+  /* violation */
+  --danger: #c23e2c;
+  --danger-soft: #fbe3df;
+  --danger-ink: #ffffff;
+
+  /* internal note */
+  --note: #fff6da;
+  --note-line: #e9cf7e;
+
+  --shadow-color: 205deg 35% 12%;
+  --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.14), 0 2px 6px hsl(var(--shadow-color) / 0.08);
+
+  /* fonts: local only; system fallbacks until the font packages are approved */
+  --f-display: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --f-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e161b;
+    --surface: #141f27;
+    --sunk: #0a1115;
+    --hover: #18252e;
+    --sel: #12322d;
+    --ink: #e4ebe8;
+    --ink-2: #9dadb5;
+    --ink-3: #6e7f88;
+    --line: #25343d;
+    --line-2: #1c2a32;
+    --teal: #3bc2a6;
+    --teal-ink: #06231d;
+    --teal-soft: #123a33;
+    --lamp: #f2b544;
+    --lamp-glow: #f2b544;
+    --lamp-soft: #3a2c10;
+    --lamp-ink: #f7cf7f;
+    --lamp-on: #1d1503;
+    --ai: #a898f2;
+    --ai-soft: #231e40;
+    --ai-ink: #cfc5ff;
+    --danger: #f07a66;
+    --danger-soft: #3d1a15;
+    --danger-ink: #2a0d08;
+    --note: #2e2710;
+    --note-line: #6b5a22;
+    --shadow-color: 0deg 0% 0%;
+    --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.5), 0 2px 6px hsl(var(--shadow-color) / 0.4);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #0e161b;
+  --surface: #141f27;
+  --sunk: #0a1115;
+  --hover: #18252e;
+  --sel: #12322d;
+  --ink: #e4ebe8;
+  --ink-2: #9dadb5;
+  --ink-3: #6e7f88;
+  --line: #25343d;
+  --line-2: #1c2a32;
+  --teal: #3bc2a6;
+  --teal-ink: #06231d;
+  --teal-soft: #123a33;
+  --lamp: #f2b544;
+  --lamp-glow: #f2b544;
+  --lamp-soft: #3a2c10;
+  --lamp-ink: #f7cf7f;
+  --lamp-on: #1d1503;
+  --ai: #a898f2;
+  --ai-soft: #231e40;
+  --ai-ink: #cfc5ff;
+  --danger: #f07a66;
+  --danger-soft: #3d1a15;
+  --danger-ink: #2a0d08;
+  --note: #2e2710;
+  --note-line: #6b5a22;
+  --shadow-color: 0deg 0% 0%;
+  --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.5), 0 2px 6px hsl(var(--shadow-color) / 0.4);
+  color-scheme: dark;
+}

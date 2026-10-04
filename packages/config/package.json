@@ -1,0 +1,17 @@
+{
+  "name": "@tolkovo/config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "description": "Shared TypeScript and ESLint configuration for the JS workspaces.",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./eslint": "./eslint.js"
+  },
+  "dependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "typescript-eslint": "8.71.0"
+  }
+}

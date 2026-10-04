@@ -1,0 +1,25 @@
+{
+  "name": "@tolkovo/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "description": "UI dictionaries (ru, en) shared by the panel; keys must match in both languages.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ru.json": "./src/ru.json",
+    "./en.json": "./src/en.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint --max-warnings=0 .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@tolkovo/config": "workspace:*",
+    "eslint": "10.12.0",
+    "intl-messageformat": "11.2.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

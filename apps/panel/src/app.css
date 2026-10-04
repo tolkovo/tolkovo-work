@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "@tolkovo/ui/theme.css";
+
+/* Tailwind scans the design-system sources too: their classes live outside this app. */
+@source "../../../packages/ui/src";

@@ -1,0 +1,9 @@
+{
+  "extends": "@tolkovo/config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "allowImportingTsExtensions": true,
+    "types": []
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "eslint.config.js"]
+}

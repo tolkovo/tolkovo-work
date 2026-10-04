@@ -1,0 +1,118 @@
+/*
+ * Tailwind CSS v4 theme on top of the design tokens (tokens.css).
+ * Import after `@import "tailwindcss";` in the app stylesheet.
+ *
+ * The default Tailwind palette is removed: only token colors exist as utilities
+ * (bg-surface, text-ink-2, border-line, bg-teal …), so a literal color cannot sneak in.
+ * shadcn/ui semantic names (primary, muted, border, ring …) are aliases of the same tokens.
+ */
+@import "./tokens.css";
+
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+
+  /* 760px: below it the navigation rail moves to the bottom (docs/07 §3) */
+  --breakpoint-nav: 47.5rem;
+  /* 1240px: below it the customer card in the inbox slides out (docs/07 §4) */
+  --breakpoint-wide: 77.5rem;
+
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+}
+
+@theme inline {
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-hover: var(--hover);
+  --color-sel: var(--sel);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-teal: var(--teal);
+  --color-teal-ink: var(--teal-ink);
+  --color-teal-soft: var(--teal-soft);
+  --color-lamp: var(--lamp);
+  --color-lamp-glow: var(--lamp-glow);
+  --color-lamp-soft: var(--lamp-soft);
+  --color-lamp-ink: var(--lamp-ink);
+  --color-lamp-on: var(--lamp-on);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --color-ai-ink: var(--ai-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-ink: var(--danger-ink);
+  --color-note: var(--note);
+  --color-note-line: var(--note-line);
+
+  /* shadcn/ui aliases */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-primary: var(--teal);
+  --color-primary-foreground: var(--teal-ink);
+  --color-secondary: var(--surface);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--sunk);
+  --color-muted-foreground: var(--ink-2);
+  --color-accent: var(--hover);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--danger-ink);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--teal);
+
+  --font-display: var(--f-display);
+  --font-sans: var(--f-body);
+  --font-mono: var(--f-mono);
+
+  --shadow-pop: var(--shadow);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--line);
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 14px/1.45 var(--f-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

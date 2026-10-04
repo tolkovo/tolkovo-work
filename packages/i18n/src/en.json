@@ -1,0 +1,101 @@
+{
+  "app": {
+    "name": "Tolkovo",
+    "skipToContent": "Skip to content",
+    "loading": "Loading…"
+  },
+  "nav": {
+    "label": "Sections",
+    "inbox": "Inbox",
+    "monitor": "Monitor",
+    "analytics": "Analytics",
+    "kb": "Knowledge",
+    "settings": "Settings"
+  },
+  "topbar": {
+    "theme": {
+      "label": "Theme",
+      "system": "Match system",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "language": {
+      "label": "Interface language"
+    }
+  },
+  "pages": {
+    "inbox": {
+      "title": "Inbox",
+      "empty": {
+        "title": "No conversations yet",
+        "text": "Connect a Telegram bot or the website widget, and new customer conversations will show up here.",
+        "action": "Connect a channel"
+      }
+    },
+    "monitor": {
+      "title": "Monitor",
+      "empty": {
+        "title": "Nobody is on shift right now",
+        "text": "See the queue, operators and SLA risks in real time. Invite operators to keep an eye on the workload.",
+        "action": "Invite operators"
+      }
+    },
+    "analytics": {
+      "title": "Analytics",
+      "empty": {
+        "title": "No data yet",
+        "text": "Metrics appear after the first closed conversations: response time, SLA and the share of questions the AI resolved on its own.",
+        "action": "Open inbox"
+      }
+    },
+    "kb": {
+      "title": "Knowledge base",
+      "empty": {
+        "title": "No articles yet",
+        "text": "The AI answers customers from knowledge base articles. Start with the most common questions: delivery, payment, returns.",
+        "action": "Set up AI"
+      }
+    },
+    "settings": {
+      "title": "Settings",
+      "empty": {
+        "title": "Settings open after you sign in",
+        "text": "Channels, team, lines and AI are configured inside a workspace. Sign in or create a new one.",
+        "action": "Sign in"
+      }
+    }
+  },
+  "error": {
+    "title": "Something went wrong",
+    "text": "The screen didn't load because of an error in the app. Try again. If the error persists, reload the page.",
+    "retry": "Try again",
+    "reload": "Reload page"
+  },
+  "notFound": {
+    "code": "404",
+    "title": "Page not found",
+    "text": "The link is outdated, or there is a typo in the address.",
+    "action": "Go to inbox"
+  },
+  "auth": {
+    "tagline": "Support in Telegram and on your website: AI on the first line, people when it matters.",
+    "email": "Email",
+    "password": "Password",
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Sign in to answer your customers.",
+      "submit": "Sign in",
+      "switchPrompt": "No workspace yet?",
+      "switchAction": "Create workspace"
+    },
+    "register": {
+      "title": "New workspace",
+      "subtitle": "A workspace is your company in Tolkovo: channels, team and conversations.",
+      "name": "Your name",
+      "workspace": "Company name",
+      "submit": "Create workspace",
+      "switchPrompt": "Already have a workspace?",
+      "switchAction": "Sign in"
+    }
+  }
+}

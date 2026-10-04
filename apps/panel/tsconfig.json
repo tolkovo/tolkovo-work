@@ -1,0 +1,7 @@
+{
+  "extends": "@tolkovo/config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "@testing-library/jest-dom/vitest"]
+  },
+  "include": ["src"]
+}
