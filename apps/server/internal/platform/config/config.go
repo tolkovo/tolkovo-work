@@ -82,6 +82,9 @@ type Config struct {
 	// point here.
 	PublicURL string  `env:"PUBLIC_URL" envDefault:"http://localhost:8080"`
 	Storage   Storage `envPrefix:"STORAGE_"`
+
+	SMTP     SMTP     `envPrefix:"SMTP_"`
+	Waitlist Waitlist `envPrefix:"WAITLIST_"`
 }
 
 // Storage configures file storage: TOLKOVO_STORAGE_*.
@@ -122,6 +125,7 @@ func LoadFrom(vars map[string]string) (Config, error) {
 	if cfg.MigrateDatabaseURL == "" {
 		cfg.MigrateDatabaseURL = cfg.DatabaseURL
 	}
+	cfg.Waitlist.applyDefaults()
 	if err := cfg.LogLevel.UnmarshalText([]byte(cfg.LogLevelName)); err != nil {
 		return Config{}, fmt.Errorf("invalid config: %sLOG_LEVEL must be debug, info, warn or error, got %q", Prefix, cfg.LogLevelName)
 	}
@@ -170,6 +174,8 @@ func (c Config) validate() error {
 		errs = append(errs, fmt.Errorf("%sPUBLIC_URL must be an absolute http(s) URL without query, got %q", Prefix, c.PublicURL))
 	}
 	errs = append(errs, c.validateStorage()...)
+	errs = append(errs, c.validateSMTP()...)
+	errs = append(errs, c.validateWaitlist()...)
 	if !strings.HasPrefix(c.RedisURL.Reveal(), "redis://") && !strings.HasPrefix(c.RedisURL.Reveal(), "rediss://") {
 		errs = append(errs, fmt.Errorf("%sREDIS_URL must start with redis:// or rediss://", Prefix))
 	}

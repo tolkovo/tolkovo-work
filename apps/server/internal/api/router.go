@@ -15,6 +15,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
+	"github.com/tolkovo/tolkovo/apps/server/internal/waitlist"
 )
 
 // Pinger reports whether a dependency is reachable.
@@ -40,6 +41,12 @@ type Deps struct {
 	SessionMaxAge time.Duration
 	// TrustedOrigins may send unsafe requests besides the API's own origin.
 	TrustedOrigins []string
+
+	// Waitlist serves the public waitlist of the landing; nil leaves its
+	// routes unmounted (TOLKOVO_WAITLIST_ENABLED=false).
+	Waitlist *waitlist.Service
+	// WaitlistOrigins may call the waitlist from a browser (CORS).
+	WaitlistOrigins []string
 }
 
 // NewRouter builds the root handler.
@@ -56,6 +63,9 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/readyz", readyz(d.DB, d.Redis))
 	if d.Files != nil {
 		mountFiles(r, d.Files, d.Log)
+	}
+	if d.Waitlist != nil {
+		mountWaitlist(r, d.Waitlist, d.WaitlistOrigins, d.Log)
 	}
 
 	srv := &server{

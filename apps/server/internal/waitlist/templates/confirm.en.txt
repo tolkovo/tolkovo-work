@@ -1,0 +1,12 @@
+Hello,
+
+This address was added to the Tolkovo cloud beta waitlist on {{.Site}}. To join the waitlist, open the link and press "Confirm":
+
+{{.ConfirmURL}}
+
+The link works for {{.Hours}} hours. If it was not you, there is nothing to do: unconfirmed addresses are deleted after {{.Days}} days.
+
+Delete the address now:
+{{.UnsubscribeURL}}
+
+The Tolkovo team

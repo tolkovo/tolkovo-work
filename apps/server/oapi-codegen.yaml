@@ -8,4 +8,6 @@ generate:
 output-options:
   # Signed file links (internal/api/files.go) are served by hand: the key is
   # a multi-segment path and the routes exist only with the fs driver.
-  exclude-tags: [files]
+  # The public waitlist has its own route group and package
+  # (oapi-codegen.waitlist.yaml).
+  exclude-tags: [files, waitlist]

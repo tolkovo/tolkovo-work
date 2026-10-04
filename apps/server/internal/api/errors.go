@@ -80,16 +80,21 @@ func detail(err error) string {
 // so a client cannot slip in fields such as workspace_id that the server
 // would silently ignore.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	return decodeJSONLimit(w, r, dst, maxBodyBytes)
+}
+
+// decodeJSONLimit is decodeJSON with a tighter body limit for public routes.
+func decodeJSONLimit(w http.ResponseWriter, r *http.Request, dst any, limit int64) error {
 	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "application/json" {
 		return fmt.Errorf("%w: Content-Type must be application/json", errBadRequest)
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			return fmt.Errorf("%w: body is larger than %d bytes", errBadRequest, maxBodyBytes)
+			return fmt.Errorf("%w: body is larger than %d bytes", errBadRequest, limit)
 		}
 		// encoding/json errors name fields and types, never the values.
 		return fmt.Errorf("%w: %s", errBadRequest, strings.TrimPrefix(err.Error(), "json: "))
