@@ -2,6 +2,7 @@ package tenancy_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -183,5 +184,62 @@ func TestUpdateWorkspace(t *testing.T) {
 	}
 	if _, err := f.svc.UpdateWorkspace(f.ctx, uuid.Must(uuid.NewV7()), tenancy.UpdateWorkspaceInput{Name: &name}); !errors.Is(err, tenancy.ErrNotFound) {
 		t.Fatalf("unknown workspace: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestUpdateUser(t *testing.T) {
+	f := setup(t)
+	m, _ := f.svc.Register(f.ctx, registerInput("a@example.test", "alpha"))
+	other, _ := f.svc.Register(f.ctx, registerInput("b@example.test", "bravo"))
+
+	name, en := "  Anna  ", "en"
+	u, err := f.svc.UpdateUser(f.ctx, m.User.ID, tenancy.UpdateUserInput{Name: &name, Locale: &en})
+	if err != nil || u.Name != "Anna" || u.Locale != "en" || u.Email != "a@example.test" {
+		t.Fatalf("update: %+v %v", u, err)
+	}
+	// Absent fields keep their value; the change is visible in the membership.
+	if u, err = f.svc.UpdateUser(f.ctx, m.User.ID, tenancy.UpdateUserInput{}); err != nil || u.Name != "Anna" || u.Locale != "en" {
+		t.Fatalf("empty update: %+v %v", u, err)
+	}
+	got, _ := f.svc.Membership(f.ctx, m.Workspace.ID, m.User.ID)
+	if got.User.Name != "Anna" || got.User.Locale != "en" {
+		t.Fatalf("membership user: %+v", got.User)
+	}
+	// Only the given account changes.
+	if ou, _ := f.svc.Membership(f.ctx, other.Workspace.ID, other.User.ID); ou.User.Name != "User" {
+		t.Fatalf("another user changed: %+v", ou.User)
+	}
+
+	blank, long, de := "   ", strings.Repeat("я", 121), "de"
+	for label, in := range map[string]tenancy.UpdateUserInput{
+		"blank name": {Name: &blank}, "long name": {Name: &long}, "bad locale": {Locale: &de},
+	} {
+		if _, err := f.svc.UpdateUser(f.ctx, m.User.ID, in); !errors.Is(err, tenancy.ErrInvalid) {
+			t.Errorf("%s: want ErrInvalid, got %v", label, err)
+		}
+	}
+	if _, err := f.svc.UpdateUser(f.ctx, uuid.Must(uuid.NewV7()), tenancy.UpdateUserInput{Name: &name}); !errors.Is(err, tenancy.ErrNotFound) {
+		t.Fatalf("unknown user: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestSetPasswordHash(t *testing.T) {
+	f := setup(t)
+	m, _ := f.svc.Register(f.ctx, registerInput("a@example.test", "alpha"))
+	if err := f.svc.SetPasswordHash(f.ctx, m.User.ID, "$argon2id$new"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	c, err := f.svc.CredentialsByID(f.ctx, m.User.ID)
+	if err != nil || c.PasswordHash != "$argon2id$new" || c.Disabled {
+		t.Fatalf("credentials: %+v %v", c, err)
+	}
+	if err := f.svc.SetPasswordHash(f.ctx, uuid.Must(uuid.NewV7()), "$argon2id$x"); !errors.Is(err, tenancy.ErrNotFound) {
+		t.Fatalf("unknown user: want ErrNotFound, got %v", err)
+	}
+	if _, err := f.svc.CredentialsByID(f.ctx, uuid.Must(uuid.NewV7())); !errors.Is(err, tenancy.ErrNotFound) {
+		t.Fatalf("unknown user credentials: want ErrNotFound, got %v", err)
+	}
+	if err := f.svc.SetPasswordHash(f.ctx, m.User.ID, ""); !errors.Is(err, tenancy.ErrInvalid) {
+		t.Fatalf("empty hash: want ErrInvalid, got %v", err)
 	}
 }

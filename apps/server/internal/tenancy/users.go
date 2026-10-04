@@ -165,6 +165,92 @@ func (s *Service) Credentials(ctx context.Context, email string) (Credentials, e
 	return c, nil
 }
 
+// CredentialsByID returns the password hash of the account, or ErrNotFound
+// when there is no such account or it has no password.
+func (s *Service) CredentialsByID(ctx context.Context, userID uuid.UUID) (Credentials, error) {
+	var c Credentials
+	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
+		row, err := store.New(tx).GetUserPasswordHash(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if !row.PasswordHash.Valid {
+			return pgx.ErrNoRows
+		}
+		c = Credentials{UserID: row.ID, PasswordHash: row.PasswordHash.String, Disabled: row.DisabledAt != nil}
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Credentials{}, ErrNotFound
+	}
+	if err != nil {
+		return Credentials{}, fmt.Errorf("get credentials of %s: %w", userID, err)
+	}
+	return c, nil
+}
+
+// SetPasswordHash replaces the password of an enabled account. hash is a
+// PHC string produced by the auth module, never a plain password.
+func (s *Service) SetPasswordHash(ctx context.Context, userID uuid.UUID, hash string) error {
+	if hash == "" {
+		return fmt.Errorf("%w: password hash is required", ErrInvalid)
+	}
+	var n int64
+	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
+		var err error
+		n, err = store.New(tx).SetUserPasswordHash(ctx, store.SetUserPasswordHashParams{
+			ID: userID, PasswordHash: pgtype.Text{String: hash, Valid: true},
+		})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("set password of %s: %w", userID, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateUserInput changes the profile of an account; nil fields stay as
+// they are.
+type UpdateUserInput struct {
+	Name   *string
+	Locale *string
+}
+
+// UpdateUser changes the name and interface language of an enabled
+// account. users is global, so the change applies in every workspace.
+func (s *Service) UpdateUser(ctx context.Context, userID uuid.UUID, in UpdateUserInput) (User, error) {
+	var name, locale pgtype.Text
+	if in.Name != nil {
+		n := strings.TrimSpace(*in.Name)
+		if n == "" || utf8.RuneCountInString(n) > 120 {
+			return User{}, fmt.Errorf("%w: name must be 1-120 characters", ErrInvalid)
+		}
+		name = pgtype.Text{String: n, Valid: true}
+	}
+	if in.Locale != nil {
+		if *in.Locale != "ru" && *in.Locale != "en" {
+			return User{}, fmt.Errorf("%w: locale must be ru or en", ErrInvalid)
+		}
+		locale = pgtype.Text{String: *in.Locale, Valid: true}
+	}
+	var u User
+	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
+		row, err := store.New(tx).UpdateUserProfile(ctx, store.UpdateUserProfileParams{ID: userID, Name: name, Locale: locale})
+		u = User(row)
+		return err
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("update user %s: %w", userID, err)
+	}
+	return u, nil
+}
+
 // TouchLastLogin records a successful login.
 func (s *Service) TouchLastLogin(ctx context.Context, userID uuid.UUID) error {
 	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {

@@ -73,6 +73,44 @@ func (q *Queries) GetUserCredentials(ctx context.Context, email string) (GetUser
 	return i, err
 }
 
+const getUserPasswordHash = `-- name: GetUserPasswordHash :one
+SELECT id, password_hash, disabled_at
+FROM users
+WHERE id = $1
+`
+
+type GetUserPasswordHashRow struct {
+	ID           uuid.UUID
+	PasswordHash pgtype.Text
+	DisabledAt   *time.Time
+}
+
+func (q *Queries) GetUserPasswordHash(ctx context.Context, id uuid.UUID) (GetUserPasswordHashRow, error) {
+	row := q.db.QueryRow(ctx, getUserPasswordHash, id)
+	var i GetUserPasswordHashRow
+	err := row.Scan(&i.ID, &i.PasswordHash, &i.DisabledAt)
+	return i, err
+}
+
+const setUserPasswordHash = `-- name: SetUserPasswordHash :execrows
+UPDATE users
+SET password_hash = $1, updated_at = now()
+WHERE id = $2 AND disabled_at IS NULL
+`
+
+type SetUserPasswordHashParams struct {
+	PasswordHash pgtype.Text
+	ID           uuid.UUID
+}
+
+func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserPasswordHash, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const touchLastLogin = `-- name: TouchLastLogin :exec
 UPDATE users SET last_login_at = now() WHERE id = $1
 `
@@ -80,4 +118,39 @@ UPDATE users SET last_login_at = now() WHERE id = $1
 func (q *Queries) TouchLastLogin(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, touchLastLogin, id)
 	return err
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET name       = COALESCE($1, name),
+    locale     = COALESCE($2, locale),
+    updated_at = now()
+WHERE id = $3 AND disabled_at IS NULL
+RETURNING id, email, name, locale
+`
+
+type UpdateUserProfileParams struct {
+	Name   pgtype.Text
+	Locale pgtype.Text
+	ID     uuid.UUID
+}
+
+type UpdateUserProfileRow struct {
+	ID     uuid.UUID
+	Email  string
+	Name   string
+	Locale string
+}
+
+// Absent (NULL) fields keep their value.
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (UpdateUserProfileRow, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile, arg.Name, arg.Locale, arg.ID)
+	var i UpdateUserProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.Locale,
+	)
+	return i, err
 }
