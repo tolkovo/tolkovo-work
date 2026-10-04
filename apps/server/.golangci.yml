@@ -9,6 +9,7 @@ linters:
     - bodyclose
     - depguard
     - errorlint
+    - forbidigo
     - gosec
     - misspell
     - nilerr
@@ -44,6 +45,13 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tenancy/store
               desc: use the tenancy facade, not its store
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # The raw pool skips InTenantTx and RLS context (docs/00 §6.4).
+        - pattern: ^db\.DB\.Pool$
+          pkg: ^github\.com/tolkovo/tolkovo/apps/server/internal/platform/db$
+          msg: business code uses db.InTenantTx or db.InGlobalTx, not the raw pool
     revive:
       rules:
         - name: exported
@@ -54,6 +62,8 @@ linters:
     rules:
       - path: _test\.go
         linters: [gosec, noctx]
+      - path: (internal/platform/|cmd/)
+        linters: [forbidigo]
 
 formatters:
   enable: [gofmt, goimports]

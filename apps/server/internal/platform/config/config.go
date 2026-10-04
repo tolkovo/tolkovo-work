@@ -41,6 +41,14 @@ type Config struct {
 	// MigrateDatabaseURL is used by `tolkovo migrate` and must belong to the
 	// table owner. Falls back to DatabaseURL for single-role setups.
 	MigrateDatabaseURL Secret `env:"MIGRATE_DATABASE_URL"`
+	// SystemDatabaseURL is used by system processes of the worker (outbox
+	// relay, retention) and must belong to a member of tolkovo_system.
+	// Required for roles worker and all; never falls back to DatabaseURL,
+	// because the application role would silently see no events.
+	SystemDatabaseURL Secret `env:"SYSTEM_DATABASE_URL"`
+
+	// OutboxRetention is how long published events stay for realtime catch-up.
+	OutboxRetention time.Duration `env:"OUTBOX_RETENTION" envDefault:"24h"`
 
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"20s"`
 }
@@ -82,6 +90,9 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.HTTPAddr) == "" {
 		errs = append(errs, fmt.Errorf("%sHTTP_ADDR must not be empty", Prefix))
+	}
+	if c.OutboxRetention < time.Minute {
+		errs = append(errs, fmt.Errorf("%sOUTBOX_RETENTION must be at least 1m", Prefix))
 	}
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("%sSHUTDOWN_TIMEOUT must be positive", Prefix))

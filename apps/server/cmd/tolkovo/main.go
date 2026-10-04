@@ -18,11 +18,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/riverqueue/river"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/migrate"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 )
 
 // version is set at build time: -ldflags "-X main.version=v0.1.0".
@@ -66,10 +71,16 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	var runHTTP, runWorker bool
 	switch *role {
-	case "all", "api":
-	case "realtime", "worker":
-		return fmt.Errorf("role %q is not available yet: it arrives with the realtime and jobs tasks (docs/06 R-01, F-05)", *role)
+	case "all":
+		runHTTP, runWorker = true, true
+	case "api":
+		runHTTP = true
+	case "worker":
+		runWorker = true
+	case "realtime":
+		return errors.New(`role "realtime" is not available yet: it arrives with the realtime task (docs/06 R-01)`)
 	default:
 		return fmt.Errorf("unknown role %q", *role)
 	}
@@ -77,6 +88,9 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
+	}
+	if runWorker && cfg.SystemDatabaseURL == "" {
+		return fmt.Errorf("%sSYSTEM_DATABASE_URL is required for role %q", config.Prefix, *role)
 	}
 	log := logging.New(stderr, cfg.LogLevel, cfg.LogFormat)
 
@@ -86,6 +100,68 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 	}
 	defer pool.Close()
 
+	g, gctx := errgroup.WithContext(ctx)
+	if runWorker {
+		sys, err := db.Open(ctx, cfg.SystemDatabaseURL.Reveal())
+		if err != nil {
+			return fmt.Errorf("system database: %w", err)
+		}
+		defer sys.Close()
+		if err := startWorker(gctx, g, cfg, log, pool, sys); err != nil {
+			return err
+		}
+	}
+	if runHTTP {
+		startHTTP(gctx, g, cfg, log, pool, *role)
+	}
+	log.Info("started", "role", *role, "version", version, "env", cfg.Env)
+
+	err = g.Wait()
+	if err != nil {
+		return err
+	}
+	log.Info("stopped")
+	return nil
+}
+
+// startWorker runs River workers and the outbox relay until ctx is done.
+func startWorker(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool, sys *db.DB) error {
+	relay := outbox.NewRelay(sys.Pool(), outbox.LogPublisher{Log: log}, log)
+	if err := relay.CheckRole(ctx); err != nil {
+		return err
+	}
+
+	workers := river.NewWorkers()
+	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
+	client, err := jobs.New(pool.Pool(), jobs.Options{
+		Log:         log,
+		Workers:     workers,
+		Periodic:    []*river.PeriodicJob{outbox.PrunePeriodic()},
+		StopTimeout: cfg.ShutdownTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("jobs: %w", err)
+	}
+	// River stops on its own when its start context is cancelled; Stop
+	// below waits for running jobs, bounded by SoftStopTimeout.
+	if err := client.Start(ctx); err != nil {
+		return fmt.Errorf("start jobs: %w", err)
+	}
+	g.Go(func() error { return relay.Run(ctx) })
+	g.Go(func() error {
+		<-ctx.Done()
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout+5*time.Second)
+		defer cancel()
+		if err := client.Stop(stopCtx); err != nil {
+			return fmt.Errorf("stop jobs: %w", err)
+		}
+		return nil
+	})
+	return nil
+}
+
+// startHTTP serves the API until ctx is done, then drains connections.
+func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool *db.DB, role string) {
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.NewRouter(api.Deps{Log: log, DB: pool, Version: version}),
@@ -95,28 +171,23 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 		IdleTimeout:       120 * time.Second,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
-	errCh := make(chan error, 1)
-	go func() {
-		log.Info("http server started", "addr", cfg.HTTPAddr, "role", *role, "version", version, "env", cfg.Env)
-		errCh <- srv.ListenAndServe()
-	}()
-
-	select {
-	case err := <-errCh:
-		return fmt.Errorf("http server: %w", err)
-	case <-ctx.Done():
-	}
-	log.Info("shutting down", "timeout", cfg.ShutdownTimeout)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("graceful shutdown: %w", err)
-	}
-	if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("http server: %w", err)
-	}
-	log.Info("stopped")
-	return nil
+	g.Go(func() error {
+		log.Info("http server listening", "addr", cfg.HTTPAddr, "role", role)
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("http server: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		<-ctx.Done()
+		log.Info("shutting down", "timeout", cfg.ShutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("graceful shutdown: %w", err)
+		}
+		return nil
+	})
 }
 
 func runMigrate(ctx context.Context, args []string, stdout io.Writer) error {
@@ -127,7 +198,7 @@ func runMigrate(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.Open(cfg.MigrateDatabaseURL.Reveal())
+	m, err := migrate.Open(ctx, cfg.MigrateDatabaseURL.Reveal())
 	if err != nil {
 		return err
 	}

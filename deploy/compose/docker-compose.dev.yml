@@ -12,6 +12,8 @@ services:
       # Read by initdb/01-app-role.sh
       APP_DB_USER: ${APP_DB_USER}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      SYSTEM_DB_USER: ${SYSTEM_DB_USER}
+      SYSTEM_DB_PASSWORD: ${SYSTEM_DB_PASSWORD}
     ports: ["127.0.0.1:5432:5432"]
     volumes:
       - pg-data:/var/lib/postgresql/data

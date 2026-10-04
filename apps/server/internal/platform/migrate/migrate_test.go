@@ -13,7 +13,7 @@ import (
 func TestMigrations_UpDownUp(t *testing.T) {
 	d := dbtest.New(t) // already migrated up once
 	ctx := context.Background()
-	m, err := migrate.Open(d.OwnerURL)
+	m, err := migrate.Open(ctx, d.OwnerURL)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

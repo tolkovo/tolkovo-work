@@ -37,6 +37,11 @@ func Open(ctx context.Context, dsn string) (*DB, error) {
 // Close releases all connections.
 func (d *DB) Close() { d.pool.Close() }
 
+// Pool exposes the raw pool to platform infrastructure that brings its own
+// driver (River). Business code must not call it: the forbidigo rule in
+// .golangci.yml allows it only under internal/platform and cmd.
+func (d *DB) Pool() *pgxpool.Pool { return d.pool }
+
 // Ping checks that the database answers. Used by /readyz.
 func (d *DB) Ping(ctx context.Context) error { return d.pool.Ping(ctx) }
 

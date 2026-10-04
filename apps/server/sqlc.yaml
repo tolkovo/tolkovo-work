@@ -8,7 +8,8 @@ sql:
         package: store
         out: internal/tenancy/store
         sql_package: pgx/v5
-        overrides:
+        omit_unused_structs: true
+        overrides: &overrides
           - db_type: uuid
             go_type: github.com/google/uuid.UUID
           - db_type: timestamptz
@@ -20,3 +21,13 @@ sql:
               pointer: true
           - db_type: citext
             go_type: string
+  - engine: postgresql
+    schema: migrations
+    queries: internal/platform/outbox/queries
+    gen:
+      go:
+        package: store
+        out: internal/platform/outbox/store
+        sql_package: pgx/v5
+        omit_unused_structs: true
+        overrides: *overrides

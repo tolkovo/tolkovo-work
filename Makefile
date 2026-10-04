@@ -10,6 +10,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # Local defaults match deploy/compose/.env.example.
 export TOLKOVO_DATABASE_URL         ?= postgres://tolkovo_app_dev:tolkovo_app_dev@localhost:5432/tolkovo?sslmode=disable
 export TOLKOVO_MIGRATE_DATABASE_URL ?= postgres://tolkovo:tolkovo@localhost:5432/tolkovo?sslmode=disable
+export TOLKOVO_SYSTEM_DATABASE_URL  ?= postgres://tolkovo_system_dev:tolkovo_system_dev@localhost:5432/tolkovo?sslmode=disable
 export TOLKOVO_LOG_FORMAT           ?= text
 
 .PHONY: help dev deps-up deps-down migrate run build gen gen-check lint test check

@@ -23,16 +23,19 @@ import (
 // fail in CI.
 const EnvAdminURL = "TOLKOVO_TEST_DATABASE_URL"
 
-// Credentials of a role that exists only in the local or CI test cluster.
+// Credentials of roles that exist only in the local or CI test cluster.
 const (
-	appRole     = "tolkovo_app_test"
-	appPassword = "tolkovo_app_test" //nolint:gosec // G101: test-only role in a throwaway cluster
+	appRole        = "tolkovo_app_test"
+	appPassword    = "tolkovo_app_test" //nolint:gosec // G101: test-only role in a throwaway cluster
+	systemRole     = "tolkovo_system_test"
+	systemPassword = "tolkovo_system_test" //nolint:gosec // G101: test-only role in a throwaway cluster
 )
 
 // Database is a throwaway database dropped at test cleanup.
 type Database struct {
-	OwnerURL string // migrations and fixtures; bypasses RLS
-	AppURL   string // application role; subject to RLS
+	OwnerURL  string // migrations and fixtures; bypasses RLS
+	AppURL    string // application role; subject to RLS
+	SystemURL string // system processes (outbox relay); explicit policies only
 }
 
 // New creates and migrates a database for the test.
@@ -58,7 +61,7 @@ func New(t testing.TB) Database {
 	t.Cleanup(func() { dropDatabase(t, admin, name) })
 
 	d := Database{OwnerURL: withDatabase(t, admin, name, nil)}
-	m, err := migrate.Open(d.OwnerURL)
+	m, err := migrate.Open(ctx, d.OwnerURL)
 	if err != nil {
 		t.Fatalf("open migrator: %v", err)
 	}
@@ -67,12 +70,33 @@ func New(t testing.TB) Database {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	// The role is created after migrations because they create tolkovo_app.
-	exec(ctx, t, conn, `DO $$ BEGIN
-		CREATE ROLE `+appRole+` LOGIN PASSWORD '`+appPassword+`' IN ROLE tolkovo_app;
-	EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`)
+	// Login roles are created after migrations because those create the
+	// group roles they join.
+	createLoginRole(ctx, t, conn, appRole, appPassword, "tolkovo_app")
+	createLoginRole(ctx, t, conn, systemRole, systemPassword, "tolkovo_system")
 	d.AppURL = withDatabase(t, admin, name, url.UserPassword(appRole, appPassword))
+	d.SystemURL = withDatabase(t, admin, name, url.UserPassword(systemRole, systemPassword))
 	return d
+}
+
+// OpenSystem opens the system pool and closes it at cleanup.
+func (d Database) OpenSystem(t testing.TB) *db.DB {
+	t.Helper()
+	pool, err := db.Open(context.Background(), d.SystemURL)
+	if err != nil {
+		t.Fatalf("open system db: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// createLoginRole creates a role shared by all test databases of the cluster;
+// parallel tests may race to create it.
+func createLoginRole(ctx context.Context, t testing.TB, conn *pgx.Conn, role, password, group string) {
+	t.Helper()
+	exec(ctx, t, conn, `DO $$ BEGIN
+		CREATE ROLE `+role+` LOGIN PASSWORD '`+password+`' IN ROLE `+group+`;
+	EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`)
 }
 
 // OpenApp opens the application pool and closes it at cleanup.

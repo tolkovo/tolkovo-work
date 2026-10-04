@@ -18,11 +18,15 @@ func TestLoadFrom_AppliesDefaults(t *testing.T) {
 		t.Fatalf("LoadFrom: %v", err)
 	}
 	if cfg.Env != EnvDevelopment || cfg.HTTPAddr != ":8080" || cfg.LogFormat != "json" ||
-		cfg.LogLevel != slog.LevelInfo || cfg.ShutdownTimeout != 20*time.Second {
+		cfg.LogLevel != slog.LevelInfo || cfg.ShutdownTimeout != 20*time.Second ||
+		cfg.OutboxRetention != 24*time.Hour {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if cfg.MigrateDatabaseURL.Reveal() != dsn {
 		t.Fatalf("MigrateDatabaseURL should fall back to DatabaseURL")
+	}
+	if cfg.SystemDatabaseURL != "" {
+		t.Fatalf("SystemDatabaseURL must never fall back to DatabaseURL")
 	}
 }
 
@@ -42,6 +46,7 @@ func TestLoadFrom_RejectsInvalidValues(t *testing.T) {
 		{"empty http addr", "TOLKOVO_HTTP_ADDR", " ", "TOLKOVO_HTTP_ADDR"},
 		{"zero shutdown timeout", "TOLKOVO_SHUTDOWN_TIMEOUT", "0s", "TOLKOVO_SHUTDOWN_TIMEOUT"},
 		{"bad log level", "TOLKOVO_LOG_LEVEL", "loud", "TOLKOVO_LOG_LEVEL"},
+		{"tiny outbox retention", "TOLKOVO_OUTBOX_RETENTION", "10s", "TOLKOVO_OUTBOX_RETENTION"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
