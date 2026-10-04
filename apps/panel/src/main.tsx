@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app";
+import { createPanelApiClient } from "./lib/api";
 import { createI18n } from "./lib/i18n";
 import { applyTheme, readStoredTheme } from "./lib/preferences";
 import { createQueryClient } from "./lib/query-client";
@@ -15,10 +16,11 @@ if (!rootElement) throw new Error("#root element is missing in index.html");
 applyTheme(readStoredTheme());
 const i18n = createI18n();
 const queryClient = createQueryClient();
-const router = createAppRouter({ queryClient });
+const api = createPanelApiClient(queryClient);
+const router = createAppRouter({ queryClient, api });
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App router={router} queryClient={queryClient} i18n={i18n} />
+    <App router={router} queryClient={queryClient} api={api} i18n={i18n} />
   </StrictMode>,
 );

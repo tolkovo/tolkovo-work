@@ -4,16 +4,19 @@ export type NavItem = {
   to: "/inbox" | "/monitor" | "/analytics" | "/kb" | "/settings";
   label: "nav.inbox" | "nav.monitor" | "nav.analytics" | "nav.kb" | "nav.settings";
   icon: LucideIcon;
+  /** Permission from GET /me needed to see the item; none means every member sees it. */
+  permission?: string;
 };
 
 /**
- * Panel sections in rail order (docs/07 §3). Once `/me` returns permissions, items the user
- * has no right to are filtered out here, not shown disabled (docs/04 §2.2).
+ * Panel sections in rail order (docs/07 §3). Items the user has no right to are left out,
+ * not shown disabled (docs/04 §2.2). Monitor, analytics and the knowledge base get their
+ * permissions with their features; until then every member sees them.
  */
 export const navItems: readonly NavItem[] = [
   { to: "/inbox", label: "nav.inbox", icon: Inbox },
   { to: "/monitor", label: "nav.monitor", icon: Activity },
   { to: "/analytics", label: "nav.analytics", icon: ChartColumn },
   { to: "/kb", label: "nav.kb", icon: BookOpen },
-  { to: "/settings", label: "nav.settings", icon: Settings },
+  { to: "/settings", label: "nav.settings", icon: Settings, permission: "workspace.manage" },
 ];

@@ -2,23 +2,40 @@ import { Link } from "@tanstack/react-router";
 import { Button, Card, CardContent, CardFooter, CardHeader } from "@tolkovo/ui";
 import type { FormEvent, ReactNode } from "react";
 
+import { FormMessage } from "../form/fields";
+
 type AuthCardProps = {
   title: string;
   subtitle: string;
   submitLabel: string;
+  pendingLabel: string;
+  pending: boolean;
+  /** Form-level error (wrong password, rate limit, no connection). */
+  error: string | null;
+  onSubmit: (form: HTMLFormElement) => void;
   switchPrompt: string;
   switchAction: string;
   switchTo: "/login" | "/register";
   children: ReactNode;
 };
 
-/**
- * Layout of an auth form. P-01 is markup only: submitting does not send anything yet.
- * P-02 wires the form to the auth API (generated client + zod), with errors and pending state.
- */
-export function AuthCard({ title, subtitle, submitLabel, switchPrompt, switchAction, switchTo, children }: AuthCardProps) {
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+/** An auth form: title, fields, one primary action, a link to the other auth screen. */
+export function AuthCard({
+  title,
+  subtitle,
+  submitLabel,
+  pendingLabel,
+  pending,
+  error,
+  onSubmit,
+  switchPrompt,
+  switchAction,
+  switchTo,
+  children,
+}: AuthCardProps) {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!pending) onSubmit(event.currentTarget);
   };
 
   return (
@@ -27,11 +44,13 @@ export function AuthCard({ title, subtitle, submitLabel, switchPrompt, switchAct
         <h1 className="m-0 font-display text-lg leading-tight font-semibold tracking-[-0.01em]">{title}</h1>
         <p className="m-0 text-[13px] text-ink-2">{subtitle}</p>
       </CardHeader>
-      <form onSubmit={onSubmit}>
+      {/* noValidate: our messages (localized, tied to fields) replace the browser bubbles. */}
+      <form onSubmit={submit} noValidate aria-busy={pending}>
         <CardContent className="flex flex-col gap-3.5 px-6 pt-4 pb-6">
+          <FormMessage tone="error" message={error} />
           {children}
-          <Button type="submit" variant="primary" size="lg" className="mt-1 w-full">
-            {submitLabel}
+          <Button type="submit" variant="primary" size="lg" className="mt-1 w-full" disabled={pending}>
+            {pending ? pendingLabel : submitLabel}
           </Button>
         </CardContent>
       </form>
@@ -43,8 +62,4 @@ export function AuthCard({ title, subtitle, submitLabel, switchPrompt, switchAct
       </CardFooter>
     </Card>
   );
-}
-
-export function Field({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-1.5">{children}</div>;
 }

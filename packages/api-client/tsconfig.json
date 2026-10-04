@@ -1,0 +1,7 @@
+{
+  "extends": "@tolkovo/config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": ["src", "eslint.config.js"]
+}
