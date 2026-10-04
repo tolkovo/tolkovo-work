@@ -51,6 +51,12 @@ type Deps struct {
 	Waitlist *waitlist.Service
 	// WaitlistOrigins may call the waitlist from a browser (CORS).
 	WaitlistOrigins []string
+
+	// Realtime serves the WebSocket endpoint (RealtimePath); nil leaves it
+	// unmounted (role api, whose ingress sends it to role realtime).
+	Realtime Realtime
+	// RealtimeOnly leaves the REST API unmounted (role realtime).
+	RealtimeOnly bool
 }
 
 // NewRouter builds the root handler.
@@ -76,6 +82,13 @@ func NewRouter(d Deps) http.Handler {
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 	}
+	if d.Realtime != nil {
+		r.Get(RealtimePath, srv.realtimeHandler(d.Realtime))
+	}
+	if d.RealtimeOnly {
+		mountFallbacks(r)
+		return r
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(noStore, sameOrigin(d.TrustedOrigins))
 		oapi.HandlerWithOptions(srv, oapi.ChiServerOptions{
@@ -87,13 +100,18 @@ func NewRouter(d Deps) http.Handler {
 		})
 	})
 
+	mountFallbacks(r)
+	return r
+}
+
+// mountFallbacks answers unknown routes and methods with problem+json.
+func mountFallbacks(r chi.Router) {
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, Problem{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Title: "Method Not Allowed"})
 	})
-	return r
 }
 
 func readyz(db, redis Pinger) http.HandlerFunc {

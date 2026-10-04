@@ -8,18 +8,23 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
+	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -36,6 +41,10 @@ type env struct {
 type envOptions struct {
 	secure  bool
 	trusted []string
+	// realtime mounts the WebSocket gateway and runs the outbox relay with
+	// the Redis publisher, like role all.
+	realtime realtime.Options
+	withWS   bool
 }
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -59,12 +68,46 @@ func newEnv(t *testing.T, o envOptions) *env {
 		t.Fatalf("storage: %v", err)
 	}
 	t.Cleanup(func() { _ = files.Close() })
-	h := NewRouter(Deps{
+	deps := Deps{
 		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: conversations.New(app, files),
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted,
+	}
+	if o.withWS {
+		deps.Realtime = startRealtime(t, d, app, rc, prefix, o)
+	}
+	return &env{t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL}
+}
+
+// startRealtime runs a gateway and the outbox relay publishing to it until
+// the test ends.
+func startRealtime(t *testing.T, d dbtest.Database, app *db.DB, rc *redis.Client, prefix string, o envOptions) *realtime.Gateway {
+	t.Helper()
+	quiet := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	ro := o.realtime
+	ro.ChannelPrefix, ro.TrustedOrigins = prefix, o.trusted
+	gw := realtime.New(app, rc, quiet, ro)
+	// The relay is platform infrastructure on the system role, as in cmd.
+	relay := outbox.NewRelay(d.OpenSystem(t).Pool(), realtime.NewPublisher(rc, prefix), quiet) //nolint:forbidigo // see above
+	relay.PollInterval = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); _ = gw.Run(ctx) }()
+	go func() { defer wg.Done(); _ = relay.Run(ctx) }()
+	t.Cleanup(func() {
+		sctx, scancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer scancel()
+		_ = gw.Shutdown(sctx)
+		cancel()
+		wg.Wait()
 	})
-	return &env{t: t, h: h, tenancy: ten, files: files, ownerDB: d.OwnerURL}
+	for deadline := time.Now().Add(10 * time.Second); !gw.Ready(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("realtime did not subscribe to Redis")
+		}
+	}
+	return gw
 }
 
 // client is one browser: it keeps the session cookie and the CSRF token.

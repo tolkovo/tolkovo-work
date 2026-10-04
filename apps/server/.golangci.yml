@@ -33,8 +33,26 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/waitlist
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
+              desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
               desc: platform must not import the HTTP layer
+        # realtime is the WebSocket transport (ADR-0005): it speaks net/http
+        # like api, but knows events only as outbox rows. Authentication
+        # comes from api as a realtime.Client, so it needs no business module.
+        realtime-is-transport:
+          files: ["**/internal/realtime/**", "!$test"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
+              desc: api imports realtime, not the other way round
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tenancy
+              desc: realtime gets the caller from api as realtime.Client
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/auth
+              desc: realtime gets the caller from api as realtime.Client
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/conversations
+              desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/waitlist
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
           files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/waitlist/**"]
@@ -45,6 +63,10 @@ linters:
               desc: HTTP lives in internal/api
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
               desc: modules must not import the HTTP layer
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
+              desc: modules publish through the outbox, not to the realtime transport
+            - pkg: github.com/coder/websocket
+              desc: WebSocket lives in internal/realtime
         # Another module's generated store is private to it.
         no-foreign-store:
           files: ["!**/internal/tenancy/**", "$all"]
