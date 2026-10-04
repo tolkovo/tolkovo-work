@@ -1,0 +1,47 @@
+---
+import { getDict, type Locale } from "../i18n";
+import Rich from "./Rich.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const f = getDict(Astro.props.locale).features;
+---
+
+<section class="s" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="s-head">
+      <p class="eyebrow">{f.eyebrow}</p>
+      <h2 id="features-title">{f.title}</h2>
+    </div>
+    <div class="aud">
+      {
+        f.rows.map((row) => (
+          <div class="aud-row">
+            <div>
+              <h3>{row.title}</h3>
+              <p class="who">{row.who}</p>
+            </div>
+            <div class="feats">
+              {row.feats.map((feat) => (
+                <div class="feat">
+                  <b>{feat.title}</b>
+                  <span>
+                    <Rich text={feat.text} />
+                    {feat.badge && (
+                      <>
+                        {" "}
+                        <span class="badge b-plan">{feat.badge}</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

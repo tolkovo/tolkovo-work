@@ -1,0 +1,28 @@
+---
+import { getDict, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const f = getDict(Astro.props.locale).faq;
+---
+
+<section class="s" id="faq" aria-labelledby="faq-title">
+  <div class="wrap">
+    <div class="s-head">
+      <p class="eyebrow">{f.eyebrow}</p>
+      <h2 id="faq-title">{f.title}</h2>
+    </div>
+    <div class="faq">
+      {
+        f.items.map((item) => (
+          <details>
+            <summary>{item.q}</summary>
+            <p>{item.a}</p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>

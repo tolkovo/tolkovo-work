@@ -1,0 +1,100 @@
+---
+// The «switchboard» demo from the mockup. Static HTML is complete on its own;
+// src/scripts/board.ts only draws the cords and plays the demo (off with reduced motion).
+import { getDict, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = getDict(locale);
+const b = t.board;
+const icons = {
+  web: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c2 2 2 10.4 0 12.4M8 1.8c-2 2-2 10.4 0 12.4"/></svg>',
+  tg: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M14.5 2.3 1.8 7.2c-.8.3-.8.8 0 1l3.2 1 1.2 3.8c.2.4.4.5.7.3l1.8-1.5 3.3 2.4c.5.3.9.1 1-.5l2-10.5c.2-.8-.3-1.2-.9-.9ZM6 9.6l6.3-4.9-5 5.4-.2 2.2Z"/></svg>',
+  biz: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4.5" width="12" height="9" rx="1.5"/><path d="M5.5 4.5V3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.5M2 8.5h12"/></svg>',
+} as const;
+---
+
+<section
+  class="board"
+  id="board"
+  aria-label={b.label}
+  data-events={JSON.stringify(b.events)}
+  data-channels={JSON.stringify(b.channelShort)}
+>
+  <div class="board-head">
+    <p class="eyebrow">{b.eyebrow}</p>
+    <span class="live">{b.live}</span>
+  </div>
+  <div class="grid3">
+    <div>
+      <p class="col-label">{b.colIn}</p>
+      <ul class="jacks">
+        {
+          b.jacks.map((j) => (
+            <li class="jack" data-id={j.id}>
+              <span class="ic" aria-hidden="true" set:html={icons[j.id]} />
+              <span>
+                {j.name}
+                <small>{j.sub}</small>
+              </span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <div>
+      <p class="col-label">{b.colAi}</p>
+      <div class="ainode" id="ai">
+        <p class="t">{b.aiTitle}</p>
+        <p class="s">{b.aiText}</p>
+        <div class="k">
+          <div><b id="kAi">41</b>{b.kAiLabel}</div>
+          <div><b id="kH">17</b>{b.kHLabel}</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="col-label">{b.colLines}</p>
+      <ul class="lines">
+        {
+          b.lines.map((line) => (
+            <li class="linebox" data-id={line.id}>
+              <span class="lvl">{line.id}</span>
+              <span class="name">{line.name}</span>
+              <span class="lamp" id={`lamp${line.id}`} aria-hidden="true" />
+              <span class="agents">
+                {line.agents.map((a) => (
+                  <span class="agent">
+                    <b>{a.name}</b>{" "}
+                    <span class="load" data-agent={a.name} data-load={a.load} data-cap={a.cap}>
+                      {a.load}/{a.cap}
+                    </span>
+                  </span>
+                ))}
+              </span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+  <svg class="cords" id="cords" aria-hidden="true"></svg>
+  <ol class="ticker" id="ticker" aria-live="off">
+    {
+      b.ticker.map((row) => (
+        <li>
+          <time>{row.time}</time>
+          <span class={row.kind}>{row.text}</span>
+        </li>
+      ))
+    }
+  </ol>
+  <p class="demo-note">{b.note}</p>
+</section>
+
+<script>
+  import "../scripts/board.ts";
+</script>

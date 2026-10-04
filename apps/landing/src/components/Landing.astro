@@ -1,0 +1,40 @@
+---
+// The whole landing page for one locale. Pages under src/pages only pick the locale.
+import type { Locale } from "../i18n";
+import Base from "../layouts/Base.astro";
+import Channels from "./Channels.astro";
+import Compare from "./Compare.astro";
+import Faq from "./Faq.astro";
+import Features from "./Features.astro";
+import Footer from "./Footer.astro";
+import Handoff from "./Handoff.astro";
+import Header from "./Header.astro";
+import Hero from "./Hero.astro";
+import Oss from "./Oss.astro";
+import SelfHost from "./SelfHost.astro";
+import Waitlist from "./Waitlist.astro";
+import Why from "./Why.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+---
+
+<Base locale={locale}>
+  <Header locale={locale} />
+  <main id="main" tabindex="-1">
+    <Hero locale={locale} />
+    <Why locale={locale} />
+    <Features locale={locale} />
+    <Handoff locale={locale} />
+    <Channels locale={locale} />
+    <Compare locale={locale} />
+    <SelfHost locale={locale} />
+    <Oss locale={locale} />
+    <Faq locale={locale} />
+    <Waitlist locale={locale} />
+  </main>
+  <Footer locale={locale} />
+</Base>

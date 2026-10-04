@@ -1,0 +1,34 @@
+---
+import { getDict, type Locale } from "../i18n";
+import { COMMUNITY_CHAT_URL, REPO_URL } from "../site";
+
+interface Props {
+  locale: Locale;
+}
+
+const o = getDict(Astro.props.locale).oss;
+---
+
+<section class="s" id="oss" aria-labelledby="oss-title">
+  <div class="wrap oss">
+    <div>
+      <p class="eyebrow">{o.eyebrow}</p>
+      <h2 id="oss-title">{o.title}</h2>
+      <p class="muted">{o.text}</p>
+      <div class="cta-row">
+        <a class="btn btn-line" href={`${REPO_URL}/labels/good%20first%20issue`}>{o.issues}</a>
+        <a class="btn btn-ghost" href={COMMUNITY_CHAT_URL}>{o.chat}</a>
+      </div>
+    </div>
+    <div class="lic">
+      {
+        o.licenses.map((l) => (
+          <div>
+            <h3>{l.title}</h3>
+            <p>{l.text}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,28 @@
+---
+import { getDict, type Locale } from "../i18n";
+import Rich from "./Rich.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const t = getDict(Astro.props.locale);
+---
+
+<section class="s">
+  <div class="wrap">
+    <div class="why">
+      {
+        t.why.map((item) => (
+          <div>
+            <span class="mark">{item.mark}</span>
+            <h3>{item.title}</h3>
+            <p>
+              <Rich text={item.text} />
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

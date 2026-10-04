@@ -1,0 +1,46 @@
+---
+import { getDict, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const s = getDict(Astro.props.locale).selfhost;
+// Install flow from docs/06-roadmap-devops-oss.md (get.tolkovo.dev installer + manual compose).
+const quick = "curl -fsSL https://get.tolkovo.dev | sh";
+---
+
+<section class="s" id="selfhost" aria-labelledby="selfhost-title">
+  <div class="wrap selfhost">
+    <div>
+      <p class="eyebrow">{s.eyebrow}</p>
+      <h2 id="selfhost-title">{s.title}</h2>
+      <p class="muted">{s.text}</p>
+      <ul class="checks">
+        {s.checks.map((c) => <li>{c}</li>)}
+      </ul>
+    </div>
+    <div class="term" role="group" aria-label={s.termLabel}>
+      <button
+        class="copy"
+        type="button"
+        hidden
+        data-copy={quick}
+        data-label={s.copy}
+        data-copied={s.copied}
+        data-selected={s.selected}>{s.copy}</button
+      >
+      <pre id="termText"><span class="c">{s.commentQuick}</span>
+<span class="p" aria-hidden="true">$</span> {quick}
+<span class="c">{s.commentManual}</span>
+<span class="p" aria-hidden="true">$</span> git clone https://github.com/tolkovo/tolkovo.git
+<span class="p" aria-hidden="true">$</span> cd tolkovo &amp;&amp; cp .env.example .env
+<span class="p" aria-hidden="true">$</span> docker compose up -d
+<span class="c">{s.commentOpen}</span></pre>
+    </div>
+  </div>
+</section>
+
+<script>
+  import "../scripts/copy.ts";
+</script>

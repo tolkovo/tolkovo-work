@@ -1,0 +1,12 @@
+---
+// Renders copy with inline code fragments without raw HTML in the dictionaries.
+import type { Rich } from "../i18n/types";
+
+interface Props {
+  text: Rich;
+}
+
+const { text } = Astro.props;
+---
+
+{text.map((part) => (typeof part === "string" ? part : <code>{part.code}</code>))}

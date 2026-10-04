@@ -1,0 +1,41 @@
+---
+import { getDict, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const c = getDict(Astro.props.locale).compare;
+---
+
+<section class="s" aria-labelledby="compare-title">
+  <div class="wrap">
+    <div class="s-head">
+      <p class="eyebrow">{c.eyebrow}</p>
+      <h2 id="compare-title">{c.title}</h2>
+    </div>
+    <div class="tbl-wrap" role="region" aria-labelledby="compare-title" tabindex="0">
+      <table>
+        <thead>
+          <tr>
+            <td></td>
+            {c.head.map((name, i) => <th scope="col" class={i === 0 ? "us" : undefined}>{name}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {
+            c.rows.map((row) => (
+              <tr>
+                <th scope="row">{row.label}</th>
+                {row.cells.map((cell, i) => (
+                  <td class={[i === 0 ? "us" : "", cell.tone ?? ""].join(" ").trim() || undefined}>{cell.text}</td>
+                ))}
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="tbl-note">{c.note}</p>
+  </div>
+</section>

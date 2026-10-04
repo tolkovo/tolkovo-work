@@ -1,0 +1,86 @@
+---
+// Document shell and SEO head (docs/05-landing.md §7.2): canonical, hreflang ru/en/x-default,
+// Open Graph, JSON-LD. No analytics and no third-party requests.
+import "../styles/global.css";
+import { getDict, LOCALES, type Locale } from "../i18n";
+import { PAGES, REPO_URL, SITE_URL } from "../site";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = getDict(locale);
+const canonical = new URL(PAGES[locale], SITE_URL).href;
+const ogImage = new URL(`/og-${locale}.png`, SITE_URL).href;
+const altLocale: Locale = locale === "ru" ? "en" : "ru";
+
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Tolkovo",
+    url: canonical,
+    description: t.meta.description,
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Linux, Docker, Web",
+    license: "https://www.gnu.org/licenses/agpl-3.0.html",
+    codeRepository: REPO_URL,
+    sameAs: [REPO_URL],
+    inLanguage: t.meta.lang,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    inLanguage: t.meta.lang,
+    mainEntity: t.faq.items.map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: { "@type": "Answer", text: item.a },
+    })),
+  },
+];
+// Static data only; "<" is escaped so the JSON can never close the script element.
+const jsonLdText = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
+---
+
+<!doctype html>
+<html lang={t.meta.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{t.meta.title}</title>
+    <meta name="description" content={t.meta.description} />
+    <link rel="canonical" href={canonical} />
+    {
+      LOCALES.map((l) => (
+        <link rel="alternate" hreflang={l} href={new URL(PAGES[l], SITE_URL).href} />
+      ))
+    }
+    <link rel="alternate" hreflang="x-default" href={new URL(PAGES.en, SITE_URL).href} />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#F1F4F2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E161B" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="sitemap" href="/sitemap.xml" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tolkovo" />
+    <meta property="og:title" content={t.meta.title} />
+    <meta property="og:description" content={t.meta.description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={t.meta.ogLocale} />
+    <meta property="og:locale:alternate" content={getDict(altLocale).meta.ogLocale} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={t.meta.ogImageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <script type="application/ld+json" set:html={jsonLdText} />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

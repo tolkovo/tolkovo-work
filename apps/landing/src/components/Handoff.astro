@@ -1,0 +1,65 @@
+---
+import { getDict, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const h = getDict(Astro.props.locale).handoff;
+const bubble = { client: "msg c", ai: "msg b", operator: "msg o" } as const;
+---
+
+<section class="s" aria-labelledby="handoff-title">
+  <div class="wrap">
+    <div class="s-head">
+      <p class="eyebrow">{h.eyebrow}</p>
+      <h2 id="handoff-title">{h.title}</h2>
+      <p>{h.lede}</p>
+    </div>
+    <div class="handoff">
+      <figure class="chat" aria-label={h.chatLabel}>
+        <div class="chat-top"><span>{h.chatHead}</span><span>{h.chatTime}</span></div>
+        {
+          h.messages.map((m) =>
+            m.kind === "system" ? (
+              <p class="sys">{m.text}</p>
+            ) : (
+              <p class={bubble[m.kind]}>
+                <small>{m.who}</small>
+                {m.text}
+              </p>
+            ),
+          )
+        }
+      </figure>
+      <div>
+        <ol class="steps">
+          {
+            h.steps.map((s) => (
+              <li>
+                <div>
+                  <h3>{s.title}</h3>
+                  <p>{s.text}</p>
+                </div>
+              </li>
+            ))
+          }
+        </ol>
+        <div class="summary">
+          <p class="eyebrow">{h.summaryEyebrow}</p>
+          <p>{h.summaryText}</p>
+          <dl>
+            {
+              h.summaryFacts.map((f) => (
+                <>
+                  <dt>{f.term}</dt>
+                  <dd class={f.mono ? "mono" : undefined}>{f.value}</dd>
+                </>
+              ))
+            }
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,33 @@
+---
+import { getDict, type Locale } from "../i18n";
+import { REPO_URL } from "../site";
+
+interface Props {
+  locale: Locale;
+}
+
+const c = getDict(Astro.props.locale).channels;
+const badge = { on: "badge b-on", soon: "badge b-soon", plan: "badge b-plan" } as const;
+---
+
+<section class="s" id="channels" aria-labelledby="channels-title">
+  <div class="wrap">
+    <div class="s-head">
+      <p class="eyebrow">{c.eyebrow}</p>
+      <h2 id="channels-title">{c.title}</h2>
+    </div>
+    <ul class="chan">
+      {
+        c.items.map((item) => (
+          <li>
+            <span>{item.name}</span>
+            <span class={badge[item.status]}>{item.label}</span>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="chan-foot">
+      {c.footBefore}<a href={`${REPO_URL}/issues`}>{c.footLink}</a>{c.footAfter}
+    </p>
+  </div>
+</section>

@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- Source of public/og-ru.png and public/og-en.png (1200×630).
+     Render locally with headless Chrome, window 1200×630: template.html?lang=ru and ?lang=en.
+     Never published: this file is not part of the site build. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html,body{margin:0;width:1200px;height:630px;overflow:hidden}
+  body{background:#F1F4F2;color:#14212A;font-family:"Golos Text",system-ui,-apple-system,"Segoe UI",sans-serif;
+    display:flex;flex-direction:column;justify-content:space-between;padding:72px 80px;box-sizing:border-box}
+  .logo{display:flex;align-items:center;gap:16px;font:700 40px/1 "Unbounded",system-ui,sans-serif;letter-spacing:-.01em}
+  .mark{width:48px;height:48px;border-radius:50%;background:#14212A;position:relative}
+  .mark::after{content:"";position:absolute;right:5px;top:5px;width:15px;height:15px;border-radius:50%;background:#C47F0C}
+  h1{margin:0;font:700 76px/1.04 "Unbounded",system-ui,sans-serif;letter-spacing:-.025em;max-width:17ch}
+  h1 em{font-style:normal;color:#0D7A69}
+  .foot{display:flex;justify-content:space-between;align-items:center;font:500 24px/1 ui-monospace,"SF Mono",Menlo,monospace;color:#4B5A64}
+  .lamp{display:inline-block;width:16px;height:16px;border-radius:50%;background:#C47F0C;box-shadow:0 0 0 6px #FBEBCB;margin-right:16px;vertical-align:-1px}
+</style>
+</head>
+<body>
+  <div class="logo"><span class="mark"></span>Tolkovo</div>
+  <h1 id="h"></h1>
+  <div class="foot"><span id="f"></span><span>tolkovo.dev</span></div>
+  <script>
+    const copy = {
+      ru: { h: "Все чаты в одном окне. ИИ отвечает, ", em: "люди решают.", f: "Open-source live chat · сайт и Telegram" },
+      en: { h: "Every chat in one window. AI answers, ", em: "people decide.", f: "Open-source live chat · website and Telegram" },
+    };
+    const c = copy[new URLSearchParams(location.search).get("lang")] || copy.ru;
+    const h = document.getElementById("h");
+    h.textContent = c.h;
+    const em = document.createElement("em");
+    em.textContent = c.em;
+    h.append(em);
+    const f = document.getElementById("f");
+    const lamp = document.createElement("span");
+    lamp.className = "lamp";
+    f.append(lamp, c.f);
+  </script>
+</body>
+</html>

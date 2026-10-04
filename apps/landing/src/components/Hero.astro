@@ -1,0 +1,25 @@
+---
+import { getDict, type Locale } from "../i18n";
+import { REPO_URL } from "../site";
+import Board from "./Board.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = getDict(locale);
+---
+
+<div class="wrap hero">
+  <p class="eyebrow">{t.hero.eyebrow}</p>
+  <h1>{t.hero.h1} <em>{t.hero.h1Accent}</em></h1>
+  <p class="lede">{t.hero.lede}</p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="#waitlist">{t.hero.ctaCloud}</a>
+    <a class="btn btn-line" href="#selfhost">{t.hero.ctaSelf}</a>
+    <a class="btn btn-ghost" href={REPO_URL}>{t.hero.ctaGithub}</a>
+  </div>
+  <p class="trust">{t.hero.trust}</p>
+  <Board locale={locale} />
+</div>

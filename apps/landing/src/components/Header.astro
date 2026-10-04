@@ -1,0 +1,51 @@
+---
+import { getDict, LOCALES, type Locale } from "../i18n";
+import { PAGES, REPO_URL } from "../site";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = getDict(locale);
+---
+
+<a class="skip" href="#main">{t.header.skip}</a>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href={PAGES[locale]} aria-label={t.header.homeLabel}
+      ><span class="logo-mark" aria-hidden="true"></span>Tolkovo</a
+    >
+    <nav aria-label={t.header.navLabel}>
+      <ul>
+        {
+          t.header.nav.map((item) => (
+            <li>
+              <a href={item.href}>{item.label}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+    <span class="spacer"></span>
+    <nav class="lang" aria-label={t.header.langLabel}>
+      {
+        LOCALES.map((l, i) => (
+          <>
+            {i > 0 && <span aria-hidden="true">/</span>}
+            <a
+              href={PAGES[l]}
+              hreflang={l}
+              lang={l}
+              aria-current={l === locale ? "page" : undefined}
+            >
+              {l.toUpperCase()}
+            </a>
+          </>
+        ))
+      }
+    </nav>
+    <a class="btn btn-ghost gh" href={REPO_URL}>{t.header.github}</a>
+    <a class="btn btn-primary" href="#waitlist">{t.header.cta}</a>
+  </div>
+</header>

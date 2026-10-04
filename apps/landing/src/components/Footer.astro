@@ -1,0 +1,31 @@
+---
+import { getDict, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const f = getDict(Astro.props.locale).footer;
+---
+
+<footer>
+  <div class="wrap">
+    <div class="fcols">
+      {
+        f.cols.map((col) => (
+          <nav aria-label={col.title}>
+            <h2>{col.title}</h2>
+            <ul>
+              {col.links.map((l) => (
+                <li>
+                  <a href={l.href}>{l.label}</a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ))
+      }
+    </div>
+    <p class="fbot">{f.bottom}</p>
+  </div>
+</footer>
