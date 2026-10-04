@@ -194,6 +194,9 @@ var channelProblems = []struct {
 		Detail: "this bot or account is already connected, here or in another workspace",
 	}},
 	{channels.ErrLoginStep, Problem{Status: http.StatusConflict, Code: "login_step", Title: "Conflict"}},
+	{channels.ErrTooManyKeys, Problem{
+		Status: http.StatusConflict, Code: "too_many_keys", Title: "Conflict", Detail: "20 ingest keys are in use, revoke one first",
+	}},
 	{channels.ErrLoginExpired, Problem{
 		Status: http.StatusConflict, Code: "login_expired", Title: "Conflict", Detail: "the login has expired, start again",
 	}},

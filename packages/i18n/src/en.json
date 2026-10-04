@@ -77,14 +77,15 @@
     },
     "channels": {
       "title": "Channels",
-      "lead": "Where customer messages come from. Connect a Telegram bot or a personal Telegram account, and the chats show up in the Inbox.",
+      "lead": "Where customer requests come from: a Telegram bot, a personal Telegram account, or your app with a “Report a problem” button. The conversations show up in the Inbox.",
       "noKey": "The server has no encryption key (TOLKOVO_MASTER_KEY), so channels cannot be connected: tokens and sessions are stored encrypted only. Ask your server administrator.",
       "empty": "No channels yet.",
       "listLabel": "Connected channels",
-      "connect": "Connect Telegram",
+      "connect": "Connect a channel",
       "type": {
         "telegram_bot": "Telegram bot",
-        "telegram_user": "Personal account"
+        "telegram_user": "Personal account",
+        "app": "App"
       },
       "status": {
         "active": "Working",
@@ -106,7 +107,8 @@
       "cancelLoginConfirm": "Cancel the unfinished login? The phone and code are removed from the server.",
       "disconnectConfirm": {
         "telegram_bot": "Disconnect “{name}”? The bot stops sending messages to Tolkovo. The chats stay in the Inbox.",
-        "telegram_user": "Disconnect “{name}”? The Tolkovo session ends in Telegram and disappears from Devices. The chats stay in the Inbox."
+        "telegram_user": "Disconnect “{name}”? The Tolkovo session ends in Telegram and disappears from Devices. The chats stay in the Inbox.",
+        "app": "Disconnect “{name}”? All ingest keys are revoked and the app can no longer send reports. The conversations stay in the Inbox."
       },
       "disconnected": "Channel “{name}” is disconnected.",
       "wizard": {
@@ -116,7 +118,9 @@
           "phone": "Connect a personal account",
           "code": "Code from Telegram",
           "password": "Cloud password",
-          "check": "Connection check"
+          "check": "Connection check",
+          "app": "Connect an app",
+          "appKeys": "App keys"
         },
         "close": "Close",
         "next": "Next",
@@ -174,7 +178,8 @@
         },
         "done": {
           "telegram_bot": "Bot “{name}” is connected. New messages will appear in the Inbox.",
-          "telegram_user": "Account “{name}” is connected. Telegram lists it under Devices as Tolkovo."
+          "telegram_user": "Account “{name}” is connected. Telegram lists it under Devices as Tolkovo.",
+          "app": "Channel “{name}” is created. Hand the key to the app’s developer."
         },
         "check": {
           "bot": "Let's check the connection: open @{username} in Telegram and send any message.",
@@ -185,6 +190,18 @@
           "open": "Open the Inbox",
           "finish": "Done",
           "later": "Check later"
+        },
+        "app": {
+          "title": "App",
+          "text": "A “Report a problem” button in your desktop or mobile app: a report with logs and screenshots becomes a conversation.",
+          "needs": "You need the app’s developer to embed the key."
+        },
+        "appStep": {
+          "text": "The server issues an ingest key for the app and a secret for your server. They are shown once.",
+          "label": "Name in the panel",
+          "hint": "For example, “Zerno for Windows”.",
+          "submit": "Create channel",
+          "pending": "Creating…"
         }
       },
       "lastInbound": "Last message:",
@@ -194,6 +211,48 @@
         "session_revoked": "The Tolkovo session was ended in Telegram (Devices), messages do not arrive. Disconnect the channel and sign in again.",
         "banned": "Telegram has banned this account, messages do not arrive.",
         "other": "The channel does not work. Disconnect it and connect it again."
+      },
+      "app": {
+        "settings": "Keys and limits",
+        "once": "The key and the secret are shown only now: the server keeps just a fingerprint and an encrypted copy. Save them in a password manager or hand them to the developer right away.",
+        "onceShort": "Shown once. Save it now.",
+        "keyLabel": "Ingest key",
+        "keyHint": "Goes into the app. It can only send reports; if it leaks, issue a new one and revoke this one.",
+        "identityLabel": "Identity signing secret",
+        "identityHint": "For your server only, never the app: your server signs with it which user sent a report. Without a signature the report is marked “identity not confirmed”.",
+        "copy": "Copy",
+        "copied": "Copied.",
+        "saved": "Done, I saved them",
+        "hide": "Hide",
+        "keys": "Ingest keys",
+        "keysLead": "A key lives in a build of the app. A new build can get its own key; revoke the old one once users have updated.",
+        "newKeyLabel": "New key",
+        "newKeyHint": "What it is for, e.g. “Build 2.4”.",
+        "newKey": "Issue key",
+        "created": "issued {date}",
+        "lastUsed": "last report {date}",
+        "unused": "no reports yet",
+        "revokedAt": "revoked {date}",
+        "revoke": "Revoke",
+        "revokeConfirm": "Revoke the key “{name}”? Apps with this key stop sending reports at once. Reports already received stay.",
+        "keepKey": "Keep key",
+        "identity": "Identity signing secret",
+        "identityLead": "Kept only on your server. If it leaked, replace it and update your server.",
+        "rotate": "Replace secret",
+        "rotateConfirm": "The old secret stops working at once: until your server gets the new one, reports come in marked “identity not confirmed”.",
+        "keepSecret": "Keep secret",
+        "limits": "Limits",
+        "limit": {
+          "max_file_mb": "File, MB",
+          "max_files": "Files per report",
+          "max_report_mb": "All files of a report, MB",
+          "retention_days": "Keep files, days",
+          "daily_reports": "Reports a day",
+          "daily_mb": "Files a day, MB"
+        },
+        "limitMax": "At most {max}.",
+        "saveLimits": "Save limits",
+        "limitsSaved": "Limits saved."
       }
     },
     "team": {

@@ -1,4 +1,4 @@
-import type { Channel, ChannelList, TelegramLogin } from "@tolkovo/api-client";
+import type { AppChannelCreated, Channel, ChannelList, IngestKey, TelegramLogin } from "@tolkovo/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -79,7 +79,7 @@ describe("channels settings", () => {
     });
     renderApp("/settings/channels", { api });
     expect(await screen.findByText("Каналов пока нет.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Подключить Telegram" }));
+    await user.click(screen.getByRole("button", { name: "Подключить канал" }));
     expect(screen.getByRole("radio", { name: /Бот/ })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Дальше" }));
 
@@ -131,7 +131,7 @@ describe("channels settings", () => {
       },
     });
     renderApp("/settings/channels", { api });
-    await user.click(await screen.findByRole("button", { name: "Подключить Telegram" }));
+    await user.click(await screen.findByRole("button", { name: "Подключить канал" }));
     await user.click(screen.getByRole("radio", { name: /Личный аккаунт/ }));
     await user.click(screen.getByRole("button", { name: "Дальше" }));
 
@@ -182,7 +182,7 @@ describe("channels settings", () => {
       },
     });
     renderApp("/settings/channels", { api });
-    await user.click(await screen.findByRole("button", { name: "Подключить Telegram" }));
+    await user.click(await screen.findByRole("button", { name: "Подключить канал" }));
     await user.click(screen.getByRole("radio", { name: /Личный аккаунт/ }));
     await user.click(screen.getByRole("button", { name: "Дальше" }));
     await user.click(screen.getByRole("checkbox", { name: "Понимаю, подключаю рабочий аккаунт" }));
@@ -198,7 +198,7 @@ describe("channels settings", () => {
     renderApp("/settings/channels", {
       api: fakeApi({ routes: { "GET /channels": () => list([], { telegram_user_available: false }) } }),
     });
-    await user.click(await screen.findByRole("button", { name: "Подключить Telegram" }));
+    await user.click(await screen.findByRole("button", { name: "Подключить канал" }));
     expect(screen.getByRole("radio", { name: /Личный аккаунт/ })).toBeDisabled();
     expect(screen.getByText(/TOLKOVO_TELEGRAM_API_ID/)).toBeInTheDocument();
   });
@@ -230,12 +230,119 @@ describe("channels settings", () => {
       api: fakeApi({ routes: { "GET /channels": () => list([], { encryption_available: false }) } }),
     });
     expect(await screen.findByText(/не задан ключ шифрования/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Подключить Telegram" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Подключить канал" })).not.toBeInTheDocument();
   });
 
   it("is not in an operator's settings", async () => {
     renderApp("/settings/team", { api: fakeApi({ session: operatorSession }) });
     const nav = await screen.findByRole("navigation", { name: "Разделы настроек" });
     expect(within(nav).queryByRole("link", { name: "Каналы" })).not.toBeInTheDocument();
+  });
+  it("connects an app: the key and the identity secret are shown once, then keys, secret and limits", async () => {
+    const user = userEvent.setup();
+    const limits = { max_file_mb: 25, max_files: 5, max_report_mb: 50, retention_days: 30, daily_reports: 500, daily_mb: 2000 };
+    const app: Channel = {
+      id: "ch-app",
+      type: "app",
+      name: "Зерно для Windows",
+      status: "active",
+      error_code: null,
+      details: { username: null, display_name: null, phone_masked: null, app_limits: limits },
+      last_inbound_at: null,
+      created_at: "2026-10-05T09:00:00Z",
+    };
+    const first: IngestKey = {
+      id: "key-1",
+      name: "Зерно для Windows",
+      prefix: "tk_ingest_Xb3k9Q",
+      created_at: "2026-10-05T09:00:00Z",
+      last_used_at: null,
+      revoked_at: null,
+    };
+    const created: AppChannelCreated = {
+      channel: app,
+      ingest_key: { key: first, secret: "tk_ingest_Xb3k9Q-whole-key" },
+      identity_secret: "tk_identity_secret-value",
+    };
+    let channels: Channel[] = [];
+    let keys: IngestKey[] = [];
+    const api = fakeApi({
+      routes: {
+        "GET /channels": () => list(channels),
+        "POST /channels/app": () => {
+          channels = [app];
+          keys = [first];
+          return json(201, created);
+        },
+        "GET /channels/ch-app/ingest-keys": () => json(200, { items: keys }),
+        "POST /channels/ch-app/ingest-keys": () => {
+          const second = { ...first, id: "key-2", name: "Сборка 2.4", prefix: "tk_ingest_Pq7Lm2" };
+          keys = [second, ...keys];
+          return json(201, { key: second, secret: "tk_ingest_Pq7Lm2-second-key" });
+        },
+        "DELETE /channels/ch-app/ingest-keys/key-1": () => {
+          keys = keys.map((k) => (k.id === "key-1" ? { ...k, revoked_at: "2026-10-05T10:00:00Z" } : k));
+          return new Response(null, { status: 204 });
+        },
+        "POST /channels/ch-app/identity-secret": () => json(200, { identity_secret: "tk_identity_new-secret" }),
+        "PUT /channels/ch-app/app-limits": async (request) => {
+          const body = (await request.json()) as typeof limits;
+          channels = [{ ...app, details: { ...app.details, app_limits: body } }];
+          return json(200, channels[0]);
+        },
+      },
+    });
+    renderApp("/settings/channels", { api });
+    await user.click(await screen.findByRole("button", { name: "Подключить канал" }));
+    await user.click(screen.getByRole("radio", { name: /Приложение/ }));
+    await user.click(screen.getByRole("button", { name: "Дальше" }));
+    expect(screen.getByRole("heading", { name: "Подключение приложения" })).toHaveFocus();
+    await user.type(screen.getByLabelText("Название в панели"), "Зерно для Windows");
+    await user.click(screen.getByRole("button", { name: "Создать канал" }));
+
+    expect(await screen.findByRole("heading", { name: "Ключи приложения" })).toHaveFocus();
+    expect(screen.getByLabelText("Ключ приёма")).toHaveValue("tk_ingest_Xb3k9Q-whole-key");
+    expect(screen.getByLabelText("Секрет подписи личности")).toHaveValue("tk_identity_secret-value");
+    expect(screen.getByRole("note")).toHaveTextContent("показываются только сейчас");
+    await user.click(screen.getByRole("button", { name: "Готово, ключи сохранены" }));
+    expect(await screen.findByText("Канал «Зерно для Windows» создан. Передайте ключ разработчику приложения.")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("tk_ingest_Xb3k9Q-whole-key")).not.toBeInTheDocument();
+    expect(api.calls.find((c) => c.path === "/channels/app")?.body).toEqual({ name: "Зерно для Windows" });
+
+    const row = within(await screen.findByRole("list", { name: "Подключённые каналы" })).getAllByRole("listitem")[0]!;
+    expect(row).toHaveTextContent("Приложение");
+    const toggle = within(row).getByRole("button", { name: "Ключи и лимиты" });
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const keyList = await within(row).findByRole("list", { name: "Ключи приёма" });
+    expect(keyList).toHaveTextContent("tk_ingest_Xb3k9Q…");
+    expect(keyList).toHaveTextContent("отчётов ещё не было");
+    expect(keyList).not.toHaveTextContent("whole-key");
+
+    await user.type(within(row).getByLabelText("Новый ключ"), "Сборка 2.4");
+    await user.click(within(row).getByRole("button", { name: "Выпустить ключ" }));
+    expect(await within(row).findByDisplayValue("tk_ingest_Pq7Lm2-second-key")).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "Скрыть" }));
+    expect(within(row).queryByDisplayValue("tk_ingest_Pq7Lm2-second-key")).not.toBeInTheDocument();
+
+    const firstKey = (await within(row).findAllByRole("listitem")).find((li) => li.textContent?.includes("Xb3k9Q"))!;
+    await user.click(within(firstKey).getByRole("button", { name: "Отозвать" }));
+    expect(within(firstKey).getByText(/Приложения с этим ключом сразу перестанут/)).toBeInTheDocument();
+    expect(within(firstKey).getByRole("button", { name: "Отозвать" })).toHaveFocus();
+    await user.click(within(firstKey).getByRole("button", { name: "Отозвать" }));
+    await waitFor(() => expect(within(row).getByRole("list", { name: "Ключи приёма" })).toHaveTextContent(/отозван 5 окт/));
+
+    await user.click(within(row).getByRole("button", { name: "Заменить секрет" }));
+    expect(within(row).getByText(/Старый секрет перестанет работать сразу/)).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "Заменить секрет" }));
+    expect(await within(row).findByDisplayValue("tk_identity_new-secret")).toBeInTheDocument();
+
+    const retention = within(row).getByLabelText("Хранить файлы, дней");
+    expect(retention).toHaveValue(30);
+    await user.clear(retention);
+    await user.type(retention, "90");
+    await user.click(within(row).getByRole("button", { name: "Сохранить лимиты" }));
+    expect(await within(row).findByText("Лимиты сохранены.")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.path === "/channels/ch-app/app-limits")?.body).toEqual({ ...limits, retention_days: 90 });
   });
 });

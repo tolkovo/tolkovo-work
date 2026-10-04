@@ -1,8 +1,12 @@
 import { parseAnswer, unwrap, type ApiClient } from "./client";
 import { isApiError } from "./errors";
 import {
+  appChannelCreatedSchema,
   channelListSchema,
   channelSchema,
+  identitySecretSchema,
+  ingestKeyCreatedSchema,
+  ingestKeyListSchema,
   contactSchema,
   conversationPageSchema,
   conversationSchema,
@@ -60,6 +64,10 @@ export type Channel = Schemas["Channel"];
 export type ChannelList = Schemas["ChannelList"];
 export type TelegramLogin = Schemas["TelegramLogin"];
 export type ConnectTelegramBotRequest = Schemas["ConnectTelegramBotRequest"];
+export type AppLimits = Schemas["AppLimits"];
+export type AppChannelCreated = Schemas["AppChannelCreated"];
+export type IngestKey = Schemas["IngestKey"];
+export type IngestKeyCreated = Schemas["IngestKeyCreated"];
 export type Message = Schemas["Message"];
 export type MessageEvent = Schemas["MessageEvent"];
 export type MessagePage = Schemas["MessagePage"];
@@ -388,6 +396,45 @@ export async function renameChannel(client: ApiClient, id: string, name: string)
   return parseAnswer(
     channelSchema,
     await unwrap(client.PATCH("/channels/{id}", { params: { path: { id } }, body: { name } })),
+  );
+}
+
+/** Creates an app channel (docs/02 §11.6): its first ingest key and the identity secret come only here. */
+export async function connectAppChannel(client: ApiClient, name: string): Promise<AppChannelCreated> {
+  return parseAnswer(appChannelCreatedSchema, await unwrap(client.POST("/channels/app", { body: { name } })), 201);
+}
+
+export async function fetchIngestKeys(client: ApiClient, id: string): Promise<IngestKey[]> {
+  const list = parseAnswer(ingestKeyListSchema, await unwrap(client.GET("/channels/{id}/ingest-keys", { params: { path: { id } } })));
+  return list.items;
+}
+
+/** The key itself is in the answer only. */
+export async function createIngestKey(client: ApiClient, id: string, name: string): Promise<IngestKeyCreated> {
+  return parseAnswer(
+    ingestKeyCreatedSchema,
+    await unwrap(client.POST("/channels/{id}/ingest-keys", { params: { path: { id } }, body: { name } })),
+    201,
+  );
+}
+
+export async function revokeIngestKey(client: ApiClient, id: string, keyId: string): Promise<void> {
+  await unwrap(client.DELETE("/channels/{id}/ingest-keys/{key_id}", { params: { path: { id, key_id: keyId } } }));
+}
+
+/** The old secret stops working at once; the new one is in the answer only. */
+export async function rotateIdentitySecret(client: ApiClient, id: string): Promise<string> {
+  const body = parseAnswer(
+    identitySecretSchema,
+    await unwrap(client.POST("/channels/{id}/identity-secret", { params: { path: { id } } })),
+  );
+  return body.identity_secret;
+}
+
+export async function setAppLimits(client: ApiClient, id: string, limits: AppLimits): Promise<Channel> {
+  return parseAnswer(
+    channelSchema,
+    await unwrap(client.PUT("/channels/{id}/app-limits", { params: { path: { id } }, body: limits })),
   );
 }
 

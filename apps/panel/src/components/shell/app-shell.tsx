@@ -42,7 +42,9 @@ export function AppShell() {
       <div className="grid min-h-0 min-w-0 grid-rows-[48px_auto_minmax(0,1fr)] max-nav:row-start-1">
         <Topbar />
         <ChannelAlert />
-        <main id="main" tabIndex={-1} className="min-h-0 min-w-0 overflow-auto outline-none">
+        {/* relative: absolutely positioned descendants (sr-only live regions) scroll and clip with
+            the page instead of stretching the document below the shell. */}
+        <main id="main" tabIndex={-1} className="relative min-h-0 min-w-0 overflow-auto outline-none">
           <Outlet />
         </main>
       </div>

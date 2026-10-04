@@ -638,6 +638,128 @@ export interface paths {
         patch: operations["renameChannel"];
         trace?: never;
     };
+    "/channels/app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect a company app that sends problem reports
+         * @description Creates the «Приложение» channel (docs/02 §11.6) with its first ingest key and the
+         *     secret that signs the app user's identity. Both are returned only here: the server
+         *     keeps the key's hash and the secret sealed. Requires `channels.manage`.
+         */
+        post: operations["connectAppChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/ingest-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Ingest keys of an app channel
+         * @description Newest first, revoked ones included. Never the keys themselves. Requires `channels.view`.
+         */
+        get: operations["listIngestKeys"];
+        put?: never;
+        /**
+         * Issue one more ingest key
+         * @description For a new build of the app, or to replace a leaked key without stopping the old
+         *     builds at once. Up to 20 keys that are not revoked. The key is returned only here.
+         *     Requires `channels.manage`.
+         */
+        post: operations["createIngestKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/ingest-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                key_id: components["parameters"]["KeyId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an ingest key
+         * @description Reports with this key are refused from now on; reports already sent stay. Revoking
+         *     a revoked key changes nothing. Requires `channels.manage`.
+         */
+        delete: operations["revokeIngestKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/identity-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the secret that signs the app user's identity
+         * @description The old secret stops working at once: identity tokens the company's backend signed
+         *     with it are no longer accepted, and their reports come in as unconfirmed. The new
+         *     secret is returned only here. Requires `channels.manage`.
+         */
+        post: operations["rotateIdentitySecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/app-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the limits of an app channel
+         * @description Within the platform's maximums: a file up to 25 MB, up to 5 files and 50 MB a report,
+         *     files kept 1 to 365 days, a daily quota of reports and megabytes. Requires
+         *     `channels.manage`.
+         */
+        put: operations["setAppLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/{key}": {
         parameters: {
             query: {
@@ -1480,8 +1602,11 @@ export interface components {
             /** @description `ru` or `en`; empty clears it on update. */
             locale?: string;
         };
-        /** @enum {string} */
-        ChannelType: "telegram_bot" | "telegram_user";
+        /**
+         * @description `app` — reports from a company app (docs/02 §11.6).
+         * @enum {string}
+         */
+        ChannelType: "telegram_bot" | "telegram_user" | "app";
         /**
          * @description `pending` — a personal-account login in progress; `active` — works; `error` — needs
          *     the admin, `error_code` says why: `token_revoked` (the bot's token was revoked in
@@ -1503,6 +1628,7 @@ export interface components {
              * @enum {string}
              */
             delivery?: "webhook" | "polling";
+            app_limits?: components["schemas"]["AppLimits"];
         };
         Channel: {
             id: string;
@@ -1552,6 +1678,62 @@ export interface components {
              * @enum {string}
              */
             code_via?: "app" | "sms" | "call" | "other";
+        };
+        /** @description Limits of an app channel (`details.app_limits`). */
+        AppLimits: {
+            /** @description One file in MB. */
+            max_file_mb: number;
+            /** @description Files in one report. */
+            max_files: number;
+            /** @description All files of one report in MB. */
+            max_report_mb: number;
+            /** @description Files are deleted after it; the messages stay. */
+            retention_days: number;
+            /** @description Reports a day for the channel. */
+            daily_reports: number;
+            /** @description Megabytes of files a day for the channel. */
+            daily_mb: number;
+        };
+        ConnectAppChannelRequest: {
+            /** @description Usually the app's name, e.g. "Зерно для Windows". */
+            name: string;
+        };
+        IngestKey: {
+            id: string;
+            name: string;
+            /** @description The start of the key, e.g. "tk_ingest_Xb3k9Q". */
+            prefix: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+        };
+        IngestKeyList: {
+            items: components["schemas"]["IngestKey"][];
+        };
+        CreateIngestKeyRequest: {
+            /** @description Where the key goes, e.g. "Сборка 2.4". */
+            name: string;
+        };
+        IngestKeyCreated: {
+            key: components["schemas"]["IngestKey"];
+            /** @description `tk_ingest_…`, the whole key. The server keeps only its hash. */
+            secret: string;
+        };
+        IdentitySecret: {
+            /**
+             * @description `tk_identity_…`. Lives only on the company's backend, never in the app: the backend
+             *     signs `identity_token` = HMAC-SHA256(`external_id`, secret), hex.
+             */
+            identity_secret: string;
+        };
+        AppChannelCreated: {
+            channel: components["schemas"]["Channel"];
+            ingest_key: components["schemas"]["IngestKeyCreated"];
+            /** @description See `IdentitySecret`. */
+            identity_secret: string;
         };
         RenameChannelRequest: {
             name: string;
@@ -1705,6 +1887,7 @@ export interface components {
     parameters: {
         Id: string;
         MessageId: string;
+        KeyId: string;
         /** @description Opaque `next_cursor` of the previous page. */
         Cursor: string;
         /** @description Page size, 1–100; 50 when absent. */
@@ -2600,6 +2783,178 @@ export interface operations {
         };
         responses: {
             /** @description The renamed channel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    connectAppChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectAppChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description The active channel, its first key and the identity secret, shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppChannelCreated"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    listIngestKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The keys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestKeyList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createIngestKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIngestKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The key, shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestKeyCreated"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `too_many_keys`: 20 keys are in use; revoke one first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeIngestKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                key_id: components["parameters"]["KeyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rotateIdentitySecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new secret, shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentitySecret"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    setAppLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppLimits"];
+            };
+        };
+        responses: {
+            /** @description The channel with the new limits. */
             200: {
                 headers: {
                     [name: string]: unknown;

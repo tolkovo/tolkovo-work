@@ -1,4 +1,4 @@
-import type { Channel, ChannelList, TelegramLogin } from "@tolkovo/api-client";
+import type { AppChannelCreated, Channel, ChannelList, TelegramLogin } from "@tolkovo/api-client";
 import {
   useCan,
   useChannels,
@@ -11,7 +11,7 @@ import {
 } from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { Link } from "@tanstack/react-router";
-import { Bot, CircleCheck, LoaderCircle, Send, UserRound } from "lucide-react";
+import { AppWindow, Bot, CircleCheck, LoaderCircle, Plus, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -20,12 +20,13 @@ import { describeApiError } from "../../lib/api-errors";
 import { channelError } from "../../lib/channels/errors";
 import { formValues } from "../../lib/forms";
 import { FormMessage, TextField } from "../form/fields";
+import { AppChannelSettings, AppSecretsStep, AppStep } from "./app-channel";
 
 /**
- * «Настройки → Каналы» (docs/06 T-01, docs/07 §7, ADR-0014): the workspace's Telegram channels
- * and the connection wizard — a bot by its token, or a personal account by phone, code and cloud
- * password. Secrets never come back from the server; the list shows names, usernames and a
- * masked phone.
+ * «Настройки → Каналы» (docs/06 T-01, AP-01, docs/07 §7, ADR-0014): the workspace's channels and
+ * the connection wizard — a Telegram bot by its token, a personal account by phone, code and
+ * cloud password, or a company app with its ingest keys. Secrets never come back from the server
+ * after they are issued; the list shows names, usernames and a masked phone.
  */
 export function ChannelsSettings() {
   const { t } = useTranslation();
@@ -48,7 +49,7 @@ export function ChannelsSettings() {
               setWizard(true);
             }}
           >
-            <Send aria-hidden="true" />
+            <Plus aria-hidden="true" />
             {t("settings.channels.connect")}
           </Button>
         ) : null}
@@ -77,7 +78,7 @@ export function ChannelsSettings() {
             </p>
           ) : null}
           {wizard ? (
-            <ConnectTelegram
+            <ConnectChannel
               userAvailable={channels.data.telegram_user_available}
               onClose={(done) => {
                 setWizard(false);
@@ -118,7 +119,7 @@ function ChannelList({
 }
 
 function ChannelIcon({ type }: { type: Channel["type"] }) {
-  const Icon = type === "telegram_bot" ? Bot : UserRound;
+  const Icon = type === "telegram_bot" ? Bot : type === "app" ? AppWindow : UserRound;
   return (
     <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg bg-teal-soft text-teal">
       <Icon className="size-[18px]" strokeWidth={1.75} />
@@ -169,6 +170,8 @@ function ChannelRow({
   const rename = useRenameChannel();
   const disconnect = useDisconnectChannel();
   const [mode, setMode] = useState<"view" | "rename" | "confirm">("view");
+  const [settings, setSettings] = useState(false);
+  const isApp = channel.type === "app";
   const [error, setError] = useState<string | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const pending = channel.status === "pending";
@@ -235,13 +238,18 @@ function ChannelRow({
           )}
           <span className="text-[12.5px] break-words text-ink-3">{channelFacts(t, channel)}</span>
           {pending ? <span className="text-[12.5px] text-ink-3">{t("settings.channels.pendingHint")}</span> : null}
-          {channel.status === "active" ? <LastInbound at={channel.last_inbound_at} /> : null}
+          {channel.status === "active" && !isApp ? <LastInbound at={channel.last_inbound_at} /> : null}
           {channel.status === "error" ? (
             <span className="text-[12.5px] break-words text-ink">{channelError(t, channel.error_code)}</span>
           ) : null}
         </div>
         {canManage && mode === "view" ? (
           <div className="flex shrink-0 gap-1 max-nav:flex-col">
+            {isApp ? (
+              <Button variant="ghost" size="sm" aria-expanded={settings} onClick={() => setSettings((v) => !v)}>
+                {t("settings.channels.app.settings")}
+              </Button>
+            ) : null}
             {!pending ? (
               <Button variant="ghost" size="sm" onClick={() => setMode("rename")}>
                 {t("settings.channels.rename")}
@@ -274,6 +282,7 @@ function ChannelRow({
           </div>
         </div>
       ) : null}
+      {isApp && settings ? <AppChannelSettings channel={channel} canManage={canManage} /> : null}
       <FormMessage tone="error" message={error} />
     </li>
   );
@@ -299,14 +308,17 @@ type Step =
   | { kind: "phone" }
   | { kind: "code"; login: TelegramLogin; phone: string }
   | { kind: "password"; channel: Channel }
-  | { kind: "check"; channel: Channel };
+  | { kind: "check"; channel: Channel }
+  | { kind: "app" }
+  | { kind: "appKeys"; created: AppChannelCreated };
 
 /**
  * The wizard (docs/07 §7): what is needed is said before it starts, every step is checked by
  * the server at once. A personal account is warned about first: its chats become visible to
- * the operators, and Telegram may restrict accounts run by software (ADR-0014).
+ * the operators, and Telegram may restrict accounts run by software (ADR-0014). An app channel
+ * ends on its key and identity secret, shown once.
  */
-function ConnectTelegram({
+function ConnectChannel({
   userAvailable,
   onClose,
 }: {
@@ -327,17 +339,17 @@ function ConnectTelegram({
   const close = () => {
     // A login left half-way is cancelled, so its phone does not wait 15 minutes on the server.
     if (pendingId) cancelLogin.mutate(pendingId);
-    onClose(step.kind === "check" ? step.channel : undefined);
+    onClose(step.kind === "check" ? step.channel : step.kind === "appKeys" ? step.created.channel : undefined);
   };
   const check = (channel: Channel) => setStep({ kind: "check", channel });
 
   return (
     <section
-      aria-labelledby="connect-telegram-title"
+      aria-labelledby="connect-channel-title"
       className="flex max-w-[720px] flex-col gap-4 rounded-xl border border-line bg-surface p-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <h3 id="connect-telegram-title" ref={titleRef} tabIndex={-1} className="m-0 text-sm font-semibold outline-none">
+        <h3 id="connect-channel-title" ref={titleRef} tabIndex={-1} className="m-0 text-sm font-semibold outline-none">
           {t(`settings.channels.wizard.steps.${step.kind}`)}
         </h3>
         <Button variant="ghost" size="sm" onClick={close}>
@@ -366,6 +378,10 @@ function ConnectTelegram({
         />
       ) : step.kind === "password" ? (
         <PasswordStep channel={step.channel} onDone={check} />
+      ) : step.kind === "app" ? (
+        <AppStep onBack={() => setStep({ kind: "choose" })} onDone={(created) => setStep({ kind: "appKeys", created })} />
+      ) : step.kind === "appKeys" ? (
+        <AppSecretsStep created={step.created} onDone={() => onClose(step.created.channel)} />
       ) : (
         <CheckStep channel={step.channel} onDone={() => onClose(step.channel)} />
       )}
@@ -373,10 +389,12 @@ function ConnectTelegram({
   );
 }
 
-function ChooseKind({ userAvailable, onChoose }: { userAvailable: boolean; onChoose: (kind: "bot" | "phone") => void }) {
+type Kind = "bot" | "phone" | "app";
+
+function ChooseKind({ userAvailable, onChoose }: { userAvailable: boolean; onChoose: (kind: Kind) => void }) {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<"bot" | "phone">("bot");
-  const option = (value: "bot" | "phone", icon: ReactNode, key: "bot" | "user", disabled = false) => (
+  const [kind, setKind] = useState<Kind>("bot");
+  const option = (value: Kind, icon: ReactNode, key: "bot" | "user" | "app", disabled = false) => (
     <label
       className={cn(
         "flex cursor-pointer items-start gap-3 rounded-lg border p-3",
@@ -418,6 +436,7 @@ function ChooseKind({ userAvailable, onChoose }: { userAvailable: boolean; onCho
         <legend className="sr-only">{t("settings.channels.wizard.steps.choose")}</legend>
         {option("bot", <Bot className="size-5" strokeWidth={1.75} />, "bot")}
         {option("phone", <UserRound className="size-5" strokeWidth={1.75} />, "user", !userAvailable)}
+        {option("app", <AppWindow className="size-5" strokeWidth={1.75} />, "app")}
       </fieldset>
       <div>
         <Button type="submit" variant="primary">

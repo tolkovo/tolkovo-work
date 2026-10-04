@@ -836,6 +836,159 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /channels/app:
+    post:
+      tags: [channels]
+      operationId: connectAppChannel
+      summary: Connect a company app that sends problem reports
+      description: |
+        Creates the «Приложение» channel (docs/02 §11.6) with its first ingest key and the
+        secret that signs the app user's identity. Both are returned only here: the server
+        keeps the key's hash and the secret sealed. Requires `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConnectAppChannelRequest' }
+      responses:
+        '201':
+          description: The active channel, its first key and the identity secret, shown once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppChannelCreated' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ChannelsUnavailable' }
+
+  /channels/{id}/ingest-keys:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [channels]
+      operationId: listIngestKeys
+      summary: Ingest keys of an app channel
+      description: Newest first, revoked ones included. Never the keys themselves. Requires `channels.view`.
+      responses:
+        '200':
+          description: The keys.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestKeyList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [channels]
+      operationId: createIngestKey
+      summary: Issue one more ingest key
+      description: |
+        For a new build of the app, or to replace a leaked key without stopping the old
+        builds at once. Up to 20 keys that are not revoked. The key is returned only here.
+        Requires `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateIngestKeyRequest' }
+      responses:
+        '201':
+          description: The key, shown once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestKeyCreated' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`too_many_keys`: 20 keys are in use; revoke one first.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /channels/{id}/ingest-keys/{key_id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/KeyId'
+    delete:
+      tags: [channels]
+      operationId: revokeIngestKey
+      summary: Revoke an ingest key
+      description: |
+        Reports with this key are refused from now on; reports already sent stay. Revoking
+        a revoked key changes nothing. Requires `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Revoked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /channels/{id}/identity-secret:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [channels]
+      operationId: rotateIdentitySecret
+      summary: Replace the secret that signs the app user's identity
+      description: |
+        The old secret stops working at once: identity tokens the company's backend signed
+        with it are no longer accepted, and their reports come in as unconfirmed. The new
+        secret is returned only here. Requires `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The new secret, shown once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentitySecret' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ChannelsUnavailable' }
+
+  /channels/{id}/app-limits:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [channels]
+      operationId: setAppLimits
+      summary: Change the limits of an app channel
+      description: |
+        Within the platform's maximums: a file up to 25 MB, up to 5 files and 50 MB a report,
+        files kept 1 to 365 days, a daily quota of reports and megabytes. Requires
+        `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppLimits' }
+      responses:
+        '200':
+          description: The channel with the new limits.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Channel' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /files/{key}:
     parameters:
       - name: key
@@ -1452,6 +1605,15 @@ components:
         x-go-type-import: { path: github.com/google/uuid }
     MessageId:
       name: message_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+        x-go-type: uuid.UUID
+        x-go-type-import: { path: github.com/google/uuid }
+    KeyId:
+      name: key_id
       in: path
       required: true
       schema:
@@ -2317,7 +2479,8 @@ components:
 
     ChannelType:
       type: string
-      enum: [telegram_bot, telegram_user]
+      description: '`app` — reports from a company app (docs/02 §11.6).'
+      enum: [telegram_bot, telegram_user, app]
 
     ChannelStatus:
       type: string
@@ -2340,6 +2503,7 @@ components:
           type: string
           description: 'Bots only: Telegram pushes updates to a webhook, or the worker polls.'
           enum: [webhook, polling]
+        app_limits: { $ref: '#/components/schemas/AppLimits' }
 
     Channel:
       type: object
@@ -2415,6 +2579,82 @@ components:
           type: string
           description: Where Telegram sent the code; present after the phone step.
           enum: [app, sms, call, other]
+
+    AppLimits:
+      type: object
+      description: Limits of an app channel (`details.app_limits`).
+      additionalProperties: false
+      required: [max_file_mb, max_files, max_report_mb, retention_days, daily_reports, daily_mb]
+      properties:
+        max_file_mb: { type: integer, minimum: 1, maximum: 25, description: One file in MB. }
+        max_files: { type: integer, minimum: 1, maximum: 5, description: Files in one report. }
+        max_report_mb: { type: integer, minimum: 1, maximum: 50, description: All files of one report in MB. }
+        retention_days: { type: integer, minimum: 1, maximum: 365, description: 'Files are deleted after it; the messages stay.' }
+        daily_reports: { type: integer, minimum: 1, maximum: 10000, description: Reports a day for the channel. }
+        daily_mb: { type: integer, minimum: 1, maximum: 100000, description: Megabytes of files a day for the channel. }
+
+    ConnectAppChannelRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120, description: 'Usually the app''s name, e.g. "Зерно для Windows".' }
+
+    IngestKey:
+      type: object
+      required: [id, name, prefix, created_at, last_used_at, revoked_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string }
+        prefix: { type: string, description: 'The start of the key, e.g. "tk_ingest_Xb3k9Q".' }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+
+    IngestKeyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/IngestKey' }
+
+    CreateIngestKeyRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120, description: 'Where the key goes, e.g. "Сборка 2.4".' }
+
+    IngestKeyCreated:
+      type: object
+      required: [key, secret]
+      properties:
+        key: { $ref: '#/components/schemas/IngestKey' }
+        secret:
+          type: string
+          description: '`tk_ingest_…`, the whole key. The server keeps only its hash.'
+
+    IdentitySecret:
+      type: object
+      required: [identity_secret]
+      properties:
+        identity_secret:
+          type: string
+          description: |
+            `tk_identity_…`. Lives only on the company's backend, never in the app: the backend
+            signs `identity_token` = HMAC-SHA256(`external_id`, secret), hex.
+
+    AppChannelCreated:
+      type: object
+      required: [channel, ingest_key, identity_secret]
+      properties:
+        channel: { $ref: '#/components/schemas/Channel' }
+        ingest_key: { $ref: '#/components/schemas/IngestKeyCreated' }
+        identity_secret: { type: string, description: See `IdentitySecret`. }
 
     RenameChannelRequest:
       type: object

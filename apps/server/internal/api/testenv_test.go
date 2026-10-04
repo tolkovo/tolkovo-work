@@ -305,6 +305,22 @@ func (e *env) ownerExec(sql string, args ...any) {
 	}
 }
 
+// ownerCount counts rows behind the application's back.
+func (e *env) ownerCount(sql string, args ...any) int {
+	e.t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, e.ownerDB)
+	if err != nil {
+		e.t.Fatalf("connect owner: %v", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	var n int
+	if err := conn.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
+		e.t.Fatalf("query %q: %v", sql, err)
+	}
+	return n
+}
+
 func (e *env) addMember(ws, user uuid.UUID, role string) {
 	e.t.Helper()
 	if err := e.tenancy.AddMember(context.Background(), ws, user, role); err != nil {

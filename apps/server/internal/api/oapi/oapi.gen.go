@@ -82,16 +82,19 @@ func (e ChannelStatus) Valid() bool {
 
 // Defines values for ChannelType.
 const (
-	TelegramBot  ChannelType = "telegram_bot"
-	TelegramUser ChannelType = "telegram_user"
+	ChannelTypeApp          ChannelType = "app"
+	ChannelTypeTelegramBot  ChannelType = "telegram_bot"
+	ChannelTypeTelegramUser ChannelType = "telegram_user"
 )
 
 // Valid indicates whether the value is a known member of the ChannelType enum.
 func (e ChannelType) Valid() bool {
 	switch e {
-	case TelegramBot:
+	case ChannelTypeApp:
 		return true
-	case TelegramUser:
+	case ChannelTypeTelegramBot:
+		return true
+	case ChannelTypeTelegramUser:
 		return true
 	default:
 		return false
@@ -486,6 +489,36 @@ type AcceptInvitationRequest struct {
 	Token    string `json:"token"`
 }
 
+// AppChannelCreated defines model for AppChannelCreated.
+type AppChannelCreated struct {
+	Channel Channel `json:"channel"`
+
+	// IdentitySecret See `IdentitySecret`.
+	IdentitySecret string           `json:"identity_secret"`
+	IngestKey      IngestKeyCreated `json:"ingest_key"`
+}
+
+// AppLimits Limits of an app channel (`details.app_limits`).
+type AppLimits struct {
+	// DailyMb Megabytes of files a day for the channel.
+	DailyMb int `json:"daily_mb"`
+
+	// DailyReports Reports a day for the channel.
+	DailyReports int `json:"daily_reports"`
+
+	// MaxFileMb One file in MB.
+	MaxFileMb int `json:"max_file_mb"`
+
+	// MaxFiles Files in one report.
+	MaxFiles int `json:"max_files"`
+
+	// MaxReportMb All files of one report in MB.
+	MaxReportMb int `json:"max_report_mb"`
+
+	// RetentionDays Files are deleted after it; the messages stay.
+	RetentionDays int `json:"retention_days"`
+}
+
 // AssignRequest defines model for AssignRequest.
 type AssignRequest struct {
 	// AssigneeId The member to assign; `null` releases the conversation to the queue.
@@ -548,11 +581,16 @@ type Channel struct {
 	// @BotFather), `session_revoked` (the session was ended in Telegram), `banned` (Telegram
 	// blocked the account). The admin disconnects the channel and connects it again.
 	Status ChannelStatus `json:"status"`
-	Type   ChannelType   `json:"type"`
+
+	// Type `app` — reports from a company app (docs/02 §11.6).
+	Type ChannelType `json:"type"`
 }
 
 // ChannelDetails What may be shown about the channel. Never secrets.
 type ChannelDetails struct {
+	// AppLimits Limits of an app channel (`details.app_limits`).
+	AppLimits *AppLimits `json:"app_limits,omitempty"`
+
 	// Delivery Bots only: Telegram pushes updates to a webhook, or the worker polls.
 	Delivery *ChannelDetailsDelivery `json:"delivery,omitempty"`
 
@@ -585,8 +623,14 @@ type ChannelList struct {
 // blocked the account). The admin disconnects the channel and connects it again.
 type ChannelStatus string
 
-// ChannelType defines model for ChannelType.
+// ChannelType `app` — reports from a company app (docs/02 §11.6).
 type ChannelType string
+
+// ConnectAppChannelRequest defines model for ConnectAppChannelRequest.
+type ConnectAppChannelRequest struct {
+	// Name Usually the app's name, e.g. "Зерно для Windows".
+	Name string `json:"name"`
+}
 
 // ConnectTelegramBotRequest defines model for ConnectTelegramBotRequest.
 type ConnectTelegramBotRequest struct {
@@ -708,6 +752,12 @@ type CreateConversationRequest struct {
 	Subject   *string   `json:"subject,omitempty"`
 }
 
+// CreateIngestKeyRequest defines model for CreateIngestKeyRequest.
+type CreateIngestKeyRequest struct {
+	// Name Where the key goes, e.g. "Сборка 2.4".
+	Name string `json:"name"`
+}
+
 // CreateInvitationRequest defines model for CreateInvitationRequest.
 type CreateInvitationRequest struct {
 	Email string                      `json:"email"`
@@ -766,6 +816,13 @@ type ForgotPasswordRequest struct {
 	Email string `json:"email"`
 }
 
+// IdentitySecret defines model for IdentitySecret.
+type IdentitySecret struct {
+	// IdentitySecret `tk_identity_…`. Lives only on the company's backend, never in the app: the backend
+	// signs `identity_token` = HMAC-SHA256(`external_id`, secret), hex.
+	IdentitySecret string `json:"identity_secret"`
+}
+
 // InboxCounts Counters of the inbox tabs. `mine`: assigned to the caller, `assigned` or `pending`;
 // `mine_unread`: of those, with customer messages after the caller's read mark (the
 // counter in the tab title); `unassigned`: `queued`; `open`: every status before
@@ -775,6 +832,31 @@ type InboxCounts struct {
 	MineUnread int64 `json:"mine_unread"`
 	Open       int64 `json:"open"`
 	Unassigned int64 `json:"unassigned"`
+}
+
+// IngestKey defines model for IngestKey.
+type IngestKey struct {
+	CreatedAt  time.Time  `json:"created_at"`
+	Id         uuid.UUID  `json:"id"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	Name       string     `json:"name"`
+
+	// Prefix The start of the key, e.g. "tk_ingest_Xb3k9Q".
+	Prefix    string     `json:"prefix"`
+	RevokedAt *time.Time `json:"revoked_at"`
+}
+
+// IngestKeyCreated defines model for IngestKeyCreated.
+type IngestKeyCreated struct {
+	Key IngestKey `json:"key"`
+
+	// Secret `tk_ingest_…`, the whole key. The server keeps only its hash.
+	Secret string `json:"secret"`
+}
+
+// IngestKeyList defines model for IngestKeyList.
+type IngestKeyList struct {
+	Items []IngestKey `json:"items"`
 }
 
 // Invitation defines model for Invitation.
@@ -1165,6 +1247,9 @@ type Id = uuid.UUID
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = string
 
+// KeyId defines model for KeyId.
+type KeyId = uuid.UUID
+
 // Limit defines model for Limit.
 type Limit = int
 
@@ -1278,6 +1363,9 @@ type RegisterJSONRequestBody = RegisterRequest
 // SwitchWorkspaceJSONRequestBody defines body for SwitchWorkspace for application/json ContentType.
 type SwitchWorkspaceJSONRequestBody = SwitchWorkspaceRequest
 
+// ConnectAppChannelJSONRequestBody defines body for ConnectAppChannel for application/json ContentType.
+type ConnectAppChannelJSONRequestBody = ConnectAppChannelRequest
+
 // ConnectTelegramBotJSONRequestBody defines body for ConnectTelegramBot for application/json ContentType.
 type ConnectTelegramBotJSONRequestBody = ConnectTelegramBotRequest
 
@@ -1286,6 +1374,12 @@ type StartTelegramUserLoginJSONRequestBody = StartTelegramUserLoginRequest
 
 // RenameChannelJSONRequestBody defines body for RenameChannel for application/json ContentType.
 type RenameChannelJSONRequestBody = RenameChannelRequest
+
+// SetAppLimitsJSONRequestBody defines body for SetAppLimits for application/json ContentType.
+type SetAppLimitsJSONRequestBody = AppLimits
+
+// CreateIngestKeyJSONRequestBody defines body for CreateIngestKey for application/json ContentType.
+type CreateIngestKeyJSONRequestBody = CreateIngestKeyRequest
 
 // SubmitTelegramUserCodeJSONRequestBody defines body for SubmitTelegramUserCode for application/json ContentType.
 type SubmitTelegramUserCodeJSONRequestBody = TelegramCodeRequest
@@ -1373,6 +1467,9 @@ type ServerInterface interface {
 	// ListChannels Channels of the current workspace
 	// (GET /channels)
 	ListChannels(w http.ResponseWriter, r *http.Request)
+	// ConnectAppChannel Connect a company app that sends problem reports
+	// (POST /channels/app)
+	ConnectAppChannel(w http.ResponseWriter, r *http.Request)
 	// ConnectTelegramBot Connect a Telegram bot by its token
 	// (POST /channels/telegram-bot)
 	ConnectTelegramBot(w http.ResponseWriter, r *http.Request)
@@ -1385,6 +1482,21 @@ type ServerInterface interface {
 	// RenameChannel Rename a channel in the panel
 	// (PATCH /channels/{id})
 	RenameChannel(w http.ResponseWriter, r *http.Request, id Id)
+	// SetAppLimits Change the limits of an app channel
+	// (PUT /channels/{id}/app-limits)
+	SetAppLimits(w http.ResponseWriter, r *http.Request, id Id)
+	// RotateIdentitySecret Replace the secret that signs the app user's identity
+	// (POST /channels/{id}/identity-secret)
+	RotateIdentitySecret(w http.ResponseWriter, r *http.Request, id Id)
+	// ListIngestKeys Ingest keys of an app channel
+	// (GET /channels/{id}/ingest-keys)
+	ListIngestKeys(w http.ResponseWriter, r *http.Request, id Id)
+	// CreateIngestKey Issue one more ingest key
+	// (POST /channels/{id}/ingest-keys)
+	CreateIngestKey(w http.ResponseWriter, r *http.Request, id Id)
+	// RevokeIngestKey Revoke an ingest key
+	// (DELETE /channels/{id}/ingest-keys/{key_id})
+	RevokeIngestKey(w http.ResponseWriter, r *http.Request, id Id, keyId KeyId)
 	// SubmitTelegramUserCode Enter the login code of a personal account
 	// (POST /channels/{id}/telegram-user/code)
 	SubmitTelegramUserCode(w http.ResponseWriter, r *http.Request, id Id)
@@ -1565,6 +1677,12 @@ func (_ Unimplemented) ListChannels(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ConnectAppChannel Connect a company app that sends problem reports
+// (POST /channels/app)
+func (_ Unimplemented) ConnectAppChannel(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ConnectTelegramBot Connect a Telegram bot by its token
 // (POST /channels/telegram-bot)
 func (_ Unimplemented) ConnectTelegramBot(w http.ResponseWriter, r *http.Request) {
@@ -1586,6 +1704,36 @@ func (_ Unimplemented) DisconnectChannel(w http.ResponseWriter, r *http.Request,
 // RenameChannel Rename a channel in the panel
 // (PATCH /channels/{id})
 func (_ Unimplemented) RenameChannel(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAppLimits Change the limits of an app channel
+// (PUT /channels/{id}/app-limits)
+func (_ Unimplemented) SetAppLimits(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RotateIdentitySecret Replace the secret that signs the app user's identity
+// (POST /channels/{id}/identity-secret)
+func (_ Unimplemented) RotateIdentitySecret(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListIngestKeys Ingest keys of an app channel
+// (GET /channels/{id}/ingest-keys)
+func (_ Unimplemented) ListIngestKeys(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateIngestKey Issue one more ingest key
+// (POST /channels/{id}/ingest-keys)
+func (_ Unimplemented) CreateIngestKey(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeIngestKey Revoke an ingest key
+// (DELETE /channels/{id}/ingest-keys/{key_id})
+func (_ Unimplemented) RevokeIngestKey(w http.ResponseWriter, r *http.Request, id Id, keyId KeyId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1980,6 +2128,20 @@ func (siw *ServerInterfaceWrapper) ListChannels(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ConnectAppChannel operation middleware
+func (siw *ServerInterfaceWrapper) ConnectAppChannel(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConnectAppChannel(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ConnectTelegramBot operation middleware
 func (siw *ServerInterfaceWrapper) ConnectTelegramBot(w http.ResponseWriter, r *http.Request) {
 
@@ -2051,6 +2213,145 @@ func (siw *ServerInterfaceWrapper) RenameChannel(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameChannel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAppLimits operation middleware
+func (siw *ServerInterfaceWrapper) SetAppLimits(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAppLimits(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotateIdentitySecret operation middleware
+func (siw *ServerInterfaceWrapper) RotateIdentitySecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateIdentitySecret(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIngestKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListIngestKeys(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIngestKeys(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateIngestKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateIngestKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateIngestKey(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeIngestKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeIngestKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key_id" -------------
+	var keyId KeyId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key_id", chi.URLParam(r, "key_id"), &keyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeIngestKey(w, r, id, keyId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3129,6 +3430,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/channels/{id}", wrapper.RenameChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/app", wrapper.ConnectAppChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/channels/{id}/ingest-keys", wrapper.ListIngestKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/{id}/ingest-keys", wrapper.CreateIngestKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/channels/{id}/ingest-keys/{key_id}", wrapper.RevokeIngestKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/{id}/identity-secret", wrapper.RotateIdentitySecret)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/channels/{id}/app-limits", wrapper.SetAppLimits)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

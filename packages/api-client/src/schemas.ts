@@ -228,9 +228,18 @@ export const tagSchema = z.object({
 
 export const tagListSchema = z.object({ items: z.array(tagSchema) }) satisfies z.ZodType<Schemas["TagList"]>;
 
+export const appLimitsSchema = z.object({
+  max_file_mb: z.number(),
+  max_files: z.number(),
+  max_report_mb: z.number(),
+  retention_days: z.number(),
+  daily_reports: z.number(),
+  daily_mb: z.number(),
+}) satisfies z.ZodType<Schemas["AppLimits"]>;
+
 export const channelSchema = z.object({
   id: z.string(),
-  type: z.enum(["telegram_bot", "telegram_user"]),
+  type: z.enum(["telegram_bot", "telegram_user", "app"]),
   name: z.string(),
   status: z.enum(["pending", "active", "error"]),
   error_code: z.string().nullable(),
@@ -239,6 +248,7 @@ export const channelSchema = z.object({
     display_name: z.string().nullable(),
     phone_masked: z.string().nullable(),
     delivery: z.enum(["webhook", "polling"]).optional(),
+    app_limits: appLimitsSchema.optional(),
   }),
   last_inbound_at: z.string().nullable(),
   created_at: z.string(),
@@ -249,6 +259,34 @@ export const channelListSchema = z.object({
   telegram_user_available: z.boolean(),
   encryption_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["ChannelList"]>;
+
+export const ingestKeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  prefix: z.string(),
+  created_at: z.string(),
+  last_used_at: z.string().nullable(),
+  revoked_at: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["IngestKey"]>;
+
+export const ingestKeyListSchema = z.object({ items: z.array(ingestKeySchema) }) satisfies z.ZodType<
+  Schemas["IngestKeyList"]
+>;
+
+export const ingestKeyCreatedSchema = z.object({
+  key: ingestKeySchema,
+  secret: z.string(),
+}) satisfies z.ZodType<Schemas["IngestKeyCreated"]>;
+
+export const identitySecretSchema = z.object({ identity_secret: z.string() }) satisfies z.ZodType<
+  Schemas["IdentitySecret"]
+>;
+
+export const appChannelCreatedSchema = z.object({
+  channel: channelSchema,
+  ingest_key: ingestKeyCreatedSchema,
+  identity_secret: z.string(),
+}) satisfies z.ZodType<Schemas["AppChannelCreated"]>;
 
 export const telegramLoginSchema = z.object({
   channel: channelSchema,

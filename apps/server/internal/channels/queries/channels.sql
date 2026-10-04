@@ -109,3 +109,35 @@ WHERE channel_peers.access_hash <> EXCLUDED.access_hash;
 -- name: DeletePeers :exec
 DELETE FROM channel_peers
 WHERE workspace_id = $1 AND channel_id = $2;
+
+-- name: ListIngestKeys :many
+SELECT * FROM ingest_keys
+WHERE workspace_id = $1 AND channel_id = $2
+ORDER BY created_at DESC, id DESC;
+
+-- name: CountActiveIngestKeys :one
+SELECT count(*) FROM ingest_keys
+WHERE workspace_id = $1 AND channel_id = $2 AND revoked_at IS NULL;
+
+-- name: InsertIngestKey :one
+INSERT INTO ingest_keys (id, workspace_id, channel_id, name, key_hash, prefix, created_by, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING *;
+
+-- name: RevokeIngestKey :one
+-- Revoking twice keeps the first time.
+UPDATE ingest_keys
+SET revoked_at = COALESCE(revoked_at, $4)
+WHERE workspace_id = $1 AND channel_id = $2 AND id = $3
+RETURNING *;
+
+-- name: RevokeChannelIngestKeys :exec
+UPDATE ingest_keys
+SET revoked_at = $3
+WHERE workspace_id = $1 AND channel_id = $2 AND revoked_at IS NULL;
+
+-- name: UpdateChannelConfig :one
+UPDATE channels
+SET config = $3, updated_at = $4
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING *;

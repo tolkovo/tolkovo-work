@@ -28,7 +28,7 @@ func TestChannels_BotAndPersonalAccount(t *testing.T) {
 		t.Fatal("the token is returned")
 	}
 	bot := decode[oapi.Channel](t, rec)
-	if bot.Type != oapi.TelegramBot || bot.Status != oapi.ChannelStatusActive || deref(bot.Details.Username) != "shop_support_bot" ||
+	if bot.Type != oapi.ChannelTypeTelegramBot || bot.Status != oapi.ChannelStatusActive || deref(bot.Details.Username) != "shop_support_bot" ||
 		bot.Details.Delivery == nil || *bot.Details.Delivery != oapi.Webhook || bot.ErrorCode != nil {
 		t.Fatalf("bot: %+v", bot)
 	}

@@ -13,12 +13,15 @@ import type { ApiClient } from "./client";
 import {
   acceptInvitation,
   changePassword,
+  connectAppChannel,
   connectTelegramBot,
+  createIngestKey,
   createInvitation,
   createTag,
   disconnectChannel,
   fetchChannels,
   fetchContact,
+  fetchIngestKeys,
   fetchConversation,
   fetchConversations,
   fetchInboxCounts,
@@ -40,6 +43,9 @@ import {
   resendEmailVerification,
   resendInvitation,
   resetPassword,
+  rotateIdentitySecret,
+  setAppLimits,
+  revokeIngestKey,
   revokeInvitation,
   revokeOtherSessions,
   revokeSession,
@@ -53,6 +59,7 @@ import {
   updateWorkspace,
   verifyEmail,
   type AcceptInvitationRequest,
+  type AppLimits,
   type ChangePasswordRequest,
   type ChannelList,
   type ConnectTelegramBotRequest,
@@ -95,6 +102,7 @@ export const queryKeys = {
   mySessions: ["me", "sessions"] as const,
   myNotifications: ["me", "notifications"] as const,
   channels: ["channels"] as const,
+  ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
   /**
    * Roots for conversation and contact queries (lists, details, message feeds nest under them):
    * realtime events invalidate by these prefixes (docs/02 §10, apps/panel/src/lib/realtime).
@@ -369,6 +377,32 @@ export function useRenameChannel() {
 
 export function useDisconnectChannel() {
   return useChannelMutation((client, id: string) => disconnectChannel(client, id));
+}
+
+/** App channels (docs/02 §11.6). Every mutation refreshes the channels and their keys. */
+export function useConnectAppChannel() {
+  return useChannelMutation((client, name: string) => connectAppChannel(client, name));
+}
+
+export function useIngestKeys(channelId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.ingestKeys(channelId), queryFn: () => fetchIngestKeys(client, channelId), enabled });
+}
+
+export function useCreateIngestKey() {
+  return useChannelMutation((client, { id, name }: { id: string; name: string }) => createIngestKey(client, id, name));
+}
+
+export function useRevokeIngestKey() {
+  return useChannelMutation((client, { id, keyId }: { id: string; keyId: string }) => revokeIngestKey(client, id, keyId));
+}
+
+export function useRotateIdentitySecret() {
+  return useChannelMutation((client, id: string) => rotateIdentitySecret(client, id));
+}
+
+export function useSetAppLimits() {
+  return useChannelMutation((client, { id, limits }: { id: string; limits: AppLimits }) => setAppLimits(client, id, limits));
 }
 
 export function useInvitations({ enabled = true }: { enabled?: boolean } = {}) {

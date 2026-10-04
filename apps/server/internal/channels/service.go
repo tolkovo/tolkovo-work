@@ -1,6 +1,7 @@
 // Package channels connects the places customers write from (docs/02 §11,
-// docs/06 T-01): a Telegram bot by its token, or a personal Telegram
-// account signed in by phone over MTProto (ADR-0014). Secrets — the bot
+// docs/06 T-01, AP-01): a Telegram bot by its token, a personal Telegram
+// account signed in by phone over MTProto (ADR-0014), or a company app that
+// sends problem reports by an ingest key. Secrets — the bot
 // token, the account session — are sealed with internal/platform/crypto
 // and never leave the module; the API sees only names, usernames and a
 // masked phone.
@@ -113,6 +114,8 @@ type Details struct {
 	PhoneMasked string `json:"phone_masked,omitempty"`
 	// Delivery of a bot: webhook or polling.
 	Delivery string `json:"delivery,omitempty"`
+	// AppLimits of an app channel (AP-01).
+	AppLimits *AppLimits `json:"app_limits,omitempty"`
 }
 
 // Login is the state of a personal-account login after a step.
@@ -288,6 +291,9 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID, id uuid.UUID) err
 			return err
 		}
 		now := s.now()
+		if err := q.RevokeChannelIngestKeys(ctx, store.RevokeChannelIngestKeysParams{WorkspaceID: workspaceID, ChannelID: id, RevokedAt: &now}); err != nil {
+			return err
+		}
 		return q.SoftDeleteChannel(ctx, store.SoftDeleteChannelParams{WorkspaceID: workspaceID, ID: id, DeletedAt: &now})
 	})
 	if err != nil {

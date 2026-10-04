@@ -25,3 +25,16 @@ type Channel struct {
 	DeletedAt     *time.Time
 	LastInboundAt *time.Time
 }
+
+type IngestKey struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	Name        string
+	KeyHash     []byte
+	Prefix      string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+	LastUsedAt  *time.Time
+	RevokedAt   *time.Time
+}

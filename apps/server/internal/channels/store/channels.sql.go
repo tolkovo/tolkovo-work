@@ -12,6 +12,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const countActiveIngestKeys = `-- name: CountActiveIngestKeys :one
+SELECT count(*) FROM ingest_keys
+WHERE workspace_id = $1 AND channel_id = $2 AND revoked_at IS NULL
+`
+
+type CountActiveIngestKeysParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+}
+
+func (q *Queries) CountActiveIngestKeys(ctx context.Context, arg CountActiveIngestKeysParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveIngestKeys, arg.WorkspaceID, arg.ChannelID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deletePeers = `-- name: DeletePeers :exec
 DELETE FROM channel_peers
 WHERE workspace_id = $1 AND channel_id = $2
@@ -279,6 +296,50 @@ func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (C
 	return i, err
 }
 
+const insertIngestKey = `-- name: InsertIngestKey :one
+INSERT INTO ingest_keys (id, workspace_id, channel_id, name, key_hash, prefix, created_by, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, workspace_id, channel_id, name, key_hash, prefix, created_by, created_at, last_used_at, revoked_at
+`
+
+type InsertIngestKeyParams struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	Name        string
+	KeyHash     []byte
+	Prefix      string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}
+
+func (q *Queries) InsertIngestKey(ctx context.Context, arg InsertIngestKeyParams) (IngestKey, error) {
+	row := q.db.QueryRow(ctx, insertIngestKey,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ChannelID,
+		arg.Name,
+		arg.KeyHash,
+		arg.Prefix,
+		arg.CreatedBy,
+		arg.CreatedAt,
+	)
+	var i IngestKey
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ChannelID,
+		&i.Name,
+		&i.KeyHash,
+		&i.Prefix,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const listChannels = `-- name: ListChannels :many
 SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at FROM channels
 WHERE workspace_id = $1 AND deleted_at IS NULL
@@ -308,6 +369,48 @@ func (q *Queries) ListChannels(ctx context.Context, workspaceID uuid.UUID) ([]Ch
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.LastInboundAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngestKeys = `-- name: ListIngestKeys :many
+SELECT id, workspace_id, channel_id, name, key_hash, prefix, created_by, created_at, last_used_at, revoked_at FROM ingest_keys
+WHERE workspace_id = $1 AND channel_id = $2
+ORDER BY created_at DESC, id DESC
+`
+
+type ListIngestKeysParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+}
+
+func (q *Queries) ListIngestKeys(ctx context.Context, arg ListIngestKeysParams) ([]IngestKey, error) {
+	rows, err := q.db.Query(ctx, listIngestKeys, arg.WorkspaceID, arg.ChannelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IngestKey
+	for rows.Next() {
+		var i IngestKey
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Name,
+			&i.KeyHash,
+			&i.Prefix,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.RevokedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -504,6 +607,61 @@ func (q *Queries) RenameChannel(ctx context.Context, arg RenameChannelParams) (C
 	return i, err
 }
 
+const revokeChannelIngestKeys = `-- name: RevokeChannelIngestKeys :exec
+UPDATE ingest_keys
+SET revoked_at = $3
+WHERE workspace_id = $1 AND channel_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeChannelIngestKeysParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	RevokedAt   *time.Time
+}
+
+func (q *Queries) RevokeChannelIngestKeys(ctx context.Context, arg RevokeChannelIngestKeysParams) error {
+	_, err := q.db.Exec(ctx, revokeChannelIngestKeys, arg.WorkspaceID, arg.ChannelID, arg.RevokedAt)
+	return err
+}
+
+const revokeIngestKey = `-- name: RevokeIngestKey :one
+UPDATE ingest_keys
+SET revoked_at = COALESCE(revoked_at, $4)
+WHERE workspace_id = $1 AND channel_id = $2 AND id = $3
+RETURNING id, workspace_id, channel_id, name, key_hash, prefix, created_by, created_at, last_used_at, revoked_at
+`
+
+type RevokeIngestKeyParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	ID          uuid.UUID
+	RevokedAt   *time.Time
+}
+
+// Revoking twice keeps the first time.
+func (q *Queries) RevokeIngestKey(ctx context.Context, arg RevokeIngestKeyParams) (IngestKey, error) {
+	row := q.db.QueryRow(ctx, revokeIngestKey,
+		arg.WorkspaceID,
+		arg.ChannelID,
+		arg.ID,
+		arg.RevokedAt,
+	)
+	var i IngestKey
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ChannelID,
+		&i.Name,
+		&i.KeyHash,
+		&i.Prefix,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const setChannelError = `-- name: SetChannelError :exec
 UPDATE channels
 SET status = 'error', error_code = $3, updated_at = $4
@@ -542,6 +700,46 @@ type SoftDeleteChannelParams struct {
 func (q *Queries) SoftDeleteChannel(ctx context.Context, arg SoftDeleteChannelParams) error {
 	_, err := q.db.Exec(ctx, softDeleteChannel, arg.WorkspaceID, arg.ID, arg.DeletedAt)
 	return err
+}
+
+const updateChannelConfig = `-- name: UpdateChannelConfig :one
+UPDATE channels
+SET config = $3, updated_at = $4
+WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at
+`
+
+type UpdateChannelConfigParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	Config      []byte
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) UpdateChannelConfig(ctx context.Context, arg UpdateChannelConfigParams) (Channel, error) {
+	row := q.db.QueryRow(ctx, updateChannelConfig,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.Config,
+		arg.UpdatedAt,
+	)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Type,
+		&i.Name,
+		&i.Status,
+		&i.ErrorCode,
+		&i.ExternalID,
+		&i.Config,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.LastInboundAt,
+	)
+	return i, err
 }
 
 const updateChannelState = `-- name: UpdateChannelState :one
