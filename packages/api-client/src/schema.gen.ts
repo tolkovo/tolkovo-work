@@ -193,6 +193,307 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The inbox, most recent activity first
+         * @description Requires `conversations.view` (owner, admin, operator).
+         */
+        get: operations["listConversations"];
+        put?: never;
+        /**
+         * Start a conversation with an existing contact
+         * @description Requires `conversations.create` (owner, admin). The conversation enters the
+         *     queue (`queued`) at once. Channels create theirs from inbound messages.
+         */
+        post: operations["createConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One conversation
+         * @description Requires `conversations.view`.
+         */
+        get: operations["getConversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the conversation along the state machine
+         * @description Requires `conversations.reply`; without `conversations.manage` only for a
+         *     conversation assigned to the caller. Moving to `queued` releases the assignee;
+         *     `assigned` is reachable only when the conversation already has an assignee
+         *     (otherwise use `PUT /conversations/{id}/assignee`).
+         */
+        post: operations["changeConversationStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/assignee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign, transfer or release the conversation
+         * @description `conversations.take` allows taking an unassigned conversation for yourself and
+         *     releasing your own (`assignee_id: null`); `conversations.assign` (owner, admin)
+         *     allows any assignment. The assignee must be an active member of the workspace.
+         *     `queued` and `resolved` become `assigned`; `assigned` and `pending` keep their
+         *     status (transfer); releasing makes an `assigned` conversation `queued`.
+         */
+        put: operations["assignConversation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The conversation feed, newest first
+         * @description Requires `conversations.view`. Includes internal notes (`is_private`).
+         */
+        get: operations["listMessages"];
+        put?: never;
+        /**
+         * Reply or leave an internal note
+         * @description A reply needs `conversations.reply` and, without `conversations.manage`, a
+         *     conversation assigned to the caller. A note (`private: true`) needs
+         *     `conversations.note` and works in any conversation. Attachments are uploads of
+         *     the same conversation (`POST /conversations/{id}/attachments`) whose files are
+         *     in storage; they are checked and linked here. A closed conversation answers
+         *     `409 conversation_closed`.
+         */
+        post: operations["postMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a file and get a signed upload request
+         * @description Requires `conversations.reply` or `conversations.note`. The server picks an
+         *     unpredictable key `ws/{workspace_id}/conv/{uuid}` (docs/02 §5.4) and signs a PUT
+         *     that fixes the size, the content type and, when given, the SHA-256. Upload the
+         *     file with exactly the returned method, URL and headers, then send the attachment
+         *     id with a message. Up to 25 MB; images, PDF, text, CSV, JSON, ZIP, GZIP and
+         *     Office documents.
+         */
+        post: operations["createAttachmentUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/attachments/{id}/download-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A short-lived signed download request for a sent attachment
+         * @description Requires `conversations.view`. Attachments not yet sent with a message answer `404`.
+         */
+        get: operations["getAttachmentDownloadLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contacts, newest first
+         * @description Requires `contacts.view` (owner, admin, operator).
+         */
+        get: operations["listContacts"];
+        put?: never;
+        /**
+         * Add a contact
+         * @description Requires `contacts.edit` (owner, admin, operator).
+         */
+        post: operations["createContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One contact
+         * @description Requires `contacts.view`.
+         */
+        get: operations["getContact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a contact
+         * @description Requires `contacts.edit`. Absent fields stay as they are; an empty `email`,
+         *     `phone` or `locale` clears it.
+         */
+        patch: operations["updateContact"];
+        trace?: never;
+    };
+    "/waitlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask to join the waitlist; a confirmation email follows
+         * @description Saves the address as pending and queues an email with a confirmation link to the
+         *     landing (`/waitlist/confirm/#<token>`, `/en/...` for `en`); the page posts the token
+         *     to `POST /waitlist/confirm`. Until then the address is not on the list, and pending
+         *     entries are deleted after `TOLKOVO_WAITLIST_PENDING_RETENTION`.
+         *
+         *     The answer is the same `202` for a new, a pending and a confirmed address, so the
+         *     endpoint does not reveal who is on the list. A confirmed entry is not changed and gets
+         *     no email; a pending one takes the new answers and gets a new email, at most five per
+         *     address. Repeating the request is safe, so an `Idempotency-Key` header (docs/00 §8)
+         *     is allowed by CORS and ignored. Rate limited per client IP and per email.
+         */
+        post: operations["joinWaitlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/waitlist/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the address with the token from the email
+         * @description The email links to a landing page instead of this endpoint, because mail scanners
+         *     open links: only a person pressing the button there confirms. Confirming again with
+         *     the same link while it is valid answers `200` again. Rate limited per client IP.
+         */
+        post: operations["confirmWaitlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/waitlist/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete the address from the waitlist
+         * @description Deletes the entry, pending or confirmed (GDPR art. 17). The token comes from the
+         *     latest email sent to the address. Rate limited per client IP.
+         */
+        post: operations["unsubscribeWaitlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -278,6 +579,185 @@ export interface components {
         MemberList: {
             items: components["schemas"]["Member"][];
         };
+        /**
+         * @description State of a conversation (docs/02 §8).
+         * @enum {string}
+         */
+        ConversationStatus: "new" | "bot" | "queued" | "assigned" | "pending" | "resolved" | "closed";
+        ContactRef: {
+            id: string;
+            name: string;
+        };
+        Conversation: {
+            id: string;
+            /**
+             * Format: int64
+             * @description Human-readable number inside the workspace.
+             */
+            number: number;
+            status: components["schemas"]["ConversationStatus"];
+            priority: number;
+            line_level: number;
+            contact: components["schemas"]["ContactRef"];
+            assignee_id: string | null;
+            /** @description `null` for conversations started from the panel or API. */
+            channel_id: string | null;
+            subject: string | null;
+            /** Format: date-time */
+            first_response_at: string | null;
+            /** Format: date-time */
+            last_message_at: string;
+            /** Format: date-time */
+            resolved_at: string | null;
+            /** Format: date-time */
+            closed_at: string | null;
+            /** @description Bumps on every change; send it back to detect concurrent edits. */
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ConversationPage: {
+            items: components["schemas"]["Conversation"][];
+            /** @description Cursor of the next page; `null` on the last one. */
+            next_cursor: string | null;
+        };
+        CreateConversationRequest: {
+            contact_id: string;
+            subject?: string;
+            priority?: number;
+        };
+        ChangeStatusRequest: {
+            status: components["schemas"]["ConversationStatus"];
+            /** @description When set, must equal the current version, otherwise `409 version_conflict`. */
+            version?: number;
+        };
+        AssignRequest: {
+            /** @description The member to assign; `null` releases the conversation to the queue. */
+            assignee_id: string | null;
+            /** @description When set, must equal the current version, otherwise `409 version_conflict`. */
+            version?: number;
+        };
+        Attachment: {
+            id: string;
+            file_name: string;
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+            /** @enum {string} */
+            status: "uploading" | "scanning" | "ready" | "rejected" | "expired";
+        };
+        Message: {
+            id: string;
+            conversation_id: string;
+            /** @enum {string} */
+            direction: "in" | "out";
+            /** @enum {string} */
+            sender_type: "contact" | "operator" | "bot" | "system";
+            sender_id: string | null;
+            /** @enum {string} */
+            kind: "text" | "media" | "note" | "event";
+            body: string;
+            /** @description Internal note; never shown to the customer. */
+            is_private: boolean;
+            /**
+             * @description `pending`, `sent`, `delivered`, `read` or `failed`; `null` when there is nothing
+             *     to deliver (notes, conversations without a channel).
+             */
+            delivery_status: string | null;
+            attachments: components["schemas"]["Attachment"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        MessagePage: {
+            items: components["schemas"]["Message"][];
+            next_cursor: string | null;
+        };
+        PostMessageRequest: {
+            /** @description Plain text; may be empty when attachments are sent. */
+            body?: string;
+            /** @description Internal note instead of a reply. */
+            private?: boolean;
+            attachment_ids?: string[];
+        };
+        CreateUploadRequest: {
+            file_name: string;
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+            /** @description Hex SHA-256 of the file; the storage then rejects any other content. */
+            sha256?: string;
+        };
+        SignedRequest: {
+            method: string;
+            url: string;
+            /** @description Headers to send exactly as given. */
+            headers: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AttachmentUpload: {
+            attachment: components["schemas"]["Attachment"];
+            upload: components["schemas"]["SignedRequest"];
+        };
+        Contact: {
+            id: string;
+            name: string;
+            email: string | null;
+            phone: string | null;
+            /** @description `ru`, `en` or `null`. */
+            locale: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ContactPage: {
+            items: components["schemas"]["Contact"][];
+            next_cursor: string | null;
+        };
+        ContactInput: {
+            name?: string;
+            email?: string;
+            phone?: string;
+            /** @description `ru` or `en`; empty clears it on update. */
+            locale?: string;
+        };
+        /**
+         * @description Channels the person wants, for prioritising the roadmap (docs/05 §1).
+         * @enum {string}
+         */
+        WaitlistChannel: "telegram" | "web" | "whatsapp" | "vk_max" | "email";
+        WaitlistJoinRequest: {
+            email: string;
+            locale: components["schemas"]["Locale"];
+            /**
+             * @description Explicit consent to processing the email and channels for the beta invitation
+             *     (GDPR art. 7). Must be `true`; the server stores the version of the consent text.
+             */
+            consent: boolean;
+            channels?: components["schemas"]["WaitlistChannel"][];
+            /**
+             * @description Honeypot: hidden from people, filled by bots. A non-empty value gets the usual
+             *     `202` and nothing is saved.
+             */
+            website?: string;
+        };
+        WaitlistTokenRequest: {
+            /** @description Token from the link in the email (43 characters, base64url). */
+            token: string;
+        };
+        WaitlistAccepted: {
+            /** @enum {string} */
+            status: "pending_confirmation";
+        };
+        WaitlistConfirmed: {
+            /** @enum {string} */
+            status: "confirmed";
+        };
     };
     responses: {
         /** @description `invalid_request`: malformed JSON, unknown fields or invalid values. */
@@ -316,8 +796,30 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description `token_invalid`: unknown, expired or already used link. */
+        TokenInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description `link_invalid` (bad signature or parameters) or `link_expired`. */
         LinkRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `invalid_transition` (the state machine forbids it), `version_conflict` (the
+         *     conversation changed since `version`), `conversation_closed` or
+         *     `attachment_not_uploaded` (the file of an attachment is not in storage).
+         */
+        Conflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -337,7 +839,18 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        Id: string;
+        /** @description Opaque `next_cursor` of the previous page. */
+        Cursor: string;
+        /** @description Page size, 1–100; 50 when absent. */
+        Limit: number;
+        /**
+         * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+         *     reused key with a different body answers `422`.
+         */
+        IdempotencyKey: string;
+    };
     requestBodies: never;
     headers: {
         /** @description The session cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` outside development). */
@@ -685,6 +1198,509 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listConversations: {
+        parameters: {
+            query?: {
+                /** @description Any of these statuses; repeat the parameter for several. All when absent. */
+                status?: components["schemas"]["ConversationStatus"][];
+                /** @description `me`, `none` (unassigned) or a member's user id. */
+                assignee?: string;
+                /** @description Opaque `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size, 1–100; 50 when absent. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of conversations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationPage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateConversationRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeConversationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description The changed conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    assignConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRequest"];
+            };
+        };
+        responses: {
+            /** @description The changed conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMessages: {
+        parameters: {
+            query?: {
+                /** @description Opaque `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size, 1–100; 50 when absent. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of messages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagePage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    postMessage: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 *     reused key with a different body answers `422`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description A retry with the same `Idempotency-Key` and body; the first message. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description `idempotency_key_reused`: the key was used with a different body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createAttachmentUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; upload the file next. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentUpload"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAttachmentDownloadLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed request (15 minutes by default). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedRequest"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listContacts: {
+        parameters: {
+            query?: {
+                /** @description Opaque `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size, 1–100; 50 when absent. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of contacts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactPage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The contact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactInput"];
+            };
+        };
+        responses: {
+            /** @description The changed contact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    joinWaitlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaitlistJoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; check the inbox. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistAccepted"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            /** @description `cross_origin`: the `Origin` is not in `TOLKOVO_WAITLIST_ORIGINS`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    confirmWaitlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaitlistTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The address is on the list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistConfirmed"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            /** @description `cross_origin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["TokenInvalid"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    unsubscribeWaitlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaitlistTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            /** @description `cross_origin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["TokenInvalid"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
 }
