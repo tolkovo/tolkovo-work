@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,8 @@ type Deps struct {
 	SessionMaxAge time.Duration
 	// TrustedOrigins may send unsafe requests besides the API's own origin.
 	TrustedOrigins []string
+	// TrustedProxies may name the client in X-Forwarded-For.
+	TrustedProxies []netip.Prefix
 }
 
 // NewRouter builds the root handler.
@@ -65,6 +68,7 @@ func NewRouter(d Deps) http.Handler {
 	srv := &server{
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
+		clients: clientIPs{trusted: d.TrustedProxies},
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(noStore, sameOrigin(d.TrustedOrigins))

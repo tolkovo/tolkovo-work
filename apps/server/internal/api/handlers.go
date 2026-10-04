@@ -18,6 +18,7 @@ type server struct {
 	auth          *auth.Service
 	conversations *conversations.Service
 	cookies       sessionCookies
+	clients       clientIPs
 }
 
 var _ oapi.ServerInterface = (*server)(nil)
@@ -32,7 +33,7 @@ func (s *server) Register(w http.ResponseWriter, r *http.Request) {
 	in, err := s.auth.Register(r.Context(), auth.RegisterInput{
 		Email: req.Email, Password: req.Password, Name: req.Name, Locale: string(deref(req.Locale)),
 		WorkspaceName: req.WorkspaceName, WorkspaceSlug: req.WorkspaceSlug, Timezone: deref(req.Timezone),
-	}, browser(r))
+	}, s.browser(r))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -49,7 +50,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	in, err := s.auth.Login(r.Context(), req.Email, req.Password, browser(r))
+	in, err := s.auth.Login(r.Context(), req.Email, req.Password, s.browser(r))
 	if err != nil {
 		s.writeError(w, r, err)
 		return

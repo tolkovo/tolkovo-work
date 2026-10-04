@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -36,6 +37,7 @@ type env struct {
 type envOptions struct {
 	secure  bool
 	trusted []string
+	proxies []netip.Prefix
 }
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -62,7 +64,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	h := NewRouter(Deps{
 		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: conversations.New(app, files),
-		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted,
+		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	})
 	return &env{t: t, h: h, tenancy: ten, files: files, ownerDB: d.OwnerURL}
 }

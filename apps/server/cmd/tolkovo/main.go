@@ -209,6 +209,7 @@ func apiDeps(
 		// The public URL is where browsers reach the api, also behind a
 		// proxy that rewrites Host, so its origin is always trusted.
 		TrustedOrigins: append(cfg.PublicOrigins(), cfg.TrustedOrigins...),
+		TrustedProxies: cfg.TrustedProxyPrefixes(),
 	}
 	// Only the fs driver needs the api to carry file bytes; s3 clients go
 	// straight to the bucket.

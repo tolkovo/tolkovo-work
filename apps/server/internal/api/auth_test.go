@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strconv"
 	"testing"
@@ -118,6 +119,31 @@ func TestRegister_RateLimitedPerIP(t *testing.T) {
 	}
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("11th registration from one IP: want 429, got %d", last)
+	}
+}
+
+// Behind a trusted proxy the limit counts the client from X-Forwarded-For,
+// so one visitor running out does not lock out the others.
+func TestRegister_RateLimitedPerClientBehindProxy(t *testing.T) {
+	e := newEnv(t, envOptions{proxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}})
+	attempt := func(i int, client string) int {
+		c := e.client()
+		c.ip = "10.0.0.2"
+		return c.do(http.MethodPost, "/api/v1/auth/register", map[string]any{
+			"email": "u" + strconv.Itoa(i) + "@example.test", "password": "short", "name": "U",
+			"workspace_name": "U", "workspace_slug": "slug-" + strconv.Itoa(i),
+		}, header("X-Forwarded-For", client)).Code
+	}
+	for i := range 10 {
+		if code := attempt(i, "203.0.113.7"); code != http.StatusBadRequest {
+			t.Fatalf("attempt %d: want 400, got %d", i+1, code)
+		}
+	}
+	if code := attempt(10, "203.0.113.7"); code != http.StatusTooManyRequests {
+		t.Fatalf("11th attempt of one client: want 429, got %d", code)
+	}
+	if code := attempt(11, "198.51.100.9"); code != http.StatusBadRequest {
+		t.Fatalf("another client behind the same proxy: want 400, got %d", code)
 	}
 }
 

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -174,17 +173,6 @@ func noStore(next http.Handler) http.Handler {
 }
 
 // browser describes the client that signs in for the auth module.
-func browser(r *http.Request) auth.Client {
-	return auth.Client{IP: clientIP(r), UserAgent: r.UserAgent()}
-}
-
-// clientIP is the TCP peer. Forwarded headers are not trusted: a client
-// could forge them to dodge rate limits. Behind a reverse proxy all clients
-// share the proxy address until trusted proxies are configurable.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+func (s *server) browser(r *http.Request) auth.Client {
+	return auth.Client{IP: s.clients.of(r), UserAgent: r.UserAgent()}
 }

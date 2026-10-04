@@ -73,6 +73,10 @@ type Config struct {
 	// TrustedOrigins may send unsafe API requests besides the API's own
 	// origin, e.g. a panel served from another host.
 	TrustedOrigins []string `env:"TRUSTED_ORIGINS" envSeparator:","`
+	// TrustedProxies are reverse proxies (IPs or CIDRs) whose
+	// X-Forwarded-For names the client; without them the client is the TCP
+	// peer, and behind a proxy all visitors share its rate limits.
+	TrustedProxies []string `env:"TRUSTED_PROXIES" envSeparator:","`
 
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"20s"`
 
@@ -173,6 +177,7 @@ func (c Config) validate() error {
 	}
 	errs = append(errs, c.validateStorage()...)
 	errs = append(errs, c.validateSMTP()...)
+	errs = append(errs, c.validateTrustedProxies()...)
 	if !strings.HasPrefix(c.RedisURL.Reveal(), "redis://") && !strings.HasPrefix(c.RedisURL.Reveal(), "rediss://") {
 		errs = append(errs, fmt.Errorf("%sREDIS_URL must start with redis:// or rediss://", Prefix))
 	}
