@@ -122,8 +122,36 @@ describe("createInboxSync", () => {
     sync.onEvent(event("conversation.tags_changed", { conversation_id: "c1" }));
     await vi.advanceTimersByTimeAsync(50);
     expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
-    // Neither changes what the tabs count.
-    expect(invalidate).not.toHaveBeenCalled();
+    // The own read mark changes mine_unread (the tab title), the tags change no counter.
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([queryKeys.inboxCounts]);
+    sync.stop();
+  });
+
+  it("hands each fetched conversation with its events to the notifications", async () => {
+    const api = fakeApi({ routes: { "GET /conversations/c1": () => json(200, conv("c1", 9)) } });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<Session>(queryKeys.session, ownerSession);
+    const client = createPanelApiClient(queryClient, { origin: "http://panel.test", fetch: api.fetch });
+    const onConversation = vi.fn();
+    const sync = createInboxSync({ queryClient, api: client, onConversation });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    const created = event("conversation.created", { conversation_id: "c1", status: "queued" });
+    const message = event("message.created", { conversation_id: "c1", sender_type: "contact" });
+    sync.onEvent(created);
+    sync.onEvent(message);
+    sync.onEvent(event("conversation.read", { conversation_id: "c1", reader_id: ownerSession.user.id }));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(onConversation).toHaveBeenCalledTimes(1);
+    expect(onConversation).toHaveBeenCalledWith([created, message], expect.objectContaining({ id: "c1" }), ownerSession.user.id);
+    // A customer message changes mine_unread.
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toContainEqual(queryKeys.inboxCounts);
+
+    // A later batch with only a read mark says nothing new.
+    sync.onEvent(event("conversation.read", { conversation_id: "c1", reader_id: ownerSession.user.id }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(onConversation).toHaveBeenCalledTimes(1);
     sync.stop();
   });
 

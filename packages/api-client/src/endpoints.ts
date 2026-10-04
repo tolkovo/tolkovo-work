@@ -6,6 +6,7 @@ import {
   conversationSchema,
   deviceSessionListSchema,
   inboxCountsSchema,
+  notificationSettingsSchema,
   invitationListSchema,
   invitationPreviewSchema,
   invitationSentSchema,
@@ -49,6 +50,9 @@ export type ConversationStatus = Schemas["ConversationStatus"];
 export type ConversationPreview = Schemas["ConversationPreview"];
 export type ConversationPage = Schemas["ConversationPage"];
 export type InboxCounts = Schemas["InboxCounts"];
+export type NotificationSettings = Schemas["NotificationSettings"];
+export type NotificationSettingsInput = Schemas["UpdateNotificationSettingsRequest"];
+export type EmailDelayMinutes = Schemas["EmailDelayMinutes"];
 export type Message = Schemas["Message"];
 export type MessageEvent = Schemas["MessageEvent"];
 export type MessagePage = Schemas["MessagePage"];
@@ -319,6 +323,18 @@ export async function fetchContact(client: ApiClient, id: string): Promise<Conta
 /** Changes the given fields; an empty email, phone or locale clears it. */
 export async function updateContact(client: ApiClient, id: string, body: ContactInput): Promise<Contact> {
   return parseAnswer(contactSchema, await unwrap(client.PATCH("/contacts/{id}", { params: { path: { id } }, body })));
+}
+
+/** What the server does for the caller in this workspace: the email about missed messages. */
+export async function fetchNotificationSettings(client: ApiClient): Promise<NotificationSettings> {
+  return parseAnswer(notificationSettingsSchema, await unwrap(client.GET("/me/notifications")));
+}
+
+export async function updateNotificationSettings(
+  client: ApiClient,
+  body: NotificationSettingsInput,
+): Promise<NotificationSettings> {
+  return parseAnswer(notificationSettingsSchema, await unwrap(client.PATCH("/me/notifications", { body })));
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

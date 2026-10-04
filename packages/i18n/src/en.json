@@ -138,6 +138,48 @@
       "theme": "Theme",
       "themeHint": "The theme is stored in this browser only: choose it separately on other devices."
     },
+    "notifications": {
+      "title": "Notifications",
+      "device": {
+        "title": "On this device",
+        "text": "Sounds and desktop notifications are set up in each browser separately. With several tabs open, only one of them plays sounds."
+      },
+      "desktop": {
+        "title": "Desktop notifications",
+        "default": "The browser has not asked yet whether it may show notifications.",
+        "allow": "Allow notifications",
+        "granted": "Allowed in this browser.",
+        "denied": "Blocked in the browser. Allow them in the site settings (the icon left of the address) and reload the page.",
+        "unsupported": "This browser does not show desktop notifications.",
+        "show": "Show desktop notifications",
+        "hint": "When you are given a conversation or a customer writes in yours while you do not have it open. Clicking the notification opens the conversation."
+      },
+      "sounds": {
+        "title": "Sounds",
+        "assigned": "A conversation is given to me",
+        "message": "A customer writes in my conversation",
+        "queued": "A new conversation in the queue",
+        "play": "Play",
+        "playLabel": "Play: {sound}",
+        "volume": "Volume",
+        "hint": "No sound while the conversation is open on your screen."
+      },
+      "test": {
+        "send": "Send a test notification",
+        "sent": "Sent. If nothing appeared, check the browser permission and the system's Do Not Disturb mode."
+      },
+      "email": {
+        "title": "By email",
+        "missed": "Email about unread messages",
+        "missedHint": "If a customer message in your conversation stays unread, an email goes to {email}. The email has no conversation text.",
+        "delay": "After",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "saved": "Saved.",
+        "unavailable": "Outgoing email is not set up on this server, so no emails are sent. Ask your administrator.",
+        "unverified": "{email} is not confirmed: emails start once you confirm it.",
+        "toProfile": "Confirm in your profile"
+      }
+    },
     "security": {
       "title": "Security and sign-in",
       "password": {
@@ -480,6 +522,17 @@
         "more": "Show more",
         "error": "Could not load the conversation history."
       }
+    }
+  },
+  "notifications": {
+    "alert": {
+      "assigned": "Conversation #{number} is yours",
+      "message": "New message · #{number}",
+      "queued": "New conversation in the queue · #{number}"
+    },
+    "test": {
+      "title": "Tolkovo: test",
+      "body": "This is how conversation notifications will look."
     }
   }
 }

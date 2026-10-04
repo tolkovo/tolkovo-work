@@ -60,6 +60,7 @@ type Preview struct {
 // InboxCounts are the counters of the inbox tabs for one operator.
 type InboxCounts struct {
 	Mine       int64 // assigned to the operator and not finished
+	MineUnread int64 // of those, with customer messages the operator has not read
 	Unassigned int64 // waiting in the queue
 	Open       int64 // every conversation not resolved or closed
 }
@@ -192,7 +193,7 @@ func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID
 	var out InboxCounts
 	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
 		row, err := q.CountInbox(ctx, store.CountInboxParams{WorkspaceID: workspaceID, UserID: &userID})
-		out = InboxCounts{Mine: row.Mine, Unassigned: row.Unassigned, Open: row.Open}
+		out = InboxCounts{Mine: row.Mine, MineUnread: row.MineUnread, Unassigned: row.Unassigned, Open: row.Open}
 		return err
 	})
 	if err != nil {
@@ -278,11 +279,17 @@ func (s *Service) change(
 		if n == 0 {
 			return ErrConflict
 		}
-		if err := addStateEvents(ctx, tx, workspaceID, id, cur, next); err != nil {
+		if err := addStateEvents(ctx, tx, workspaceID, actorID, id, cur, next); err != nil {
 			return err
 		}
 		if err := addEventMessage(ctx, q, tx, row, actorID, cur, next, s.now()); err != nil {
 			return err
+		}
+		// Given to someone by someone else: they may miss it (docs/04 §5.5).
+		if s.notifier != nil && next.AssigneeID != nil && !sameID(next.AssigneeID, cur.AssigneeID) && *next.AssigneeID != actorID {
+			if err := s.notifier.NeedsAttention(ctx, tx, workspaceID, id, *next.AssigneeID); err != nil {
+				return err
+			}
 		}
 		out, err = getConversation(ctx, q, workspaceID, actorID, id)
 		return err
@@ -294,11 +301,16 @@ func (s *Service) change(
 }
 
 // addStateEvents writes conversation.status_changed and
-// conversation.assigned. Payloads carry ids only.
-func addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, id uuid.UUID, cur, next state) error {
+// conversation.assigned. Payloads carry ids only; actor_id is null for a
+// change made by the system.
+func addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, actorID, id uuid.UUID, cur, next state) error {
+	var actor *uuid.UUID
+	if actorID != uuid.Nil {
+		actor = &actorID
+	}
 	if next.Status != cur.Status {
 		err := outbox.Add(ctx, tx, workspaceID, "conversation.status_changed", map[string]any{
-			"conversation_id": id, "from": cur.Status, "to": next.Status, "assignee_id": next.AssigneeID,
+			"conversation_id": id, "from": cur.Status, "to": next.Status, "assignee_id": next.AssigneeID, "actor_id": actor,
 		})
 		if err != nil {
 			return err
@@ -306,7 +318,7 @@ func addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, id uuid.UUID, c
 	}
 	if !sameID(next.AssigneeID, cur.AssigneeID) {
 		return outbox.Add(ctx, tx, workspaceID, "conversation.assigned", map[string]any{
-			"conversation_id": id, "assignee_id": next.AssigneeID, "previous_assignee_id": cur.AssigneeID,
+			"conversation_id": id, "assignee_id": next.AssigneeID, "previous_assignee_id": cur.AssigneeID, "actor_id": actor,
 		})
 	}
 	return nil

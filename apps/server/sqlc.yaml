@@ -61,6 +61,16 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
+    queries: internal/notifications/queries
+    gen:
+      go:
+        package: store
+        out: internal/notifications/store
+        sql_package: pgx/v5
+        omit_unused_structs: true
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
     queries: internal/platform/outbox/queries
     gen:
       go:

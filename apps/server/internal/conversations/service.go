@@ -71,17 +71,29 @@ type Actor struct {
 	AssignOthers bool
 }
 
+// Notifier hears about changes a member may need to act on, so it can
+// remind them later (docs/04 §5.5). It runs inside the transaction of the
+// change: it may write rows and queue jobs there, never call the network.
+// Inbound messages call it too once channels deliver them (T-02, W-01).
+type Notifier interface {
+	NeedsAttention(ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID) error
+}
+
 // Service is the module facade.
 type Service struct {
-	db    *db.DB
-	files Files
-	now   func() time.Time
+	db       *db.DB
+	files    Files
+	notifier Notifier
+	now      func() time.Time
 }
 
 // New returns the conversations service.
 func New(d *db.DB, files Files) *Service {
 	return &Service{db: d, files: files, now: func() time.Time { return time.Now().UTC() }}
 }
+
+// SetNotifier connects the notifications module; call it before serving.
+func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
 
 // Page is one page of a cursor-paginated list. NextCursor is empty on the
 // last page.

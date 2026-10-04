@@ -3,6 +3,7 @@ import { queryKeys } from "@tolkovo/api-client/react";
 import { hashKey, type QueryClient } from "@tanstack/react-query";
 
 import { resetDrafts } from "../inbox/drafts";
+import type { Notifier } from "../notifications/notifier";
 import { RealtimeConnection, type ConnectionOptions } from "./connection";
 import { createInboxSync } from "./inbox-sync";
 import { applySignal, resetSignals, signalSender, type SignalSender } from "./signals";
@@ -14,6 +15,8 @@ type BindOptions = {
   api: ApiClient;
   createConnection?: (options: ConnectionOptions) => Connection;
   sender?: SignalSender;
+  /** Sounds and desktop notifications (I-05). */
+  notifier?: Pick<Notifier, "notify">;
 };
 
 /**
@@ -24,7 +27,7 @@ type BindOptions = {
  */
 export function bindRealtime(
   queryClient: QueryClient,
-  { url, api, createConnection, sender = signalSender }: BindOptions,
+  { url, api, createConnection, sender = signalSender, notifier }: BindOptions,
 ): () => void {
   const make = createConnection ?? ((options: ConnectionOptions) => new RealtimeConnection(options));
   let current: { key: string; connection: Connection; sync: ReturnType<typeof createInboxSync> } | null = null;
@@ -45,7 +48,7 @@ export function bindRealtime(
     if (key === (current?.key ?? null)) return;
     stopCurrent();
     if (!key) return;
-    const inbox = createInboxSync({ queryClient, api });
+    const inbox = createInboxSync({ queryClient, api, onConversation: notifier?.notify });
     const connection = make({
       url,
       handlers: {

@@ -31,11 +31,20 @@ func (q *Queries) BumpConversation(ctx context.Context, arg BumpConversationPara
 
 const countInbox = `-- name: CountInbox :one
 SELECT
-    count(*) FILTER (WHERE assignee_id = $1 AND status IN ('assigned', 'pending'))::bigint AS mine,
-    count(*) FILTER (WHERE assignee_id IS NULL AND status = 'queued')::bigint AS unassigned,
-    count(*) FILTER (WHERE status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
-FROM conversations
-WHERE workspace_id = $2 AND status IN ('new', 'bot', 'queued', 'assigned', 'pending')
+    count(*) FILTER (WHERE c.assignee_id = $1 AND c.status IN ('assigned', 'pending'))::bigint AS mine,
+    count(*) FILTER (WHERE c.assignee_id = $1 AND c.status IN ('assigned', 'pending') AND EXISTS (
+        SELECT 1 FROM messages um
+        WHERE um.workspace_id = c.workspace_id AND um.conversation_id = c.id
+          AND um.sender_type = 'contact' AND um.deleted_at IS NULL
+          AND um.id > coalesce((
+              SELECT rd.last_read_message_id FROM conversation_reads rd
+              WHERE rd.workspace_id = c.workspace_id AND rd.conversation_id = c.id AND rd.user_id = $1
+          ), '00000000-0000-0000-0000-000000000000'::uuid)
+    ))::bigint AS mine_unread,
+    count(*) FILTER (WHERE c.assignee_id IS NULL AND c.status = 'queued')::bigint AS unassigned,
+    count(*) FILTER (WHERE c.status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
+FROM conversations c
+WHERE c.workspace_id = $2 AND c.status IN ('new', 'bot', 'queued', 'assigned', 'pending')
 `
 
 type CountInboxParams struct {
@@ -45,6 +54,7 @@ type CountInboxParams struct {
 
 type CountInboxRow struct {
 	Mine       int64
+	MineUnread int64
 	Unassigned int64
 	Open       int64
 }
@@ -52,10 +62,17 @@ type CountInboxRow struct {
 // Counters of the inbox tabs (docs/04 §3.1). The status sets mirror the
 // tabs of the panel: mine and the queue are work in progress, open is
 // everything not finished yet.
+// mine_unread: the caller's conversations with a customer message after
+// their read mark (the "(3)" in the tab title, docs/04 §5.5).
 func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountInboxRow, error) {
 	row := q.db.QueryRow(ctx, countInbox, arg.UserID, arg.WorkspaceID)
 	var i CountInboxRow
-	err := row.Scan(&i.Mine, &i.Unassigned, &i.Open)
+	err := row.Scan(
+		&i.Mine,
+		&i.MineUnread,
+		&i.Unassigned,
+		&i.Open,
+	)
 	return i, err
 }
 

@@ -22,7 +22,7 @@ describe("settings tree", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Профиль" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/profile");
     const nav = await settingsNav();
-    expect(navLinks(nav)).toEqual(["Команда", "Профиль", "Внешний вид", "Безопасность и вход"]);
+    expect(navLinks(nav)).toEqual(["Команда", "Профиль", "Внешний вид", "Уведомления", "Безопасность и вход"]);
     expect(within(nav).getByRole("heading", { name: "Пространство" })).toBeInTheDocument();
     expect(within(nav).getByRole("heading", { name: "Лично для меня" })).toBeInTheDocument();
   });
@@ -31,14 +31,14 @@ describe("settings tree", () => {
     const reader: Session = { ...operatorSession, permissions: [] };
     renderApp("/settings", { api: fakeApi({ session: reader }) });
     const nav = await settingsNav();
-    expect(navLinks(nav)).toEqual(["Профиль", "Внешний вид", "Безопасность и вход"]);
+    expect(navLinks(nav)).toEqual(["Профиль", "Внешний вид", "Уведомления", "Безопасность и вход"]);
     expect(within(nav).queryByRole("heading", { name: "Пространство" })).not.toBeInTheDocument();
   });
 
   it("gives the owner both groups and opens General first", async () => {
     const { router } = renderApp("/settings");
     const nav = await settingsNav();
-    expect(navLinks(nav)).toEqual(["Общие", "Команда", "Профиль", "Внешний вид", "Безопасность и вход"]);
+    expect(navLinks(nav)).toEqual(["Общие", "Команда", "Профиль", "Внешний вид", "Уведомления", "Безопасность и вход"]);
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/general"));
   });
 });

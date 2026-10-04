@@ -66,7 +66,7 @@ func (s *server) GetInboxCounts(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, oapi.InboxCounts{Mine: n.Mine, Unassigned: n.Unassigned, Open: n.Open})
+	writeJSON(w, http.StatusOK, oapi.InboxCounts{Mine: n.Mine, MineUnread: n.MineUnread, Unassigned: n.Unassigned, Open: n.Open})
 }
 
 func (s *server) CreateConversation(w http.ResponseWriter, r *http.Request) {

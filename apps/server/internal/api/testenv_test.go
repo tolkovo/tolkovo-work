@@ -22,6 +22,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
@@ -110,9 +111,16 @@ func newEnv(t *testing.T, o envOptions) *env {
 		t.Fatalf("storage: %v", err)
 	}
 	t.Cleanup(func() { _ = files.Close() })
+	var mailJobs *jobs.Client
+	if o.mail {
+		mailJobs = jobsClient
+	}
+	notifs := notifications.New(app, mailJobs)
+	convs := conversations.New(app, files)
+	convs.SetNotifier(notifs)
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
-		Tenancy: ten, Auth: a, Conversations: conversations.New(app, files),
+		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {

@@ -29,6 +29,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
@@ -220,8 +221,8 @@ func startWorker(
 }
 
 // addMailWorkers registers the auth emails (invitations, password reset,
-// email confirmation) when outgoing email is configured. Without it the api
-// queues no email jobs.
+// email confirmation) and the emails about missed messages when outgoing
+// email is configured. Without it the api queues no email jobs.
 func addMailWorkers(workers *river.Workers, cfg config.Config, pool *db.DB, redisClient *redis.Client, log *slog.Logger) error {
 	if !cfg.MailEnabled() {
 		log.Warn("TOLKOVO_SMTP_HOST is not set: no email is sent; invitation links are shown to admins, password reset is off")
@@ -234,8 +235,16 @@ func addMailWorkers(workers *river.Workers, cfg config.Config, pool *db.DB, redi
 	if err != nil {
 		return err
 	}
-	return auth.AddMailWorkers(workers, auth.MailOptions{
-		Tenancy: tenancy.New(pool), Redis: redisClient, Sender: sender, PanelURL: cfg.PanelBaseURL(),
+	tenants := tenancy.New(pool)
+	if err := auth.AddMailWorkers(workers, auth.MailOptions{
+		Tenancy: tenants, Redis: redisClient, Sender: sender, PanelURL: cfg.PanelBaseURL(),
+	}); err != nil {
+		return err
+	}
+	// The worker reads conversations only, it never signs file links.
+	return notifications.AddWorkers(workers, notifications.WorkerOptions{
+		Service: notifications.New(pool, nil), Tenancy: tenants, Conversations: conversations.New(pool, nil),
+		Sender: sender, PanelURL: cfg.PanelBaseURL(),
 	})
 }
 
@@ -260,12 +269,22 @@ func apiDeps(
 	if err != nil {
 		return api.Deps{}, err
 	}
+	// The api queues the emails about missed messages only when the worker
+	// can send them.
+	var mailJobs *jobs.Client
+	if cfg.MailEnabled() {
+		mailJobs = inserter
+	}
+	notifs := notifications.New(pool, mailJobs)
+	convs := conversations.New(pool, store)
+	convs.SetNotifier(notifs)
 	deps := api.Deps{
 		Log: log, DB: pool, Version: version,
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
 		Tenancy:       tenants,
 		Auth:          authSvc,
-		Conversations: conversations.New(pool, store),
+		Conversations: convs,
+		Notifications: notifs,
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

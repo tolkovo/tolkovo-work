@@ -20,7 +20,7 @@ function inboxApi(extra: FakeRoutes = {}) {
   return fakeApi({
     session: operatorSession,
     routes: {
-      "GET /conversations/counts": () => json(200, { mine: 1, unassigned: 1, open: 2 }),
+      "GET /conversations/counts": () => json(200, { mine: 1, mine_unread: 0, unassigned: 1, open: 2 }),
       "GET /conversations": (request) => {
         const q = new URL(request.url).searchParams;
         const items = q.get("assignee") === "me" ? [conv("c1")] : q.get("assignee") === "none" ? [queued] : [conv("c1"), queued];

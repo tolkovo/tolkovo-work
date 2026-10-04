@@ -7,6 +7,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
@@ -17,6 +18,7 @@ type server struct {
 	tenancy       *tenancy.Service
 	auth          *auth.Service
 	conversations *conversations.Service
+	notifications *notifications.Service
 	cookies       sessionCookies
 	clients       clientIPs
 }

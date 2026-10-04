@@ -18,6 +18,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -38,6 +39,7 @@ type Deps struct {
 	Tenancy       *tenancy.Service
 	Auth          *auth.Service
 	Conversations *conversations.Service
+	Notifications *notifications.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -72,7 +74,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	srv := &server{
-		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations,
+		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations, notifications: d.Notifications,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
 	}

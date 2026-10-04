@@ -13,6 +13,11 @@ type InboxSyncOptions = {
   queryClient: QueryClient;
   api: ApiClient;
   batchMs?: number;
+  /**
+   * Hears a conversation after it was fetched for a batch of events, with those events: the
+   * notifications decide on fresh state (I-05). Not called for read marks and tags.
+   */
+  onConversation?: (events: RealtimeEvent[], c: Conversation, meId: string | undefined) => void;
 };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -22,8 +27,10 @@ const str = (v: unknown): string | undefined => (typeof v === "string" ? v : und
  * carry ids only, so a changed conversation is fetched once and patched into every cached list;
  * the counters and an open feed are refetched. Everything else is invalidated as before.
  */
-export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS }: InboxSyncOptions) {
+export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onConversation }: InboxSyncOptions) {
   const conversations = new Set<string>();
+  /** Events of each conversation in the current batch, for onConversation. */
+  const batchEvents = new Map<string, RealtimeEvent[]>();
   const feeds = new Set<string>();
   const contacts = new Set<string>();
   const roots = new Map<string, QueryKey>();
@@ -35,6 +42,13 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS }: I
 
   const meId = () => queryClient.getQueryData<Session | null>(queryKeys.session)?.user.id;
 
+  const remember = (id: string, event: RealtimeEvent) => {
+    if (!onConversation) return;
+    const list = batchEvents.get(id);
+    if (list) list.push(event);
+    else batchEvents.set(id, [event]);
+  };
+
   const schedule = () => {
     if (timer === undefined && !stopped) timer = setTimeout(() => void flush(), batchMs);
   };
@@ -45,10 +59,12 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS }: I
     applyConversation(queryClient, c, meId());
   };
 
-  const refresh = async (id: string) => {
+  const refresh = async (id: string, events: RealtimeEvent[]) => {
     try {
       const c = await fetchConversation(api, id);
-      if (!stopped) apply(c);
+      if (stopped) return;
+      apply(c);
+      if (events.length > 0) onConversation?.(events, c, meId());
     } catch (error) {
       if (stopped) return;
       if (isApiError(error) && (error.status === 404 || error.status === 403)) dropConversation(queryClient, id);
@@ -61,6 +77,8 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS }: I
     timer = undefined;
     const ids = [...conversations];
     conversations.clear();
+    const events = new Map(batchEvents);
+    batchEvents.clear();
     for (const id of feeds) void queryClient.invalidateQueries({ queryKey: queryKeys.conversationMessages(id) });
     feeds.clear();
     for (const id of contacts) {
@@ -71,25 +89,29 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS }: I
     roots.clear();
     if (counts) void queryClient.invalidateQueries({ queryKey: queryKeys.inboxCounts });
     counts = false;
-    await Promise.all(ids.map(refresh));
+    await Promise.all(ids.map((id) => refresh(id, events.get(id) ?? [])));
   }
 
   return {
     onEvent(event: RealtimeEvent) {
       const conversationId = str(event.data.conversation_id);
       if (event.type === "conversation.read") {
-        // Read marks are per member: only the reader's own tabs refresh their unread counter.
+        // Read marks are per member: only the reader's own tabs refresh their unread counters.
         if (!conversationId || str(event.data.reader_id) !== meId()) return;
         conversations.add(conversationId);
+        counts = true; // mine_unread
       } else if (event.type === "conversation.tags_changed" && conversationId) {
         conversations.add(conversationId);
       } else if (event.type.startsWith("conversation.") && conversationId) {
         conversations.add(conversationId);
+        remember(conversationId, event);
         counts = true;
       } else if (event.type === "message.created" && conversationId) {
         conversations.add(conversationId);
         feeds.add(conversationId);
+        remember(conversationId, event);
         const sender = str(event.data.sender_type);
+        if (sender === "contact") counts = true; // mine_unread
         if (sender === "operator" || sender === "contact" || sender === "bot") {
           clearTyping(conversationId, sender, str(event.data.sender_id) ?? null);
         }

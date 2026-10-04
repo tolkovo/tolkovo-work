@@ -72,7 +72,8 @@ export function fakeApi(
     "GET /me/sessions": () => json(200, { items: deviceSessions }),
     "GET /invitations": () => json(200, { items: [], email_enabled: true }),
     "GET /conversations": () => json(200, { items: [], next_cursor: null }),
-    "GET /conversations/counts": () => json(200, { mine: 0, unassigned: 0, open: 0 }),
+    "GET /conversations/counts": () => json(200, { mine: 0, mine_unread: 0, unassigned: 0, open: 0 }),
+    "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true }),
     "GET /tags": () => json(200, { items: [] }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {

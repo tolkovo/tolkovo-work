@@ -192,12 +192,13 @@
         "type": { "const": "conversation.status_changed" },
         "data": {
           "type": "object",
-          "required": ["conversation_id", "from", "to", "assignee_id"],
+          "required": ["conversation_id", "from", "to", "assignee_id", "actor_id"],
           "properties": {
             "conversation_id": { "$ref": "#/$defs/uuid" },
             "from": { "$ref": "#/$defs/conversationStatus" },
             "to": { "$ref": "#/$defs/conversationStatus" },
-            "assignee_id": { "$ref": "#/$defs/nullableUuid" }
+            "assignee_id": { "$ref": "#/$defs/nullableUuid" },
+            "actor_id": { "$ref": "#/$defs/nullableUuid", "description": "Who made the change; null for the system." }
           }
         }
       }
@@ -208,11 +209,15 @@
         "type": { "const": "conversation.assigned" },
         "data": {
           "type": "object",
-          "required": ["conversation_id", "assignee_id", "previous_assignee_id"],
+          "required": ["conversation_id", "assignee_id", "previous_assignee_id", "actor_id"],
           "properties": {
             "conversation_id": { "$ref": "#/$defs/uuid" },
             "assignee_id": { "$ref": "#/$defs/nullableUuid" },
-            "previous_assignee_id": { "$ref": "#/$defs/nullableUuid" }
+            "previous_assignee_id": { "$ref": "#/$defs/nullableUuid" },
+            "actor_id": {
+              "$ref": "#/$defs/nullableUuid",
+              "description": "Who made the change; null for the system. Equal to assignee_id when a member took the conversation: the panel alerts only about conversations given to the member by someone else."
+            }
           }
         }
       }

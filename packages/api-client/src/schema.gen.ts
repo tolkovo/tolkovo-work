@@ -335,6 +335,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The current user's notification settings in this workspace
+         * @description What the server does for the user: the email about customer messages left unread in
+         *     their conversations. Sounds and desktop notifications are settings of a browser and
+         *     are not stored here (docs/04 §5.5).
+         */
+        get: operations["getMyNotificationSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the current user's notification settings in this workspace
+         * @description Absent fields stay as they are. Needs a session only, no permission.
+         */
+        patch: operations["updateMyNotificationSettings"];
+        trace?: never;
+    };
     "/me/workspaces": {
         parameters: {
             query?: never;
@@ -873,6 +899,26 @@ export interface components {
             /** @description Interface language of the panel (docs/04 §8.2). */
             locale?: components["schemas"]["Locale"];
         };
+        /**
+         * @description How long customer messages may stay unread before the email goes out.
+         * @enum {integer}
+         */
+        EmailDelayMinutes: 5 | 15 | 30 | 60;
+        NotificationSettings: {
+            /**
+             * @description Email the user when a conversation assigned to them keeps unread customer messages
+             *     for `email_delay_minutes`. Goes only to a confirmed email (`User.email_verified`),
+             *     without message texts. On by default.
+             */
+            email_missed: boolean;
+            email_delay_minutes: components["schemas"]["EmailDelayMinutes"];
+            /** @description Outgoing email is configured on this server; without it nothing is sent. */
+            email_available: boolean;
+        };
+        UpdateNotificationSettingsRequest: {
+            email_missed?: boolean;
+            email_delay_minutes?: components["schemas"]["EmailDelayMinutes"];
+        };
         ChangePasswordRequest: {
             current_password: string;
             new_password: string;
@@ -1071,11 +1117,15 @@ export interface components {
         };
         /**
          * @description Counters of the inbox tabs. `mine`: assigned to the caller, `assigned` or `pending`;
-         *     `unassigned`: `queued`; `open`: every status before `resolved`.
+         *     `mine_unread`: of those, with customer messages after the caller's read mark (the
+         *     counter in the tab title); `unassigned`: `queued`; `open`: every status before
+         *     `resolved`.
          */
         InboxCounts: {
             /** Format: int64 */
             mine: number;
+            /** Format: int64 */
+            mine_unread: number;
             /** Format: int64 */
             unassigned: number;
             /** Format: int64 */
@@ -1793,6 +1843,54 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getMyNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings; defaults until the user changes them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    updateMyNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNotificationSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The changed settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listMyWorkspaces: {

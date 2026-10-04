@@ -170,6 +170,7 @@ export const conversationPageSchema = z.object({
 
 export const inboxCountsSchema = z.object({
   mine: z.number(),
+  mine_unread: z.number(),
   unassigned: z.number(),
   open: z.number(),
 }) satisfies z.ZodType<Schemas["InboxCounts"]>;
@@ -221,3 +222,9 @@ export const tagSchema = z.object({
 }) satisfies z.ZodType<Schemas["Tag"]>;
 
 export const tagListSchema = z.object({ items: z.array(tagSchema) }) satisfies z.ZodType<Schemas["TagList"]>;
+
+export const notificationSettingsSchema = z.object({
+  email_missed: z.boolean(),
+  email_delay_minutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
+  email_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["NotificationSettings"]>;

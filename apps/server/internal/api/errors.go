@@ -15,6 +15,7 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
@@ -108,7 +109,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail: "the Idempotency-Key was used with a different request",
 		})
 	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid),
-		errors.Is(err, conversations.ErrInvalid):
+		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid):
 		writeProblem(w, r, Problem{
 			Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err),
 		})
@@ -124,7 +125,10 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 // only the human reason reaches the client.
 func detail(err error) string {
 	msg := err.Error()
-	for _, sentinel := range []error{errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition} {
+	for _, sentinel := range []error{
+		errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition,
+		notifications.ErrInvalid,
+	} {
 		if after, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
 			return after
 		}

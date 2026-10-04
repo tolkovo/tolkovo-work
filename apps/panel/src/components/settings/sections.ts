@@ -5,6 +5,7 @@ export type SettingsPath =
   | "/settings/team"
   | "/settings/profile"
   | "/settings/appearance"
+  | "/settings/notifications"
   | "/settings/security";
 
 type SettingsSection = {
@@ -14,6 +15,7 @@ type SettingsSection = {
     | "settings.team.title"
     | "settings.profile.title"
     | "settings.appearance.title"
+    | "settings.notifications.title"
     | "settings.security.title";
   /** Permission from GET /me needed to see the section; none means every member sees it. */
   permission?: string;
@@ -28,8 +30,9 @@ export type SettingsGroup = {
 
 /**
  * Settings tree (docs/07 §7): workspace sections by permission, then the personal ones every
- * user has. More sections join with their features; «Статус и уведомления» and «Горячие
- * клавиши» come with presence and the inbox. Hiding is a UI hint: the server checks again.
+ * user has. More sections join with their features: the operator status joins «Уведомления»
+ * with presence (Q-02), «Горячие клавиши» come with the inbox shortcuts. Hiding is a UI hint:
+ * the server checks again.
  */
 export const settingsGroups: readonly SettingsGroup[] = [
   {
@@ -44,6 +47,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
     sections: [
       { to: "/settings/profile", label: "settings.profile.title", landing: true },
       { to: "/settings/appearance", label: "settings.appearance.title" },
+      { to: "/settings/notifications", label: "settings.notifications.title" },
       { to: "/settings/security", label: "settings.security.title" },
     ],
   },

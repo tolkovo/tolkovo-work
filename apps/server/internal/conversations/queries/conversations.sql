@@ -110,12 +110,23 @@ LIMIT @lim;
 -- Counters of the inbox tabs (docs/04 §3.1). The status sets mirror the
 -- tabs of the panel: mine and the queue are work in progress, open is
 -- everything not finished yet.
+-- mine_unread: the caller's conversations with a customer message after
+-- their read mark (the "(3)" in the tab title, docs/04 §5.5).
 SELECT
-    count(*) FILTER (WHERE assignee_id = @user_id AND status IN ('assigned', 'pending'))::bigint AS mine,
-    count(*) FILTER (WHERE assignee_id IS NULL AND status = 'queued')::bigint AS unassigned,
-    count(*) FILTER (WHERE status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
-FROM conversations
-WHERE workspace_id = @workspace_id AND status IN ('new', 'bot', 'queued', 'assigned', 'pending');
+    count(*) FILTER (WHERE c.assignee_id = @user_id AND c.status IN ('assigned', 'pending'))::bigint AS mine,
+    count(*) FILTER (WHERE c.assignee_id = @user_id AND c.status IN ('assigned', 'pending') AND EXISTS (
+        SELECT 1 FROM messages um
+        WHERE um.workspace_id = c.workspace_id AND um.conversation_id = c.id
+          AND um.sender_type = 'contact' AND um.deleted_at IS NULL
+          AND um.id > coalesce((
+              SELECT rd.last_read_message_id FROM conversation_reads rd
+              WHERE rd.workspace_id = c.workspace_id AND rd.conversation_id = c.id AND rd.user_id = @user_id
+          ), '00000000-0000-0000-0000-000000000000'::uuid)
+    ))::bigint AS mine_unread,
+    count(*) FILTER (WHERE c.assignee_id IS NULL AND c.status = 'queued')::bigint AS unassigned,
+    count(*) FILTER (WHERE c.status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
+FROM conversations c
+WHERE c.workspace_id = @workspace_id AND c.status IN ('new', 'bot', 'queued', 'assigned', 'pending');
 
 -- name: UpdateConversationState :execrows
 -- Applies a transition computed in Go. The version guard makes a lost

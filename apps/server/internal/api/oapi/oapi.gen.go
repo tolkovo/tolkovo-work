@@ -134,6 +134,30 @@ func (e CreateInvitationRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for EmailDelayMinutes.
+const (
+	N15 EmailDelayMinutes = 15
+	N30 EmailDelayMinutes = 30
+	N5  EmailDelayMinutes = 5
+	N60 EmailDelayMinutes = 60
+)
+
+// Valid indicates whether the value is a known member of the EmailDelayMinutes enum.
+func (e EmailDelayMinutes) Valid() bool {
+	switch e {
+	case N15:
+		return true
+	case N30:
+		return true
+	case N5:
+		return true
+	case N60:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Locale.
 const (
 	En Locale = "en"
@@ -507,15 +531,21 @@ type DeviceSessionList struct {
 	Items []DeviceSession `json:"items"`
 }
 
+// EmailDelayMinutes How long customer messages may stay unread before the email goes out.
+type EmailDelayMinutes int
+
 // ForgotPasswordRequest defines model for ForgotPasswordRequest.
 type ForgotPasswordRequest struct {
 	Email string `json:"email"`
 }
 
 // InboxCounts Counters of the inbox tabs. `mine`: assigned to the caller, `assigned` or `pending`;
-// `unassigned`: `queued`; `open`: every status before `resolved`.
+// `mine_unread`: of those, with customer messages after the caller's read mark (the
+// counter in the tab title); `unassigned`: `queued`; `open`: every status before
+// `resolved`.
 type InboxCounts struct {
 	Mine       int64 `json:"mine"`
+	MineUnread int64 `json:"mine_unread"`
 	Open       int64 `json:"open"`
 	Unassigned int64 `json:"unassigned"`
 }
@@ -653,6 +683,20 @@ type MessagePage struct {
 	NextCursor *string   `json:"next_cursor"`
 }
 
+// NotificationSettings defines model for NotificationSettings.
+type NotificationSettings struct {
+	// EmailAvailable Outgoing email is configured on this server; without it nothing is sent.
+	EmailAvailable bool `json:"email_available"`
+
+	// EmailDelayMinutes How long customer messages may stay unread before the email goes out.
+	EmailDelayMinutes EmailDelayMinutes `json:"email_delay_minutes"`
+
+	// EmailMissed Email the user when a conversation assigned to them keeps unread customer messages
+	// for `email_delay_minutes`. Goes only to a confirmed email (`User.email_verified`),
+	// without message texts. On by default.
+	EmailMissed bool `json:"email_missed"`
+}
+
 // PostMessageRequest defines model for PostMessageRequest.
 type PostMessageRequest struct {
 	AttachmentIds *[]uuid.UUID `json:"attachment_ids,omitempty"`
@@ -764,6 +808,13 @@ type UpdateMeRequest struct {
 
 	// Name Trimmed; 1–120 characters after trimming.
 	Name *string `json:"name,omitempty"`
+}
+
+// UpdateNotificationSettingsRequest defines model for UpdateNotificationSettingsRequest.
+type UpdateNotificationSettingsRequest struct {
+	// EmailDelayMinutes How long customer messages may stay unread before the email goes out.
+	EmailDelayMinutes *EmailDelayMinutes `json:"email_delay_minutes,omitempty"`
+	EmailMissed       *bool              `json:"email_missed,omitempty"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
@@ -946,6 +997,9 @@ type CreateInvitationJSONRequestBody = CreateInvitationRequest
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = UpdateMeRequest
 
+// UpdateMyNotificationSettingsJSONRequestBody defines body for UpdateMyNotificationSettings for application/json ContentType.
+type UpdateMyNotificationSettingsJSONRequestBody = UpdateNotificationSettingsRequest
+
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest
 
@@ -1053,6 +1107,12 @@ type ServerInterface interface {
 	// ResendEmailVerification Send the email confirmation link again
 	// (POST /me/email/verification)
 	ResendEmailVerification(w http.ResponseWriter, r *http.Request)
+	// GetMyNotificationSettings The current user's notification settings in this workspace
+	// (GET /me/notifications)
+	GetMyNotificationSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateMyNotificationSettings Change the current user's notification settings in this workspace
+	// (PATCH /me/notifications)
+	UpdateMyNotificationSettings(w http.ResponseWriter, r *http.Request)
 	// ChangePassword Change the current user's password
 	// (POST /me/password)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
@@ -1275,6 +1335,18 @@ func (_ Unimplemented) UpdateMe(w http.ResponseWriter, r *http.Request) {
 // ResendEmailVerification Send the email confirmation link again
 // (POST /me/email/verification)
 func (_ Unimplemented) ResendEmailVerification(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetMyNotificationSettings The current user's notification settings in this workspace
+// (GET /me/notifications)
+func (_ Unimplemented) GetMyNotificationSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMyNotificationSettings Change the current user's notification settings in this workspace
+// (PATCH /me/notifications)
+func (_ Unimplemented) UpdateMyNotificationSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2101,6 +2173,34 @@ func (siw *ServerInterfaceWrapper) ResendEmailVerification(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyNotificationSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetMyNotificationSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyNotificationSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMyNotificationSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMyNotificationSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMyNotificationSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ChangePassword operation middleware
 func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
@@ -2399,6 +2499,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/me/sessions/{id}", wrapper.RevokeSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/notifications", wrapper.GetMyNotificationSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/me/notifications", wrapper.UpdateMyNotificationSettings)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/workspaces", wrapper.ListMyWorkspaces)

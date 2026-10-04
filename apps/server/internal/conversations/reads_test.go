@@ -106,3 +106,37 @@ func TestUnreadCount_Capped(t *testing.T) {
 		t.Fatalf("cap: %d %v", got.UnreadCount, err)
 	}
 }
+
+func TestInboxCounts_MineUnread(t *testing.T) {
+	f := setup(t)
+	olga := f.member(f.wsA, "olga", tenancy.RoleOperator)
+	c := f.assigned(f.wsA, olga)
+	f.assigned(f.wsA, olga) // nothing from the customer yet
+	m := f.inbound(f.wsA, c.ID, c.ContactID)
+
+	count := func(user uuid.UUID) int64 {
+		t.Helper()
+		n, err := f.svc.InboxCounts(f.ctx, f.wsA, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.MineUnread
+	}
+	if got := count(olga); got != 1 {
+		t.Fatalf("mine_unread = %d, want 1", got)
+	}
+	// Someone else's unread conversations are not in the caller's title.
+	if got := count(f.ownerA); got != 0 {
+		t.Fatalf("owner's mine_unread = %d, want 0", got)
+	}
+	if err := f.svc.MarkRead(f.ctx, f.wsA, olga, c.ID, m); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(olga); got != 0 {
+		t.Fatalf("after reading mine_unread = %d, want 0", got)
+	}
+	f.inbound(f.wsA, c.ID, c.ContactID)
+	if got := count(olga); got != 1 {
+		t.Fatalf("after a new message mine_unread = %d, want 1", got)
+	}
+}

@@ -31,6 +31,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/conversations
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -49,9 +51,11 @@ linters:
               desc: realtime gets the caller from api as realtime.Client
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/conversations
               desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
@@ -74,6 +78,18 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/conversations/store
               desc: use the conversations facade, not its store
+        no-foreign-notifications-store:
+          files: ["!**/internal/notifications/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications/store
+              desc: use the notifications facade, not its store
+        # notifications reads conversations; conversations only knows its
+        # Notifier interface.
+        conversations-without-notifications:
+          files: ["**/internal/conversations/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications
+              desc: conversations calls notifications through conversations.Notifier
     forbidigo:
       analyze-types: true
       forbid:

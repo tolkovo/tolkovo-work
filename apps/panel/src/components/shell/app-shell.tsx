@@ -3,6 +3,7 @@ import { Outlet, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useUnreadTitle } from "../../lib/notifications/use-unread-title";
 import { Rail } from "./rail";
 import { Topbar } from "./topbar";
 
@@ -11,6 +12,7 @@ export function AppShell() {
   const { t, i18n } = useTranslation();
   const { data: session } = useSession();
   const router = useRouter();
+  useUnreadTitle();
 
   // The profile language wins over the browser copy (docs/04 §8.2): applied after sign-in, on
   // load and when the profile changes. i18next is outside React, so this is an effect.

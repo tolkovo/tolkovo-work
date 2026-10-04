@@ -19,6 +19,7 @@ import {
   fetchConversation,
   fetchConversations,
   fetchInboxCounts,
+  fetchNotificationSettings,
   fetchInvitations,
   fetchMembers,
   fetchMessages,
@@ -40,12 +41,14 @@ import {
   revokeSession,
   switchWorkspace,
   updateContact,
+  updateNotificationSettings,
   updateMe,
   updateWorkspace,
   verifyEmail,
   type AcceptInvitationRequest,
   type ChangePasswordRequest,
   type Contact,
+  type NotificationSettingsInput,
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
@@ -81,6 +84,7 @@ export const queryKeys = {
   members: ["members"] as const,
   invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
+  myNotifications: ["me", "notifications"] as const,
   /**
    * Roots for conversation and contact queries (lists, details, message feeds nest under them):
    * realtime events invalidate by these prefixes (docs/02 §10, apps/panel/src/lib/realtime).
@@ -406,5 +410,20 @@ export function useUpdateContact(id: string) {
     onSuccess: (contact: Contact) => {
       queryClient.setQueryData(queryKeys.contact(id), contact);
     },
+  });
+}
+
+export function useNotificationSettings() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.myNotifications, queryFn: () => fetchNotificationSettings(client) });
+}
+
+/** Saves the given fields; the answer replaces the cached settings. */
+export function useUpdateNotificationSettings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: NotificationSettingsInput) => updateNotificationSettings(client, body),
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.myNotifications, settings),
   });
 }
