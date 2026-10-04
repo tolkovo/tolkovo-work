@@ -51,13 +51,6 @@ tags:
   - name: contacts
     description: Customers. Email and phone are personal data.
 
-  - name: waitlist
-    description: |
-      Public waitlist of the landing with double opt-in (docs/05 §6). Mounted only with
-      `TOLKOVO_WAITLIST_ENABLED=true`. No session and no CSRF token: the landing calls
-      it from another origin, so the routes live in their own group with CORS for
-      `TOLKOVO_WAITLIST_ORIGINS` only (no credentials) and rate limits per client IP
-      and per email. Generated into a separate package (`internal/api/waitlistapi`).
 paths:
   /auth/register:
     post:
@@ -791,97 +784,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /waitlist:
-    post:
-      tags: [waitlist]
-      operationId: joinWaitlist
-      summary: Ask to join the waitlist; a confirmation email follows
-      description: |
-        Saves the address as pending and queues an email with a confirmation link to the
-        landing (`/waitlist/confirm/#<token>`, `/en/...` for `en`); the page posts the token
-        to `POST /waitlist/confirm`. Until then the address is not on the list, and pending
-        entries are deleted after `TOLKOVO_WAITLIST_PENDING_RETENTION`.
-
-        The answer is the same `202` for a new, a pending and a confirmed address, so the
-        endpoint does not reveal who is on the list. A confirmed entry is not changed and gets
-        no email; a pending one takes the new answers and gets a new email, at most five per
-        address. Repeating the request is safe, so an `Idempotency-Key` header (docs/00 §8)
-        is allowed by CORS and ignored. Rate limited per client IP and per email.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/WaitlistJoinRequest' }
-      responses:
-        '202':
-          description: Accepted; check the inbox.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/WaitlistAccepted' }
-        '400': { $ref: '#/components/responses/Invalid' }
-        '403':
-          description: '`cross_origin`: the `Origin` is not in `TOLKOVO_WAITLIST_ORIGINS`.'
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
-
-  /waitlist/confirm:
-    post:
-      tags: [waitlist]
-      operationId: confirmWaitlist
-      summary: Confirm the address with the token from the email
-      description: |
-        The email links to a landing page instead of this endpoint, because mail scanners
-        open links: only a person pressing the button there confirms. Confirming again with
-        the same link while it is valid answers `200` again. Rate limited per client IP.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/WaitlistTokenRequest' }
-      responses:
-        '200':
-          description: The address is on the list.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/WaitlistConfirmed' }
-        '400': { $ref: '#/components/responses/Invalid' }
-        '403':
-          description: '`cross_origin`.'
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-        '404': { $ref: '#/components/responses/TokenInvalid' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
-
-  /waitlist/unsubscribe:
-    post:
-      tags: [waitlist]
-      operationId: unsubscribeWaitlist
-      summary: Delete the address from the waitlist
-      description: |
-        Deletes the entry, pending or confirmed (GDPR art. 17). The token comes from the
-        latest email sent to the address. Rate limited per client IP.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/WaitlistTokenRequest' }
-      responses:
-        '204':
-          description: Deleted.
-        '400': { $ref: '#/components/responses/Invalid' }
-        '403':
-          description: '`cross_origin`.'
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-        '404': { $ref: '#/components/responses/TokenInvalid' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
 components:
   parameters:
     Id:
@@ -946,11 +848,6 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     NotFound:
       description: '`not_found`, also for resources of other workspaces.'
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problem' }
-    TokenInvalid:
-      description: '`token_invalid`: unknown, expired or already used link.'
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1406,58 +1303,3 @@ components:
           type: string
           description: '`ru` or `en`; empty clears it on update.'
           maxLength: 2
-
-    WaitlistChannel:
-      type: string
-      description: Channels the person wants, for prioritising the roadmap (docs/05 §1).
-      enum: [telegram, web, whatsapp, vk_max, email]
-
-    WaitlistJoinRequest:
-      type: object
-      additionalProperties: false
-      required: [email, locale, consent]
-      properties:
-        email: { type: string, maxLength: 254 }
-        locale:
-          $ref: '#/components/schemas/Locale'
-        consent:
-          type: boolean
-          description: |
-            Explicit consent to processing the email and channels for the beta invitation
-            (GDPR art. 7). Must be `true`; the server stores the version of the consent text.
-        channels:
-          type: array
-          maxItems: 5
-          items: { $ref: '#/components/schemas/WaitlistChannel' }
-        website:
-          type: string
-          maxLength: 200
-          description: |
-            Honeypot: hidden from people, filled by bots. A non-empty value gets the usual
-            `202` and nothing is saved.
-
-    WaitlistTokenRequest:
-      type: object
-      additionalProperties: false
-      required: [token]
-      properties:
-        token:
-          type: string
-          description: Token from the link in the email (43 characters, base64url).
-          maxLength: 64
-
-    WaitlistAccepted:
-      type: object
-      required: [status]
-      properties:
-        status:
-          type: string
-          enum: [pending_confirmation]
-
-    WaitlistConfirmed:
-      type: object
-      required: [status]
-      properties:
-        status:
-          type: string
-          enum: [confirmed]

@@ -36,15 +36,13 @@ run: ## Run the server with role=all
 build: ## Build the server binary into bin/
 	cd $(SERVER) && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o ../../bin/tolkovo ./cmd/tolkovo
 
-GENERATED := $(SERVER)/internal/*/store $(SERVER)/internal/platform/*/store $(SERVER)/internal/api/oapi \
-	$(SERVER)/internal/api/waitlistapi
+GENERATED := $(SERVER)/internal/*/store $(SERVER)/internal/platform/*/store $(SERVER)/internal/api/oapi
 
 gen: gen-go gen-web ## Generate code from SQL and api/openapi.yaml (later WS schemas)
 
 gen-go: ## Go only: sqlc and oapi-codegen (no Node needed)
 	cd $(SERVER) && $(TOOL) sqlc generate
 	cd $(SERVER) && $(TOOL) oapi-codegen -config oapi-codegen.yaml ../../api/openapi.yaml
-	cd $(SERVER) && $(TOOL) oapi-codegen -config oapi-codegen.waitlist.yaml ../../api/openapi.yaml
 
 gen-web: ## TypeScript only: packages/api-client types by openapi-typescript
 	pnpm -r --if-present run gen

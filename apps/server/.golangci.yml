@@ -31,13 +31,11 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/conversations
               desc: platform must not import business modules
-            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/waitlist
-              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
               desc: platform must not import the HTTP layer
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/waitlist/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
@@ -56,11 +54,6 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/conversations/store
               desc: use the conversations facade, not its store
-        no-foreign-waitlist-store:
-          files: ["!**/internal/waitlist/**", "$all"]
-          deny:
-            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/waitlist/store
-              desc: use the waitlist facade, not its store
     forbidigo:
       analyze-types: true
       forbid:

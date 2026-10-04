@@ -69,13 +69,3 @@ sql:
         sql_package: pgx/v5
         omit_unused_structs: true
         overrides: *overrides
-  - engine: postgresql
-    schema: migrations
-    queries: internal/waitlist/queries
-    gen:
-      go:
-        package: store
-        out: internal/waitlist/store
-        sql_package: pgx/v5
-        omit_unused_structs: true
-        overrides: *overrides

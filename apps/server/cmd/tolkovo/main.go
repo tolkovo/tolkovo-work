@@ -32,13 +32,11 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
-	"github.com/tolkovo/tolkovo/apps/server/internal/platform/mail"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/migrate"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdb"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
-	"github.com/tolkovo/tolkovo/apps/server/internal/waitlist"
 )
 
 // version is set at build time: -ldflags "-X main.version=v0.1.0".
@@ -160,12 +158,6 @@ func startWorker(ctx context.Context, g *errgroup.Group, cfg config.Config, log 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	periodic := []*river.PeriodicJob{outbox.PrunePeriodic()}
-	if err := addWaitlistWorkers(workers, cfg, pool); err != nil {
-		return err
-	}
-	// Purging runs even with the waitlist off, so leftover unconfirmed
-	// addresses do not outlive their retention.
-	periodic = append(periodic, waitlist.PurgePeriodic())
 	client, err := jobs.New(pool.Pool(), jobs.Options{
 		Log:         log,
 		Workers:     workers,
@@ -190,30 +182,6 @@ func startWorker(ctx context.Context, g *errgroup.Group, cfg config.Config, log 
 		}
 		return nil
 	})
-	return nil
-}
-
-// addWaitlistWorkers registers the waitlist jobs: purging always, sending
-// confirmation emails when the waitlist is on (docs/05 §6).
-func addWaitlistWorkers(workers *river.Workers, cfg config.Config, pool *db.DB) error {
-	river.AddWorker(workers, waitlist.NewPurgeWorker(pool, cfg.Waitlist.PendingRetention))
-	if !cfg.Waitlist.Enabled {
-		return nil
-	}
-	sender, err := mail.NewSMTP(mail.SMTPOptions{
-		Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, Username: cfg.SMTP.User, Password: cfg.SMTP.Password.Reveal(),
-		From: cfg.SMTP.From, TLS: cfg.SMTP.TLS, Timeout: cfg.SMTP.Timeout,
-	})
-	if err != nil {
-		return err
-	}
-	send, err := waitlist.NewSendWorker(pool, sender, waitlist.SendOptions{
-		SiteURL: cfg.Waitlist.SiteURL, TokenTTL: cfg.Waitlist.TokenTTL, PendingRetention: cfg.Waitlist.PendingRetention,
-	})
-	if err != nil {
-		return err
-	}
-	river.AddWorker(workers, send)
 	return nil
 }
 
@@ -246,15 +214,6 @@ func apiDeps(
 	// straight to the bucket.
 	if fsStore, ok := store.(*storage.FS); ok {
 		deps.Files = fsStore
-	}
-	if cfg.Waitlist.Enabled {
-		// Insert-only: the api queues confirmation emails, workers send them.
-		inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
-		if err != nil {
-			return api.Deps{}, fmt.Errorf("jobs: %w", err)
-		}
-		deps.Waitlist = waitlist.New(pool, inserter, redisClient, waitlist.Options{})
-		deps.WaitlistOrigins = cfg.Waitlist.Origins
 	}
 	return deps, nil
 }

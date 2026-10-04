@@ -518,78 +518,6 @@ export interface paths {
         patch: operations["updateContact"];
         trace?: never;
     };
-    "/waitlist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Ask to join the waitlist; a confirmation email follows
-         * @description Saves the address as pending and queues an email with a confirmation link to the
-         *     landing (`/waitlist/confirm/#<token>`, `/en/...` for `en`); the page posts the token
-         *     to `POST /waitlist/confirm`. Until then the address is not on the list, and pending
-         *     entries are deleted after `TOLKOVO_WAITLIST_PENDING_RETENTION`.
-         *
-         *     The answer is the same `202` for a new, a pending and a confirmed address, so the
-         *     endpoint does not reveal who is on the list. A confirmed entry is not changed and gets
-         *     no email; a pending one takes the new answers and gets a new email, at most five per
-         *     address. Repeating the request is safe, so an `Idempotency-Key` header (docs/00 §8)
-         *     is allowed by CORS and ignored. Rate limited per client IP and per email.
-         */
-        post: operations["joinWaitlist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/waitlist/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm the address with the token from the email
-         * @description The email links to a landing page instead of this endpoint, because mail scanners
-         *     open links: only a person pressing the button there confirms. Confirming again with
-         *     the same link while it is valid answers `200` again. Rate limited per client IP.
-         */
-        post: operations["confirmWaitlist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/waitlist/unsubscribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete the address from the waitlist
-         * @description Deletes the entry, pending or confirmed (GDPR art. 17). The token comes from the
-         *     latest email sent to the address. Rate limited per client IP.
-         */
-        post: operations["unsubscribeWaitlist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -857,38 +785,6 @@ export interface components {
             /** @description `ru` or `en`; empty clears it on update. */
             locale?: string;
         };
-        /**
-         * @description Channels the person wants, for prioritising the roadmap (docs/05 §1).
-         * @enum {string}
-         */
-        WaitlistChannel: "telegram" | "web" | "whatsapp" | "vk_max" | "email";
-        WaitlistJoinRequest: {
-            email: string;
-            locale: components["schemas"]["Locale"];
-            /**
-             * @description Explicit consent to processing the email and channels for the beta invitation
-             *     (GDPR art. 7). Must be `true`; the server stores the version of the consent text.
-             */
-            consent: boolean;
-            channels?: components["schemas"]["WaitlistChannel"][];
-            /**
-             * @description Honeypot: hidden from people, filled by bots. A non-empty value gets the usual
-             *     `202` and nothing is saved.
-             */
-            website?: string;
-        };
-        WaitlistTokenRequest: {
-            /** @description Token from the link in the email (43 characters, base64url). */
-            token: string;
-        };
-        WaitlistAccepted: {
-            /** @enum {string} */
-            status: "pending_confirmation";
-        };
-        WaitlistConfirmed: {
-            /** @enum {string} */
-            status: "confirmed";
-        };
     };
     responses: {
         /** @description `invalid_request`: malformed JSON, unknown fields or invalid values. */
@@ -920,15 +816,6 @@ export interface components {
         };
         /** @description `not_found`, also for resources of other workspaces. */
         NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description `token_invalid`: unknown, expired or already used link. */
-        TokenInvalid: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1865,111 +1752,6 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    joinWaitlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WaitlistJoinRequest"];
-            };
-        };
-        responses: {
-            /** @description Accepted; check the inbox. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WaitlistAccepted"];
-                };
-            };
-            400: components["responses"]["Invalid"];
-            /** @description `cross_origin`: the `Origin` is not in `TOLKOVO_WAITLIST_ORIGINS`. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    confirmWaitlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WaitlistTokenRequest"];
-            };
-        };
-        responses: {
-            /** @description The address is on the list. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WaitlistConfirmed"];
-                };
-            };
-            400: components["responses"]["Invalid"];
-            /** @description `cross_origin`. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            404: components["responses"]["TokenInvalid"];
-            429: components["responses"]["TooManyRequests"];
-        };
-    };
-    unsubscribeWaitlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WaitlistTokenRequest"];
-            };
-        };
-        responses: {
-            /** @description Deleted. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Invalid"];
-            /** @description `cross_origin`. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            404: components["responses"]["TokenInvalid"];
-            429: components["responses"]["TooManyRequests"];
         };
     };
 }
