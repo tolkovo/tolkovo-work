@@ -8,7 +8,7 @@ export const ru: Dict = {
     ogLocale: "ru_RU",
     title: "Tolkovo — open-source аналог Jivo с ИИ-агентом и Telegram",
     description:
-      "Сайт, Telegram-бот и Telegram Business в общем инбоксе команды. ИИ отвечает по базе знаний и передаёт сложные диалоги оператору нужной линии. Open source, в облаке или на своём сервере.",
+      "Сайт, Telegram-бот и личный Telegram в общем инбоксе команды. ИИ отвечает по базе знаний и передаёт сложные диалоги оператору нужной линии. Open source, в облаке или на своём сервере.",
     ogImageAlt: "Tolkovo: все чаты в одном окне. ИИ отвечает, люди решают.",
   },
   header: {
@@ -31,7 +31,7 @@ export const ru: Dict = {
     h1: "Все чаты в одном окне. ИИ отвечает,",
     h1Accent: "люди решают.",
     lede:
-      "Виджет на сайте, Telegram-бот и Telegram Business приходят в общий инбокс команды. ИИ закрывает типовые вопросы по вашей базе знаний и передаёт сложные оператору нужной линии, с кратким пересказом диалога. В облаке или на вашем сервере.",
+      "Виджет на сайте, Telegram-бот и личный Telegram приходят в общий инбокс команды. ИИ закрывает типовые вопросы по вашей базе знаний и передаёт сложные оператору нужной линии, с кратким пересказом диалога. В облаке или на вашем сервере.",
     ctaSelf: "Развернуть у себя",
     ctaGithub: "Код на GitHub →",
     trust: "AGPL-3.0 · Go + React · Docker · RU / EN · Без трекеров на этом сайте",
@@ -46,7 +46,7 @@ export const ru: Dict = {
     jacks: [
       { id: "web", name: "Сайт", sub: "виджет" },
       { id: "tg", name: "Telegram-бот", sub: "@shop_support_bot" },
-      { id: "biz", name: "Telegram Business", sub: "@shop_manager" },
+      { id: "biz", name: "Личный Telegram", sub: "@shop_manager" },
     ],
     aiTitle: "ИИ-агент",
     aiText: "Отвечает по базе знаний. Не уверен, клиент просит человека или тема из списка — зовёт оператора.",
@@ -77,7 +77,7 @@ export const ru: Dict = {
       { from: "tg", who: "Мария К.", to: "L1", agent: "Пётр", note: "готова купить, нужна скидка" },
       { from: "tg", who: "Сергей В.", to: "L3", agent: "Ника", note: "ошибка API, ИИ не нашёл ответа" },
     ],
-    channelShort: { web: "сайт", tg: "Telegram", biz: "TG Business" },
+    channelShort: { web: "сайт", tg: "Telegram", biz: "личный TG" },
     note: "Пример с выдуманными клиентами и цифрами.",
   },
   why: [
@@ -85,7 +85,7 @@ export const ru: Dict = {
       mark: "Telegram без посредников",
       title: "Клиенты уже пишут в Telegram",
       text: [
-        "Не заставляйте их искать виджет. Бот компании и Telegram Business-аккаунт приходят в то же окно, что и чат на сайте. Клиент пишет вам лично, отвечает команда.",
+        "Не заставляйте их искать виджет. Бот компании или рабочий аккаунт Telegram приходят в то же окно, что и чат на сайте. Клиент пишет вам лично, отвечает команда.",
       ],
     },
     {
@@ -203,7 +203,7 @@ export const ru: Dict = {
     items: [
       { name: "Виджет для сайта", status: "on", label: "в MVP" },
       { name: "Telegram-бот", status: "on", label: "в MVP" },
-      { name: "Telegram Business", status: "on", label: "в MVP" },
+      { name: "Личный Telegram", status: "on", label: "в MVP" },
       { name: "API и вебхуки", status: "soon", label: "к v1.0" },
       { name: "Email", status: "plan", label: "после v1.0" },
       { name: "WhatsApp", status: "plan", label: "после v1.0" },
@@ -237,7 +237,7 @@ export const ru: Dict = {
         ],
       },
       {
-        label: "Telegram Business",
+        label: "Личный Telegram-аккаунт",
         cells: [{ text: "да", tone: "yes" }, { text: "уточняется" }, { text: "уточняется" }, { text: "нет", tone: "no" }],
       },
       {
@@ -309,8 +309,8 @@ export const ru: Dict = {
       },
       { q: "Можно работать без ИИ?", a: "Да. ИИ выключается полностью, и Tolkovo работает как обычный live chat." },
       {
-        q: "Что такое Telegram Business?",
-        a: "Клиенты пишут на ваш личный или бизнес-аккаунт в Telegram, а отвечает команда из инбокса. Подключается через вашего собственного бота, для этого нужен Telegram Premium.",
+        q: "Можно подключить личный Telegram?",
+        a: "Да. Клиенты пишут на рабочий аккаунт Telegram, а отвечает команда из инбокса. Premium не нужен. Берите отдельный рабочий номер: Telegram может ограничить аккаунт, которым управляет программа.",
       },
       { q: "Будут WhatsApp, VK и Email?", a: "Да, после v1.0. Порядок определим голосованием в roadmap." },
     ],

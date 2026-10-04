@@ -8,7 +8,7 @@ export const en: Dict = {
     ogLocale: "en_US",
     title: "Tolkovo — open-source live chat with an AI agent and Telegram",
     description:
-      "Your website widget, Telegram bot and Telegram Business in one shared team inbox. The AI answers from your knowledge base and hands tricky conversations to the right support line. Open source, in the cloud or on your own server.",
+      "Your website widget, Telegram bot and personal Telegram in one shared team inbox. The AI answers from your knowledge base and hands tricky conversations to the right support line. Open source, in the cloud or on your own server.",
     ogImageAlt: "Tolkovo: every chat in one window. AI answers, people decide.",
   },
   header: {
@@ -31,7 +31,7 @@ export const en: Dict = {
     h1: "Every chat in one window. AI answers,",
     h1Accent: "people decide.",
     lede:
-      "Your website widget, Telegram bot and Telegram Business land in one shared team inbox. The AI handles routine questions from your knowledge base and passes the hard ones to an operator on the right line, with a short summary of the conversation. In the cloud or on your own server.",
+      "Your website widget, Telegram bot and personal Telegram land in one shared team inbox. The AI handles routine questions from your knowledge base and passes the hard ones to an operator on the right line, with a short summary of the conversation. In the cloud or on your own server.",
     ctaSelf: "Self-host it",
     ctaGithub: "Code on GitHub →",
     trust: "AGPL-3.0 · Go + React · Docker · RU / EN · No trackers on this site",
@@ -46,7 +46,7 @@ export const en: Dict = {
     jacks: [
       { id: "web", name: "Website", sub: "widget" },
       { id: "tg", name: "Telegram bot", sub: "@shop_support_bot" },
-      { id: "biz", name: "Telegram Business", sub: "@shop_manager" },
+      { id: "biz", name: "Personal Telegram", sub: "@shop_manager" },
     ],
     aiTitle: "AI agent",
     aiText: "Answers from the knowledge base. Unsure, asked for a human or the topic is on the list — it calls an operator.",
@@ -77,7 +77,7 @@ export const en: Dict = {
       { from: "tg", who: "Maria K.", to: "L1", agent: "Peter", note: "ready to buy, wants a discount" },
       { from: "tg", who: "Sergey V.", to: "L3", agent: "Nika", note: "API error, AI found no answer" },
     ],
-    channelShort: { web: "website", tg: "Telegram", biz: "TG Business" },
+    channelShort: { web: "website", tg: "Telegram", biz: "personal TG" },
     note: "Example with made-up customers and numbers.",
   },
   why: [
@@ -85,7 +85,7 @@ export const en: Dict = {
       mark: "Telegram, no middlemen",
       title: "Your customers already use Telegram",
       text: [
-        "Don’t make them hunt for a widget. Your company bot and Telegram Business account arrive in the same window as your website chat. Customers write to you personally, your team replies.",
+        "Don’t make them hunt for a widget. Your company bot or work Telegram account arrives in the same window as your website chat. Customers write to you personally, your team replies.",
       ],
     },
     {
@@ -203,7 +203,7 @@ export const en: Dict = {
     items: [
       { name: "Website widget", status: "on", label: "in MVP" },
       { name: "Telegram bot", status: "on", label: "in MVP" },
-      { name: "Telegram Business", status: "on", label: "in MVP" },
+      { name: "Personal Telegram", status: "on", label: "in MVP" },
       { name: "API and webhooks", status: "soon", label: "by v1.0" },
       { name: "Email", status: "plan", label: "after v1.0" },
       { name: "WhatsApp", status: "plan", label: "after v1.0" },
@@ -237,7 +237,7 @@ export const en: Dict = {
         ],
       },
       {
-        label: "Telegram Business",
+        label: "Personal Telegram account",
         cells: [{ text: "yes", tone: "yes" }, { text: "to be verified" }, { text: "to be verified" }, { text: "no", tone: "no" }],
       },
       {
@@ -309,8 +309,8 @@ export const en: Dict = {
       },
       { q: "Can I use it without AI?", a: "Yes. AI can be switched off completely, and Tolkovo works as a classic live chat." },
       {
-        q: "What is Telegram Business?",
-        a: "Customers message your personal or business Telegram account, and your team replies from the inbox. It connects through your own bot and requires Telegram Premium.",
+        q: "Can I connect a personal Telegram account?",
+        a: "Yes. Customers message your work Telegram account, and your team replies from the inbox. No Premium needed. Use a separate work number: Telegram may restrict accounts run by software.",
       },
       { q: "Will there be WhatsApp, VK and Email?", a: "Yes, after v1.0. The order will be decided by votes on the roadmap." },
     ],

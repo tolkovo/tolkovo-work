@@ -1,6 +1,6 @@
 # Tolkovo
 
-Open-source live chat for support and sales: Telegram (bot and Telegram Business) and a website widget in one inbox, an AI agent on the first line that hands over to a human, support lines L1/L2/L3, shifts and roles. Runs as multi-tenant SaaS or self-hosted with `docker compose`.
+Open-source live chat for support and sales: Telegram (a bot or a personal account) and a website widget in one inbox, an AI agent on the first line that hands over to a human, support lines L1/L2/L3, shifts and roles. Runs as multi-tenant SaaS or self-hosted with `docker compose`.
 
 > **Status:** early development, Phase 0 (Foundation). Nothing is usable yet. The plan lives in [docs/](docs/README.md).
 
