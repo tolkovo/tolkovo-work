@@ -93,6 +93,8 @@ type Config struct {
 	Storage  Storage `envPrefix:"STORAGE_"`
 
 	SMTP SMTP `envPrefix:"SMTP_"`
+
+	MasterKey MasterKey `envPrefix:"MASTER_"`
 }
 
 // Storage configures file storage: TOLKOVO_STORAGE_*.
@@ -199,6 +201,7 @@ func (c Config) validate() error {
 	}
 	errs = append(errs, c.validateStorage()...)
 	errs = append(errs, c.validateSMTP()...)
+	errs = append(errs, c.validateMasterKey()...)
 	errs = append(errs, c.validateTrustedProxies()...)
 	if !strings.HasPrefix(c.RedisURL.Reveal(), "redis://") && !strings.HasPrefix(c.RedisURL.Reveal(), "rediss://") {
 		errs = append(errs, fmt.Errorf("%sREDIS_URL must start with redis:// or rediss://", Prefix))

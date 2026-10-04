@@ -195,3 +195,56 @@ func with(vars map[string]string, k, v string) map[string]string {
 	out[k] = v
 	return out
 }
+
+func TestLoadFrom_MasterKey(t *testing.T) {
+	key := "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" // 32 bytes
+	cfg, err := LoadFrom(map[string]string{"TOLKOVO_DATABASE_URL": dsn})
+	if err != nil || cfg.MasterKey.Key != "" || cfg.MasterKey.Version != 1 {
+		t.Fatalf("defaults: %+v %v", cfg.MasterKey, err)
+	}
+	cfg, err = LoadFrom(map[string]string{
+		"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_MASTER_KEY": key, "TOLKOVO_MASTER_KEY_VERSION": "2",
+		"TOLKOVO_MASTER_KEYS_RETIRED": "1:" + DevMasterKey,
+	})
+	if err != nil {
+		t.Fatalf("valid keyring: %v", err)
+	}
+	if cfg.MasterKey.Key.Reveal() != key || cfg.MasterKey.Version != 2 {
+		t.Fatalf("parsed: %+v", cfg.MasterKey)
+	}
+	// The development example key works in development only.
+	if _, err := LoadFrom(map[string]string{"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_MASTER_KEY": DevMasterKey}); err != nil {
+		t.Fatalf("dev key in development: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		vars map[string]string
+	}{
+		{"not base64", map[string]string{"TOLKOVO_MASTER_KEY": "%%%"}},
+		{"short", map[string]string{"TOLKOVO_MASTER_KEY": "c2hvcnQ="}},
+		{"version zero", map[string]string{"TOLKOVO_MASTER_KEY": key, "TOLKOVO_MASTER_KEY_VERSION": "0"}},
+		{"retired without current", map[string]string{"TOLKOVO_MASTER_KEYS_RETIRED": "1:" + key}},
+		{"retired reuses version", map[string]string{"TOLKOVO_MASTER_KEY": key, "TOLKOVO_MASTER_KEYS_RETIRED": "1:" + DevMasterKey}},
+		{"retired malformed", map[string]string{"TOLKOVO_MASTER_KEY": key, "TOLKOVO_MASTER_KEY_VERSION": "2", "TOLKOVO_MASTER_KEYS_RETIRED": DevMasterKey}},
+		{"example key in production", map[string]string{
+			"TOLKOVO_MASTER_KEY": DevMasterKey, "TOLKOVO_ENV": "production",
+			"TOLKOVO_STORAGE_SIGNING_KEY": strings.Repeat("k", 32),
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vars := map[string]string{"TOLKOVO_DATABASE_URL": dsn}
+			for k, v := range tt.vars {
+				vars[k] = v
+			}
+			_, err := LoadFrom(vars)
+			if err == nil || !strings.Contains(err.Error(), "TOLKOVO_MASTER_") {
+				t.Fatalf("want an error naming TOLKOVO_MASTER_*, got %v", err)
+			}
+			if strings.Contains(err.Error(), key) || strings.Contains(err.Error(), DevMasterKey) {
+				t.Fatalf("error leaks the key: %v", err)
+			}
+		})
+	}
+}

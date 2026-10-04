@@ -2,6 +2,7 @@
 //
 //	tolkovo serve [--role=all|api|realtime|worker]
 //	tolkovo migrate up|down|reset|version
+//	tolkovo keygen
 //	tolkovo version
 package main
 
@@ -29,6 +30,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
@@ -47,6 +49,7 @@ var version = "dev"
 const usage = `usage:
   tolkovo serve [--role=all|api|realtime|worker]
   tolkovo migrate up|down|reset|version
+  tolkovo keygen
   tolkovo version`
 
 func main() {
@@ -70,6 +73,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return serve(ctx, args[1:], stderr)
 	case "migrate":
 		return runMigrate(ctx, args[1:], stdout)
+	case "keygen":
+		// A new TOLKOVO_MASTER_KEY (docs/02 §13.3). Printed only to stdout,
+		// never logged.
+		key, err := crypto.GenerateKey()
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(stdout, key)
+		return err
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
