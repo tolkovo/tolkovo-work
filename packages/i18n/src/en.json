@@ -84,7 +84,34 @@
       "status": "Status",
       "you": "(you)",
       "active": "Active",
-      "inactive": "Deactivated"
+      "inactive": "Deactivated",
+      "invite": {
+        "title": "Invite to the team",
+        "email": "Email",
+        "role": "Role",
+        "roleHint": "An operator answers conversations. An admin changes every setting except deleting the workspace.",
+        "submit": "Invite",
+        "pending": "Inviting…",
+        "sent": "Invitation sent to {email}. The link works for 7 days.",
+        "link": "Email is not set up on this server, so nothing was sent. Pass the link for {email} on yourself: it is shown once and works for 7 days.",
+        "linkLabel": "Invitation link",
+        "copy": "Copy",
+        "copied": "Link copied."
+      },
+      "invitations": {
+        "title": "Invitations",
+        "expires": "Valid until {date}",
+        "expired": "Expired",
+        "by": "Invited by {name}",
+        "resend": "Resend",
+        "newLink": "New link",
+        "resendLabel": "Resend the invitation: {email}",
+        "newLinkLabel": "New invitation link: {email}",
+        "revoke": "Revoke",
+        "revokeLabel": "Revoke the invitation: {email}",
+        "revoked": "Invitation for {email} revoked.",
+        "resent": "Invitation for {email} sent again."
+      }
     },
     "groups": {
       "workspace": "Workspace",
@@ -100,7 +127,11 @@
       "languageHint": "Saved in your profile and used on all your devices.",
       "save": "Save",
       "saving": "Saving…",
-      "saved": "Saved"
+      "saved": "Saved",
+      "emailUnverified": "Email not confirmed: password resets and important notices go to it.",
+      "resend": "Send confirmation email",
+      "resending": "Sending…",
+      "resent": "Email sent. The link works for 48 hours."
     },
     "appearance": {
       "title": "Appearance",
@@ -187,7 +218,11 @@
     "notFound": "The workspace wasn't found, or you no longer have access to it.",
     "unknown": "That didn't work. Try again.",
     "wrongPassword": "The current password is wrong.",
-    "currentSession": "This is the current session. To end it, sign out."
+    "currentSession": "This is the current session. To end it, sign out.",
+    "invalidToken": "This link is no longer valid: it was used, revoked or has expired.",
+    "emailDisabled": "Outgoing email is not set up on this server. Contact the administrator.",
+    "alreadyMember": "This person is already on the team.",
+    "emailVerified": "The email is already confirmed."
   },
   "error": {
     "title": "Something went wrong",
@@ -212,7 +247,8 @@
       "submit": "Sign in",
       "pending": "Signing in…",
       "switchPrompt": "No workspace yet?",
-      "switchAction": "Create workspace"
+      "switchAction": "Create workspace",
+      "forgot": "Forgot password?"
     },
     "register": {
       "title": "New workspace",
@@ -226,6 +262,50 @@
       "pending": "Creating…",
       "switchPrompt": "Already have a workspace?",
       "switchAction": "Sign in"
+    },
+    "link": {
+      "missing": "The address has no link key. Open the whole link from the email.",
+      "toLogin": "Go to sign-in"
+    },
+    "forgot": {
+      "title": "Reset password",
+      "subtitle": "We will email a link to set a new password to the account's address.",
+      "submit": "Send link",
+      "pending": "Sending…",
+      "sent": "If an account uses this address, the email is on its way. The link works for 1 hour.",
+      "switchPrompt": "Remembered it?",
+      "switchAction": "Sign in"
+    },
+    "reset": {
+      "title": "New password",
+      "subtitle": "Changing the password signs you out everywhere; sign in again.",
+      "password": "New password",
+      "confirm": "Repeat the password",
+      "submit": "Save password",
+      "pending": "Saving…",
+      "done": "Password changed. Sign in with the new one.",
+      "requestNew": "Request a new link"
+    },
+    "invite": {
+      "title": "Team invitation",
+      "subtitle": "You are invited to {workspace}. Role: {role}.",
+      "loading": "Checking the invitation…",
+      "invalid": "This invitation is no longer valid: it was accepted, revoked or has expired. Ask the admin to invite you again.",
+      "email": "Invited email",
+      "name": "Your name",
+      "nameHint": "This is how colleagues will see you.",
+      "newPassword": "Choose a password",
+      "existing": "This address already has a Tolkovo account. Enter its password and the workspace joins your others.",
+      "submit": "Accept invitation",
+      "pending": "Accepting…",
+      "forgot": "Forgot the password?"
+    },
+    "verify": {
+      "title": "Email confirmation",
+      "pending": "Confirming your email…",
+      "done": "Email confirmed. Password resets and important notices will come to it.",
+      "invalid": "This link is no longer valid: it was used or has expired. Send a new email from your profile.",
+      "continue": "Open Tolkovo"
     }
   },
   "userMenu": {

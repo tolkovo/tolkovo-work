@@ -48,6 +48,14 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.noWorkspace") };
     case "not_found":
       return { message: t("errors.notFound") };
+    case "invalid_token":
+      return { message: t("errors.invalidToken") };
+    case "email_disabled":
+      return { message: t("errors.emailDisabled") };
+    case "already_member":
+      return { message: t("errors.alreadyMember"), ...(field ? { field } : {}) };
+    case "email_verified":
+      return { message: t("errors.emailVerified") };
     default:
       return { message: t("errors.unknown") };
   }

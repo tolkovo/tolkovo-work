@@ -1,7 +1,10 @@
 import type {
+  AcceptInvitationRequest,
   ChangePasswordRequest,
+  CreateInvitationRequest,
   LoginRequest,
   RegisterRequest,
+  ResetPasswordRequest,
   UpdateMeRequest,
   UpdateWorkspaceRequest,
 } from "@tolkovo/api-client";
@@ -64,6 +67,31 @@ export const passwordSchema = z
   .refine((v) => v.new_password === v.confirm_password, { path: ["confirm_password"], message: "passwordMismatch" }) satisfies z.ZodType<
   ChangePasswordRequest & { confirm_password: string }
 >;
+
+export const forgotPasswordSchema = z.object({ email });
+
+/** A new password typed twice; the confirmation never leaves the browser. */
+export const resetPasswordSchema = z
+  .object({ password: newPassword, confirm_password: z.string().min(1, "required") })
+  .refine((v) => v.password === v.confirm_password, { path: ["confirm_password"], message: "passwordMismatch" }) satisfies z.ZodType<
+  Omit<ResetPasswordRequest, "token"> & { confirm_password: string }
+>;
+
+/** Accepting an invitation without an account: a name and a new password. */
+export const acceptNewAccountSchema = z.object({
+  name: required(120),
+  password: newPassword,
+}) satisfies z.ZodType<Omit<AcceptInvitationRequest, "token" | "locale">>;
+
+/** Accepting with an existing account: its current password, any length the server accepts. */
+export const acceptExistingAccountSchema = z.object({
+  password: z.string().min(1, "required").max(128, "tooLong"),
+}) satisfies z.ZodType<Omit<AcceptInvitationRequest, "token" | "locale" | "name">>;
+
+export const inviteSchema = z.object({
+  email,
+  role: z.enum(["operator", "admin"]),
+}) satisfies z.ZodType<CreateInvitationRequest>;
 
 export type FieldErrors<F extends string> = Partial<Record<F, ValidationKey>>;
 

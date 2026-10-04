@@ -9,23 +9,36 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import {
+  acceptInvitation,
   changePassword,
+  createInvitation,
+  fetchInvitations,
   fetchMembers,
   fetchMySessions,
   fetchMyWorkspaces,
   fetchSession,
+  forgotPassword,
   hasPermission,
   login,
   logout,
+  previewInvitation,
   register,
+  resendEmailVerification,
+  resendInvitation,
+  resetPassword,
+  revokeInvitation,
   revokeOtherSessions,
   revokeSession,
   switchWorkspace,
   updateMe,
   updateWorkspace,
+  verifyEmail,
+  type AcceptInvitationRequest,
   type ChangePasswordRequest,
+  type CreateInvitationRequest,
   type LoginRequest,
   type RegisterRequest,
+  type ResetPasswordRequest,
   type Session,
   type UpdateMeRequest,
   type UpdateWorkspaceRequest,
@@ -52,6 +65,7 @@ export const queryKeys = {
   session: ["session"] as const,
   myWorkspaces: ["me", "workspaces"] as const,
   members: ["members"] as const,
+  invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
   /**
    * Roots for conversation and contact queries (lists, details, message feeds nest under them):
@@ -209,5 +223,93 @@ export function useRevokeOtherSessions() {
   return useMutation({
     mutationFn: () => revokeOtherSessions(client),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.mySessions }),
+  });
+}
+
+/** Asks for a new email confirmation link for the signed-in user. */
+export function useResendEmailVerification() {
+  const client = useApiClient();
+  return useMutation({ mutationFn: () => resendEmailVerification(client) });
+}
+
+/**
+ * What an invitation link offers. The token is part of the key only in memory; nothing is
+ * retried, because an invalid link stays invalid.
+ */
+export function useInvitationPreview(token: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["invitationPreview", token],
+    queryFn: () => previewInvitation(client, token),
+    enabled: token !== "",
+    retry: false,
+    staleTime: Infinity,
+  });
+}
+
+/** Accepts an invitation and starts the session it returns, like sign-in. */
+export function useAcceptInvitation() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AcceptInvitationRequest) => acceptInvitation(client, body),
+    onSuccess: (session) => startSession(queryClient, session),
+  });
+}
+
+export function useForgotPassword() {
+  const client = useApiClient();
+  return useMutation({ mutationFn: (email: string) => forgotPassword(client, email) });
+}
+
+/** Resets the password. Every session ends on the server, so the local one is dropped too. */
+export function useResetPassword() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ResetPasswordRequest) => resetPassword(client, body),
+    onSuccess: () => endSession(queryClient),
+  });
+}
+
+/** Confirms the email; a signed-in session is refetched to show the new state. */
+export function useVerifyEmail() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => verifyEmail(client, token),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.session }),
+  });
+}
+
+export function useInvitations({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.invitations, queryFn: () => fetchInvitations(client), enabled });
+}
+
+export function useCreateInvitation() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateInvitationRequest) => createInvitation(client, body),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.invitations }),
+  });
+}
+
+export function useResendInvitation() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => resendInvitation(client, id),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.invitations }),
+  });
+}
+
+export function useRevokeInvitation() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => revokeInvitation(client, id),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.invitations }),
   });
 }

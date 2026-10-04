@@ -85,7 +85,8 @@ describe("team", () => {
       },
     });
     renderApp("/settings/team", { api });
-    expect(await screen.findByRole("alert")).toHaveTextContent("Не хватает прав");
+    // The invite form keeps its own (empty) alert region on the page, so find the text.
+    expect(await screen.findByText(/Не хватает прав/)).toBeInTheDocument();
     fail = false;
     await user.click(screen.getByRole("button", { name: "Повторить" }));
     expect(await screen.findByText("0 участников")).toBeInTheDocument();

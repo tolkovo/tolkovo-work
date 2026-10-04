@@ -2,6 +2,9 @@ import { parseAnswer, unwrap, type ApiClient } from "./client";
 import { isApiError } from "./errors";
 import {
   deviceSessionListSchema,
+  invitationListSchema,
+  invitationPreviewSchema,
+  invitationSentSchema,
   memberListSchema,
   sessionSchema,
   workspaceListSchema,
@@ -24,6 +27,13 @@ export type UpdateMeRequest = Schemas["UpdateMeRequest"];
 export type ChangePasswordRequest = Schemas["ChangePasswordRequest"];
 export type DeviceSession = Schemas["DeviceSession"];
 export type Problem = Schemas["Problem"];
+export type Invitation = Schemas["Invitation"];
+export type InvitationList = Schemas["InvitationList"];
+export type InvitationSent = Schemas["InvitationSent"];
+export type InvitationPreview = Schemas["InvitationPreview"];
+export type CreateInvitationRequest = Schemas["CreateInvitationRequest"];
+export type AcceptInvitationRequest = Schemas["AcceptInvitationRequest"];
+export type ResetPasswordRequest = Schemas["ResetPasswordRequest"];
 
 /**
  * One function per operation the panel uses. They return checked data or throw ApiError,
@@ -94,6 +104,61 @@ export async function revokeSession(client: ApiClient, id: string): Promise<void
 
 export async function revokeOtherSessions(client: ApiClient): Promise<void> {
   await unwrap(client.POST("/me/sessions/revoke-others"));
+}
+
+/** POST /me/email/verification: a new confirmation link replaces the previous one. */
+export async function resendEmailVerification(client: ApiClient): Promise<void> {
+  await unwrap(client.POST("/me/email/verification"));
+}
+
+/**
+ * Pages behind emailed links (docs/06 A-03, A-06). The token is the URL fragment of the link;
+ * the server never sees it in a URL, only in these request bodies.
+ */
+export async function previewInvitation(client: ApiClient, token: string): Promise<InvitationPreview> {
+  return parseAnswer(
+    invitationPreviewSchema,
+    await unwrap(client.POST("/auth/invitation/preview", { body: { token } })),
+  );
+}
+
+/** Accepts an invitation; the answer is a session in the invitation's workspace. */
+export async function acceptInvitation(client: ApiClient, body: AcceptInvitationRequest): Promise<Session> {
+  return parseAnswer(sessionSchema, await unwrap(client.POST("/auth/invitation/accept", { body })));
+}
+
+/** Always 202 for any address, so the answer does not reveal who has an account. */
+export async function forgotPassword(client: ApiClient, email: string): Promise<void> {
+  await unwrap(client.POST("/auth/password/forgot", { body: { email } }));
+}
+
+/** Sets a new password by a reset link; every session of the user ends, nobody is signed in. */
+export async function resetPassword(client: ApiClient, body: ResetPasswordRequest): Promise<void> {
+  await unwrap(client.POST("/auth/password/reset", { body }));
+}
+
+export async function verifyEmail(client: ApiClient, token: string): Promise<void> {
+  await unwrap(client.POST("/auth/email/verify", { body: { token } }));
+}
+
+export async function fetchInvitations(client: ApiClient): Promise<InvitationList> {
+  return parseAnswer(invitationListSchema, await unwrap(client.GET("/invitations")));
+}
+
+/** `invite_url` comes back only when the server cannot send email: the admin passes it on. */
+export async function createInvitation(client: ApiClient, body: CreateInvitationRequest): Promise<InvitationSent> {
+  return parseAnswer(invitationSentSchema, await unwrap(client.POST("/invitations", { body })), 201);
+}
+
+export async function resendInvitation(client: ApiClient, id: string): Promise<InvitationSent> {
+  return parseAnswer(
+    invitationSentSchema,
+    await unwrap(client.POST("/invitations/{id}/resend", { params: { path: { id } } })),
+  );
+}
+
+export async function revokeInvitation(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/invitations/{id}", { params: { path: { id } } }));
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

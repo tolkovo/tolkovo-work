@@ -1,5 +1,5 @@
 import type { User } from "@tolkovo/api-client";
-import { useUpdateMe } from "@tolkovo/api-client/react";
+import { useResendEmailVerification, useUpdateMe } from "@tolkovo/api-client/react";
 import { languageNames, languages } from "@tolkovo/i18n";
 import { Button } from "@tolkovo/ui";
 import { useState, type FormEvent } from "react";
@@ -70,6 +70,7 @@ export function ProfileForm({ user }: { user: User }) {
           defaultValue={user.email}
           readOnly
         />
+        {user.email_verified ? null : <EmailVerification />}
         <SelectField
           id="profile-locale"
           name="locale"
@@ -92,5 +93,21 @@ export function ProfileForm({ user }: { user: User }) {
         <FormMessage tone="success" message={saved ? t("settings.profile.saved") : null} />
       </div>
     </form>
+  );
+}
+
+/** Asks for a new confirmation email while the address is not confirmed (docs/06 A-06). */
+function EmailVerification() {
+  const { t } = useTranslation();
+  const resend = useResendEmailVerification();
+  return (
+    <div className="-mt-2 flex flex-col items-start gap-2 rounded-lg border border-lamp bg-lamp-soft px-3 py-2.5">
+      <p className="m-0 text-[13px] text-ink">{t("settings.profile.emailUnverified")}</p>
+      <Button type="button" variant="secondary" size="sm" disabled={resend.isPending} onClick={() => resend.mutate()}>
+        {resend.isPending ? t("settings.profile.resending") : t("settings.profile.resend")}
+      </Button>
+      <FormMessage tone="success" message={resend.isSuccess ? t("settings.profile.resent") : null} />
+      <FormMessage tone="error" message={resend.isError ? describeApiError(t, resend.error).message : null} />
+    </div>
   );
 }

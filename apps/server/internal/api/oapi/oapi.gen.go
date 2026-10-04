@@ -74,6 +74,24 @@ func (e ConversationStatus) Valid() bool {
 	}
 }
 
+// Defines values for CreateInvitationRequestRole.
+const (
+	CreateInvitationRequestRoleAdmin    CreateInvitationRequestRole = "admin"
+	CreateInvitationRequestRoleOperator CreateInvitationRequestRole = "operator"
+)
+
+// Valid indicates whether the value is a known member of the CreateInvitationRequestRole enum.
+func (e CreateInvitationRequestRole) Valid() bool {
+	switch e {
+	case CreateInvitationRequestRoleAdmin:
+		return true
+	case CreateInvitationRequestRoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Locale.
 const (
 	En Locale = "en"
@@ -177,6 +195,19 @@ func (e Role) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AcceptInvitationRequest defines model for AcceptInvitationRequest.
+type AcceptInvitationRequest struct {
+	// Locale Interface language of a new account; the workspace's when absent.
+	Locale *Locale `json:"locale,omitempty"`
+
+	// Name Required when no account exists for the invited email.
+	Name *string `json:"name,omitempty"`
+
+	// Password The new account's password (8–128), or the existing account's one.
+	Password string `json:"password"`
+	Token    string `json:"token"`
 }
 
 // AssignRequest defines model for AssignRequest.
@@ -302,6 +333,15 @@ type CreateConversationRequest struct {
 	Subject   *string   `json:"subject,omitempty"`
 }
 
+// CreateInvitationRequest defines model for CreateInvitationRequest.
+type CreateInvitationRequest struct {
+	Email string                      `json:"email"`
+	Role  CreateInvitationRequestRole `json:"role"`
+}
+
+// CreateInvitationRequestRole defines model for CreateInvitationRequest.Role.
+type CreateInvitationRequestRole string
+
 // CreateUploadRequest defines model for CreateUploadRequest.
 type CreateUploadRequest struct {
 	ContentType string `json:"content_type"`
@@ -332,6 +372,54 @@ type DeviceSession struct {
 // DeviceSessionList defines model for DeviceSessionList.
 type DeviceSessionList struct {
 	Items []DeviceSession `json:"items"`
+}
+
+// ForgotPasswordRequest defines model for ForgotPasswordRequest.
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// Invitation defines model for Invitation.
+type Invitation struct {
+	CreatedAt time.Time `json:"created_at"`
+	Email     string    `json:"email"`
+	Expired   bool      `json:"expired"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Id        uuid.UUID `json:"id"`
+
+	// InvitedByName Empty when the inviter's account is gone.
+	InvitedByName string `json:"invited_by_name"`
+
+	// Role System role in phase 1 (docs/04 §4.2).
+	Role Role `json:"role"`
+}
+
+// InvitationList defines model for InvitationList.
+type InvitationList struct {
+	// EmailEnabled The server emails invitations; otherwise the panel shows the link.
+	EmailEnabled bool         `json:"email_enabled"`
+	Items        []Invitation `json:"items"`
+}
+
+// InvitationPreview defines model for InvitationPreview.
+type InvitationPreview struct {
+	// AccountExists An account with this email exists; accept with its password.
+	AccountExists bool      `json:"account_exists"`
+	Email         string    `json:"email"`
+	ExpiresAt     time.Time `json:"expires_at"`
+
+	// Role System role in phase 1 (docs/04 §4.2).
+	Role          Role   `json:"role"`
+	WorkspaceName string `json:"workspace_name"`
+}
+
+// InvitationSent defines model for InvitationSent.
+type InvitationSent struct {
+	Invitation Invitation `json:"invitation"`
+
+	// InviteUrl Present only when the server cannot send email: the link to pass on. It is
+	// shown once; resend issues a new one.
+	InviteUrl *string `json:"invite_url,omitempty"`
 }
 
 // Locale defines model for Locale.
@@ -430,6 +518,12 @@ type RegisterRequest struct {
 	WorkspaceSlug string  `json:"workspace_slug"`
 }
 
+// ResetPasswordRequest defines model for ResetPasswordRequest.
+type ResetPasswordRequest struct {
+	Password string `json:"password"`
+	Token    string `json:"token"`
+}
+
 // Role System role in phase 1 (docs/04 §4.2).
 type Role string
 
@@ -462,6 +556,12 @@ type SwitchWorkspaceRequest struct {
 	WorkspaceId uuid.UUID `json:"workspace_id"`
 }
 
+// TokenRequest defines model for TokenRequest.
+type TokenRequest struct {
+	// Token The fragment of the emailed link.
+	Token string `json:"token"`
+}
+
 // UpdateMeRequest defines model for UpdateMeRequest.
 type UpdateMeRequest struct {
 	// Locale Interface language of the panel (docs/04 §8.2).
@@ -480,10 +580,14 @@ type UpdateWorkspaceRequest struct {
 
 // User defines model for User.
 type User struct {
-	Email  string    `json:"email"`
-	Id     uuid.UUID `json:"id"`
-	Locale Locale    `json:"locale"`
-	Name   string    `json:"name"`
+	Email string `json:"email"`
+
+	// EmailVerified The user proved they own the email: the confirmation link, an accepted
+	// invitation or a password reset.
+	EmailVerified bool      `json:"email_verified"`
+	Id            uuid.UUID `json:"id"`
+	Locale        Locale    `json:"locale"`
+	Name          string    `json:"name"`
 }
 
 // Workspace defines model for Workspace.
@@ -525,11 +629,17 @@ type Limit = int
 // Conflict RFC 9457 problem details.
 type Conflict = Problem
 
+// EmailDisabled RFC 9457 problem details.
+type EmailDisabled = Problem
+
 // Forbidden RFC 9457 problem details.
 type Forbidden = Problem
 
 // Invalid RFC 9457 problem details.
 type Invalid = Problem
+
+// InvalidToken RFC 9457 problem details.
+type InvalidToken = Problem
 
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
@@ -580,8 +690,23 @@ type PostMessageParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
+type VerifyEmailJSONRequestBody = TokenRequest
+
+// AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
+type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
+
+// PreviewInvitationJSONRequestBody defines body for PreviewInvitation for application/json ContentType.
+type PreviewInvitationJSONRequestBody = TokenRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// ForgotPasswordJSONRequestBody defines body for ForgotPassword for application/json ContentType.
+type ForgotPasswordJSONRequestBody = ForgotPasswordRequest
+
+// ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
+type ResetPasswordJSONRequestBody = ResetPasswordRequest
 
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = RegisterRequest
@@ -610,6 +735,9 @@ type PostMessageJSONRequestBody = PostMessageRequest
 // ChangeConversationStatusJSONRequestBody defines body for ChangeConversationStatus for application/json ContentType.
 type ChangeConversationStatusJSONRequestBody = ChangeStatusRequest
 
+// CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
+type CreateInvitationJSONRequestBody = CreateInvitationRequest
+
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = UpdateMeRequest
 
@@ -624,12 +752,27 @@ type ServerInterface interface {
 	// GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
 	// (GET /attachments/{id}/download-link)
 	GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
+	// VerifyEmail Confirm the email address by a link
+	// (POST /auth/email/verify)
+	VerifyEmail(w http.ResponseWriter, r *http.Request)
+	// AcceptInvitation Accept an invitation and sign in to its workspace
+	// (POST /auth/invitation/accept)
+	AcceptInvitation(w http.ResponseWriter, r *http.Request)
+	// PreviewInvitation Show an invitation before accepting it
+	// (POST /auth/invitation/preview)
+	PreviewInvitation(w http.ResponseWriter, r *http.Request)
 	// Login Sign in with email and password
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
 	// Logout Revoke the current session
 	// (POST /auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// ForgotPassword Email a password reset link
+	// (POST /auth/password/forgot)
+	ForgotPassword(w http.ResponseWriter, r *http.Request)
+	// ResetPassword Set a new password by a reset link
+	// (POST /auth/password/reset)
+	ResetPassword(w http.ResponseWriter, r *http.Request)
 	// Register Create an account and its first workspace
 	// (POST /auth/register)
 	Register(w http.ResponseWriter, r *http.Request)
@@ -672,12 +815,27 @@ type ServerInterface interface {
 	// ChangeConversationStatus Move the conversation along the state machine
 	// (POST /conversations/{id}/status)
 	ChangeConversationStatus(w http.ResponseWriter, r *http.Request, id Id)
+	// ListInvitations Open invitations of the current workspace
+	// (GET /invitations)
+	ListInvitations(w http.ResponseWriter, r *http.Request)
+	// CreateInvitation Invite a person by email
+	// (POST /invitations)
+	CreateInvitation(w http.ResponseWriter, r *http.Request)
+	// RevokeInvitation Revoke an open invitation
+	// (DELETE /invitations/{id})
+	RevokeInvitation(w http.ResponseWriter, r *http.Request, id Id)
+	// ResendInvitation Issue a new link for an open invitation
+	// (POST /invitations/{id}/resend)
+	ResendInvitation(w http.ResponseWriter, r *http.Request, id Id)
 	// GetMe Current user, workspace, role and permissions
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
 	// UpdateMe Change the current user's profile
 	// (PATCH /me)
 	UpdateMe(w http.ResponseWriter, r *http.Request)
+	// ResendEmailVerification Send the email confirmation link again
+	// (POST /me/email/verification)
+	ResendEmailVerification(w http.ResponseWriter, r *http.Request)
 	// ChangePassword Change the current user's password
 	// (POST /me/password)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
@@ -711,6 +869,24 @@ func (_ Unimplemented) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// VerifyEmail Confirm the email address by a link
+// (POST /auth/email/verify)
+func (_ Unimplemented) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AcceptInvitation Accept an invitation and sign in to its workspace
+// (POST /auth/invitation/accept)
+func (_ Unimplemented) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PreviewInvitation Show an invitation before accepting it
+// (POST /auth/invitation/preview)
+func (_ Unimplemented) PreviewInvitation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Login Sign in with email and password
 // (POST /auth/login)
 func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
@@ -720,6 +896,18 @@ func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
 // Logout Revoke the current session
 // (POST /auth/logout)
 func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ForgotPassword Email a password reset link
+// (POST /auth/password/forgot)
+func (_ Unimplemented) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResetPassword Set a new password by a reset link
+// (POST /auth/password/reset)
+func (_ Unimplemented) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -807,6 +995,30 @@ func (_ Unimplemented) ChangeConversationStatus(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListInvitations Open invitations of the current workspace
+// (GET /invitations)
+func (_ Unimplemented) ListInvitations(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateInvitation Invite a person by email
+// (POST /invitations)
+func (_ Unimplemented) CreateInvitation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeInvitation Revoke an open invitation
+// (DELETE /invitations/{id})
+func (_ Unimplemented) RevokeInvitation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResendInvitation Issue a new link for an open invitation
+// (POST /invitations/{id}/resend)
+func (_ Unimplemented) ResendInvitation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetMe Current user, workspace, role and permissions
 // (GET /me)
 func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -816,6 +1028,12 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMe Change the current user's profile
 // (PATCH /me)
 func (_ Unimplemented) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResendEmailVerification Send the email confirmation link again
+// (POST /me/email/verification)
+func (_ Unimplemented) ResendEmailVerification(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -896,6 +1114,48 @@ func (siw *ServerInterfaceWrapper) GetAttachmentDownloadLink(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// VerifyEmail operation middleware
+func (siw *ServerInterfaceWrapper) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyEmail(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptInvitation operation middleware
+func (siw *ServerInterfaceWrapper) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewInvitation operation middleware
+func (siw *ServerInterfaceWrapper) PreviewInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
 
@@ -915,6 +1175,34 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForgotPassword operation middleware
+func (siw *ServerInterfaceWrapper) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForgotPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetPassword operation middleware
+func (siw *ServerInterfaceWrapper) ResetPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetPassword(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1359,6 +1647,86 @@ func (siw *ServerInterfaceWrapper) ChangeConversationStatus(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// ListInvitations operation middleware
+func (siw *ServerInterfaceWrapper) ListInvitations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInvitations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInvitation operation middleware
+func (siw *ServerInterfaceWrapper) CreateInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeInvitation operation middleware
+func (siw *ServerInterfaceWrapper) RevokeInvitation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeInvitation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResendInvitation operation middleware
+func (siw *ServerInterfaceWrapper) ResendInvitation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResendInvitation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -1378,6 +1746,20 @@ func (siw *ServerInterfaceWrapper) UpdateMe(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResendEmailVerification operation middleware
+func (siw *ServerInterfaceWrapper) ResendEmailVerification(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResendEmailVerification(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1623,10 +2005,28 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/workspace", wrapper.SwitchWorkspace)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/invitation/preview", wrapper.PreviewInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/invitation/accept", wrapper.AcceptInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/password/forgot", wrapper.ForgotPassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/password/reset", wrapper.ResetPassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/email/verify", wrapper.VerifyEmail)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me", wrapper.GetMe)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/me", wrapper.UpdateMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/email/verification", wrapper.ResendEmailVerification)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/me/password", wrapper.ChangePassword)
@@ -1648,6 +2048,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/invitations", wrapper.ListInvitations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/invitations", wrapper.CreateInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/invitations/{id}/resend", wrapper.ResendInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/invitations/{id}", wrapper.RevokeInvitation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

@@ -32,6 +32,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/mail"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/migrate"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdb"
@@ -131,7 +132,7 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 			return fmt.Errorf("system database: %w", err)
 		}
 		defer sys.Close()
-		if err := startWorker(gctx, g, cfg, log, pool, sys, realtime.NewPublisher(redisClient, "")); err != nil {
+		if err := startWorker(gctx, g, cfg, log, pool, sys, redisClient, realtime.NewPublisher(redisClient, "")); err != nil {
 			return err
 		}
 	}
@@ -165,7 +166,8 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 // startWorker runs River workers and the outbox relay until ctx is done.
 // The relay publishes events to the realtime fan-out (ADR-0005).
 func startWorker(
-	ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool, sys *db.DB, pub outbox.Publisher,
+	ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool, sys *db.DB,
+	redisClient *redis.Client, pub outbox.Publisher,
 ) error {
 	relay := outbox.NewRelay(sys.Pool(), pub, log)
 	if err := relay.CheckRole(ctx); err != nil {
@@ -175,6 +177,9 @@ func startWorker(
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	periodic := []*river.PeriodicJob{outbox.PrunePeriodic()}
+	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
+		return err
+	}
 	client, err := jobs.New(pool.Pool(), jobs.Options{
 		Log:         log,
 		Workers:     workers,
@@ -202,15 +207,43 @@ func startWorker(
 	return nil
 }
 
+// addMailWorkers registers the auth emails (invitations, password reset,
+// email confirmation) when outgoing email is configured. Without it the api
+// queues no email jobs.
+func addMailWorkers(workers *river.Workers, cfg config.Config, pool *db.DB, redisClient *redis.Client, log *slog.Logger) error {
+	if !cfg.MailEnabled() {
+		log.Warn("TOLKOVO_SMTP_HOST is not set: no email is sent; invitation links are shown to admins, password reset is off")
+		return nil
+	}
+	sender, err := mail.NewSMTP(mail.SMTPOptions{
+		Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, Username: cfg.SMTP.User, Password: cfg.SMTP.Password.Reveal(),
+		From: cfg.SMTP.From, TLS: cfg.SMTP.TLS, Timeout: cfg.SMTP.Timeout,
+	})
+	if err != nil {
+		return err
+	}
+	return auth.AddMailWorkers(workers, auth.MailOptions{
+		Tenancy: tenancy.New(pool), Redis: redisClient, Sender: sender, PanelURL: cfg.PanelBaseURL(),
+	})
+}
+
 // apiDeps wires the modules the HTTP layer needs.
 func apiDeps(
 	ctx context.Context, cfg config.Config, log *slog.Logger, pool *db.DB, redisClient *redis.Client, store storage.Storage,
 ) (api.Deps, error) {
 	tenants := tenancy.New(pool)
+	// Insert-only: the api queues email jobs, the worker role sends them.
+	inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
+	if err != nil {
+		return api.Deps{}, fmt.Errorf("jobs: %w", err)
+	}
 	authSvc, err := auth.New(ctx, tenants, redisClient, auth.Options{
 		SessionIdleTimeout: cfg.SessionIdleTimeout,
 		SessionMaxAge:      cfg.SessionMaxAge,
 		HashConcurrency:    runtime.GOMAXPROCS(0),
+		Jobs:               inserter,
+		MailEnabled:        cfg.MailEnabled(),
+		PanelURL:           cfg.PanelBaseURL(),
 	})
 	if err != nil {
 		return api.Deps{}, err

@@ -15,24 +15,26 @@ import (
 
 const createUser = `-- name: CreateUser :one
 
-INSERT INTO users (id, email, password_hash, name, locale)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, name, locale
+INSERT INTO users (id, email, password_hash, name, locale, email_verified_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, email, name, locale, email_verified_at
 `
 
 type CreateUserParams struct {
-	ID           uuid.UUID
-	Email        string
-	PasswordHash pgtype.Text
-	Name         string
-	Locale       string
+	ID              uuid.UUID
+	Email           string
+	PasswordHash    pgtype.Text
+	Name            string
+	Locale          string
+	EmailVerifiedAt *time.Time
 }
 
 type CreateUserRow struct {
-	ID     uuid.UUID
-	Email  string
-	Name   string
-	Locale string
+	ID              uuid.UUID
+	Email           string
+	Name            string
+	Locale          string
+	EmailVerifiedAt *time.Time
 }
 
 // users is a global table without RLS (docs/adr/0003-multitenancy-rls.md).
@@ -43,6 +45,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		arg.PasswordHash,
 		arg.Name,
 		arg.Locale,
+		arg.EmailVerifiedAt,
 	)
 	var i CreateUserRow
 	err := row.Scan(
@@ -50,6 +53,34 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		&i.Email,
 		&i.Name,
 		&i.Locale,
+		&i.EmailVerifiedAt,
+	)
+	return i, err
+}
+
+const getUser = `-- name: GetUser :one
+SELECT id, email, name, locale, email_verified_at
+FROM users
+WHERE id = $1 AND disabled_at IS NULL
+`
+
+type GetUserRow struct {
+	ID              uuid.UUID
+	Email           string
+	Name            string
+	Locale          string
+	EmailVerifiedAt *time.Time
+}
+
+func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error) {
+	row := q.db.QueryRow(ctx, getUser, id)
+	var i GetUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.Locale,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
@@ -92,6 +123,21 @@ func (q *Queries) GetUserPasswordHash(ctx context.Context, id uuid.UUID) (GetUse
 	return i, err
 }
 
+const markEmailVerified = `-- name: MarkEmailVerified :execrows
+UPDATE users
+SET email_verified_at = COALESCE(email_verified_at, now()), updated_at = now()
+WHERE id = $1 AND disabled_at IS NULL
+`
+
+// The first confirmation counts; repeating it changes nothing.
+func (q *Queries) MarkEmailVerified(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markEmailVerified, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setUserPasswordHash = `-- name: SetUserPasswordHash :execrows
 UPDATE users
 SET password_hash = $1, updated_at = now()
@@ -126,7 +172,7 @@ SET name       = COALESCE($1, name),
     locale     = COALESCE($2, locale),
     updated_at = now()
 WHERE id = $3 AND disabled_at IS NULL
-RETURNING id, email, name, locale
+RETURNING id, email, name, locale, email_verified_at
 `
 
 type UpdateUserProfileParams struct {
@@ -136,10 +182,11 @@ type UpdateUserProfileParams struct {
 }
 
 type UpdateUserProfileRow struct {
-	ID     uuid.UUID
-	Email  string
-	Name   string
-	Locale string
+	ID              uuid.UUID
+	Email           string
+	Name            string
+	Locale          string
+	EmailVerifiedAt *time.Time
 }
 
 // Absent (NULL) fields keep their value.
@@ -151,6 +198,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.Email,
 		&i.Name,
 		&i.Locale,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }

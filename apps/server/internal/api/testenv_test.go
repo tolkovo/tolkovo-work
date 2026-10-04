@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,12 +17,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/riverqueue/river"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/mail"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/mail/mailtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
@@ -37,6 +42,8 @@ type env struct {
 	tenancy *tenancy.Service
 	files   *storage.FS
 	ownerDB string // bypasses RLS: test fixtures only
+	// mail records the emails of the auth jobs; nil without envOptions.mail.
+	mail *mailtest.Sender
 }
 
 type envOptions struct {
@@ -47,7 +54,13 @@ type envOptions struct {
 	// the Redis publisher, like role all.
 	realtime realtime.Options
 	withWS   bool
+	// mail runs the River worker with the auth email jobs and a recording
+	// sender, like a server with TOLKOVO_SMTP_HOST set.
+	mail bool
 }
+
+// panelURL is where test links point.
+const panelURL = "http://panel.test"
 
 func newEnv(t *testing.T, o envOptions) *env {
 	t.Helper()
@@ -55,9 +68,36 @@ func newEnv(t *testing.T, o envOptions) *env {
 	app := d.OpenApp(t)
 	rc, prefix := rdbtest.New(t)
 	ten := tenancy.New(app)
+	quiet := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	var sender *mailtest.Sender
+	workers := river.NewWorkers()
+	if o.mail {
+		sender = &mailtest.Sender{}
+		if err := auth.AddMailWorkers(workers, auth.MailOptions{
+			Tenancy: ten, Redis: rc, Sender: sender, PanelURL: panelURL, KeyPrefix: prefix,
+		}); err != nil {
+			t.Fatalf("mail workers: %v", err)
+		}
+	}
+	// The queue is platform infrastructure on the application pool, as in cmd.
+	jobsClient, err := jobs.New(app.Pool(), jobs.Options{Log: quiet, Workers: workers, StopTimeout: 5 * time.Second}) //nolint:forbidigo // see above
+	if err != nil {
+		t.Fatalf("jobs: %v", err)
+	}
+	if o.mail {
+		if err := jobsClient.Start(context.Background()); err != nil {
+			t.Fatalf("start jobs: %v", err)
+		}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = jobsClient.Stop(ctx)
+		})
+	}
 	a, err := auth.New(context.Background(), ten, rc, auth.Options{
 		KeyPrefix: prefix, SessionIdleTimeout: time.Hour, SessionMaxAge: 24 * time.Hour,
 		HashParams: auth.HashParams{MemoryKiB: 64, Time: 1, Threads: 1}, HashConcurrency: 4,
+		Jobs: jobsClient, MailEnabled: o.mail, PanelURL: panelURL,
 	})
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
@@ -71,14 +111,39 @@ func newEnv(t *testing.T, o envOptions) *env {
 	}
 	t.Cleanup(func() { _ = files.Close() })
 	deps := Deps{
-		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pinger{}, Version: "test", Files: files,
+		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: conversations.New(app, files),
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
 		deps.Realtime = startRealtime(t, d, app, rc, prefix, o)
 	}
-	return &env{t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL}
+	return &env{t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender}
+}
+
+// waitMail waits for the next email to the address and returns it along
+// with the token in its link (the URL fragment after path).
+func (e *env) waitMail(to, path string) (mail.Message, string) {
+	e.t.Helper()
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		sent := e.mail.Sent()
+		for i := len(sent) - 1; i >= 0; i-- {
+			m := sent[i]
+			if m.To != to {
+				continue
+			}
+			prefix := panelURL + path + "#"
+			start := strings.Index(m.Text, prefix)
+			if start < 0 {
+				e.t.Fatalf("email to %s has no %s link:\n%s", to, path, m.Text)
+			}
+			token := strings.Fields(m.Text[start+len(prefix):])[0]
+			e.mail.Forget(to)
+			return m, token
+		}
+	}
+	e.t.Fatalf("no email to %s", to)
+	return mail.Message{}, ""
 }
 
 // startRealtime runs a gateway and the outbox relay publishing to it until

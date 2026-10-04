@@ -84,8 +84,13 @@ type Config struct {
 	Mode string `env:"MODE" envDefault:"selfhost"`
 	// PublicURL is where clients reach the api; signed fs storage links
 	// point here.
-	PublicURL string  `env:"PUBLIC_URL" envDefault:"http://localhost:8080"`
-	Storage   Storage `envPrefix:"STORAGE_"`
+	PublicURL string `env:"PUBLIC_URL" envDefault:"http://localhost:8080"`
+	// PanelURL is where people open the panel; links in emails (invitation,
+	// password reset) point here. Defaults to PublicURL: in production the
+	// panel and the api share one host (docs/02 §16.2). In development the
+	// Vite server runs elsewhere, e.g. http://localhost:5173.
+	PanelURL string  `env:"PANEL_URL"`
+	Storage  Storage `envPrefix:"STORAGE_"`
 
 	SMTP SMTP `envPrefix:"SMTP_"`
 }
@@ -141,6 +146,17 @@ func LoadFrom(vars map[string]string) (Config, error) {
 // except development, which runs over plain HTTP on localhost.
 func (c Config) SecureCookies() bool { return c.Env != EnvDevelopment }
 
+// PanelBaseURL returns PanelURL, or PublicURL when it is not set.
+func (c Config) PanelBaseURL() string {
+	if c.PanelURL != "" {
+		return c.PanelURL
+	}
+	return c.PublicURL
+}
+
+// MailEnabled reports whether outgoing email is configured.
+func (c Config) MailEnabled() bool { return strings.TrimSpace(c.SMTP.Host) != "" }
+
 // PublicOrigins returns the origin (scheme://host) of PublicURL, the one
 // browsers use to reach the api. validate guarantees it parses.
 func (c Config) PublicOrigins() []string {
@@ -174,6 +190,12 @@ func (c Config) validate() error {
 	if u, err := url.Parse(c.PublicURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") ||
 		u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
 		errs = append(errs, fmt.Errorf("%sPUBLIC_URL must be an absolute http(s) URL without query, got %q", Prefix, c.PublicURL))
+	}
+	if c.PanelURL != "" {
+		if u, err := url.Parse(c.PanelURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") ||
+			u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+			errs = append(errs, fmt.Errorf("%sPANEL_URL must be an absolute http(s) URL without query, got %q", Prefix, c.PanelURL))
+		}
 	}
 	errs = append(errs, c.validateStorage()...)
 	errs = append(errs, c.validateSMTP()...)

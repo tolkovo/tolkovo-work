@@ -52,6 +52,26 @@ func TestLoadFrom_SecureCookiesOutsideDevelopment(t *testing.T) {
 	}
 }
 
+func TestPanelBaseURLAndMail(t *testing.T) {
+	cfg, err := LoadFrom(map[string]string{"TOLKOVO_DATABASE_URL": dsn})
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if cfg.PanelBaseURL() != cfg.PublicURL || cfg.MailEnabled() {
+		t.Fatalf("panel URL must default to the public URL and mail be off: %q %v", cfg.PanelBaseURL(), cfg.MailEnabled())
+	}
+	cfg, err = LoadFrom(map[string]string{
+		"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_PANEL_URL": "http://localhost:5173",
+		"TOLKOVO_SMTP_HOST": "localhost", "TOLKOVO_SMTP_FROM": "Tolkovo <noreply@example.com>",
+	})
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if cfg.PanelBaseURL() != "http://localhost:5173" || !cfg.MailEnabled() {
+		t.Fatalf("got %q %v", cfg.PanelBaseURL(), cfg.MailEnabled())
+	}
+}
+
 func TestLoadFrom_RequiresDatabaseURL(t *testing.T) {
 	_, err := LoadFrom(map[string]string{})
 	if err == nil || !strings.Contains(err.Error(), "TOLKOVO_DATABASE_URL") {
@@ -73,6 +93,8 @@ func TestLoadFrom_RejectsInvalidValues(t *testing.T) {
 		{"idle above max age", "TOLKOVO_SESSION_IDLE_TIMEOUT", "1000h", "TOLKOVO_SESSION_IDLE_TIMEOUT"},
 		{"origin with path", "TOLKOVO_TRUSTED_ORIGINS", "https://panel.example.com/app", "TOLKOVO_TRUSTED_ORIGINS"},
 		{"origin without scheme", "TOLKOVO_TRUSTED_ORIGINS", "panel.example.com", "TOLKOVO_TRUSTED_ORIGINS"},
+		{"relative panel url", "TOLKOVO_PANEL_URL", "/app", "TOLKOVO_PANEL_URL"},
+		{"panel url with query", "TOLKOVO_PANEL_URL", "https://app.example.com/?x=1", "TOLKOVO_PANEL_URL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

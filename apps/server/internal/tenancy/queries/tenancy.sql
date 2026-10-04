@@ -29,6 +29,7 @@ RETURNING id, slug, name, locale, timezone, created_at;
 -- The access check of every authenticated request: an active member of a
 -- live workspace whose account is not disabled.
 SELECT u.id AS user_id, u.email, u.name AS user_name, u.locale AS user_locale,
+       u.email_verified_at,
        w.id AS workspace_id, w.slug, w.name AS workspace_name,
        w.locale AS workspace_locale, w.timezone, w.created_at AS workspace_created_at,
        r.key AS role_key

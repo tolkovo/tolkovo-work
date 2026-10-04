@@ -26,8 +26,13 @@ const (
 // Every other route requires one: authentication is deny-by-default, and
 // TestEveryRouteRequiresSessionExceptPublic walks the router to prove it.
 var publicOperations = map[string]bool{
-	"POST /api/v1/auth/register": true,
-	"POST /api/v1/auth/login":    true,
+	"POST /api/v1/auth/register":           true,
+	"POST /api/v1/auth/login":              true,
+	"POST /api/v1/auth/invitation/preview": true,
+	"POST /api/v1/auth/invitation/accept":  true,
+	"POST /api/v1/auth/password/forgot":    true,
+	"POST /api/v1/auth/password/reset":     true,
+	"POST /api/v1/auth/email/verify":       true,
 }
 
 // sessionCookies writes and reads the session cookie.

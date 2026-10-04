@@ -192,6 +192,7 @@ func sessionBody(m tenancy.Membership, sess auth.Session) oapi.Session {
 	return oapi.Session{
 		User: oapi.User{
 			Id: m.User.ID, Email: m.User.Email, Name: m.User.Name, Locale: oapi.Locale(m.User.Locale),
+			EmailVerified: m.User.EmailVerifiedAt != nil,
 		},
 		Workspace:   workspaceBody(m.Workspace),
 		Role:        oapi.Role(m.Role),

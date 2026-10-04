@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/ratelimit"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
@@ -31,6 +33,9 @@ var (
 	ErrWrongPassword      = errors.New("auth: current password does not match")
 	ErrSessionNotFound    = errors.New("auth: session not found")
 	ErrCurrentSession     = errors.New("auth: this is the current session")
+	ErrInvalidToken       = errors.New("auth: the link is invalid, used or expired")
+	ErrEmailDisabled      = errors.New("auth: outgoing email is not configured")
+	ErrEmailVerified      = errors.New("auth: the email is already confirmed")
 )
 
 // RateLimitedError is returned when too many attempts were made.
@@ -51,6 +56,13 @@ var (
 	// Someone with a stolen session cookie must not be able to guess the
 	// password and take the account over.
 	passwordChangePerUser = ratelimit.Rule{Limit: 10, Window: time.Hour}
+	// Reset emails: enough for typos and lost mail, too few to spam someone.
+	forgotPerIP    = ratelimit.Rule{Limit: 20, Window: time.Hour}
+	forgotPerEmail = ratelimit.Rule{Limit: 5, Window: time.Hour}
+	// Guessing a 256-bit token is hopeless; the limit keeps the endpoints
+	// that take one (invitation, reset, confirmation) cheap to serve.
+	linkTokenPerIP      = ratelimit.Rule{Limit: 30, Window: time.Hour}
+	verifyResendPerUser = ratelimit.Rule{Limit: 5, Window: time.Hour}
 )
 
 // Client describes the browser that signs in. IP feeds the rate limits and
@@ -74,15 +86,31 @@ type Options struct {
 	HashConcurrency int
 	// Now defaults to time.Now.
 	Now func() time.Time
+
+	// Jobs queues the emails (insert-only client is enough). Required.
+	Jobs *jobs.Client
+	// MailEnabled is true when outgoing email is configured and the worker
+	// sends the emails; otherwise invitation links are returned to the admin
+	// and password reset is unavailable.
+	MailEnabled bool
+	// PanelURL is where the panel's link pages live (invitation links
+	// returned when email is off). Required.
+	PanelURL string
 }
 
 // Service is the module facade.
 type Service struct {
-	tenancy   *tenancy.Service
-	sessions  *sessionStore
-	limiter   *ratelimit.Limiter
-	hasher    *hasher
-	dummyHash string
+	tenancy      *tenancy.Service
+	sessions     *sessionStore
+	limiter      *ratelimit.Limiter
+	hasher       *hasher
+	dummyHash    string
+	jobs         *jobs.Client
+	mailEnabled  bool
+	links        linkBuilder
+	resetTokens  userTokens
+	verifyTokens userTokens
+	clock        func() time.Time
 }
 
 // New returns the auth service.
@@ -96,6 +124,13 @@ func New(ctx context.Context, t *tenancy.Service, rdb *redis.Client, o Options) 
 	if o.Now == nil {
 		o.Now = time.Now
 	}
+	if o.Jobs == nil {
+		return nil, errors.New("auth: a jobs client is required")
+	}
+	links, err := newLinkBuilder(o.PanelURL)
+	if err != nil {
+		return nil, err
+	}
 	h := newHasher(o.HashParams, o.HashConcurrency)
 	// Login with an unknown email verifies against this hash, so it takes as
 	// long as a wrong password and timing does not reveal registered emails.
@@ -108,9 +143,15 @@ func New(ctx context.Context, t *tenancy.Service, rdb *redis.Client, o Options) 
 		sessions: &sessionStore{
 			rdb: rdb, prefix: o.KeyPrefix, idle: o.SessionIdleTimeout, maxAge: o.SessionMaxAge, now: o.Now,
 		},
-		limiter:   ratelimit.New(rdb, o.KeyPrefix),
-		hasher:    h,
-		dummyHash: dummy,
+		limiter:      ratelimit.New(rdb, o.KeyPrefix),
+		hasher:       h,
+		dummyHash:    dummy,
+		jobs:         o.Jobs,
+		mailEnabled:  o.MailEnabled,
+		links:        links,
+		resetTokens:  resetTokens(rdb, o.KeyPrefix),
+		verifyTokens: verifyTokens(rdb, o.KeyPrefix),
+		clock:        o.Now,
 	}, nil
 }
 
@@ -134,7 +175,8 @@ type RegisterInput struct {
 }
 
 // Register creates the account, the workspace and the owner membership
-// atomically and signs the owner in (docs/06 A-01).
+// atomically and signs the owner in (docs/06 A-01). With email on, the
+// confirmation email is queued in the same transaction (A-06).
 func (s *Service) Register(ctx context.Context, in RegisterInput, c Client) (SignIn, error) {
 	if err := s.allow(ctx, "register:ip:"+digest(c.IP), registerPerIP); err != nil {
 		return SignIn{}, err
@@ -146,10 +188,17 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, c Client) (Sig
 	if err != nil {
 		return SignIn{}, err
 	}
-	m, err := s.tenancy.Register(ctx, tenancy.RegisterInput{
+	reg := tenancy.RegisterInput{
 		Email: in.Email, Name: in.Name, Locale: in.Locale, PasswordHash: hash,
 		WorkspaceName: in.WorkspaceName, WorkspaceSlug: in.WorkspaceSlug, Timezone: in.Timezone,
-	})
+	}
+	if s.mailEnabled {
+		reg.AfterCreate = func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+			_, err := s.jobs.InsertTx(ctx, tx, EmailVerificationArgs{UserID: userID}, nil)
+			return err
+		}
+	}
+	m, err := s.tenancy.Register(ctx, reg)
 	if err != nil {
 		return SignIn{}, err // tenancy errors are part of this contract
 	}

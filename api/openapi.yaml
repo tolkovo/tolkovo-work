@@ -155,6 +155,140 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /auth/invitation/preview:
+    post:
+      tags: [auth]
+      operationId: previewInvitation
+      summary: Show an invitation before accepting it
+      description: |
+        `token` is the fragment of the invitation link. An unknown, revoked, accepted or
+        expired invitation answers `422 invalid_token`. `account_exists` tells the panel
+        whether to ask for a password only or for a name and a new password. Rate limited
+        per client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenRequest' }
+      responses:
+        '200':
+          description: The invitation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationPreview' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidToken' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/invitation/accept:
+    post:
+      tags: [auth]
+      operationId: acceptInvitation
+      summary: Accept an invitation and sign in to its workspace
+      description: |
+        Without an account for the invited email, `name` and `password` (8–128 characters)
+        create one; its email counts as confirmed. With an account, `password` must be the
+        account's password (`401 invalid_credentials` otherwise) and `name` is ignored. A
+        deactivated member is reactivated with the invited role; an active member answers
+        `409 already_member`. Starts a session in the invitation's workspace, as login does.
+        Rate limited per client IP and email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInvitationRequest' }
+      responses:
+        '200':
+          description: Accepted and signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`already_member`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/InvalidToken' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      operationId: forgotPassword
+      summary: Email a password reset link
+      description: |
+        Answers `202` whether or not the email belongs to an account, so the answer does
+        not reveal registered addresses. The link works for 1 hour and only the latest one
+        works. Without outgoing email configured (`TOLKOVO_SMTP_HOST`) answers `503
+        email_disabled`. Rate limited per client IP and per email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '202':
+          description: If the account exists, the email is on its way.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/EmailDisabled' }
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      operationId: resetPassword
+      summary: Set a new password by a reset link
+      description: |
+        `token` is the fragment of the reset link; it works once. Sets the password,
+        confirms the email (the link reached it) and revokes every session of the user.
+        Does not sign in. Rate limited per client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204':
+          description: The password is changed; sign in with it.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidToken' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/email/verify:
+    post:
+      tags: [auth]
+      operationId: verifyEmail
+      summary: Confirm the email address by a link
+      description: |
+        `token` is the fragment of the confirmation link sent after registration; it works
+        once, for 48 hours. Needs no session: the link may be opened in another browser.
+        Rate limited per client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenRequest' }
+      responses:
+        '204':
+          description: The email is confirmed.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidToken' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /me:
     get:
       tags: [auth]
@@ -192,6 +326,30 @@ paths:
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/email/verification:
+    post:
+      tags: [auth]
+      operationId: resendEmailVerification
+      summary: Send the email confirmation link again
+      description: |
+        A new link replaces the previous one. An already confirmed email answers `409
+        email_verified`. Rate limited per user.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '202':
+          description: The email is on its way.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`email_verified`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/EmailDisabled' }
 
   /me/password:
     post:
@@ -339,6 +497,99 @@ paths:
               schema: { $ref: '#/components/schemas/MemberList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /invitations:
+    get:
+      tags: [workspace]
+      operationId: listInvitations
+      summary: Open invitations of the current workspace
+      description: |
+        Invitations that are neither accepted nor revoked, newest first; expired ones are
+        included with `expired: true` so they can be resent. Requires `members.manage`.
+      responses:
+        '200':
+          description: Open invitations.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [workspace]
+      operationId: createInvitation
+      summary: Invite a person by email
+      description: |
+        Grants `admin` or `operator` (never `owner`). An open invitation to the same
+        address is replaced. An active member answers `409 already_member`. The link works
+        for 7 days.
+
+        With outgoing email configured the link is emailed and `invite_url` is absent.
+        Without it nothing is sent and `invite_url` holds the link for the admin to pass
+        on. Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInvitationRequest' }
+      responses:
+        '201':
+          description: The invitation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationSent' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`already_member`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /invitations/{id}/resend:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [workspace]
+      operationId: resendInvitation
+      summary: Issue a new link for an open invitation
+      description: |
+        The previous link stops working and the invitation is valid for another 7 days,
+        also when it had expired. Emailed, or returned in `invite_url`, as on creation.
+        Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The invitation with its new expiry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationSent' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /invitations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags: [workspace]
+      operationId: revokeInvitation
+      summary: Revoke an open invitation
+      description: Its link stops working. Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Revoked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /files/{key}:
     parameters:
@@ -864,6 +1115,16 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    InvalidToken:
+      description: '`invalid_token`: the link is unknown, used, revoked or expired.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    EmailDisabled:
+      description: '`email_disabled`: outgoing email is not configured on this server.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     TooManyRequests:
       description: '`too_many_requests`; see `Retry-After`.'
       headers:
@@ -991,7 +1252,7 @@ components:
 
     User:
       type: object
-      required: [id, email, name, locale]
+      required: [id, email, name, locale, email_verified]
       properties:
         id:
           type: string
@@ -1000,6 +1261,11 @@ components:
         email: { type: string }
         name: { type: string }
         locale: { $ref: '#/components/schemas/Locale' }
+        email_verified:
+          type: boolean
+          description: |
+            The user proved they own the email: the confirmation link, an accepted
+            invitation or a password reset.
 
     Workspace:
       type: object
@@ -1048,6 +1314,107 @@ components:
         csrf_token:
           type: string
           description: Send it as `X-CSRF-Token` on unsafe requests.
+
+    TokenRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200, description: The fragment of the emailed link. }
+
+    ForgotPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, maxLength: 254 }
+
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [token, password]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+
+    AcceptInvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [token, password]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200 }
+        password:
+          type: string
+          maxLength: 128
+          description: The new account's password (8–128), or the existing account's one.
+        name:
+          type: string
+          maxLength: 120
+          description: Required when no account exists for the invited email.
+        locale:
+          $ref: '#/components/schemas/Locale'
+          description: Interface language of a new account; the workspace's when absent.
+
+    InvitationPreview:
+      type: object
+      required: [workspace_name, email, role, expires_at, account_exists]
+      properties:
+        workspace_name: { type: string }
+        email: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        expires_at: { type: string, format: date-time }
+        account_exists:
+          type: boolean
+          description: An account with this email exists; accept with its password.
+
+    CreateInvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [email, role]
+      properties:
+        email: { type: string, maxLength: 254 }
+        role:
+          type: string
+          enum: [admin, operator]
+
+    Invitation:
+      type: object
+      required: [id, email, role, invited_by_name, expires_at, created_at, expired]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        email: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        invited_by_name:
+          type: string
+          description: Empty when the inviter's account is gone.
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        expired: { type: boolean }
+
+    InvitationSent:
+      type: object
+      required: [invitation]
+      properties:
+        invitation: { $ref: '#/components/schemas/Invitation' }
+        invite_url:
+          type: string
+          description: |
+            Present only when the server cannot send email: the link to pass on. It is
+            shown once; resend issues a new one.
+
+    InvitationList:
+      type: object
+      required: [items, email_enabled]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Invitation' }
+        email_enabled:
+          type: boolean
+          description: The server emails invitations; otherwise the panel shows the link.
 
     Member:
       type: object

@@ -16,7 +16,7 @@ import { ApiError } from "./errors";
 const BASE = "http://panel.test/api/v1";
 
 const session: Session = {
-  user: { id: "u1", email: "anna@example.com", name: "Anna", locale: "ru" },
+  user: { id: "u1", email: "anna@example.com", name: "Anna", locale: "ru", email_verified: true },
   workspace: { id: "w1", slug: "zerno", name: "Zerno", locale: "ru", timezone: "Europe/Moscow" },
   role: "owner",
   permissions: ["members.view", "workspace.manage"],

@@ -83,6 +83,7 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 
 const getMembership = `-- name: GetMembership :one
 SELECT u.id AS user_id, u.email, u.name AS user_name, u.locale AS user_locale,
+       u.email_verified_at,
        w.id AS workspace_id, w.slug, w.name AS workspace_name,
        w.locale AS workspace_locale, w.timezone, w.created_at AS workspace_created_at,
        r.key AS role_key
@@ -107,6 +108,7 @@ type GetMembershipRow struct {
 	Email              string
 	UserName           string
 	UserLocale         string
+	EmailVerifiedAt    *time.Time
 	WorkspaceID        uuid.UUID
 	Slug               string
 	WorkspaceName      string
@@ -126,6 +128,7 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (G
 		&i.Email,
 		&i.UserName,
 		&i.UserLocale,
+		&i.EmailVerifiedAt,
 		&i.WorkspaceID,
 		&i.Slug,
 		&i.WorkspaceName,

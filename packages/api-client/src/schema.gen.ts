@@ -86,6 +86,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/invitation/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show an invitation before accepting it
+         * @description `token` is the fragment of the invitation link. An unknown, revoked, accepted or
+         *     expired invitation answers `422 invalid_token`. `account_exists` tells the panel
+         *     whether to ask for a password only or for a name and a new password. Rate limited
+         *     per client IP.
+         */
+        post: operations["previewInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/invitation/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation and sign in to its workspace
+         * @description Without an account for the invited email, `name` and `password` (8–128 characters)
+         *     create one; its email counts as confirmed. With an account, `password` must be the
+         *     account's password (`401 invalid_credentials` otherwise) and `name` is ignored. A
+         *     deactivated member is reactivated with the invited role; an active member answers
+         *     `409 already_member`. Starts a session in the invitation's workspace, as login does.
+         *     Rate limited per client IP and email.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/forgot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email a password reset link
+         * @description Answers `202` whether or not the email belongs to an account, so the answer does
+         *     not reveal registered addresses. The link works for 1 hour and only the latest one
+         *     works. Without outgoing email configured (`TOLKOVO_SMTP_HOST`) answers `503
+         *     email_disabled`. Rate limited per client IP and per email.
+         */
+        post: operations["forgotPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password by a reset link
+         * @description `token` is the fragment of the reset link; it works once. Sets the password,
+         *     confirms the email (the link reached it) and revokes every session of the user.
+         *     Does not sign in. Rate limited per client IP.
+         */
+        post: operations["resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the email address by a link
+         * @description `token` is the fragment of the confirmation link sent after registration; it works
+         *     once, for 48 hours. Needs no session: the link may be opened in another browser.
+         *     Rate limited per client IP.
+         */
+        post: operations["verifyEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -107,6 +222,27 @@ export interface paths {
          *     are; the name is trimmed. Needs a session only, no permission.
          */
         patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/me/email/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the email confirmation link again
+         * @description A new link replaces the previous one. An already confirmed email answers `409
+         *     email_verified`. Rate limited per user.
+         */
+        post: operations["resendEmailVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/me/password": {
@@ -251,6 +387,83 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open invitations of the current workspace
+         * @description Invitations that are neither accepted nor revoked, newest first; expired ones are
+         *     included with `expired: true` so they can be resent. Requires `members.manage`.
+         */
+        get: operations["listInvitations"];
+        put?: never;
+        /**
+         * Invite a person by email
+         * @description Grants `admin` or `operator` (never `owner`). An open invitation to the same
+         *     address is replaced. An active member answers `409 already_member`. The link works
+         *     for 7 days.
+         *
+         *     With outgoing email configured the link is emailed and `invite_url` is absent.
+         *     Without it nothing is sent and `invite_url` holds the link for the admin to pass
+         *     on. Requires `members.manage`.
+         */
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invitations/{id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a new link for an open invitation
+         * @description The previous link stops working and the invitation is valid for another 7 days,
+         *     also when it had expired. Emailed, or returned in `invite_url`, as on creation.
+         *     Requires `members.manage`.
+         */
+        post: operations["resendInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invitations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an open invitation
+         * @description Its link stops working. Requires `members.manage`.
+         */
+        delete: operations["revokeInvitation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -602,6 +815,11 @@ export interface components {
             email: string;
             name: string;
             locale: components["schemas"]["Locale"];
+            /**
+             * @description The user proved they own the email: the confirmation link, an accepted
+             *     invitation or a password reset.
+             */
+            email_verified: boolean;
         };
         Workspace: {
             id: string;
@@ -627,6 +845,65 @@ export interface components {
             permissions: string[];
             /** @description Send it as `X-CSRF-Token` on unsafe requests. */
             csrf_token: string;
+        };
+        TokenRequest: {
+            /** @description The fragment of the emailed link. */
+            token: string;
+        };
+        ForgotPasswordRequest: {
+            email: string;
+        };
+        ResetPasswordRequest: {
+            token: string;
+            password: string;
+        };
+        AcceptInvitationRequest: {
+            token: string;
+            /** @description The new account's password (8–128), or the existing account's one. */
+            password: string;
+            /** @description Required when no account exists for the invited email. */
+            name?: string;
+            /** @description Interface language of a new account; the workspace's when absent. */
+            locale?: components["schemas"]["Locale"];
+        };
+        InvitationPreview: {
+            workspace_name: string;
+            email: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            expires_at: string;
+            /** @description An account with this email exists; accept with its password. */
+            account_exists: boolean;
+        };
+        CreateInvitationRequest: {
+            email: string;
+            /** @enum {string} */
+            role: "admin" | "operator";
+        };
+        Invitation: {
+            id: string;
+            email: string;
+            role: components["schemas"]["Role"];
+            /** @description Empty when the inviter's account is gone. */
+            invited_by_name: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+            expired: boolean;
+        };
+        InvitationSent: {
+            invitation: components["schemas"]["Invitation"];
+            /**
+             * @description Present only when the server cannot send email: the link to pass on. It is
+             *     shown once; resend issues a new one.
+             */
+            invite_url?: string;
+        };
+        InvitationList: {
+            items: components["schemas"]["Invitation"][];
+            /** @description The server emails invitations; otherwise the panel shows the link. */
+            email_enabled: boolean;
         };
         Member: {
             user_id: string;
@@ -845,6 +1122,24 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description `invalid_token`: the link is unknown, used, revoked or expired. */
+        InvalidToken: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `email_disabled`: outgoing email is not configured on this server. */
+        EmailDisabled: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description `too_many_requests`; see `Retry-After`. */
         TooManyRequests: {
             headers: {
@@ -993,6 +1288,151 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    previewInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreview"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["InvalidToken"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted and signed in. */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SetSessionCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `already_member`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["InvalidToken"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    forgotPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description If the account exists, the email is on its way. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["EmailDisabled"];
+        };
+    };
+    resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description The password is changed; sign in with it. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["InvalidToken"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    verifyEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The email is confirmed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["InvalidToken"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     getMe: {
         parameters: {
             query?: never;
@@ -1039,6 +1479,37 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    resendEmailVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The email is on its way. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `email_verified`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["EmailDisabled"];
         };
     };
     changePassword: {
@@ -1220,6 +1691,112 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open invitations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationSent"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `already_member`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resendInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation with its new expiry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationSent"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     downloadFile: {

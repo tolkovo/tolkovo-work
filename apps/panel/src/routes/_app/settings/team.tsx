@@ -1,20 +1,22 @@
 import type { Member } from "@tolkovo/api-client";
-import { useMembers, useSession } from "@tolkovo/api-client/react";
+import { useCan, useMembers, useSession } from "@tolkovo/api-client/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button, Skeleton } from "@tolkovo/ui";
 import { useTranslation } from "react-i18next";
 
+import { Invitations } from "../../../components/settings/invitations";
 import { describeApiError } from "../../../lib/api-errors";
 
 export const Route = createFileRoute("/_app/settings/team")({
   component: TeamPage,
 });
 
-/** Members of the workspace, read-only until invitations (A-03) exist. */
+/** Members of the workspace; with `members.manage`, inviting people too (A-03). */
 function TeamPage() {
   const { t } = useTranslation();
   const members = useMembers();
   const { data: session } = useSession();
+  const canManage = useCan("members.manage");
 
   return (
     <section aria-labelledby="settings-team-title" aria-busy={members.isPending} className="flex flex-col gap-3">
@@ -38,6 +40,7 @@ function TeamPage() {
       ) : (
         <MembersTable members={members.data} currentUserId={session?.user.id} />
       )}
+      {canManage ? <Invitations /> : null}
     </section>
   );
 }

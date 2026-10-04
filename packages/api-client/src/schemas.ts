@@ -28,6 +28,7 @@ export const userSchema = z.object({
   email: z.string(),
   name: z.string(),
   locale: localeSchema,
+  email_verified: z.boolean(),
 }) satisfies z.ZodType<Schemas["User"]>;
 
 export const workspaceSchema = z.object({
@@ -80,3 +81,31 @@ export const deviceSessionListSchema = z.object({
     }) satisfies z.ZodType<Schemas["DeviceSession"]>,
   ),
 }) satisfies z.ZodType<Schemas["DeviceSessionList"]>;
+
+export const invitationSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  role: roleSchema,
+  invited_by_name: z.string(),
+  expires_at: z.string(),
+  created_at: z.string(),
+  expired: z.boolean(),
+}) satisfies z.ZodType<Schemas["Invitation"]>;
+
+export const invitationListSchema = z.object({
+  items: z.array(invitationSchema),
+  email_enabled: z.boolean(),
+}) satisfies z.ZodType<Schemas["InvitationList"]>;
+
+export const invitationSentSchema = z.object({
+  invitation: invitationSchema,
+  invite_url: z.string().optional(),
+}) satisfies z.ZodType<Schemas["InvitationSent"]>;
+
+export const invitationPreviewSchema = z.object({
+  workspace_name: z.string(),
+  email: z.string(),
+  role: roleSchema,
+  expires_at: z.string(),
+  account_exists: z.boolean(),
+}) satisfies z.ZodType<Schemas["InvitationPreview"]>;

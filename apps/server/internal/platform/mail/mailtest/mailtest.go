@@ -42,3 +42,17 @@ func (s *Sender) Sent() []mail.Message {
 	defer s.mu.Unlock()
 	return append([]mail.Message(nil), s.sent...)
 }
+
+// Forget drops the recorded messages to the address, so a test can wait for
+// the next one.
+func (s *Sender) Forget(to string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := s.sent[:0]
+	for _, m := range s.sent {
+		if m.To != to {
+			kept = append(kept, m)
+		}
+	}
+	s.sent = kept
+}

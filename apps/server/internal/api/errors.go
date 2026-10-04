@@ -45,6 +45,23 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Status: http.StatusUnprocessableEntity, Code: "wrong_password", Title: "Unprocessable Content",
 			Detail: "the current password does not match",
 		})
+	case errors.Is(err, auth.ErrInvalidToken):
+		writeProblem(w, r, Problem{
+			Status: http.StatusUnprocessableEntity, Code: "invalid_token", Title: "Unprocessable Content",
+			Detail: "the link is invalid, used, revoked or expired",
+		})
+	case errors.Is(err, auth.ErrEmailDisabled):
+		writeProblem(w, r, Problem{
+			Status: http.StatusServiceUnavailable, Code: "email_disabled", Title: "Service Unavailable",
+			Detail: "outgoing email is not configured on this server",
+		})
+	case errors.Is(err, auth.ErrEmailVerified):
+		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_verified", Title: "Conflict"})
+	case errors.Is(err, tenancy.ErrAlreadyMember):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "already_member", Title: "Conflict",
+			Detail: "this person is already an active member of the workspace",
+		})
 	case errors.Is(err, auth.ErrCurrentSession):
 		writeProblem(w, r, Problem{
 			Status: http.StatusConflict, Code: "current_session", Title: "Conflict",
@@ -63,7 +80,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail: "the conversation is not assigned to you",
 		})
 	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, tenancy.ErrNotFound),
-		errors.Is(err, conversations.ErrNotFound):
+		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	case errors.Is(err, tenancy.ErrEmailTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_taken", Title: "Conflict"})

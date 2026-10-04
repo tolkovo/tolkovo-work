@@ -1,5 +1,5 @@
 import { useLogin } from "@tolkovo/api-client/react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -74,6 +74,12 @@ function LoginPage() {
         required
         error={fieldError("password")}
       />
+      <Link
+        to="/forgot-password"
+        className="-mt-1.5 self-end text-[13px] font-medium text-teal underline-offset-4 hover:underline"
+      >
+        {t("auth.login.forgot")}
+      </Link>
     </AuthCard>
   );
 }

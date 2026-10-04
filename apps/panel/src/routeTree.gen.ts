@@ -12,14 +12,19 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
 import { Route as AppRouteImport } from "./routes/_app"
 import { Route as AuthRouteImport } from "./routes/_auth"
+import { Route as LinkRouteImport } from "./routes/_link"
 import { Route as AppAnalyticsRouteImport } from "./routes/_app/analytics"
 import { Route as AppInboxRouteImport } from "./routes/_app/inbox"
 import { Route as AppKbRouteImport } from "./routes/_app/kb"
 import { Route as AppMonitorRouteImport } from "./routes/_app/monitor"
 import { Route as AppOnboardingRouteImport } from "./routes/_app/onboarding"
 import { Route as AppSettingsRouteImport } from "./routes/_app/settings"
+import { Route as AuthForgotPasswordRouteImport } from "./routes/_auth/forgot-password"
 import { Route as AuthLoginRouteImport } from "./routes/_auth/login"
 import { Route as AuthRegisterRouteImport } from "./routes/_auth/register"
+import { Route as LinkInviteRouteImport } from "./routes/_link/invite"
+import { Route as LinkResetPasswordRouteImport } from "./routes/_link/reset-password"
+import { Route as LinkVerifyEmailRouteImport } from "./routes/_link/verify-email"
 import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
 import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
@@ -38,6 +43,10 @@ const AppRoute = AppRouteImport.update({
 } as any)
 const AuthRoute = AuthRouteImport.update({
   id: "/_auth",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LinkRoute = LinkRouteImport.update({
+  id: "/_link",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
@@ -70,6 +79,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: "/settings",
   getParentRoute: () => AppRoute,
 } as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: "/forgot-password",
+  path: "/forgot-password",
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: "/login",
   path: "/login",
@@ -79,6 +93,21 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
   id: "/register",
   path: "/register",
   getParentRoute: () => AuthRoute,
+} as any)
+const LinkInviteRoute = LinkInviteRouteImport.update({
+  id: "/invite",
+  path: "/invite",
+  getParentRoute: () => LinkRoute,
+} as any)
+const LinkResetPasswordRoute = LinkResetPasswordRouteImport.update({
+  id: "/reset-password",
+  path: "/reset-password",
+  getParentRoute: () => LinkRoute,
+} as any)
+const LinkVerifyEmailRoute = LinkVerifyEmailRouteImport.update({
+  id: "/verify-email",
+  path: "/verify-email",
+  getParentRoute: () => LinkRoute,
 } as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: "/",
@@ -119,8 +148,12 @@ export interface FileRoutesByFullPath {
   "/monitor": typeof AppMonitorRoute
   "/onboarding": typeof AppOnboardingRoute
   "/settings": typeof AppSettingsRouteWithChildren
+  "/forgot-password": typeof AuthForgotPasswordRoute
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
+  "/invite": typeof LinkInviteRoute
+  "/reset-password": typeof LinkResetPasswordRoute
+  "/verify-email": typeof LinkVerifyEmailRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/profile": typeof AppSettingsProfileRoute
@@ -135,8 +168,12 @@ export interface FileRoutesByTo {
   "/kb": typeof AppKbRoute
   "/monitor": typeof AppMonitorRoute
   "/onboarding": typeof AppOnboardingRoute
+  "/forgot-password": typeof AuthForgotPasswordRoute
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
+  "/invite": typeof LinkInviteRoute
+  "/reset-password": typeof LinkResetPasswordRoute
+  "/verify-email": typeof LinkVerifyEmailRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/profile": typeof AppSettingsProfileRoute
@@ -149,14 +186,19 @@ export interface FileRoutesById {
   "/": typeof IndexRoute
   "/_app": typeof AppRouteWithChildren
   "/_auth": typeof AuthRouteWithChildren
+  "/_link": typeof LinkRouteWithChildren
   "/_app/analytics": typeof AppAnalyticsRoute
   "/_app/inbox": typeof AppInboxRoute
   "/_app/kb": typeof AppKbRoute
   "/_app/monitor": typeof AppMonitorRoute
   "/_app/onboarding": typeof AppOnboardingRoute
   "/_app/settings": typeof AppSettingsRouteWithChildren
+  "/_auth/forgot-password": typeof AuthForgotPasswordRoute
   "/_auth/login": typeof AuthLoginRoute
   "/_auth/register": typeof AuthRegisterRoute
+  "/_link/invite": typeof LinkInviteRoute
+  "/_link/reset-password": typeof LinkResetPasswordRoute
+  "/_link/verify-email": typeof LinkVerifyEmailRoute
   "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
   "/_app/settings/profile": typeof AppSettingsProfileRoute
@@ -174,8 +216,12 @@ export interface FileRouteTypes {
     | "/monitor"
     | "/onboarding"
     | "/settings"
+    | "/forgot-password"
     | "/login"
     | "/register"
+    | "/invite"
+    | "/reset-password"
+    | "/verify-email"
     | "/settings/appearance"
     | "/settings/general"
     | "/settings/profile"
@@ -190,8 +236,12 @@ export interface FileRouteTypes {
     | "/kb"
     | "/monitor"
     | "/onboarding"
+    | "/forgot-password"
     | "/login"
     | "/register"
+    | "/invite"
+    | "/reset-password"
+    | "/verify-email"
     | "/settings/appearance"
     | "/settings/general"
     | "/settings/profile"
@@ -203,14 +253,19 @@ export interface FileRouteTypes {
     | "/"
     | "/_app"
     | "/_auth"
+    | "/_link"
     | "/_app/analytics"
     | "/_app/inbox"
     | "/_app/kb"
     | "/_app/monitor"
     | "/_app/onboarding"
     | "/_app/settings"
+    | "/_auth/forgot-password"
     | "/_auth/login"
     | "/_auth/register"
+    | "/_link/invite"
+    | "/_link/reset-password"
+    | "/_link/verify-email"
     | "/_app/settings/appearance"
     | "/_app/settings/general"
     | "/_app/settings/profile"
@@ -223,6 +278,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
+  LinkRoute: typeof LinkRouteWithChildren
 }
 
 declare module "@tanstack/react-router" {
@@ -246,6 +302,13 @@ declare module "@tanstack/react-router" {
       path: ""
       fullPath: "/"
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/_link": {
+      id: "/_link"
+      path: ""
+      fullPath: "/"
+      preLoaderRoute: typeof LinkRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/_app/analytics": {
@@ -290,6 +353,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    "/_auth/forgot-password": {
+      id: "/_auth/forgot-password"
+      path: "/forgot-password"
+      fullPath: "/forgot-password"
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
     "/_auth/login": {
       id: "/_auth/login"
       path: "/login"
@@ -303,6 +373,27 @@ declare module "@tanstack/react-router" {
       fullPath: "/register"
       preLoaderRoute: typeof AuthRegisterRouteImport
       parentRoute: typeof AuthRoute
+    }
+    "/_link/invite": {
+      id: "/_link/invite"
+      path: "/invite"
+      fullPath: "/invite"
+      preLoaderRoute: typeof LinkInviteRouteImport
+      parentRoute: typeof LinkRoute
+    }
+    "/_link/reset-password": {
+      id: "/_link/reset-password"
+      path: "/reset-password"
+      fullPath: "/reset-password"
+      preLoaderRoute: typeof LinkResetPasswordRouteImport
+      parentRoute: typeof LinkRoute
+    }
+    "/_link/verify-email": {
+      id: "/_link/verify-email"
+      path: "/verify-email"
+      fullPath: "/verify-email"
+      preLoaderRoute: typeof LinkVerifyEmailRouteImport
+      parentRoute: typeof LinkRoute
     }
     "/_app/settings/": {
       id: "/_app/settings/"
@@ -392,21 +483,38 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface AuthRouteChildren {
+  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthLoginRoute: typeof AuthLoginRoute
   AuthRegisterRoute: typeof AuthRegisterRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthLoginRoute: AuthLoginRoute,
   AuthRegisterRoute: AuthRegisterRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
+interface LinkRouteChildren {
+  LinkInviteRoute: typeof LinkInviteRoute
+  LinkResetPasswordRoute: typeof LinkResetPasswordRoute
+  LinkVerifyEmailRoute: typeof LinkVerifyEmailRoute
+}
+
+const LinkRouteChildren: LinkRouteChildren = {
+  LinkInviteRoute: LinkInviteRoute,
+  LinkResetPasswordRoute: LinkResetPasswordRoute,
+  LinkVerifyEmailRoute: LinkVerifyEmailRoute,
+}
+
+const LinkRouteWithChildren = LinkRoute._addFileChildren(LinkRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
+  LinkRoute: LinkRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

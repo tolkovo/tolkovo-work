@@ -3,7 +3,7 @@ import { vi } from "vitest";
 
 /** Test fixtures shaped by the generated API types, so a contract change breaks the tests. */
 export const ownerSession: Session = {
-  user: { id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", locale: "ru" },
+  user: { id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", locale: "ru", email_verified: true },
   workspace: { id: "w-zerno", slug: "zerno", name: "Зерно", locale: "ru", timezone: "Europe/Moscow" },
   role: "owner",
   permissions: ["members.manage", "members.view", "workspace.delete", "workspace.manage"],
@@ -12,7 +12,7 @@ export const ownerSession: Session = {
 
 export const operatorSession: Session = {
   ...ownerSession,
-  user: { id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", locale: "ru" },
+  user: { id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", locale: "ru", email_verified: true },
   role: "operator",
   permissions: ["members.view"],
   csrf_token: "csrf-operator",
@@ -69,6 +69,7 @@ export function fakeApi(
     "GET /me/workspaces": () => json(200, { items: workspaces }),
     "GET /members": () => json(200, { items: members }),
     "GET /me/sessions": () => json(200, { items: deviceSessions }),
+    "GET /invitations": () => json(200, { items: [], email_enabled: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {
       if (!session) return problem(401, "unauthenticated");

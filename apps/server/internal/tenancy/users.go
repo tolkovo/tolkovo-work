@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -22,6 +23,9 @@ type User struct {
 	Email  string
 	Name   string
 	Locale string
+	// EmailVerifiedAt is when the user proved they own the address: an
+	// accepted invitation, a password reset or the confirmation link.
+	EmailVerifiedAt *time.Time
 }
 
 // Credentials are what login needs to check a password. PasswordHash is a
@@ -56,6 +60,9 @@ type RegisterInput struct {
 	WorkspaceName string
 	WorkspaceSlug string
 	Timezone      string
+	// AfterCreate runs in the same transaction once the account exists; the
+	// auth module queues the confirmation email here (ADR-0004).
+	AfterCreate func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
 }
 
 // UpdateWorkspaceInput changes workspace settings; nil fields stay as they are.
@@ -128,7 +135,13 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Membership, e
 			return err
 		}
 		m = Membership{User: User(u), Workspace: Workspace(ws), Role: RoleOwner}
-		return addMember(ctx, q, wsID, userID, RoleOwner)
+		if err := addMember(ctx, q, wsID, userID, RoleOwner); err != nil {
+			return err
+		}
+		if in.AfterCreate != nil {
+			return in.AfterCreate(ctx, tx, userID)
+		}
+		return nil
 	})
 	switch {
 	case isUnique(err, "users_email_key"):
@@ -251,6 +264,41 @@ func (s *Service) UpdateUser(ctx context.Context, userID uuid.UUID, in UpdateUse
 	return u, nil
 }
 
+// User returns an enabled account, or ErrNotFound.
+func (s *Service) User(ctx context.Context, userID uuid.UUID) (User, error) {
+	var u User
+	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
+		row, err := store.New(tx).GetUser(ctx, userID)
+		u = User(row)
+		return err
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("get user %s: %w", userID, err)
+	}
+	return u, nil
+}
+
+// MarkEmailVerified records that the user owns their address. Repeating it
+// keeps the first time. A disabled or unknown account is ErrNotFound.
+func (s *Service) MarkEmailVerified(ctx context.Context, userID uuid.UUID) error {
+	var n int64
+	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
+		var err error
+		n, err = store.New(tx).MarkEmailVerified(ctx, userID)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("mark email of %s verified: %w", userID, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // TouchLastLogin records a successful login.
 func (s *Service) TouchLastLogin(ctx context.Context, userID uuid.UUID) error {
 	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
@@ -273,7 +321,10 @@ func (s *Service) Membership(ctx context.Context, workspaceID, userID uuid.UUID)
 			return err
 		}
 		m = Membership{
-			User: User{ID: r.UserID, Email: r.Email, Name: r.UserName, Locale: r.UserLocale},
+			User: User{
+				ID: r.UserID, Email: r.Email, Name: r.UserName, Locale: r.UserLocale,
+				EmailVerifiedAt: r.EmailVerifiedAt,
+			},
 			Workspace: Workspace{
 				ID: r.WorkspaceID, Slug: r.Slug, Name: r.WorkspaceName,
 				Locale: r.WorkspaceLocale, Timezone: r.Timezone, CreatedAt: r.WorkspaceCreatedAt,
