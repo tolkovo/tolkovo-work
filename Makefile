@@ -20,8 +20,9 @@ help: ## Show targets
 
 dev: deps-up migrate run ## Start dependencies, migrate and run the server
 
-deps-up: ## Start PostgreSQL, Redis, MinIO and Mailpit in Docker
+deps-up: ## Start PostgreSQL, Redis, Garage (S3) and Mailpit in Docker
 	$(COMPOSE) up -d --wait
+	deploy/compose/garage-init.sh
 
 deps-down: ## Stop the dependencies (data volumes are kept)
 	$(COMPOSE) down

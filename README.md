@@ -22,7 +22,7 @@ docs/           plan, ADRs, research
 Requirements: Go 1.26+, Docker (for `make dev`), GNU Make.
 
 ```sh
-make dev     # PostgreSQL, Redis, MinIO, Mailpit in Docker → migrate → run the server on :8080
+make dev     # PostgreSQL, Redis, Garage (S3), Mailpit in Docker → migrate → run the server on :8080
 make check   # generated code is fresh, lint, tests — run before every PR
 make help    # all targets
 ```

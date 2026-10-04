@@ -33,16 +33,19 @@ services:
       timeout: 3s
       retries: 30
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  # S3 API for the s3 storage driver (docs/adr/0009-file-storage.md).
+  # First run: deploy/compose/garage-init.sh (make deps-up calls it).
+  garage:
+    image: dxflrs/garage:v2.4.1
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
-    volumes: [minio-data:/data]
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+    ports: ["127.0.0.1:3900:3900"]
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "/garage", "status"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -53,4 +56,5 @@ services:
 
 volumes:
   pg-data:
-  minio-data:
+  garage-meta:
+  garage-data:
