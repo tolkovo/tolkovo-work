@@ -8,12 +8,6 @@ generate:
 output-options:
   # Signed file links (internal/api/files.go) are served by hand: the key is
   # a multi-segment path and the routes exist only with the fs driver.
-  # Conversations and contacts (internal/api/conversations.go) are routed by
-  # hand because generated parameter binding imports
-  # github.com/oapi-codegen/runtime, a dependency awaiting the owner's
-  # approval (docs/00 §16). Their models are still generated.
   # The public waitlist has its own route group and package
   # (oapi-codegen.waitlist.yaml).
-  exclude-tags: [files, conversations, contacts, waitlist]
-  # Keep schemas used only by the hand-routed operations.
-  skip-prune: true
+  exclude-tags: [files, waitlist]

@@ -247,3 +247,16 @@ func TestIsolation_ConversationsEndpoints(t *testing.T) {
 		t.Fatalf("changed by stranger: %+v", got)
 	}
 }
+
+// Parameters are bound by generated code before authenticate runs; a bad
+// one still answers 401 without a session, and a malformed id looks like a
+// missing resource.
+func TestConversationsAPI_ParameterBinding(t *testing.T) {
+	in := setupInbox(t)
+	wantProblem(t, in.e.client().do(http.MethodGet, "/api/v1/conversations/not-a-uuid", nil), http.StatusUnauthorized, "unauthenticated")
+	wantProblem(t, in.e.client().do(http.MethodGet, "/api/v1/conversations?limit=many", nil), http.StatusUnauthorized, "unauthenticated")
+	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/conversations/not-a-uuid", nil), http.StatusNotFound, "not_found")
+	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/contacts/not-a-uuid", nil), http.StatusNotFound, "not_found")
+	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/conversations?limit=many", nil), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/conversations?limit=500", nil), http.StatusBadRequest, "invalid_request")
+}

@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
@@ -18,47 +16,21 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 )
 
-// mountConversations routes the conversations and contacts operations of
-// api/openapi.yaml by hand: generated parameter binding would need
-// github.com/oapi-codegen/runtime, a dependency not yet approved
-// (oapi-codegen.yaml). Request and response bodies are the generated
-// models, and every route goes through authenticate like generated ones,
-// which TestEveryRouteRequiresSessionExceptPublic checks.
-func mountConversations(r chi.Router, s *server) {
-	r.Group(func(r chi.Router) {
-		r.Use(s.authenticate)
-		r.Get("/api/v1/conversations", s.listConversations)
-		r.Post("/api/v1/conversations", s.createConversation)
-		r.Get("/api/v1/conversations/{id}", s.getConversation)
-		r.Post("/api/v1/conversations/{id}/status", s.changeConversationStatus)
-		r.Put("/api/v1/conversations/{id}/assignee", s.assignConversation)
-		r.Get("/api/v1/conversations/{id}/messages", s.listMessages)
-		r.Post("/api/v1/conversations/{id}/messages", s.postMessage)
-		r.Post("/api/v1/conversations/{id}/attachments", s.createAttachmentUpload)
-		r.Get("/api/v1/attachments/{id}/download-link", s.getAttachmentDownloadLink)
-		r.Get("/api/v1/contacts", s.listContacts)
-		r.Post("/api/v1/contacts", s.createContact)
-		r.Get("/api/v1/contacts/{id}", s.getContact)
-		r.Patch("/api/v1/contacts/{id}", s.updateContact)
-	})
-}
-
-func (s *server) listConversations(w http.ResponseWriter, r *http.Request) {
+func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, params oapi.ListConversationsParams) {
 	p, err := authz.Require(r.Context(), authz.ConversationsView)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	q := r.URL.Query()
-	f := conversations.ListFilter{Cursor: q.Get("cursor")}
-	if f.Limit, err = pageLimit(q.Get("limit")); err != nil {
+	f := conversations.ListFilter{Cursor: deref(params.Cursor)}
+	if f.Limit, err = pageLimit(params.Limit); err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	for _, st := range q["status"] {
+	for _, st := range deref(params.Status) {
 		f.Statuses = append(f.Statuses, conversations.Status(st))
 	}
-	switch a := q.Get("assignee"); a {
+	switch a := deref(params.Assignee); a {
 	case "":
 	case "me":
 		f.ByAssignee, f.AssigneeID = true, &p.UserID
@@ -84,7 +56,7 @@ func (s *server) listConversations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
-func (s *server) createConversation(w http.ResponseWriter, r *http.Request) {
+func (s *server) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	p, err := authz.Require(r.Context(), authz.ConversationsCreate)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -105,8 +77,8 @@ func (s *server) createConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, conversationBody(c))
 }
 
-func (s *server) getConversation(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, authz.ConversationsView)
+func (s *server) GetConversation(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
 	if !ok {
 		return
 	}
@@ -118,8 +90,8 @@ func (s *server) getConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, conversationBody(c))
 }
 
-func (s *server) changeConversationStatus(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, authz.ConversationsReply)
+func (s *server) ChangeConversationStatus(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsReply)
 	if !ok {
 		return
 	}
@@ -136,8 +108,8 @@ func (s *server) changeConversationStatus(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, conversationBody(c))
 }
 
-func (s *server) assignConversation(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, "")
+func (s *server) AssignConversation(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, "")
 	if !ok {
 		return
 	}
@@ -158,17 +130,17 @@ func (s *server) assignConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, conversationBody(c))
 }
 
-func (s *server) listMessages(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, authz.ConversationsView)
+func (s *server) ListMessages(w http.ResponseWriter, r *http.Request, id oapi.Id, params oapi.ListMessagesParams) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
 	if !ok {
 		return
 	}
-	limit, err := pageLimit(r.URL.Query().Get("limit"))
+	limit, err := pageLimit(params.Limit)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	page, err := s.conversations.Messages(r.Context(), p.WorkspaceID, id, r.URL.Query().Get("cursor"), limit)
+	page, err := s.conversations.Messages(r.Context(), p.WorkspaceID, id, deref(params.Cursor), limit)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -180,8 +152,8 @@ func (s *server) listMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
-func (s *server) postMessage(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, "")
+func (s *server) PostMessage(w http.ResponseWriter, r *http.Request, id oapi.Id, params oapi.PostMessageParams) {
+	p, ok := s.requirePrincipal(w, r, "")
 	if !ok {
 		return
 	}
@@ -201,7 +173,7 @@ func (s *server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	m, created, err := s.conversations.PostMessage(r.Context(), p.WorkspaceID, actorOf(p), id, conversations.MessageInput{
 		Body: deref(req.Body), Private: private, AttachmentIDs: deref(req.AttachmentIds),
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		IdempotencyKey: deref(params.IdempotencyKey),
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -214,8 +186,8 @@ func (s *server) postMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, messageBody(m))
 }
 
-func (s *server) createAttachmentUpload(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, "")
+func (s *server) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, "")
 	if !ok {
 		return
 	}
@@ -248,8 +220,8 @@ func (s *server) createAttachmentUpload(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (s *server) getAttachmentDownloadLink(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, authz.ConversationsView)
+func (s *server) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
 	if !ok {
 		return
 	}
@@ -261,18 +233,18 @@ func (s *server) getAttachmentDownloadLink(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, signedBody(req))
 }
 
-func (s *server) listContacts(w http.ResponseWriter, r *http.Request) {
+func (s *server) ListContacts(w http.ResponseWriter, r *http.Request, params oapi.ListContactsParams) {
 	p, err := authz.Require(r.Context(), authz.ContactsView)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	limit, err := pageLimit(r.URL.Query().Get("limit"))
+	limit, err := pageLimit(params.Limit)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	page, err := s.conversations.Contacts(r.Context(), p.WorkspaceID, r.URL.Query().Get("cursor"), limit)
+	page, err := s.conversations.Contacts(r.Context(), p.WorkspaceID, deref(params.Cursor), limit)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -284,7 +256,7 @@ func (s *server) listContacts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
-func (s *server) createContact(w http.ResponseWriter, r *http.Request) {
+func (s *server) CreateContact(w http.ResponseWriter, r *http.Request) {
 	p, err := authz.Require(r.Context(), authz.ContactsEdit)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -305,8 +277,8 @@ func (s *server) createContact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, contactBody(c))
 }
 
-func (s *server) getContact(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, authz.ContactsView)
+func (s *server) GetContact(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ContactsView)
 	if !ok {
 		return
 	}
@@ -318,8 +290,8 @@ func (s *server) getContact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, contactBody(c))
 }
 
-func (s *server) updateContact(w http.ResponseWriter, r *http.Request) {
-	p, id, ok := s.requireWithID(w, r, authz.ContactsEdit)
+func (s *server) UpdateContact(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ContactsEdit)
 	if !ok {
 		return
 	}
@@ -338,10 +310,9 @@ func (s *server) updateContact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, contactBody(c))
 }
 
-// requireWithID checks the permission (none when perm is empty: the
-// handler decides) and parses the {id} path parameter. A malformed id is
-// 404 like a missing resource.
-func (s *server) requireWithID(w http.ResponseWriter, r *http.Request, perm authz.Permission) (authz.Principal, uuid.UUID, bool) {
+// requirePrincipal checks the permission, or only that there is a caller
+// when perm is empty and the handler decides.
+func (s *server) requirePrincipal(w http.ResponseWriter, r *http.Request, perm authz.Permission) (authz.Principal, bool) {
 	var (
 		p   authz.Principal
 		err error
@@ -356,14 +327,9 @@ func (s *server) requireWithID(w http.ResponseWriter, r *http.Request, perm auth
 	}
 	if err != nil {
 		s.writeError(w, r, err)
-		return authz.Principal{}, uuid.Nil, false
+		return authz.Principal{}, false
 	}
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		s.writeError(w, r, conversations.ErrNotFound)
-		return authz.Principal{}, uuid.Nil, false
-	}
-	return p, id, true
+	return p, true
 }
 
 // actorOf turns the caller's role into what the conversations module may
@@ -376,15 +342,14 @@ func actorOf(p authz.Principal) conversations.Actor {
 	}
 }
 
-func pageLimit(v string) (int, error) {
-	if v == "" {
+func pageLimit(v *int) (int, error) {
+	if v == nil {
 		return 0, nil
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 1 || n > conversations.MaxPageSize {
+	if n := *v; n < 1 || n > conversations.MaxPageSize {
 		return 0, fmt.Errorf("%w: limit must be between 1 and %d", errBadRequest, conversations.MaxPageSize)
 	}
-	return n, nil
+	return *v, nil
 }
 
 // decodeRequired decodes like decodeJSON and also demands that the named

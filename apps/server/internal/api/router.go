@@ -6,6 +6,8 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -80,12 +82,9 @@ func NewRouter(d Deps) http.Handler {
 			BaseURL:    "/api/v1",
 			BaseRouter: r,
 			// Runs after routing, so authenticate sees the route pattern.
-			Middlewares: []oapi.MiddlewareFunc{srv.authenticate},
-			ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-				srv.writeError(w, r, errBadRequest)
-			},
+			Middlewares:      []oapi.MiddlewareFunc{srv.authenticate},
+			ErrorHandlerFunc: srv.paramError,
 		})
-		mountConversations(r, srv)
 	})
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -119,4 +118,22 @@ func readyz(db, redis Pinger) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}
+}
+
+// paramError answers a request whose parameters do not bind. Binding runs
+// before the generated middlewares, so the answer goes through authenticate
+// too: without a session it is 401, never a hint about the route. A
+// malformed {id} is 404 like a missing resource.
+func (s *server) paramError(w http.ResponseWriter, r *http.Request, err error) {
+	s.authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var bad *oapi.InvalidParamFormatError
+		switch {
+		case errors.As(err, &bad) && bad.ParamName == "id":
+			writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
+		case bad != nil:
+			s.writeError(w, r, fmt.Errorf("%w: %s has a wrong format", errBadRequest, bad.ParamName))
+		default:
+			s.writeError(w, r, errBadRequest)
+		}
+	})).ServeHTTP(w, r)
 }

@@ -4,12 +4,14 @@
 package oapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for AttachmentStatus.
@@ -171,63 +173,6 @@ func (e Role) Valid() bool {
 	case RoleOperator:
 		return true
 	case RoleOwner:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WaitlistAcceptedStatus.
-const (
-	PendingConfirmation WaitlistAcceptedStatus = "pending_confirmation"
-)
-
-// Valid indicates whether the value is a known member of the WaitlistAcceptedStatus enum.
-func (e WaitlistAcceptedStatus) Valid() bool {
-	switch e {
-	case PendingConfirmation:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WaitlistChannel.
-const (
-	Email    WaitlistChannel = "email"
-	Telegram WaitlistChannel = "telegram"
-	VkMax    WaitlistChannel = "vk_max"
-	Web      WaitlistChannel = "web"
-	Whatsapp WaitlistChannel = "whatsapp"
-)
-
-// Valid indicates whether the value is a known member of the WaitlistChannel enum.
-func (e WaitlistChannel) Valid() bool {
-	switch e {
-	case Email:
-		return true
-	case Telegram:
-		return true
-	case VkMax:
-		return true
-	case Web:
-		return true
-	case Whatsapp:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WaitlistConfirmedStatus.
-const (
-	Confirmed WaitlistConfirmedStatus = "confirmed"
-)
-
-// Valid indicates whether the value is a known member of the WaitlistConfirmedStatus enum.
-func (e WaitlistConfirmedStatus) Valid() bool {
-	switch e {
-	case Confirmed:
 		return true
 	default:
 		return false
@@ -504,46 +449,6 @@ type User struct {
 	Name   string    `json:"name"`
 }
 
-// WaitlistAccepted defines model for WaitlistAccepted.
-type WaitlistAccepted struct {
-	Status WaitlistAcceptedStatus `json:"status"`
-}
-
-// WaitlistAcceptedStatus defines model for WaitlistAccepted.Status.
-type WaitlistAcceptedStatus string
-
-// WaitlistChannel Channels the person wants, for prioritising the roadmap (docs/05 §1).
-type WaitlistChannel string
-
-// WaitlistConfirmed defines model for WaitlistConfirmed.
-type WaitlistConfirmed struct {
-	Status WaitlistConfirmedStatus `json:"status"`
-}
-
-// WaitlistConfirmedStatus defines model for WaitlistConfirmed.Status.
-type WaitlistConfirmedStatus string
-
-// WaitlistJoinRequest defines model for WaitlistJoinRequest.
-type WaitlistJoinRequest struct {
-	Channels *[]WaitlistChannel `json:"channels,omitempty"`
-
-	// Consent Explicit consent to processing the email and channels for the beta invitation
-	// (GDPR art. 7). Must be `true`; the server stores the version of the consent text.
-	Consent bool   `json:"consent"`
-	Email   string `json:"email"`
-	Locale  Locale `json:"locale"`
-
-	// Website Honeypot: hidden from people, filled by bots. A non-empty value gets the usual
-	// `202` and nothing is saved.
-	Website *string `json:"website,omitempty"`
-}
-
-// WaitlistTokenRequest defines model for WaitlistTokenRequest.
-type WaitlistTokenRequest struct {
-	// Token Token from the link in the email (43 characters, base64url).
-	Token string `json:"token"`
-}
-
 // Workspace defines model for Workspace.
 type Workspace struct {
 	Id       uuid.UUID `json:"id"`
@@ -589,20 +494,54 @@ type Forbidden = Problem
 // Invalid RFC 9457 problem details.
 type Invalid = Problem
 
-// LinkRejected RFC 9457 problem details.
-type LinkRejected = Problem
-
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
-
-// TokenInvalid RFC 9457 problem details.
-type TokenInvalid = Problem
 
 // TooManyRequests RFC 9457 problem details.
 type TooManyRequests = Problem
 
 // Unauthenticated RFC 9457 problem details.
 type Unauthenticated = Problem
+
+// ListContactsParams defines parameters for ListContacts.
+type ListContactsParams struct {
+	// Cursor Opaque `next_cursor` of the previous page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size, 1–100; 50 when absent.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListConversationsParams defines parameters for ListConversations.
+type ListConversationsParams struct {
+	// Status Any of these statuses; repeat the parameter for several. All when absent.
+	Status *[]ConversationStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Assignee `me`, `none` (unassigned) or a member's user id.
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// Cursor Opaque `next_cursor` of the previous page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size, 1–100; 50 when absent.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListMessagesParams defines parameters for ListMessages.
+type ListMessagesParams struct {
+	// Cursor Opaque `next_cursor` of the previous page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size, 1–100; 50 when absent.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PostMessageParams defines parameters for PostMessage.
+type PostMessageParams struct {
+	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// reused key with a different body answers `422`.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -613,11 +552,35 @@ type RegisterJSONRequestBody = RegisterRequest
 // SwitchWorkspaceJSONRequestBody defines body for SwitchWorkspace for application/json ContentType.
 type SwitchWorkspaceJSONRequestBody = SwitchWorkspaceRequest
 
+// CreateContactJSONRequestBody defines body for CreateContact for application/json ContentType.
+type CreateContactJSONRequestBody = ContactInput
+
+// UpdateContactJSONRequestBody defines body for UpdateContact for application/json ContentType.
+type UpdateContactJSONRequestBody = ContactInput
+
+// CreateConversationJSONRequestBody defines body for CreateConversation for application/json ContentType.
+type CreateConversationJSONRequestBody = CreateConversationRequest
+
+// AssignConversationJSONRequestBody defines body for AssignConversation for application/json ContentType.
+type AssignConversationJSONRequestBody = AssignRequest
+
+// CreateAttachmentUploadJSONRequestBody defines body for CreateAttachmentUpload for application/json ContentType.
+type CreateAttachmentUploadJSONRequestBody = CreateUploadRequest
+
+// PostMessageJSONRequestBody defines body for PostMessage for application/json ContentType.
+type PostMessageJSONRequestBody = PostMessageRequest
+
+// ChangeConversationStatusJSONRequestBody defines body for ChangeConversationStatus for application/json ContentType.
+type ChangeConversationStatusJSONRequestBody = ChangeStatusRequest
+
 // UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
 type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
+	// (GET /attachments/{id}/download-link)
+	GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
 	// Login Sign in with email and password
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -630,6 +593,42 @@ type ServerInterface interface {
 	// SwitchWorkspace Switch the session to another workspace of the user
 	// (POST /auth/workspace)
 	SwitchWorkspace(w http.ResponseWriter, r *http.Request)
+	// ListContacts Contacts, newest first
+	// (GET /contacts)
+	ListContacts(w http.ResponseWriter, r *http.Request, params ListContactsParams)
+	// CreateContact Add a contact
+	// (POST /contacts)
+	CreateContact(w http.ResponseWriter, r *http.Request)
+	// GetContact One contact
+	// (GET /contacts/{id})
+	GetContact(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateContact Change a contact
+	// (PATCH /contacts/{id})
+	UpdateContact(w http.ResponseWriter, r *http.Request, id Id)
+	// ListConversations The inbox, most recent activity first
+	// (GET /conversations)
+	ListConversations(w http.ResponseWriter, r *http.Request, params ListConversationsParams)
+	// CreateConversation Start a conversation with an existing contact
+	// (POST /conversations)
+	CreateConversation(w http.ResponseWriter, r *http.Request)
+	// GetConversation One conversation
+	// (GET /conversations/{id})
+	GetConversation(w http.ResponseWriter, r *http.Request, id Id)
+	// AssignConversation Assign, transfer or release the conversation
+	// (PUT /conversations/{id}/assignee)
+	AssignConversation(w http.ResponseWriter, r *http.Request, id Id)
+	// CreateAttachmentUpload Register a file and get a signed upload request
+	// (POST /conversations/{id}/attachments)
+	CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, id Id)
+	// ListMessages The conversation feed, newest first
+	// (GET /conversations/{id}/messages)
+	ListMessages(w http.ResponseWriter, r *http.Request, id Id, params ListMessagesParams)
+	// PostMessage Reply or leave an internal note
+	// (POST /conversations/{id}/messages)
+	PostMessage(w http.ResponseWriter, r *http.Request, id Id, params PostMessageParams)
+	// ChangeConversationStatus Move the conversation along the state machine
+	// (POST /conversations/{id}/status)
+	ChangeConversationStatus(w http.ResponseWriter, r *http.Request, id Id)
 	// GetMe Current user, workspace, role and permissions
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -647,6 +646,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
+// (GET /attachments/{id}/download-link)
+func (_ Unimplemented) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Login Sign in with email and password
 // (POST /auth/login)
@@ -669,6 +674,78 @@ func (_ Unimplemented) Register(w http.ResponseWriter, r *http.Request) {
 // SwitchWorkspace Switch the session to another workspace of the user
 // (POST /auth/workspace)
 func (_ Unimplemented) SwitchWorkspace(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListContacts Contacts, newest first
+// (GET /contacts)
+func (_ Unimplemented) ListContacts(w http.ResponseWriter, r *http.Request, params ListContactsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateContact Add a contact
+// (POST /contacts)
+func (_ Unimplemented) CreateContact(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetContact One contact
+// (GET /contacts/{id})
+func (_ Unimplemented) GetContact(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateContact Change a contact
+// (PATCH /contacts/{id})
+func (_ Unimplemented) UpdateContact(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListConversations The inbox, most recent activity first
+// (GET /conversations)
+func (_ Unimplemented) ListConversations(w http.ResponseWriter, r *http.Request, params ListConversationsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateConversation Start a conversation with an existing contact
+// (POST /conversations)
+func (_ Unimplemented) CreateConversation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetConversation One conversation
+// (GET /conversations/{id})
+func (_ Unimplemented) GetConversation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AssignConversation Assign, transfer or release the conversation
+// (PUT /conversations/{id}/assignee)
+func (_ Unimplemented) AssignConversation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAttachmentUpload Register a file and get a signed upload request
+// (POST /conversations/{id}/attachments)
+func (_ Unimplemented) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListMessages The conversation feed, newest first
+// (GET /conversations/{id}/messages)
+func (_ Unimplemented) ListMessages(w http.ResponseWriter, r *http.Request, id Id, params ListMessagesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PostMessage Reply or leave an internal note
+// (POST /conversations/{id}/messages)
+func (_ Unimplemented) PostMessage(w http.ResponseWriter, r *http.Request, id Id, params PostMessageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangeConversationStatus Move the conversation along the state machine
+// (POST /conversations/{id}/status)
+func (_ Unimplemented) ChangeConversationStatus(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -704,6 +781,32 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAttachmentDownloadLink operation middleware
+func (siw *ServerInterfaceWrapper) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAttachmentDownloadLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
@@ -752,6 +855,413 @@ func (siw *ServerInterfaceWrapper) SwitchWorkspace(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SwitchWorkspace(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListContacts operation middleware
+func (siw *ServerInterfaceWrapper) ListContacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListContactsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListContacts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateContact operation middleware
+func (siw *ServerInterfaceWrapper) CreateContact(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateContact(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContact operation middleware
+func (siw *ServerInterfaceWrapper) GetContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateContact operation middleware
+func (siw *ServerInterfaceWrapper) UpdateContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListConversations operation middleware
+func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListConversationsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConversations(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateConversation operation middleware
+func (siw *ServerInterfaceWrapper) CreateConversation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversation operation middleware
+func (siw *ServerInterfaceWrapper) GetConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AssignConversation operation middleware
+func (siw *ServerInterfaceWrapper) AssignConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssignConversation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAttachmentUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAttachmentUpload(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMessagesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMessages(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostMessage operation middleware
+func (siw *ServerInterfaceWrapper) PostMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostMessageParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostMessage(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeConversationStatus operation middleware
+func (siw *ServerInterfaceWrapper) ChangeConversationStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeConversationStatus(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -953,6 +1463,45 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations", wrapper.CreateConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}", wrapper.GetConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/status", wrapper.ChangeConversationStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/conversations/{id}/assignee", wrapper.AssignConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/messages", wrapper.ListMessages)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/messages", wrapper.PostMessage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/attachments", wrapper.CreateAttachmentUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/attachments/{id}/download-link", wrapper.GetAttachmentDownloadLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/contacts", wrapper.ListContacts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/contacts", wrapper.CreateContact)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/contacts/{id}", wrapper.GetContact)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/contacts/{id}", wrapper.UpdateContact)
 	})
 
 	return r
