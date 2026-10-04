@@ -23,6 +23,44 @@ sql:
             go_type: string
   - engine: postgresql
     schema: migrations
+    queries: internal/conversations/queries
+    gen:
+      go:
+        package: store
+        out: internal/conversations/store
+        sql_package: pgx/v5
+        omit_unused_structs: true
+        # The shared overrides plus pointers for nullable uuid and text.
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+              pointer: true
+          - db_type: text
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true
+          - db_type: citext
+            go_type: string
+          - db_type: citext
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+  - engine: postgresql
+    schema: migrations
     queries: internal/platform/outbox/queries
     gen:
       go:
