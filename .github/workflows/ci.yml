@@ -41,13 +41,27 @@ jobs:
           cache-dependency-path: |
             apps/server/go.sum
             apps/server/tools/go.sum
-      - name: make check (gen, lint, test)
-        run: make check
+      - name: gen, lint, test
+        run: make gen-check lint test
       - name: govulncheck
         working-directory: apps/server
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - name: build
         run: make build
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12
+          cache: pnpm
+      - name: make web-check (typecheck, lint, test, build)
+        run: make web-check
+      - name: pnpm audit
+        run: pnpm audit --audit-level high
 
   secrets:
     runs-on: ubuntu-latest

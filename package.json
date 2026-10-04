@@ -4,6 +4,6 @@
   "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@10.14.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   }
 }

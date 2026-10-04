@@ -13,7 +13,7 @@ export TOLKOVO_MIGRATE_DATABASE_URL ?= postgres://tolkovo:tolkovo@localhost:5432
 export TOLKOVO_SYSTEM_DATABASE_URL  ?= postgres://tolkovo_system_dev:tolkovo_system_dev@localhost:5432/tolkovo?sslmode=disable
 export TOLKOVO_LOG_FORMAT           ?= text
 
-.PHONY: help dev deps-up deps-down migrate run build gen gen-check lint test check
+.PHONY: help dev deps-up deps-down migrate run build gen gen-check lint test web-install web-check check
 
 help: ## Show targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -53,4 +53,18 @@ lint: ## gofmt, go vet, golangci-lint
 test: ## Unit + integration tests (need TOLKOVO_TEST_DATABASE_URL, TOLKOVO_TEST_REDIS_URL)
 	cd $(SERVER) && go test -race -count=1 ./...
 
-check: gen-check lint test ## Run before every PR
+# Every JS workspace runs the scripts it defines (pnpm-workspace.yaml).
+WEB_GENERATED := apps/panel/src/routeTree.gen.ts
+
+web-install: ## Install JS dependencies from pnpm-lock.yaml
+	pnpm install --frozen-lockfile
+
+web-check: web-install ## Typecheck, lint, test and build panel, landing and packages
+	pnpm -r --if-present run typecheck
+	pnpm -r --if-present run lint
+	pnpm -r --if-present run test
+	pnpm -r --if-present run check
+	pnpm -r --if-present run build
+	@git diff --exit-code -- $(WEB_GENERATED) || { echo "route tree is stale: run pnpm -C apps/panel build"; exit 1; }
+
+check: gen-check lint test web-check ## Run before every PR
