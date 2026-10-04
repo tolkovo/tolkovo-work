@@ -31,6 +31,7 @@ import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/ind
 import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
 import { Route as AppSettingsChannelsRouteImport } from "./routes/_app/settings/channels"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
+import { Route as AppSettingsIntegrationsRouteImport } from "./routes/_app/settings/integrations"
 import { Route as AppSettingsNotificationsRouteImport } from "./routes/_app/settings/notifications"
 import { Route as AppSettingsProfileRouteImport } from "./routes/_app/settings/profile"
 import { Route as AppSettingsSecurityRouteImport } from "./routes/_app/settings/security"
@@ -143,6 +144,11 @@ const AppSettingsGeneralRoute = AppSettingsGeneralRouteImport.update({
   path: "/general",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsIntegrationsRoute = AppSettingsIntegrationsRouteImport.update({
+  id: "/integrations",
+  path: "/integrations",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsNotificationsRoute =
   AppSettingsNotificationsRouteImport.update({
     id: "/notifications",
@@ -183,6 +189,7 @@ export interface FileRoutesByFullPath {
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
+  "/settings/integrations": typeof AppSettingsIntegrationsRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
   "/settings/security": typeof AppSettingsSecurityRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
+  "/settings/integrations": typeof AppSettingsIntegrationsRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
   "/settings/security": typeof AppSettingsSecurityRoute
@@ -235,6 +243,7 @@ export interface FileRoutesById {
   "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
   "/_app/settings/channels": typeof AppSettingsChannelsRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
+  "/_app/settings/integrations": typeof AppSettingsIntegrationsRoute
   "/_app/settings/notifications": typeof AppSettingsNotificationsRoute
   "/_app/settings/profile": typeof AppSettingsProfileRoute
   "/_app/settings/security": typeof AppSettingsSecurityRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | "/settings/appearance"
     | "/settings/channels"
     | "/settings/general"
+    | "/settings/integrations"
     | "/settings/notifications"
     | "/settings/profile"
     | "/settings/security"
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | "/settings/appearance"
     | "/settings/channels"
     | "/settings/general"
+    | "/settings/integrations"
     | "/settings/notifications"
     | "/settings/profile"
     | "/settings/security"
@@ -313,6 +324,7 @@ export interface FileRouteTypes {
     | "/_app/settings/appearance"
     | "/_app/settings/channels"
     | "/_app/settings/general"
+    | "/_app/settings/integrations"
     | "/_app/settings/notifications"
     | "/_app/settings/profile"
     | "/_app/settings/security"
@@ -484,6 +496,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsGeneralRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/integrations": {
+      id: "/_app/settings/integrations"
+      path: "/integrations"
+      fullPath: "/settings/integrations"
+      preLoaderRoute: typeof AppSettingsIntegrationsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/notifications": {
       id: "/_app/settings/notifications"
       path: "/notifications"
@@ -533,6 +552,7 @@ interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsChannelsRoute: typeof AppSettingsChannelsRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
+  AppSettingsIntegrationsRoute: typeof AppSettingsIntegrationsRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
   AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
@@ -544,6 +564,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsChannelsRoute: AppSettingsChannelsRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,
+  AppSettingsIntegrationsRoute: AppSettingsIntegrationsRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
   AppSettingsSecurityRoute: AppSettingsSecurityRoute,

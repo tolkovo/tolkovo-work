@@ -32,11 +32,14 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/integrations/github"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/clamav"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/httpx"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/mail"
@@ -313,6 +316,10 @@ func apiDeps(
 	notifs := notifications.New(pool, mailJobs)
 	convs := conversations.New(pool, store)
 	convs.SetNotifier(notifs)
+	sealer, err := newSealer(cfg)
+	if err != nil {
+		return api.Deps{}, err
+	}
 	chans, err := channelsService(cfg, log, pool, redisClient, convs, store)
 	if err != nil {
 		return api.Deps{}, err
@@ -332,6 +339,7 @@ func apiDeps(
 		// module; complete queues ingest.process for the worker (AP-03); the
 		// app user reads replies and writes back through convs (AP-06).
 		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
+		Integrations:  integrations.New(pool, integrationsOptions(cfg, sealer)),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -378,21 +386,44 @@ func channelsService(
 		Log:         log,
 		Redis:       redisClient,
 	}
-	if cfg.MasterKey.Key == "" {
-		log.Warn("TOLKOVO_MASTER_KEY is not set: channels cannot be connected (generate a key with `tolkovo keygen`)")
-	} else {
-		keys, err := crypto.ParseLocalKeys(cfg.MasterKey.Key.Reveal(), cfg.MasterKey.Version, cfg.MasterKey.Retired.Reveal())
-		if err != nil {
-			return nil, err
-		}
-		if opts.Sealer, err = crypto.NewSealer(keys); err != nil {
-			return nil, err
-		}
+	sealer, err := newSealer(cfg)
+	if err != nil {
+		return nil, err
 	}
+	if sealer == nil {
+		log.Warn("TOLKOVO_MASTER_KEY is not set: channels and integrations cannot be connected (generate a key with `tolkovo keygen`)")
+	}
+	opts.Sealer = sealer
 	if cfg.TelegramUserEnabled() {
 		opts.Users = telegram.NewUserAuth(cfg.Telegram.APIID, cfg.Telegram.APIHash.Reveal(), version)
 	}
 	return channels.New(pool, opts), nil
+}
+
+// newSealer seals the secrets of channels and integrations; nil without
+// TOLKOVO_MASTER_KEY (development only).
+func newSealer(cfg config.Config) (*crypto.Sealer, error) {
+	if cfg.MasterKey.Key == "" {
+		return nil, nil
+	}
+	keys, err := crypto.ParseLocalKeys(cfg.MasterKey.Key.Reveal(), cfg.MasterKey.Version, cfg.MasterKey.Retired.Reveal())
+	if err != nil {
+		return nil, err
+	}
+	return crypto.NewSealer(keys)
+}
+
+// integrationsOptions wires GitHub into the integrations module (GH-01).
+// Requests go through the SafeClient; a GitHub Enterprise Server on a
+// private network needs TOLKOVO_EGRESS_ALLOW_PRIVATE.
+func integrationsOptions(cfg config.Config, sealer *crypto.Sealer) integrations.Options {
+	hc := httpx.NewSafeClient(httpx.Options{Timeout: 20 * time.Second, AllowPrivate: cfg.EgressAllowPrivatePrefixes()})
+	return integrations.Options{
+		Sealer:    sealer,
+		GitHub:    github.New(cfg.GitHub.APIURL, cfg.GitHub.WebURL, hc),
+		PublicURL: cfg.PublicURL,
+		PanelURL:  cfg.PanelBaseURL(),
+	}
 }
 
 // pingFunc adapts a function to api.Pinger.

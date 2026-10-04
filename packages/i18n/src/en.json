@@ -255,6 +255,68 @@
         "limitsSaved": "Limits saved."
       }
     },
+    "integrations": {
+      "title": "Integrations",
+      "lead": "Tasks for developers from conversations: an operator creates a GitHub issue and, when the issue is closed, gets a draft reply to the customer.",
+      "github": {
+        "title": "GitHub Issues",
+        "status": {
+          "none": "Not connected",
+          "app_pending": "Waiting for confirmation on GitHub",
+          "install_pending": "App created, install it next",
+          "active": "Working"
+        },
+        "noKey": "The server has no encryption key (TOLKOVO_MASTER_KEY), so GitHub cannot be connected: the App key is stored only encrypted. Ask the server administrator.",
+        "dataNote": "The issue text goes to GitHub (USA). The customer's name, email and files do not: the issue holds the problem, the app version and a link to the conversation in the panel. Staff open screenshots and logs by the link after signing in.",
+        "startText": "GitHub opens the page that creates the App with its permissions filled in: issues only, no access to code. Confirm it, install the App on a repository and you come back here.",
+        "organization": "GitHub organization",
+        "organizationHint": "For example, zerno-team. Leave empty to create the App in your personal account.",
+        "start": "Create GitHub App",
+        "starting": "Opening GitHub…",
+        "waiting": "Confirm the App on GitHub. If the GitHub page was closed, start again.",
+        "restart": "Start again",
+        "cancel": "Cancel connecting",
+        "installText": "The App “{slug}” is created. Install it on the repository new issues go to.",
+        "install": "Install on GitHub",
+        "cancelNote": "The App stays on GitHub: delete it in the App settings if you no longer need it.",
+        "created": "The App is created. Install it on a repository next.",
+        "installed": "GitHub is connected. Pick the repository for new issues.",
+        "connectedAs": "App “{slug}”, installed on {account}.",
+        "openApp": "Open the App on GitHub",
+        "whereTitle": "Where issues go",
+        "repository": "Repository",
+        "noRepository": "Not picked",
+        "repositoryHint": "As owner/name. The App must be installed on it.",
+        "publicRepo": "The repository is public: everyone sees the issue text. The issue form turns the customer quote off by default.",
+        "labels": "Labels",
+        "labelsHint": "Comma-separated, up to 10. Put on every new issue.",
+        "templatesTitle": "Templates",
+        "placeholders": "Placeholders:",
+        "placeholder": {
+          "summary": "the problem",
+          "app_name": "the app",
+          "app_version": "its version",
+          "os": "OS",
+          "os_version": "OS version",
+          "conversation_url": "link to the conversation in the panel",
+          "name": "the customer's name",
+          "issue_number": "issue number"
+        },
+        "template": {
+          "issue_title": "Issue title",
+          "issue_body": "Issue text",
+          "reply_ru": "Reply about the fix, in Russian",
+          "reply_en": "Reply about the fix, in English"
+        },
+        "reset": "Restore the default",
+        "save": "Save",
+        "saved": "GitHub settings saved.",
+        "disconnect": "Disconnect GitHub",
+        "keep": "Keep connected",
+        "disconnectConfirm": "Disconnect GitHub? Tolkovo forgets the key of the App “{slug}” and new issues cannot be created. Existing issues stay on GitHub. Delete the App itself in its settings on GitHub.",
+        "disconnected": "GitHub is disconnected. Delete the App in its settings on GitHub if you no longer need it."
+      }
+    },
     "team": {
       "title": "Team",
       "count": "{count, plural, one {# member} other {# members}}",
@@ -458,7 +520,15 @@
     "loginExpired": "More than 15 minutes have passed. Close the wizard and start the login again.",
     "telegramUnavailable": "Telegram did not answer. Try again in a minute.",
     "encryptionUnavailable": "The server has no encryption key (TOLKOVO_MASTER_KEY). Ask your server administrator.",
-    "telegramUserUnavailable": "Personal accounts are not set up on this server. Ask your server administrator."
+    "telegramUserUnavailable": "Personal accounts are not set up on this server. Ask your server administrator.",
+    "githubConnected": "GitHub is already connected. Disconnect it first to connect again.",
+    "githubStep": "The connection is at another step already. Reload the page.",
+    "githubState": "The answer from GitHub belongs to another connection or is outdated. Start connecting again.",
+    "githubCodeExpired": "The code from GitHub was used or has expired. Start connecting again.",
+    "githubInstallationInvalid": "This is an installation of another App. Install this workspace's App.",
+    "githubRepositoryUnreachable": "The App is not installed on this repository. Add it in the App installation on GitHub.",
+    "githubAppRefused": "GitHub refuses the App: it was deleted or its key revoked. Disconnect GitHub and connect it again.",
+    "githubUnavailable": "GitHub does not answer. Try again in a minute."
   },
   "error": {
     "title": "Something went wrong",

@@ -17,6 +17,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
@@ -31,7 +32,7 @@ var errBadRequest = errors.New("bad request")
 // writeError maps domain errors to problem+json. Unknown errors are logged
 // with the request id and answered with a generic 500.
 func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
-	if s.writeChannelError(w, r, err) {
+	if s.writeChannelError(w, r, err) || s.writeIntegrationError(w, r, err) {
 		return
 	}
 	var (
@@ -95,7 +96,8 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail: "the conversation is not assigned to you",
 		})
 	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, tenancy.ErrNotFound),
-		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound), errors.Is(err, channels.ErrNotFound):
+		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound), errors.Is(err, channels.ErrNotFound),
+		errors.Is(err, integrations.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	case errors.Is(err, tenancy.ErrEmailTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_taken", Title: "Conflict"})
@@ -128,7 +130,8 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail: "the Idempotency-Key was used with a different request",
 		})
 	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid),
-		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid), errors.Is(err, channels.ErrInvalid):
+		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid), errors.Is(err, channels.ErrInvalid),
+		errors.Is(err, integrations.ErrInvalid):
 		writeProblem(w, r, Problem{
 			Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err),
 		})
@@ -146,7 +149,7 @@ func detail(err error) string {
 	msg := err.Error()
 	for _, sentinel := range []error{
 		errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition,
-		notifications.ErrInvalid, channels.ErrInvalid,
+		notifications.ErrInvalid, channels.ErrInvalid, integrations.ErrInvalid,
 	} {
 		if after, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
 			return after

@@ -98,6 +98,8 @@ type Config struct {
 
 	Telegram Telegram `envPrefix:"TELEGRAM_"`
 
+	GitHub GitHub `envPrefix:"GITHUB_"`
+
 	// EgressAllowPrivate opens private ranges (IPs or CIDRs) to requests
 	// to user-configured URLs, e.g. a local Ollama on self-host
 	// (docs/00 §9.5). Link-local stays closed; not allowed in SaaS.
@@ -214,6 +216,7 @@ func (c Config) validate() error {
 	errs = append(errs, c.validateSMTP()...)
 	errs = append(errs, c.validateMasterKey()...)
 	errs = append(errs, c.validateTelegram()...)
+	errs = append(errs, c.validateGitHub()...)
 	errs = append(errs, c.validateEgress()...)
 	errs = append(errs, c.validateTrustedProxies()...)
 	if !strings.HasPrefix(c.RedisURL.Reveal(), "redis://") && !strings.HasPrefix(c.RedisURL.Reveal(), "rediss://") {

@@ -25,6 +25,8 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/channelstest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/integrations/githubtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
@@ -60,6 +62,8 @@ type env struct {
 	// rdb and prefix reach the rate counters of the test.
 	rdb    *redis.Client
 	prefix string
+	// github is the fake GitHub behind the integrations module.
+	github *githubtest.GitHub
 }
 
 type envOptions struct {
@@ -153,10 +157,14 @@ func newEnv(t *testing.T, o envOptions) *env {
 	})
 	convs.SetDeliverer(chans)
 	reports := ingest.New(app, ingest.Options{Files: files, Keys: chans, Redis: rc, KeyPrefix: prefix, Jobs: inserter, Inbox: convs})
+	gh := &githubtest.GitHub{}
+	integ := integrations.New(app, integrations.Options{
+		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
+	})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
-		Ingest:        reports,
+		Ingest: reports, Integrations: integ,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
@@ -164,7 +172,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	}
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
-		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix,
+		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh,
 	}
 }
 

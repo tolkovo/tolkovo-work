@@ -56,6 +56,8 @@ const (
 
 	ChannelsView   Permission = "channels.view"   // see connected channels and their status
 	ChannelsManage Permission = "channels.manage" // connect, rename and disconnect channels (tokens, sessions)
+
+	IntegrationsManage Permission = "integrations.manage" // connect GitHub, pick the repository, labels and templates
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
@@ -65,14 +67,14 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage,
+		ChannelsView, ChannelsManage, IntegrationsManage,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage,
+		ChannelsView, ChannelsManage, IntegrationsManage,
 	},
 	RoleOperator: {
 		MembersView,

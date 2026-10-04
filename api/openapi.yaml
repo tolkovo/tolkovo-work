@@ -56,6 +56,13 @@ tags:
       token, or a personal Telegram account signed in by phone over MTProto. Secrets (the
       token, the account session) are encrypted and never returned. Requires
       `channels.view` to read and `channels.manage` to change (owner, admin).
+  - name: integrations
+    description: |
+      Outside trackers (ADR-0012, docs/02 §12.3). Phase 1 has GitHub: the workspace creates
+      its own GitHub App from a manifest (issues read and write, metadata read, no access to
+      code), installs it on its repositories and picks the repository, labels and templates.
+      The App's private key and webhook secret are encrypted and never returned. Requires
+      `integrations.manage` (owner, admin).
   - name: ingest
     description: |
       Problem reports from company apps (docs/02 §11.6). Authenticated by an ingest key of
@@ -997,6 +1004,187 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /integrations/github:
+    get:
+      tags: [integrations]
+      operationId: getGitHubIntegration
+      summary: The workspace's GitHub integration
+      description: |
+        `integration` is `null` until a connection is started. `defaults` are the built-in
+        templates (the issue template in the workspace language) for «reset». Requires
+        `integrations.manage`.
+      responses:
+        '200':
+          description: The integration, or none.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubIntegrationState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [integrations]
+      operationId: updateGitHubIntegration
+      summary: Change the repository, labels or templates
+      description: |
+        Fields left out stay. A new repository is checked on GitHub: the App must be installed
+        on it. A template equal to the built-in text, or empty, goes back to the built-in one.
+        Requires `integrations.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateGitHubIntegrationRequest' }
+      responses:
+        '200':
+          description: The integration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubIntegration' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/GitHubConflict' }
+        '422': { $ref: '#/components/responses/GitHubRefused' }
+        '502': { $ref: '#/components/responses/GitHubUnavailable' }
+    delete:
+      tags: [integrations]
+      operationId: disconnectGitHubIntegration
+      summary: Disconnect GitHub
+      description: |
+        Forgets the App's key. An unfinished connection is removed; a working one is kept
+        disabled for the issues linked to it. The App stays on GitHub: delete it there (its
+        `url`). Requires `integrations.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204': { description: Disconnected. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /integrations/github/manifest:
+    post:
+      tags: [integrations]
+      operationId: startGitHubIntegration
+      summary: Start connecting GitHub
+      description: |
+        Step 1 of 3. Returns the manifest of a new GitHub App: the browser posts `manifest` as
+        the form field `manifest` to `post_url` (the user's account, or `organization`). GitHub
+        creates the App and sends the browser to `/settings/integrations?github=created` with
+        `code` and `state`. An unfinished earlier connection is replaced. Requires
+        `integrations.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartGitHubIntegrationRequest' }
+      responses:
+        '201':
+          description: The connection in `app_pending` and the manifest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubManifestStart' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/GitHubConflict' }
+        '503': { $ref: '#/components/responses/IntegrationsUnavailable' }
+
+  /integrations/github/app:
+    post:
+      tags: [integrations]
+      operationId: completeGitHubApp
+      summary: Finish creating the GitHub App
+      description: |
+        Step 2 of 3, with `code` and `state` from GitHub's redirect. The code is exchanged for
+        the App's private key and webhook secret, which are encrypted. Then the App waits to
+        be installed at `install_url`; GitHub sends the browser back to
+        `/settings/integrations?github=installed` with `installation_id`. Requires
+        `integrations.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteGitHubAppRequest' }
+      responses:
+        '200':
+          description: The connection in `install_pending`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubIntegration' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/GitHubConflict' }
+        '422': { $ref: '#/components/responses/GitHubRefused' }
+        '502': { $ref: '#/components/responses/GitHubUnavailable' }
+        '503': { $ref: '#/components/responses/IntegrationsUnavailable' }
+
+  /integrations/github/installation:
+    post:
+      tags: [integrations]
+      operationId: completeGitHubInstallation
+      summary: Finish installing the GitHub App
+      description: |
+        Step 3 of 3, with `installation_id` from GitHub's redirect. Only an installation of
+        this workspace's App is accepted. GitHub sends the browser back again when the
+        repositories change later; that answers the integration as is. Requires
+        `integrations.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteGitHubInstallationRequest' }
+      responses:
+        '200':
+          description: The active integration; pick the repository next.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubIntegration' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/GitHubConflict' }
+        '422': { $ref: '#/components/responses/GitHubRefused' }
+        '502': { $ref: '#/components/responses/GitHubUnavailable' }
+
+  /integrations/github/repositories:
+    get:
+      tags: [integrations]
+      operationId: listGitHubRepositories
+      summary: Repositories the App is installed on
+      description: |
+        Up to 100, as GitHub lists them; `more` when there are others (type the name then).
+        Requires `integrations.manage`.
+      responses:
+        '200':
+          description: The repositories.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubRepositoryList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/GitHubConflict' }
+        '422': { $ref: '#/components/responses/GitHubRefused' }
+        '502': { $ref: '#/components/responses/GitHubUnavailable' }
 
   /ingest/reports:
     post:
@@ -2006,6 +2194,34 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    GitHubConflict:
+      description: |
+        `github_connected` (GitHub is already connected: disconnect it first), `github_step`
+        (the connection is not waiting for this step: reload it) or `github_state` (the GitHub
+        redirect belongs to another connection or is older than an hour: start again).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GitHubRefused:
+      description: |
+        `github_code_expired` (the code from GitHub was used or is older than an hour: start
+        again), `github_installation_invalid` (not an installation of this workspace's App),
+        `github_repository_unreachable` (the App is not installed on the repository) or
+        `github_app_refused` (GitHub refused the App: it was deleted or its key revoked;
+        disconnect and connect again).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GitHubUnavailable:
+      description: '`github_unavailable`: GitHub could not be reached or answered unexpectedly.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IntegrationsUnavailable:
+      description: '`encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the App''s key cannot be stored.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     ChannelsUnavailable:
       description: |
         `encryption_unavailable` (`TOLKOVO_MASTER_KEY` is not set, secrets cannot be stored)
@@ -2876,6 +3092,150 @@ components:
           type: string
           description: Where Telegram sent the code; present after the phone step.
           enum: [app, sms, call, other]
+
+    GitHubIntegrationState:
+      type: object
+      required: [integration, defaults, placeholders, encryption_available]
+      properties:
+        integration:
+          oneOf:
+            - $ref: '#/components/schemas/GitHubIntegration'
+            - type: 'null'
+        defaults: { $ref: '#/components/schemas/GitHubTemplates' }
+        placeholders:
+          type: object
+          description: What the templates may use, as `{name}`.
+          required: [issue, reply]
+          properties:
+            issue: { type: array, items: { type: string } }
+            reply: { type: array, items: { type: string } }
+        encryption_available:
+          type: boolean
+          description: '`false` when `TOLKOVO_MASTER_KEY` is not set: connecting is refused.'
+
+    GitHubIntegration:
+      type: object
+      required: [id, status, app, install_url, account, repository, labels, templates, custom_templates, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        status:
+          type: string
+          enum: [app_pending, install_pending, active]
+          description: |
+            `app_pending`: waiting for GitHub to create the App; `install_pending`: waiting for the
+            installation; `active`: works.
+        app:
+          description: The App on GitHub; `null` until it is created.
+          oneOf:
+            - $ref: '#/components/schemas/GitHubApp'
+            - type: 'null'
+        install_url:
+          type: [string, 'null']
+          description: Where to install the App, while `install_pending`.
+        account: { type: [string, 'null'], description: The account the App is installed on. }
+        repository:
+          description: Where new issues go; `null` until picked.
+          oneOf:
+            - $ref: '#/components/schemas/GitHubRepository'
+            - type: 'null'
+        labels: { type: array, maxItems: 10, items: { type: string } }
+        templates: { $ref: '#/components/schemas/GitHubTemplates' }
+        custom_templates:
+          type: object
+          description: Which templates are changed rather than built in.
+          required: [issue_title, issue_body, reply_ru, reply_en]
+          properties:
+            issue_title: { type: boolean }
+            issue_body: { type: boolean }
+            reply_ru: { type: boolean }
+            reply_en: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    GitHubApp:
+      type: object
+      required: [id, slug, owner, url]
+      properties:
+        id: { type: integer, format: int64 }
+        slug: { type: string, description: 'github.com/apps/<slug>' }
+        owner: { type: string, description: The account that owns the App. }
+        url: { type: string, description: The App's page on GitHub. }
+
+    GitHubRepository:
+      type: object
+      required: [id, full_name, private, url]
+      properties:
+        id: { type: integer, format: int64 }
+        full_name: { type: string, description: '"owner/name"' }
+        private:
+          type: boolean
+          description: A public repository shows the issue text to everyone; the issue form warns.
+        url: { type: string }
+
+    GitHubRepositoryList:
+      type: object
+      required: [items, more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/GitHubRepository' }
+        more: { type: boolean, description: There are more than listed. }
+
+    GitHubTemplates:
+      type: object
+      description: |
+        The issue template (title and body) and the reply about a fix in Russian and English,
+        with `{name}` placeholders (`placeholders`).
+      additionalProperties: false
+      required: [issue_title, issue_body, reply_ru, reply_en]
+      properties:
+        issue_title: { type: string, maxLength: 256 }
+        issue_body: { type: string, maxLength: 20000 }
+        reply_ru: { type: string, maxLength: 4000 }
+        reply_en: { type: string, maxLength: 4000 }
+
+    StartGitHubIntegrationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        organization:
+          type: string
+          maxLength: 39
+          description: Create the App in this GitHub organization; the user's account when absent.
+
+    GitHubManifestStart:
+      type: object
+      required: [integration, post_url, manifest]
+      properties:
+        integration: { $ref: '#/components/schemas/GitHubIntegration' }
+        post_url: { type: string, description: Where the browser posts the form. }
+        manifest: { type: string, description: 'The value of the form field `manifest` (JSON).' }
+
+    CompleteGitHubAppRequest:
+      type: object
+      additionalProperties: false
+      required: [code, state]
+      properties:
+        code: { type: string, maxLength: 200 }
+        state: { type: string, maxLength: 200 }
+
+    CompleteGitHubInstallationRequest:
+      type: object
+      additionalProperties: false
+      required: [installation_id]
+      properties:
+        installation_id: { type: integer, format: int64, minimum: 1 }
+
+    UpdateGitHubIntegrationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        repository: { type: string, maxLength: 200, description: '"owner/name"; empty clears it.' }
+        labels: { type: array, maxItems: 10, items: { type: string, maxLength: 50 } }
+        templates: { $ref: '#/components/schemas/GitHubTemplates' }
 
     AppLimits:
       type: object

@@ -82,6 +82,22 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.encryptionUnavailable") };
     case "telegram_user_unavailable":
       return { message: t("errors.telegramUserUnavailable") };
+    case "github_connected":
+      return { message: t("errors.githubConnected") };
+    case "github_step":
+      return { message: t("errors.githubStep") };
+    case "github_state":
+      return { message: t("errors.githubState") };
+    case "github_code_expired":
+      return { message: t("errors.githubCodeExpired") };
+    case "github_installation_invalid":
+      return { message: t("errors.githubInstallationInvalid") };
+    case "github_repository_unreachable":
+      return { message: t("errors.githubRepositoryUnreachable"), ...(field ? { field } : {}) };
+    case "github_app_refused":
+      return { message: t("errors.githubAppRefused") };
+    case "github_unavailable":
+      return { message: t("errors.githubUnavailable") };
     default:
       return { message: t("errors.unknown") };
   }

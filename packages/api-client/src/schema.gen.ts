@@ -760,6 +760,132 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's GitHub integration
+         * @description `integration` is `null` until a connection is started. `defaults` are the built-in
+         *     templates (the issue template in the workspace language) for «reset». Requires
+         *     `integrations.manage`.
+         */
+        get: operations["getGitHubIntegration"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect GitHub
+         * @description Forgets the App's key. An unfinished connection is removed; a working one is kept
+         *     disabled for the issues linked to it. The App stays on GitHub: delete it there (its
+         *     `url`). Requires `integrations.manage`.
+         */
+        delete: operations["disconnectGitHubIntegration"];
+        options?: never;
+        head?: never;
+        /**
+         * Change the repository, labels or templates
+         * @description Fields left out stay. A new repository is checked on GitHub: the App must be installed
+         *     on it. A template equal to the built-in text, or empty, goes back to the built-in one.
+         *     Requires `integrations.manage`.
+         */
+        patch: operations["updateGitHubIntegration"];
+        trace?: never;
+    };
+    "/integrations/github/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting GitHub
+         * @description Step 1 of 3. Returns the manifest of a new GitHub App: the browser posts `manifest` as
+         *     the form field `manifest` to `post_url` (the user's account, or `organization`). GitHub
+         *     creates the App and sends the browser to `/settings/integrations?github=created` with
+         *     `code` and `state`. An unfinished earlier connection is replaced. Requires
+         *     `integrations.manage`.
+         */
+        post: operations["startGitHubIntegration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/github/app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish creating the GitHub App
+         * @description Step 2 of 3, with `code` and `state` from GitHub's redirect. The code is exchanged for
+         *     the App's private key and webhook secret, which are encrypted. Then the App waits to
+         *     be installed at `install_url`; GitHub sends the browser back to
+         *     `/settings/integrations?github=installed` with `installation_id`. Requires
+         *     `integrations.manage`.
+         */
+        post: operations["completeGitHubApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/github/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish installing the GitHub App
+         * @description Step 3 of 3, with `installation_id` from GitHub's redirect. Only an installation of
+         *     this workspace's App is accepted. GitHub sends the browser back again when the
+         *     repositories change later; that answers the integration as is. Requires
+         *     `integrations.manage`.
+         */
+        post: operations["completeGitHubInstallation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/github/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Repositories the App is installed on
+         * @description Up to 100, as GitHub lists them; `more` when there are others (type the name then).
+         *     Requires `integrations.manage`.
+         */
+        get: operations["listGitHubRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/reports": {
         parameters: {
             query?: never;
@@ -1823,6 +1949,106 @@ export interface components {
              */
             code_via?: "app" | "sms" | "call" | "other";
         };
+        GitHubIntegrationState: {
+            integration: components["schemas"]["GitHubIntegration"] | null;
+            defaults: components["schemas"]["GitHubTemplates"];
+            /** @description What the templates may use, as `{name}`. */
+            placeholders: {
+                issue: string[];
+                reply: string[];
+            };
+            /** @description `false` when `TOLKOVO_MASTER_KEY` is not set: connecting is refused. */
+            encryption_available: boolean;
+        };
+        GitHubIntegration: {
+            id: string;
+            /**
+             * @description `app_pending`: waiting for GitHub to create the App; `install_pending`: waiting for the
+             *     installation; `active`: works.
+             * @enum {string}
+             */
+            status: "app_pending" | "install_pending" | "active";
+            /** @description The App on GitHub; `null` until it is created. */
+            app: components["schemas"]["GitHubApp"] | null;
+            /** @description Where to install the App, while `install_pending`. */
+            install_url: string | null;
+            /** @description The account the App is installed on. */
+            account: string | null;
+            /** @description Where new issues go; `null` until picked. */
+            repository: components["schemas"]["GitHubRepository"] | null;
+            labels: string[];
+            templates: components["schemas"]["GitHubTemplates"];
+            /** @description Which templates are changed rather than built in. */
+            custom_templates: {
+                issue_title: boolean;
+                issue_body: boolean;
+                reply_ru: boolean;
+                reply_en: boolean;
+            };
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        GitHubApp: {
+            /** Format: int64 */
+            id: number;
+            /** @description github.com/apps/<slug> */
+            slug: string;
+            /** @description The account that owns the App. */
+            owner: string;
+            /** @description The App's page on GitHub. */
+            url: string;
+        };
+        GitHubRepository: {
+            /** Format: int64 */
+            id: number;
+            /** @description "owner/name" */
+            full_name: string;
+            /** @description A public repository shows the issue text to everyone; the issue form warns. */
+            private: boolean;
+            url: string;
+        };
+        GitHubRepositoryList: {
+            items: components["schemas"]["GitHubRepository"][];
+            /** @description There are more than listed. */
+            more: boolean;
+        };
+        /**
+         * @description The issue template (title and body) and the reply about a fix in Russian and English,
+         *     with `{name}` placeholders (`placeholders`).
+         */
+        GitHubTemplates: {
+            issue_title: string;
+            issue_body: string;
+            reply_ru: string;
+            reply_en: string;
+        };
+        StartGitHubIntegrationRequest: {
+            /** @description Create the App in this GitHub organization; the user's account when absent. */
+            organization?: string;
+        };
+        GitHubManifestStart: {
+            integration: components["schemas"]["GitHubIntegration"];
+            /** @description Where the browser posts the form. */
+            post_url: string;
+            /** @description The value of the form field `manifest` (JSON). */
+            manifest: string;
+        };
+        CompleteGitHubAppRequest: {
+            code: string;
+            state: string;
+        };
+        CompleteGitHubInstallationRequest: {
+            /** Format: int64 */
+            installation_id: number;
+        };
+        UpdateGitHubIntegrationRequest: {
+            /** @description "owner/name"; empty clears it. */
+            repository?: string;
+            labels?: string[];
+            templates?: components["schemas"]["GitHubTemplates"];
+        };
         /** @description Limits of an app channel (`details.app_limits`). */
         AppLimits: {
             /** @description One file in MB. */
@@ -2136,6 +2362,52 @@ export interface components {
         };
         /** @description `telegram_unavailable`: Telegram could not be reached or answered unexpectedly. */
         TelegramUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `github_connected` (GitHub is already connected: disconnect it first), `github_step`
+         *     (the connection is not waiting for this step: reload it) or `github_state` (the GitHub
+         *     redirect belongs to another connection or is older than an hour: start again).
+         */
+        GitHubConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `github_code_expired` (the code from GitHub was used or is older than an hour: start
+         *     again), `github_installation_invalid` (not an installation of this workspace's App),
+         *     `github_repository_unreachable` (the App is not installed on the repository) or
+         *     `github_app_refused` (GitHub refused the App: it was deleted or its key revoked;
+         *     disconnect and connect again).
+         */
+        GitHubRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `github_unavailable`: GitHub could not be reached or answered unexpectedly. */
+        GitHubUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the App's key cannot be stored. */
+        IntegrationsUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -3254,6 +3526,198 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getGitHubIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The integration, or none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubIntegrationState"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    disconnectGitHubIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateGitHubIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGitHubIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description The integration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubIntegration"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["GitHubConflict"];
+            422: components["responses"]["GitHubRefused"];
+            502: components["responses"]["GitHubUnavailable"];
+        };
+    };
+    startGitHubIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartGitHubIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description The connection in `app_pending` and the manifest. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubManifestStart"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["GitHubConflict"];
+            503: components["responses"]["IntegrationsUnavailable"];
+        };
+    };
+    completeGitHubApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteGitHubAppRequest"];
+            };
+        };
+        responses: {
+            /** @description The connection in `install_pending`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubIntegration"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["GitHubConflict"];
+            422: components["responses"]["GitHubRefused"];
+            502: components["responses"]["GitHubUnavailable"];
+            503: components["responses"]["IntegrationsUnavailable"];
+        };
+    };
+    completeGitHubInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteGitHubInstallationRequest"];
+            };
+        };
+        responses: {
+            /** @description The active integration; pick the repository next. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubIntegration"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["GitHubConflict"];
+            422: components["responses"]["GitHubRefused"];
+            502: components["responses"]["GitHubUnavailable"];
+        };
+    };
+    listGitHubRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The repositories. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubRepositoryList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["GitHubConflict"];
+            422: components["responses"]["GitHubRefused"];
+            502: components["responses"]["GitHubUnavailable"];
         };
     };
     createIngestReport: {

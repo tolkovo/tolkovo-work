@@ -41,6 +41,7 @@ describe("settings tree", () => {
     expect(navLinks(nav)).toEqual([
       "Общие",
       "Каналы",
+      "Интеграции",
       "Команда",
       "Профиль",
       "Внешний вид",

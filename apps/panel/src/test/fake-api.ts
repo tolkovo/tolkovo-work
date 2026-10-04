@@ -9,6 +9,7 @@ export const ownerSession: Session = {
   permissions: [
     "channels.manage",
     "channels.view",
+    "integrations.manage",
     "members.manage",
     "members.view",
     "workspace.delete",

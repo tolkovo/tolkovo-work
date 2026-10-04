@@ -31,6 +31,13 @@ import {
   fetchMembers,
   fetchMessages,
   fetchMySessions,
+  fetchGitHubIntegration,
+  fetchGitHubRepositories,
+  startGitHubIntegration,
+  completeGitHubApp,
+  completeGitHubInstallation,
+  updateGitHubIntegration,
+  disconnectGitHubIntegration,
   fetchMyWorkspaces,
   fetchSession,
   fetchTags,
@@ -61,6 +68,7 @@ import {
   verifyEmail,
   type AcceptInvitationRequest,
   type AppLimits,
+  type UpdateGitHubIntegrationRequest,
   type ChangePasswordRequest,
   type ChannelList,
   type ConnectTelegramBotRequest,
@@ -104,6 +112,8 @@ export const queryKeys = {
   myNotifications: ["me", "notifications"] as const,
   channels: ["channels"] as const,
   ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
+  githubIntegration: ["integrations", "github"] as const,
+  githubRepositories: ["integrations", "github", "repositories"] as const,
   /**
    * Roots for conversation and contact queries (lists, details, message feeds nest under them):
    * realtime events invalidate by these prefixes (docs/02 §10, apps/panel/src/lib/realtime).
@@ -405,6 +415,51 @@ export function useRotateIdentitySecret() {
 
 export function useSetAppLimits() {
   return useChannelMutation((client, { id, limits }: { id: string; limits: AppLimits }) => setAppLimits(client, id, limits));
+}
+
+/** The GitHub integration (GH-01). Every mutation refreshes it and its repositories. */
+export function useGitHubIntegration({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.githubIntegration, queryFn: () => fetchGitHubIntegration(client), enabled });
+}
+
+export function useGitHubRepositories({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.githubRepositories,
+    queryFn: () => fetchGitHubRepositories(client),
+    enabled,
+    retry: false,
+  });
+}
+
+function useGitHubMutation<TArgs, TResult>(fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.githubIntegration }),
+  });
+}
+
+export function useStartGitHubIntegration() {
+  return useGitHubMutation((client, organization: string) => startGitHubIntegration(client, organization));
+}
+
+export function useCompleteGitHubApp() {
+  return useGitHubMutation((client, { code, state }: { code: string; state: string }) => completeGitHubApp(client, code, state));
+}
+
+export function useCompleteGitHubInstallation() {
+  return useGitHubMutation((client, installationId: number) => completeGitHubInstallation(client, installationId));
+}
+
+export function useUpdateGitHubIntegration() {
+  return useGitHubMutation((client, body: UpdateGitHubIntegrationRequest) => updateGitHubIntegration(client, body));
+}
+
+export function useDisconnectGitHubIntegration() {
+  return useGitHubMutation((client) => disconnectGitHubIntegration(client));
 }
 
 export function useInvitations({ enabled = true }: { enabled?: boolean } = {}) {

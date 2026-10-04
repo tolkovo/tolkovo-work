@@ -11,6 +11,10 @@ import {
   conversationPageSchema,
   conversationSchema,
   deviceSessionListSchema,
+  gitHubIntegrationSchema,
+  gitHubIntegrationStateSchema,
+  gitHubManifestStartSchema,
+  gitHubRepositoryListSchema,
   inboxCountsSchema,
   notificationSettingsSchema,
   invitationListSchema,
@@ -68,6 +72,13 @@ export type ConnectTelegramBotRequest = Schemas["ConnectTelegramBotRequest"];
 export type AppLimits = Schemas["AppLimits"];
 export type AppChannelCreated = Schemas["AppChannelCreated"];
 export type IngestKey = Schemas["IngestKey"];
+export type GitHubIntegration = Schemas["GitHubIntegration"];
+export type GitHubIntegrationState = Schemas["GitHubIntegrationState"];
+export type GitHubManifestStart = Schemas["GitHubManifestStart"];
+export type GitHubRepository = Schemas["GitHubRepository"];
+export type GitHubRepositoryList = Schemas["GitHubRepositoryList"];
+export type GitHubTemplates = Schemas["GitHubTemplates"];
+export type UpdateGitHubIntegrationRequest = Schemas["UpdateGitHubIntegrationRequest"];
 export type IngestKeyCreated = Schemas["IngestKeyCreated"];
 export type Message = Schemas["Message"];
 export type MessageReport = Schemas["MessageReport"];
@@ -456,6 +467,43 @@ export async function setAppLimits(client: ApiClient, id: string, limits: AppLim
 /** Disconnects a channel or cancels a login in progress. */
 export async function disconnectChannel(client: ApiClient, id: string): Promise<void> {
   await unwrap(client.DELETE("/channels/{id}", { params: { path: { id } } }));
+}
+
+/** The workspace's GitHub integration (GH-01, ADR-0012); `integration` is null before a start. */
+export async function fetchGitHubIntegration(client: ApiClient): Promise<GitHubIntegrationState> {
+  return parseAnswer(gitHubIntegrationStateSchema, await unwrap(client.GET("/integrations/github")));
+}
+
+/** Step 1: the manifest the browser posts to GitHub as the form field `manifest`. */
+export async function startGitHubIntegration(client: ApiClient, organization: string): Promise<GitHubManifestStart> {
+  const body = organization ? { organization } : {};
+  return parseAnswer(gitHubManifestStartSchema, await unwrap(client.POST("/integrations/github/manifest", { body })), 201);
+}
+
+/** Step 2: `code` and `state` from GitHub's redirect. */
+export async function completeGitHubApp(client: ApiClient, code: string, state: string): Promise<GitHubIntegration> {
+  return parseAnswer(gitHubIntegrationSchema, await unwrap(client.POST("/integrations/github/app", { body: { code, state } })));
+}
+
+/** Step 3: `installation_id` from GitHub's redirect. */
+export async function completeGitHubInstallation(client: ApiClient, installationId: number): Promise<GitHubIntegration> {
+  return parseAnswer(
+    gitHubIntegrationSchema,
+    await unwrap(client.POST("/integrations/github/installation", { body: { installation_id: installationId } })),
+  );
+}
+
+export async function fetchGitHubRepositories(client: ApiClient): Promise<GitHubRepositoryList> {
+  return parseAnswer(gitHubRepositoryListSchema, await unwrap(client.GET("/integrations/github/repositories")));
+}
+
+export async function updateGitHubIntegration(client: ApiClient, body: UpdateGitHubIntegrationRequest): Promise<GitHubIntegration> {
+  return parseAnswer(gitHubIntegrationSchema, await unwrap(client.PATCH("/integrations/github", { body })));
+}
+
+/** Forgets the App's key; the App itself stays on GitHub. */
+export async function disconnectGitHubIntegration(client: ApiClient): Promise<void> {
+  await unwrap(client.DELETE("/integrations/github"));
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

@@ -37,6 +37,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/integrations
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -61,6 +63,8 @@ linters:
               desc: realtime relays outbox events, it does not call business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest
               desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/integrations
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
           files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**"]
@@ -75,10 +79,11 @@ linters:
               desc: modules publish through the outbox, not to the realtime transport
             - pkg: github.com/coder/websocket
               desc: WebSocket lives in internal/realtime
-        # channels talks to Telegram over HTTP and MTProto (its adapters are
-        # clients), but serving HTTP stays in internal/api.
+        # channels talks to Telegram over HTTP and MTProto, integrations to
+        # GitHub (their adapters are clients), but serving HTTP stays in
+        # internal/api.
         channels-without-http-layer:
-          files: ["**/internal/channels/**"]
+          files: ["**/internal/channels/**", "**/internal/integrations/**"]
           deny:
             - pkg: github.com/go-chi/chi/v5
               desc: HTTP routes live in internal/api
@@ -109,6 +114,11 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels/store
               desc: use the channels facade, not its store
+        no-foreign-integrations-store:
+          files: ["!**/internal/integrations/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/integrations/store
+              desc: use the integrations facade, not its store
         no-foreign-ingest-store:
           files: ["!**/internal/ingest/**", "$all"]
           deny:

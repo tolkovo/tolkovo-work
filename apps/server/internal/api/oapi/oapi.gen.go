@@ -218,6 +218,27 @@ func (e EmailDelayMinutes) Valid() bool {
 	}
 }
 
+// Defines values for GitHubIntegrationStatus.
+const (
+	GitHubIntegrationStatusActive         GitHubIntegrationStatus = "active"
+	GitHubIntegrationStatusAppPending     GitHubIntegrationStatus = "app_pending"
+	GitHubIntegrationStatusInstallPending GitHubIntegrationStatus = "install_pending"
+)
+
+// Valid indicates whether the value is a known member of the GitHubIntegrationStatus enum.
+func (e GitHubIntegrationStatus) Valid() bool {
+	switch e {
+	case GitHubIntegrationStatusActive:
+		return true
+	case GitHubIntegrationStatusAppPending:
+		return true
+	case GitHubIntegrationStatusInstallPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IngestReplySender.
 const (
 	IngestReplySenderBot      IngestReplySender = "bot"
@@ -671,6 +692,17 @@ type ChannelStatus string
 // ChannelType `app` — reports from a company app (docs/02 §11.6).
 type ChannelType string
 
+// CompleteGitHubAppRequest defines model for CompleteGitHubAppRequest.
+type CompleteGitHubAppRequest struct {
+	Code  string `json:"code"`
+	State string `json:"state"`
+}
+
+// CompleteGitHubInstallationRequest defines model for CompleteGitHubInstallationRequest.
+type CompleteGitHubInstallationRequest struct {
+	InstallationId int64 `json:"installation_id"`
+}
+
 // ConnectAppChannelRequest defines model for ConnectAppChannelRequest.
 type ConnectAppChannelRequest struct {
 	// Name Usually the app's name, e.g. "Зерно для Windows".
@@ -859,6 +891,115 @@ type EmailDelayMinutes int
 // ForgotPasswordRequest defines model for ForgotPasswordRequest.
 type ForgotPasswordRequest struct {
 	Email string `json:"email"`
+}
+
+// GitHubApp defines model for GitHubApp.
+type GitHubApp struct {
+	Id int64 `json:"id"`
+
+	// Owner The account that owns the App.
+	Owner string `json:"owner"`
+
+	// Slug github.com/apps/<slug>
+	Slug string `json:"slug"`
+
+	// Url The App's page on GitHub.
+	Url string `json:"url"`
+}
+
+// GitHubIntegration defines model for GitHubIntegration.
+type GitHubIntegration struct {
+	// Account The account the App is installed on.
+	Account *string `json:"account"`
+
+	// App The App on GitHub; `null` until it is created.
+	App       *GitHubApp `json:"app"`
+	CreatedAt time.Time  `json:"created_at"`
+
+	// CustomTemplates Which templates are changed rather than built in.
+	CustomTemplates struct {
+		IssueBody  bool `json:"issue_body"`
+		IssueTitle bool `json:"issue_title"`
+		ReplyEn    bool `json:"reply_en"`
+		ReplyRu    bool `json:"reply_ru"`
+	} `json:"custom_templates"`
+	Id uuid.UUID `json:"id"`
+
+	// InstallUrl Where to install the App, while `install_pending`.
+	InstallUrl *string  `json:"install_url"`
+	Labels     []string `json:"labels"`
+
+	// Repository Where new issues go; `null` until picked.
+	Repository *GitHubRepository `json:"repository"`
+
+	// Status `app_pending`: waiting for GitHub to create the App; `install_pending`: waiting for the
+	// installation; `active`: works.
+	Status GitHubIntegrationStatus `json:"status"`
+
+	// Templates The issue template (title and body) and the reply about a fix in Russian and English,
+	// with `{name}` placeholders (`placeholders`).
+	Templates GitHubTemplates `json:"templates"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
+// GitHubIntegrationStatus `app_pending`: waiting for GitHub to create the App; `install_pending`: waiting for the
+// installation; `active`: works.
+type GitHubIntegrationStatus string
+
+// GitHubIntegrationState defines model for GitHubIntegrationState.
+type GitHubIntegrationState struct {
+	// Defaults The issue template (title and body) and the reply about a fix in Russian and English,
+	// with `{name}` placeholders (`placeholders`).
+	Defaults GitHubTemplates `json:"defaults"`
+
+	// EncryptionAvailable `false` when `TOLKOVO_MASTER_KEY` is not set: connecting is refused.
+	EncryptionAvailable bool               `json:"encryption_available"`
+	Integration         *GitHubIntegration `json:"integration"`
+
+	// Placeholders What the templates may use, as `{name}`.
+	Placeholders struct {
+		Issue []string `json:"issue"`
+		Reply []string `json:"reply"`
+	} `json:"placeholders"`
+}
+
+// GitHubManifestStart defines model for GitHubManifestStart.
+type GitHubManifestStart struct {
+	Integration GitHubIntegration `json:"integration"`
+
+	// Manifest The value of the form field `manifest` (JSON).
+	Manifest string `json:"manifest"`
+
+	// PostUrl Where the browser posts the form.
+	PostUrl string `json:"post_url"`
+}
+
+// GitHubRepository defines model for GitHubRepository.
+type GitHubRepository struct {
+	// FullName "owner/name"
+	FullName string `json:"full_name"`
+	Id       int64  `json:"id"`
+
+	// Private A public repository shows the issue text to everyone; the issue form warns.
+	Private bool   `json:"private"`
+	Url     string `json:"url"`
+}
+
+// GitHubRepositoryList defines model for GitHubRepositoryList.
+type GitHubRepositoryList struct {
+	Items []GitHubRepository `json:"items"`
+
+	// More There are more than listed.
+	More bool `json:"more"`
+}
+
+// GitHubTemplates The issue template (title and body) and the reply about a fix in Russian and English,
+// with `{name}` placeholders (`placeholders`).
+type GitHubTemplates struct {
+	IssueBody  string `json:"issue_body"`
+	IssueTitle string `json:"issue_title"`
+	ReplyEn    string `json:"reply_en"`
+	ReplyRu    string `json:"reply_ru"`
 }
 
 // IdentitySecret defines model for IdentitySecret.
@@ -1297,6 +1438,12 @@ type SignedRequest struct {
 	Url     string            `json:"url"`
 }
 
+// StartGitHubIntegrationRequest defines model for StartGitHubIntegrationRequest.
+type StartGitHubIntegrationRequest struct {
+	// Organization Create the App in this GitHub organization; the user's account when absent.
+	Organization *string `json:"organization,omitempty"`
+}
+
 // StartTelegramUserLoginRequest defines model for StartTelegramUserLoginRequest.
 type StartTelegramUserLoginRequest struct {
 	// Phone International format, e.g. "+7 900 123-45-67".
@@ -1353,6 +1500,18 @@ type TelegramPasswordRequest struct {
 type TokenRequest struct {
 	// Token The fragment of the emailed link.
 	Token string `json:"token"`
+}
+
+// UpdateGitHubIntegrationRequest defines model for UpdateGitHubIntegrationRequest.
+type UpdateGitHubIntegrationRequest struct {
+	Labels *[]string `json:"labels,omitempty"`
+
+	// Repository "owner/name"; empty clears it.
+	Repository *string `json:"repository,omitempty"`
+
+	// Templates The issue template (title and body) and the reply about a fix in Russian and English,
+	// with `{name}` placeholders (`placeholders`).
+	Templates *GitHubTemplates `json:"templates,omitempty"`
 }
 
 // UpdateMeRequest defines model for UpdateMeRequest.
@@ -1450,8 +1609,20 @@ type EmailDisabled = Problem
 // Forbidden RFC 9457 problem details.
 type Forbidden = Problem
 
+// GitHubConflict RFC 9457 problem details.
+type GitHubConflict = Problem
+
+// GitHubRefused RFC 9457 problem details.
+type GitHubRefused = Problem
+
+// GitHubUnavailable RFC 9457 problem details.
+type GitHubUnavailable = Problem
+
 // IngestLimited RFC 9457 problem details.
 type IngestLimited = Problem
+
+// IntegrationsUnavailable RFC 9457 problem details.
+type IntegrationsUnavailable = Problem
 
 // Invalid RFC 9457 problem details.
 type Invalid = Problem
@@ -1643,6 +1814,18 @@ type CreateIngestReportJSONRequestBody = IngestReportRequest
 // PostIngestReportMessageJSONRequestBody defines body for PostIngestReportMessage for application/json ContentType.
 type PostIngestReportMessageJSONRequestBody = IngestMessageRequest
 
+// UpdateGitHubIntegrationJSONRequestBody defines body for UpdateGitHubIntegration for application/json ContentType.
+type UpdateGitHubIntegrationJSONRequestBody = UpdateGitHubIntegrationRequest
+
+// CompleteGitHubAppJSONRequestBody defines body for CompleteGitHubApp for application/json ContentType.
+type CompleteGitHubAppJSONRequestBody = CompleteGitHubAppRequest
+
+// CompleteGitHubInstallationJSONRequestBody defines body for CompleteGitHubInstallation for application/json ContentType.
+type CompleteGitHubInstallationJSONRequestBody = CompleteGitHubInstallationRequest
+
+// StartGitHubIntegrationJSONRequestBody defines body for StartGitHubIntegration for application/json ContentType.
+type StartGitHubIntegrationJSONRequestBody = StartGitHubIntegrationRequest
+
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
@@ -1792,6 +1975,27 @@ type ServerInterface interface {
 	// ListIngestReportReplies Replies to the app user, oldest first
 	// (GET /ingest/reports/{id}/replies)
 	ListIngestReportReplies(w http.ResponseWriter, r *http.Request, id Id, params ListIngestReportRepliesParams)
+	// DisconnectGitHubIntegration Disconnect GitHub
+	// (DELETE /integrations/github)
+	DisconnectGitHubIntegration(w http.ResponseWriter, r *http.Request)
+	// GetGitHubIntegration The workspace's GitHub integration
+	// (GET /integrations/github)
+	GetGitHubIntegration(w http.ResponseWriter, r *http.Request)
+	// UpdateGitHubIntegration Change the repository, labels or templates
+	// (PATCH /integrations/github)
+	UpdateGitHubIntegration(w http.ResponseWriter, r *http.Request)
+	// CompleteGitHubApp Finish creating the GitHub App
+	// (POST /integrations/github/app)
+	CompleteGitHubApp(w http.ResponseWriter, r *http.Request)
+	// CompleteGitHubInstallation Finish installing the GitHub App
+	// (POST /integrations/github/installation)
+	CompleteGitHubInstallation(w http.ResponseWriter, r *http.Request)
+	// StartGitHubIntegration Start connecting GitHub
+	// (POST /integrations/github/manifest)
+	StartGitHubIntegration(w http.ResponseWriter, r *http.Request)
+	// ListGitHubRepositories Repositories the App is installed on
+	// (GET /integrations/github/repositories)
+	ListGitHubRepositories(w http.ResponseWriter, r *http.Request)
 	// ListInvitations Open invitations of the current workspace
 	// (GET /invitations)
 	ListInvitations(w http.ResponseWriter, r *http.Request)
@@ -2107,6 +2311,48 @@ func (_ Unimplemented) PostIngestReportMessage(w http.ResponseWriter, r *http.Re
 // ListIngestReportReplies Replies to the app user, oldest first
 // (GET /ingest/reports/{id}/replies)
 func (_ Unimplemented) ListIngestReportReplies(w http.ResponseWriter, r *http.Request, id Id, params ListIngestReportRepliesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DisconnectGitHubIntegration Disconnect GitHub
+// (DELETE /integrations/github)
+func (_ Unimplemented) DisconnectGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetGitHubIntegration The workspace's GitHub integration
+// (GET /integrations/github)
+func (_ Unimplemented) GetGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateGitHubIntegration Change the repository, labels or templates
+// (PATCH /integrations/github)
+func (_ Unimplemented) UpdateGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CompleteGitHubApp Finish creating the GitHub App
+// (POST /integrations/github/app)
+func (_ Unimplemented) CompleteGitHubApp(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CompleteGitHubInstallation Finish installing the GitHub App
+// (POST /integrations/github/installation)
+func (_ Unimplemented) CompleteGitHubInstallation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartGitHubIntegration Start connecting GitHub
+// (POST /integrations/github/manifest)
+func (_ Unimplemented) StartGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListGitHubRepositories Repositories the App is installed on
+// (GET /integrations/github/repositories)
+func (_ Unimplemented) ListGitHubRepositories(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3434,6 +3680,104 @@ func (siw *ServerInterfaceWrapper) ListIngestReportReplies(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// DisconnectGitHubIntegration operation middleware
+func (siw *ServerInterfaceWrapper) DisconnectGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisconnectGitHubIntegration(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGitHubIntegration operation middleware
+func (siw *ServerInterfaceWrapper) GetGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGitHubIntegration(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateGitHubIntegration operation middleware
+func (siw *ServerInterfaceWrapper) UpdateGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateGitHubIntegration(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteGitHubApp operation middleware
+func (siw *ServerInterfaceWrapper) CompleteGitHubApp(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteGitHubApp(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteGitHubInstallation operation middleware
+func (siw *ServerInterfaceWrapper) CompleteGitHubInstallation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteGitHubInstallation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartGitHubIntegration operation middleware
+func (siw *ServerInterfaceWrapper) StartGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartGitHubIntegration(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGitHubRepositories operation middleware
+func (siw *ServerInterfaceWrapper) ListGitHubRepositories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGitHubRepositories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListInvitations operation middleware
 func (siw *ServerInterfaceWrapper) ListInvitations(w http.ResponseWriter, r *http.Request) {
 
@@ -3948,6 +4292,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/channels/{id}/app-limits", wrapper.SetAppLimits)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrations/github", wrapper.GetGitHubIntegration)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/integrations/github", wrapper.UpdateGitHubIntegration)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/integrations/github/manifest", wrapper.StartGitHubIntegration)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/integrations/github/app", wrapper.CompleteGitHubApp)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/integrations/github/installation", wrapper.CompleteGitHubInstallation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrations/github/repositories", wrapper.ListGitHubRepositories)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ingest/reports", wrapper.CreateIngestReport)

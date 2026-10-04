@@ -310,6 +310,57 @@ export const appChannelCreatedSchema = z.object({
   identity_secret: z.string(),
 }) satisfies z.ZodType<Schemas["AppChannelCreated"]>;
 
+export const gitHubTemplatesSchema = z.object({
+  issue_title: z.string(),
+  issue_body: z.string(),
+  reply_ru: z.string(),
+  reply_en: z.string(),
+}) satisfies z.ZodType<Schemas["GitHubTemplates"]>;
+
+export const gitHubRepositorySchema = z.object({
+  id: z.number(),
+  full_name: z.string(),
+  private: z.boolean(),
+  url: z.string(),
+}) satisfies z.ZodType<Schemas["GitHubRepository"]>;
+
+export const gitHubIntegrationSchema = z.object({
+  id: z.string(),
+  status: z.enum(["app_pending", "install_pending", "active"]),
+  app: z.object({ id: z.number(), slug: z.string(), owner: z.string(), url: z.string() }).nullable(),
+  install_url: z.string().nullable(),
+  account: z.string().nullable(),
+  repository: gitHubRepositorySchema.nullable(),
+  labels: z.array(z.string()),
+  templates: gitHubTemplatesSchema,
+  custom_templates: z.object({
+    issue_title: z.boolean(),
+    issue_body: z.boolean(),
+    reply_ru: z.boolean(),
+    reply_en: z.boolean(),
+  }),
+  created_at: z.string(),
+  updated_at: z.string(),
+}) satisfies z.ZodType<Schemas["GitHubIntegration"]>;
+
+export const gitHubIntegrationStateSchema = z.object({
+  integration: gitHubIntegrationSchema.nullable(),
+  defaults: gitHubTemplatesSchema,
+  placeholders: z.object({ issue: z.array(z.string()), reply: z.array(z.string()) }),
+  encryption_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["GitHubIntegrationState"]>;
+
+export const gitHubManifestStartSchema = z.object({
+  integration: gitHubIntegrationSchema,
+  post_url: z.string(),
+  manifest: z.string(),
+}) satisfies z.ZodType<Schemas["GitHubManifestStart"]>;
+
+export const gitHubRepositoryListSchema = z.object({
+  items: z.array(gitHubRepositorySchema),
+  more: z.boolean(),
+}) satisfies z.ZodType<Schemas["GitHubRepositoryList"]>;
+
 export const telegramLoginSchema = z.object({
   channel: channelSchema,
   next: z.enum(["code", "password", "done"]),

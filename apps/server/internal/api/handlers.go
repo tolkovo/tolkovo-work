@@ -9,6 +9,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
@@ -23,6 +24,7 @@ type server struct {
 	notifications *notifications.Service
 	channels      *channels.Service
 	ingest        *ingest.Service
+	integrations  *integrations.Service
 	cookies       sessionCookies
 	clients       clientIPs
 }
