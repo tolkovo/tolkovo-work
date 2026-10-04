@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tolkovo.dev/schemas/ws/client-message.schema.json",
+  "title": "Tolkovo realtime: client → server message",
+  "description": "One JSON text frame from a panel client, at most 1024 bytes. Mutations go over REST (docs/02 §10.2); the socket only resumes the event stream. resume is accepted once per connection, right after hello; anything else closes the connection with 1008.",
+  "oneOf": [{ "$ref": "#/$defs/resume" }],
+  "$defs": {
+    "resume": {
+      "description": "Replay the events of the workspace after last_seq that this connection may see, then resumed (or resync_required).",
+      "type": "object",
+      "required": ["type", "id", "ts", "data"],
+      "properties": {
+        "type": { "const": "resume" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "ts": { "type": "string", "format": "date-time" },
+        "data": {
+          "type": "object",
+          "required": ["last_seq"],
+          "properties": {
+            "last_seq": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

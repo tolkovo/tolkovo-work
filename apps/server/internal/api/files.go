@@ -150,13 +150,16 @@ func downloadFile(files LocalFiles, log *slog.Logger) http.HandlerFunc {
 }
 
 // requestTimeout applies the API-wide timeout to every route except signed
-// file transfers, which bound themselves with fileTransferTimeout.
+// file transfers, which bound themselves with fileTransferTimeout, and the
+// WebSocket endpoint.
 func requestTimeout(d time.Duration) func(http.Handler) http.Handler {
 	timeout := middleware.Timeout(d)
 	return func(next http.Handler) http.Handler {
 		limited := timeout(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, FilesPath+"/") {
+			// File transfers set their own deadlines; a WebSocket lives for
+			// hours and ends through the gateway, not a request timeout.
+			if strings.HasPrefix(r.URL.Path, FilesPath+"/") || r.URL.Path == RealtimePath {
 				next.ServeHTTP(w, r)
 				return
 			}

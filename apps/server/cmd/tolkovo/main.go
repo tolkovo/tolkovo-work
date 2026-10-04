@@ -36,6 +36,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdb"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
+	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -80,16 +81,16 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	var runHTTP, runWorker bool
+	var runREST, runRealtime, runWorker bool
 	switch *role {
 	case "all":
-		runHTTP, runWorker = true, true
+		runREST, runRealtime, runWorker = true, true, true
 	case "api":
-		runHTTP = true
+		runREST = true
+	case "realtime":
+		runRealtime = true
 	case "worker":
 		runWorker = true
-	case "realtime":
-		return errors.New(`role "realtime" is not available yet: it arrives with the realtime task (docs/06 R-01)`)
 	default:
 		return fmt.Errorf("unknown role %q", *role)
 	}
@@ -115,6 +116,14 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 	}
 	defer pool.Close()
 
+	// Every role needs Redis: sessions (api, realtime), fan-out (realtime,
+	// and the worker's relay publishes to it).
+	redisClient, err := rdb.Open(ctx, cfg.RedisURL.Reveal())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = redisClient.Close() }()
+
 	g, gctx := errgroup.WithContext(ctx)
 	if runWorker {
 		sys, err := db.Open(ctx, cfg.SystemDatabaseURL.Reveal())
@@ -122,21 +131,26 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 			return fmt.Errorf("system database: %w", err)
 		}
 		defer sys.Close()
-		if err := startWorker(gctx, g, cfg, log, pool, sys); err != nil {
+		if err := startWorker(gctx, g, cfg, log, pool, sys, realtime.NewPublisher(redisClient, "")); err != nil {
 			return err
 		}
 	}
-	if runHTTP {
-		redisClient, err := rdb.Open(ctx, cfg.RedisURL.Reveal())
-		if err != nil {
-			return err
-		}
-		defer func() { _ = redisClient.Close() }()
+	if runREST || runRealtime {
 		deps, err := apiDeps(ctx, cfg, log, pool, redisClient, store)
 		if err != nil {
 			return err
 		}
-		startHTTP(gctx, g, cfg, log, deps, *role)
+		var gw *realtime.Gateway
+		if runRealtime {
+			gw = realtime.New(pool, redisClient, log, realtime.Options{TrustedOrigins: deps.TrustedOrigins})
+			g.Go(func() error { return gw.Run(gctx) })
+			deps.Realtime = gw
+			deps.RealtimeOnly = !runREST
+		}
+		if !runREST {
+			deps.Files = nil
+		}
+		startHTTP(gctx, g, cfg, log, deps, gw, *role)
 	}
 	log.Info("started", "role", *role, "version", version, "env", cfg.Env)
 
@@ -149,8 +163,11 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 }
 
 // startWorker runs River workers and the outbox relay until ctx is done.
-func startWorker(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool, sys *db.DB) error {
-	relay := outbox.NewRelay(sys.Pool(), outbox.LogPublisher{Log: log}, log)
+// The relay publishes events to the realtime fan-out (ADR-0005).
+func startWorker(
+	ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool, sys *db.DB, pub outbox.Publisher,
+) error {
+	relay := outbox.NewRelay(sys.Pool(), pub, log)
 	if err := relay.CheckRole(ctx); err != nil {
 		return err
 	}
@@ -225,7 +242,11 @@ type pingFunc func(ctx context.Context) error
 func (f pingFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 // startHTTP serves the API until ctx is done, then drains connections.
-func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, deps api.Deps, role string) {
+// http.Server.Shutdown does not track hijacked WebSocket connections, so
+// the gateway (nil without role realtime) is shut down alongside.
+func startHTTP(
+	ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, deps api.Deps, gw *realtime.Gateway, role string,
+) {
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.NewRouter(deps),
@@ -247,10 +268,22 @@ func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *s
 		log.Info("shutting down", "timeout", cfg.ShutdownTimeout)
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
 		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("graceful shutdown: %w", err)
+		var sg errgroup.Group
+		sg.Go(func() error {
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("graceful shutdown: %w", err)
+			}
+			return nil
+		})
+		if gw != nil {
+			sg.Go(func() error {
+				if err := gw.Shutdown(shutdownCtx); err != nil {
+					return fmt.Errorf("realtime shutdown: %w", err)
+				}
+				return nil
+			})
 		}
-		return nil
+		return sg.Wait()
 	})
 }
 

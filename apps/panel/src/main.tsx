@@ -9,6 +9,8 @@ import { createPanelApiClient } from "./lib/api";
 import { createI18n } from "./lib/i18n";
 import { applyTheme, readStoredTheme } from "./lib/preferences";
 import { createQueryClient } from "./lib/query-client";
+import { realtimeUrl } from "./lib/realtime/protocol";
+import { bindRealtime } from "./lib/realtime/session-binding";
 import { createAppRouter } from "./router";
 
 const rootElement = document.getElementById("root");
@@ -19,6 +21,8 @@ const i18n = createI18n();
 const queryClient = createQueryClient();
 const api = createPanelApiClient(queryClient);
 const router = createAppRouter({ queryClient, api });
+// Live updates for the signed-in session; lives as long as the page.
+bindRealtime(queryClient, { url: realtimeUrl(window.location.origin) });
 
 createRoot(rootElement).render(
   <StrictMode>
