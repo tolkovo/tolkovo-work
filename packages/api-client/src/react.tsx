@@ -53,6 +53,12 @@ export const queryKeys = {
   myWorkspaces: ["me", "workspaces"] as const,
   members: ["members"] as const,
   mySessions: ["me", "sessions"] as const,
+  /**
+   * Roots for conversation and contact queries (lists, details, message feeds nest under them):
+   * realtime events invalidate by these prefixes (docs/02 §10, apps/panel/src/lib/realtime).
+   */
+  conversations: ["conversations"] as const,
+  contacts: ["contacts"] as const,
 };
 
 /** The current session; `null` when signed out. */
