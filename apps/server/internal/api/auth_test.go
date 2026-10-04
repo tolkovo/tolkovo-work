@@ -14,10 +14,14 @@ func TestRegister_CreatesOwnerAndSignsIn(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	c, s := e.register("marina@example.test", "zerno")
 
-	if s.Role != oapi.Owner || s.Workspace.Slug != "zerno" || s.User.Email != "marina@example.test" {
+	if s.Role != oapi.RoleOwner || s.Workspace.Slug != "zerno" || s.User.Email != "marina@example.test" {
 		t.Fatalf("unexpected session: %+v", s)
 	}
-	if !slices.Equal(s.Permissions, []string{"members.manage", "members.view", "workspace.delete", "workspace.manage"}) {
+	if !slices.Equal(s.Permissions, []string{
+		"contacts.edit", "contacts.view", "conversations.assign", "conversations.create", "conversations.manage",
+		"conversations.note", "conversations.reply", "conversations.take", "conversations.view",
+		"members.manage", "members.view", "workspace.delete", "workspace.manage",
+	}) {
 		t.Fatalf("owner permissions: %v", s.Permissions)
 	}
 	if c.cookie == nil || !c.cookie.HttpOnly || c.cookie.SameSite != http.SameSiteLaxMode || c.cookie.Secure ||

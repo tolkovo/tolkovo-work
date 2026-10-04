@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
@@ -46,13 +47,38 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Status: http.StatusForbidden, Code: "no_workspace", Title: "Forbidden",
 			Detail: "the account is not an active member of any workspace",
 		})
-	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, tenancy.ErrNotFound):
+	case errors.Is(err, conversations.ErrNotAssignee):
+		writeProblem(w, r, Problem{
+			Status: http.StatusForbidden, Code: "not_assignee", Title: "Forbidden",
+			Detail: "the conversation is not assigned to you",
+		})
+	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, tenancy.ErrNotFound), errors.Is(err, conversations.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	case errors.Is(err, tenancy.ErrEmailTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_taken", Title: "Conflict"})
 	case errors.Is(err, tenancy.ErrSlugTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "slug_taken", Title: "Conflict"})
-	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid):
+	case errors.Is(err, conversations.ErrTransition):
+		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "invalid_transition", Title: "Conflict", Detail: detail(err)})
+	case errors.Is(err, conversations.ErrConflict):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "version_conflict", Title: "Conflict",
+			Detail: "the conversation has changed, reload it",
+		})
+	case errors.Is(err, conversations.ErrClosed):
+		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "conversation_closed", Title: "Conflict"})
+	case errors.Is(err, conversations.ErrNotUploaded):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "attachment_not_uploaded", Title: "Conflict",
+			Detail: "upload the file by its link before sending it",
+		})
+	case errors.Is(err, conversations.ErrIdempotencyMismatch):
+		writeProblem(w, r, Problem{
+			Status: http.StatusUnprocessableEntity, Code: "idempotency_key_reused", Title: "Unprocessable Content",
+			Detail: "the Idempotency-Key was used with a different request",
+		})
+	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid),
+		errors.Is(err, conversations.ErrInvalid):
 		writeProblem(w, r, Problem{
 			Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err),
 		})
@@ -68,7 +94,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 // only the human reason reaches the client.
 func detail(err error) string {
 	msg := err.Error()
-	for _, sentinel := range []error{errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid} {
+	for _, sentinel := range []error{errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition} {
 		if after, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
 			return after
 		}

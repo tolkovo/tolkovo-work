@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +25,13 @@ func TestEveryRouteRequiresSessionExceptPublic(t *testing.T) {
 		}
 		routes++
 		rec := e.client().do(method, route, map[string]any{})
+		if strings.HasPrefix(route, FilesPath+"/") {
+			// Signed file links authenticate by signature, not by session.
+			if rec.Code != http.StatusForbidden || decode[Problem](t, rec).Code != "link_invalid" {
+				t.Errorf("%s %s without a signature: want 403 link_invalid, got %d", method, route, rec.Code)
+			}
+			return nil
+		}
 		if publicOperations[method+" "+route] {
 			// Login may answer 401 invalid_credentials, never "no session".
 			if rec.Code == http.StatusUnauthorized && decode[Problem](t, rec).Code == "unauthenticated" {
@@ -94,7 +102,7 @@ func TestIsolation_SwitchToForeignWorkspaceIs404(t *testing.T) {
 func TestIsolation_MyWorkspacesListsOnlyMemberships(t *testing.T) {
 	tt := setupTwoTenants(t)
 	list := decode[oapi.WorkspaceList](t, tt.a.do(http.MethodGet, "/api/v1/me/workspaces", nil))
-	if len(list.Items) != 1 || list.Items[0].Id != tt.wsA || list.Items[0].Role != oapi.Owner {
+	if len(list.Items) != 1 || list.Items[0].Id != tt.wsA || list.Items[0].Role != oapi.RoleOwner {
 		t.Fatalf("A's workspaces: %+v", list.Items)
 	}
 }
@@ -151,7 +159,7 @@ func TestSwitchWorkspace_RotatesSessionAndRole(t *testing.T) {
 	oldCSRF := tt.b.csrf
 
 	list := decode[oapi.WorkspaceList](t, tt.b.do(http.MethodGet, "/api/v1/me/workspaces", nil))
-	if len(list.Items) != 2 || list.Items[0].Id != tt.wsB || list.Items[1].Id != tt.wsA || list.Items[1].Role != oapi.Operator {
+	if len(list.Items) != 2 || list.Items[0].Id != tt.wsB || list.Items[1].Id != tt.wsA || list.Items[1].Role != oapi.RoleOperator {
 		t.Fatalf("B's workspaces: %+v", list.Items)
 	}
 
@@ -160,7 +168,7 @@ func TestSwitchWorkspace_RotatesSessionAndRole(t *testing.T) {
 		t.Fatalf("switch: %d %s", rec.Code, rec.Body)
 	}
 	s := decode[oapi.Session](t, rec)
-	if s.Workspace.Id != tt.wsA || s.Role != oapi.Operator || s.CsrfToken == oldCSRF || tt.b.cookie.Value == old.Value {
+	if s.Workspace.Id != tt.wsA || s.Role != oapi.RoleOperator || s.CsrfToken == oldCSRF || tt.b.cookie.Value == old.Value {
 		t.Fatalf("unexpected session after switch: %+v", s)
 	}
 	replay := tt.e.client()
@@ -217,7 +225,10 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 	}
 
 	me := decode[oapi.Session](t, clients["operator"].do(http.MethodGet, "/api/v1/me", nil))
-	if me.Role != oapi.Operator || len(me.Permissions) != 1 || me.Permissions[0] != "members.view" {
+	if me.Role != oapi.RoleOperator || !slices.Equal(me.Permissions, []string{
+		"contacts.edit", "contacts.view", "conversations.note", "conversations.reply",
+		"conversations.take", "conversations.view", "members.view",
+	}) {
 		t.Fatalf("operator /me: %+v", me)
 	}
 }

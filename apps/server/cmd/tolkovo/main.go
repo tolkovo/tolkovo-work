@@ -27,6 +27,7 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
@@ -201,6 +202,7 @@ func apiDeps(
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
 		Tenancy:       tenants,
 		Auth:          authSvc,
+		Conversations: conversations.New(pool, store),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

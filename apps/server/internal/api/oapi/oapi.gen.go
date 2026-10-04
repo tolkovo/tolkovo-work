@@ -6,10 +6,71 @@ package oapi
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+// Defines values for AttachmentStatus.
+const (
+	Expired   AttachmentStatus = "expired"
+	Ready     AttachmentStatus = "ready"
+	Rejected  AttachmentStatus = "rejected"
+	Scanning  AttachmentStatus = "scanning"
+	Uploading AttachmentStatus = "uploading"
+)
+
+// Valid indicates whether the value is a known member of the AttachmentStatus enum.
+func (e AttachmentStatus) Valid() bool {
+	switch e {
+	case Expired:
+		return true
+	case Ready:
+		return true
+	case Rejected:
+		return true
+	case Scanning:
+		return true
+	case Uploading:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConversationStatus.
+const (
+	ConversationStatusAssigned ConversationStatus = "assigned"
+	ConversationStatusBot      ConversationStatus = "bot"
+	ConversationStatusClosed   ConversationStatus = "closed"
+	ConversationStatusNew      ConversationStatus = "new"
+	ConversationStatusPending  ConversationStatus = "pending"
+	ConversationStatusQueued   ConversationStatus = "queued"
+	ConversationStatusResolved ConversationStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ConversationStatus enum.
+func (e ConversationStatus) Valid() bool {
+	switch e {
+	case ConversationStatusAssigned:
+		return true
+	case ConversationStatusBot:
+		return true
+	case ConversationStatusClosed:
+		return true
+	case ConversationStatusNew:
+		return true
+	case ConversationStatusPending:
+		return true
+	case ConversationStatusQueued:
+		return true
+	case ConversationStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for Locale.
 const (
@@ -29,25 +90,218 @@ func (e Locale) Valid() bool {
 	}
 }
 
+// Defines values for MessageDirection.
+const (
+	In  MessageDirection = "in"
+	Out MessageDirection = "out"
+)
+
+// Valid indicates whether the value is a known member of the MessageDirection enum.
+func (e MessageDirection) Valid() bool {
+	switch e {
+	case In:
+		return true
+	case Out:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MessageKind.
+const (
+	Event MessageKind = "event"
+	Media MessageKind = "media"
+	Note  MessageKind = "note"
+	Text  MessageKind = "text"
+)
+
+// Valid indicates whether the value is a known member of the MessageKind enum.
+func (e MessageKind) Valid() bool {
+	switch e {
+	case Event:
+		return true
+	case Media:
+		return true
+	case Note:
+		return true
+	case Text:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MessageSenderType.
+const (
+	MessageSenderTypeBot      MessageSenderType = "bot"
+	MessageSenderTypeContact  MessageSenderType = "contact"
+	MessageSenderTypeOperator MessageSenderType = "operator"
+	MessageSenderTypeSystem   MessageSenderType = "system"
+)
+
+// Valid indicates whether the value is a known member of the MessageSenderType enum.
+func (e MessageSenderType) Valid() bool {
+	switch e {
+	case MessageSenderTypeBot:
+		return true
+	case MessageSenderTypeContact:
+		return true
+	case MessageSenderTypeOperator:
+		return true
+	case MessageSenderTypeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
-	Admin    Role = "admin"
-	Operator Role = "operator"
-	Owner    Role = "owner"
+	RoleAdmin    Role = "admin"
+	RoleOperator Role = "operator"
+	RoleOwner    Role = "owner"
 )
 
 // Valid indicates whether the value is a known member of the Role enum.
 func (e Role) Valid() bool {
 	switch e {
-	case Admin:
+	case RoleAdmin:
 		return true
-	case Operator:
+	case RoleOperator:
 		return true
-	case Owner:
+	case RoleOwner:
 		return true
 	default:
 		return false
 	}
+}
+
+// AssignRequest defines model for AssignRequest.
+type AssignRequest struct {
+	// AssigneeId The member to assign; `null` releases the conversation to the queue.
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+
+	// Version When set, must equal the current version, otherwise `409 version_conflict`.
+	Version *int `json:"version,omitempty"`
+}
+
+// Attachment defines model for Attachment.
+type Attachment struct {
+	ContentType string           `json:"content_type"`
+	FileName    string           `json:"file_name"`
+	Id          uuid.UUID        `json:"id"`
+	Size        int64            `json:"size"`
+	Status      AttachmentStatus `json:"status"`
+}
+
+// AttachmentStatus defines model for Attachment.Status.
+type AttachmentStatus string
+
+// AttachmentUpload defines model for AttachmentUpload.
+type AttachmentUpload struct {
+	Attachment Attachment    `json:"attachment"`
+	Upload     SignedRequest `json:"upload"`
+}
+
+// ChangeStatusRequest defines model for ChangeStatusRequest.
+type ChangeStatusRequest struct {
+	// Status State of a conversation (docs/02 §8).
+	Status ConversationStatus `json:"status"`
+
+	// Version When set, must equal the current version, otherwise `409 version_conflict`.
+	Version *int `json:"version,omitempty"`
+}
+
+// Contact defines model for Contact.
+type Contact struct {
+	CreatedAt time.Time `json:"created_at"`
+	Email     *string   `json:"email"`
+	Id        uuid.UUID `json:"id"`
+
+	// Locale `ru`, `en` or `null`.
+	Locale    *string   `json:"locale"`
+	Name      string    `json:"name"`
+	Phone     *string   `json:"phone"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ContactInput defines model for ContactInput.
+type ContactInput struct {
+	Email *string `json:"email,omitempty"`
+
+	// Locale `ru` or `en`; empty clears it on update.
+	Locale *string `json:"locale,omitempty"`
+	Name   *string `json:"name,omitempty"`
+	Phone  *string `json:"phone,omitempty"`
+}
+
+// ContactPage defines model for ContactPage.
+type ContactPage struct {
+	Items      []Contact `json:"items"`
+	NextCursor *string   `json:"next_cursor"`
+}
+
+// ContactRef defines model for ContactRef.
+type ContactRef struct {
+	Id   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// Conversation defines model for Conversation.
+type Conversation struct {
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+
+	// ChannelId `null` for conversations started from the panel or API.
+	ChannelId       *uuid.UUID `json:"channel_id"`
+	ClosedAt        *time.Time `json:"closed_at"`
+	Contact         ContactRef `json:"contact"`
+	CreatedAt       time.Time  `json:"created_at"`
+	FirstResponseAt *time.Time `json:"first_response_at"`
+	Id              uuid.UUID  `json:"id"`
+	LastMessageAt   time.Time  `json:"last_message_at"`
+	LineLevel       int        `json:"line_level"`
+
+	// Number Human-readable number inside the workspace.
+	Number     int64      `json:"number"`
+	Priority   int        `json:"priority"`
+	ResolvedAt *time.Time `json:"resolved_at"`
+
+	// Status State of a conversation (docs/02 §8).
+	Status    ConversationStatus `json:"status"`
+	Subject   *string            `json:"subject"`
+	UpdatedAt time.Time          `json:"updated_at"`
+
+	// Version Bumps on every change; send it back to detect concurrent edits.
+	Version int `json:"version"`
+}
+
+// ConversationPage defines model for ConversationPage.
+type ConversationPage struct {
+	Items []Conversation `json:"items"`
+
+	// NextCursor Cursor of the next page; `null` on the last one.
+	NextCursor *string `json:"next_cursor"`
+}
+
+// ConversationStatus State of a conversation (docs/02 §8).
+type ConversationStatus string
+
+// CreateConversationRequest defines model for CreateConversationRequest.
+type CreateConversationRequest struct {
+	ContactId uuid.UUID `json:"contact_id"`
+	Priority  *int      `json:"priority,omitempty"`
+	Subject   *string   `json:"subject,omitempty"`
+}
+
+// CreateUploadRequest defines model for CreateUploadRequest.
+type CreateUploadRequest struct {
+	ContentType string `json:"content_type"`
+	FileName    string `json:"file_name"`
+
+	// Sha256 Hex SHA-256 of the file; the storage then rejects any other content.
+	Sha256 *string `json:"sha256,omitempty"`
+	Size   int64   `json:"size"`
 }
 
 // Locale defines model for Locale.
@@ -73,6 +327,52 @@ type Member struct {
 // MemberList defines model for MemberList.
 type MemberList struct {
 	Items []Member `json:"items"`
+}
+
+// Message defines model for Message.
+type Message struct {
+	Attachments    []Attachment `json:"attachments"`
+	Body           string       `json:"body"`
+	ConversationId uuid.UUID    `json:"conversation_id"`
+	CreatedAt      time.Time    `json:"created_at"`
+
+	// DeliveryStatus `pending`, `sent`, `delivered`, `read` or `failed`; `null` when there is nothing
+	// to deliver (notes, conversations without a channel).
+	DeliveryStatus *string          `json:"delivery_status"`
+	Direction      MessageDirection `json:"direction"`
+	Id             uuid.UUID        `json:"id"`
+
+	// IsPrivate Internal note; never shown to the customer.
+	IsPrivate  bool              `json:"is_private"`
+	Kind       MessageKind       `json:"kind"`
+	SenderId   *uuid.UUID        `json:"sender_id"`
+	SenderType MessageSenderType `json:"sender_type"`
+}
+
+// MessageDirection defines model for Message.Direction.
+type MessageDirection string
+
+// MessageKind defines model for Message.Kind.
+type MessageKind string
+
+// MessageSenderType defines model for Message.SenderType.
+type MessageSenderType string
+
+// MessagePage defines model for MessagePage.
+type MessagePage struct {
+	Items      []Message `json:"items"`
+	NextCursor *string   `json:"next_cursor"`
+}
+
+// PostMessageRequest defines model for PostMessageRequest.
+type PostMessageRequest struct {
+	AttachmentIds *[]uuid.UUID `json:"attachment_ids,omitempty"`
+
+	// Body Plain text; may be empty when attachments are sent.
+	Body *string `json:"body,omitempty"`
+
+	// Private Internal note instead of a reply.
+	Private *bool `json:"private,omitempty"`
 }
 
 // Problem RFC 9457 problem details.
@@ -115,6 +415,16 @@ type Session struct {
 	Role      Role      `json:"role"`
 	User      User      `json:"user"`
 	Workspace Workspace `json:"workspace"`
+}
+
+// SignedRequest defines model for SignedRequest.
+type SignedRequest struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Headers Headers to send exactly as given.
+	Headers map[string]string `json:"headers"`
+	Method  string            `json:"method"`
+	Url     string            `json:"url"`
 }
 
 // SwitchWorkspaceRequest defines model for SwitchWorkspaceRequest.
@@ -161,11 +471,29 @@ type WorkspaceSummary struct {
 	Slug string `json:"slug"`
 }
 
+// Cursor defines model for Cursor.
+type Cursor = string
+
+// Id defines model for Id.
+type Id = uuid.UUID
+
+// IdempotencyKey defines model for IdempotencyKey.
+type IdempotencyKey = string
+
+// Limit defines model for Limit.
+type Limit = int
+
+// Conflict RFC 9457 problem details.
+type Conflict = Problem
+
 // Forbidden RFC 9457 problem details.
 type Forbidden = Problem
 
 // Invalid RFC 9457 problem details.
 type Invalid = Problem
+
+// LinkRejected RFC 9457 problem details.
+type LinkRejected = Problem
 
 // NotFound RFC 9457 problem details.
 type NotFound = Problem

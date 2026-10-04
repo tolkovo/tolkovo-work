@@ -14,6 +14,7 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -31,8 +32,9 @@ type Deps struct {
 	// Files serves signed links of the fs storage driver; nil with s3.
 	Files LocalFiles
 
-	Tenancy *tenancy.Service
-	Auth    *auth.Service
+	Tenancy       *tenancy.Service
+	Auth          *auth.Service
+	Conversations *conversations.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -59,7 +61,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	srv := &server{
-		log: d.Log, tenancy: d.Tenancy, auth: d.Auth,
+		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 	}
 	r.Group(func(r chi.Router) {
@@ -73,6 +75,7 @@ func NewRouter(d Deps) http.Handler {
 				srv.writeError(w, r, errBadRequest)
 			},
 		})
+		mountConversations(r, srv)
 	})
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

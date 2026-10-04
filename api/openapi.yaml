@@ -42,6 +42,18 @@ tags:
       (docs/adr/0009-file-storage.md). Mounted only with `TOLKOVO_STORAGE_DRIVER=fs`;
       with `s3` the links point at the bucket. Authorised by the link signature, not
       by the session. Served by hand (`internal/api/files.go`), not generated.
+  - name: conversations
+    description: |
+      Conversations, their messages and attachments (docs/02 §7–8). Status changes
+      follow the state machine of docs/02 §8; a forbidden transition answers `409
+      invalid_transition`. Operators reply in and change only conversations assigned to
+      them; `conversations.manage` (owner, admin) lifts that limit.
+
+      Routes with path or query parameters are mounted by hand in
+      `internal/api/conversations.go` (models are generated): generated parameter
+      binding needs `github.com/oapi-codegen/runtime`, a dependency not yet approved.
+  - name: contacts
+    description: Customers. Email and phone are personal data. Mounted by hand like `conversations`.
 
 paths:
   /auth/register:
@@ -318,7 +330,373 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /conversations:
+    get:
+      tags: [conversations]
+      operationId: listConversations
+      summary: The inbox, most recent activity first
+      description: Requires `conversations.view` (owner, admin, operator).
+      parameters:
+        - name: status
+          in: query
+          description: Any of these statuses; repeat the parameter for several. All when absent.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/ConversationStatus' }
+        - name: assignee
+          in: query
+          description: '`me`, `none` (unassigned) or a member''s user id.'
+          schema: { type: string }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of conversations.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationPage' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [conversations]
+      operationId: createConversation
+      summary: Start a conversation with an existing contact
+      description: |
+        Requires `conversations.create` (owner, admin). The conversation enters the
+        queue (`queued`) at once. Channels create theirs from inbound messages.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateConversationRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /conversations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations]
+      operationId: getConversation
+      summary: One conversation
+      description: Requires `conversations.view`.
+      responses:
+        '200':
+          description: The conversation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /conversations/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [conversations]
+      operationId: changeConversationStatus
+      summary: Move the conversation along the state machine
+      description: |
+        Requires `conversations.reply`; without `conversations.manage` only for a
+        conversation assigned to the caller. Moving to `queued` releases the assignee;
+        `assigned` is reachable only when the conversation already has an assignee
+        (otherwise use `PUT /conversations/{id}/assignee`).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeStatusRequest' }
+      responses:
+        '200':
+          description: The changed conversation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /conversations/{id}/assignee:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [conversations]
+      operationId: assignConversation
+      summary: Assign, transfer or release the conversation
+      description: |
+        `conversations.take` allows taking an unassigned conversation for yourself and
+        releasing your own (`assignee_id: null`); `conversations.assign` (owner, admin)
+        allows any assignment. The assignee must be an active member of the workspace.
+        `queued` and `resolved` become `assigned`; `assigned` and `pending` keep their
+        status (transfer); releasing makes an `assigned` conversation `queued`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRequest' }
+      responses:
+        '200':
+          description: The changed conversation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /conversations/{id}/messages:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations]
+      operationId: listMessages
+      summary: The conversation feed, newest first
+      description: Requires `conversations.view`. Includes internal notes (`is_private`).
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessagePage' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [conversations]
+      operationId: postMessage
+      summary: Reply or leave an internal note
+      description: |
+        A reply needs `conversations.reply` and, without `conversations.manage`, a
+        conversation assigned to the caller. A note (`private: true`) needs
+        `conversations.note` and works in any conversation. Attachments are uploads of
+        the same conversation (`POST /conversations/{id}/attachments`) whose files are
+        in storage; they are checked and linked here. A closed conversation answers
+        `409 conversation_closed`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostMessageRequest' }
+      responses:
+        '200':
+          description: A retry with the same `Idempotency-Key` and body; the first message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: '`idempotency_key_reused`: the key was used with a different body.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /conversations/{id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [conversations]
+      operationId: createAttachmentUpload
+      summary: Register a file and get a signed upload request
+      description: |
+        Requires `conversations.reply` or `conversations.note`. The server picks an
+        unpredictable key `ws/{workspace_id}/conv/{uuid}` (docs/02 §5.4) and signs a PUT
+        that fixes the size, the content type and, when given, the SHA-256. Upload the
+        file with exactly the returned method, URL and headers, then send the attachment
+        id with a message. Up to 25 MB; images, PDF, text, CSV, JSON, ZIP, GZIP and
+        Office documents.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUploadRequest' }
+      responses:
+        '201':
+          description: Registered; upload the file next.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttachmentUpload' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /attachments/{id}/download-link:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations]
+      operationId: getAttachmentDownloadLink
+      summary: A short-lived signed download request for a sent attachment
+      description: Requires `conversations.view`. Attachments not yet sent with a message answer `404`.
+      responses:
+        '200':
+          description: The signed request (15 minutes by default).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /contacts:
+    get:
+      tags: [contacts]
+      operationId: listContacts
+      summary: Contacts, newest first
+      description: Requires `contacts.view` (owner, admin, operator).
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of contacts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContactPage' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [contacts]
+      operationId: createContact
+      summary: Add a contact
+      description: Requires `contacts.edit` (owner, admin, operator).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Contact' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /contacts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [contacts]
+      operationId: getContact
+      summary: One contact
+      description: Requires `contacts.view`.
+      responses:
+        '200':
+          description: The contact.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Contact' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [contacts]
+      operationId: updateContact
+      summary: Change a contact
+      description: |
+        Requires `contacts.edit`. Absent fields stay as they are; an empty `email`,
+        `phone` or `locale` clears it.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactInput' }
+      responses:
+        '200':
+          description: The changed contact.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Contact' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+        x-go-type: uuid.UUID
+        x-go-type-import: { path: github.com/google/uuid }
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque `next_cursor` of the previous page.
+      schema: { type: string, maxLength: 200 }
+    Limit:
+      name: limit
+      in: query
+      description: Page size, 1–100; 50 when absent.
+      schema: { type: integer, minimum: 1, maximum: 100 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        Makes a retry return the first result instead of acting twice (docs/00 §8). A
+        reused key with a different body answers `422`.
+      schema: { type: string, minLength: 1, maxLength: 255 }
+
   securitySchemes:
     sessionCookie:
       type: apiKey
@@ -359,6 +737,14 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     LinkRejected:
       description: '`link_invalid` (bad signature or parameters) or `link_expired`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: |
+        `invalid_transition` (the state machine forbids it), `version_conflict` (the
+        conversation changed since `version`), `conversation_closed` or
+        `attachment_not_uploaded` (the file of an attachment is not in storage).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -519,3 +905,237 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/Member' }
+
+    ConversationStatus:
+      type: string
+      description: State of a conversation (docs/02 §8).
+      enum: [new, bot, queued, assigned, pending, resolved, closed]
+
+    ContactRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string }
+
+    Conversation:
+      type: object
+      required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
+                 first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64, description: Human-readable number inside the workspace. }
+        status: { $ref: '#/components/schemas/ConversationStatus' }
+        priority: { type: integer, minimum: 0, maximum: 3 }
+        line_level: { type: integer, minimum: 1, maximum: 3 }
+        contact: { $ref: '#/components/schemas/ContactRef' }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        channel_id:
+          type: [string, 'null']
+          description: '`null` for conversations started from the panel or API.'
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        subject: { type: [string, 'null'] }
+        first_response_at: { type: [string, 'null'], format: date-time }
+        last_message_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+        closed_at: { type: [string, 'null'], format: date-time }
+        version:
+          type: integer
+          description: Bumps on every change; send it back to detect concurrent edits.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ConversationPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Conversation' }
+        next_cursor:
+          type: [string, 'null']
+          description: Cursor of the next page; `null` on the last one.
+
+    CreateConversationRequest:
+      type: object
+      additionalProperties: false
+      required: [contact_id]
+      properties:
+        contact_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        subject: { type: string, maxLength: 200 }
+        priority: { type: integer, minimum: 0, maximum: 3 }
+
+    ChangeStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/ConversationStatus' }
+        version:
+          type: integer
+          description: When set, must equal the current version, otherwise `409 version_conflict`.
+
+    AssignRequest:
+      type: object
+      additionalProperties: false
+      required: [assignee_id]
+      properties:
+        assignee_id:
+          type: [string, 'null']
+          description: The member to assign; `null` releases the conversation to the queue.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        version:
+          type: integer
+          description: When set, must equal the current version, otherwise `409 version_conflict`.
+
+    Attachment:
+      type: object
+      required: [id, file_name, content_type, size, status]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        file_name: { type: string }
+        content_type: { type: string }
+        size: { type: integer, format: int64 }
+        status:
+          type: string
+          enum: [uploading, scanning, ready, rejected, expired]
+
+    Message:
+      type: object
+      required: [id, conversation_id, direction, sender_type, sender_id, kind, body, is_private,
+                 delivery_status, attachments, created_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        direction: { type: string, enum: [in, out] }
+        sender_type: { type: string, enum: [contact, operator, bot, system] }
+        sender_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        kind: { type: string, enum: [text, media, note, event] }
+        body: { type: string }
+        is_private: { type: boolean, description: Internal note; never shown to the customer. }
+        delivery_status:
+          type: [string, 'null']
+          description: |
+            `pending`, `sent`, `delivered`, `read` or `failed`; `null` when there is nothing
+            to deliver (notes, conversations without a channel).
+        attachments:
+          type: array
+          items: { $ref: '#/components/schemas/Attachment' }
+        created_at: { type: string, format: date-time }
+
+    MessagePage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Message' }
+        next_cursor: { type: [string, 'null'] }
+
+    PostMessageRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        body: { type: string, maxLength: 10000, description: Plain text; may be empty when attachments are sent. }
+        private: { type: boolean, description: Internal note instead of a reply. }
+        attachment_ids:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    CreateUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [file_name, content_type, size]
+      properties:
+        file_name: { type: string, minLength: 1, maxLength: 1024 }
+        content_type: { type: string, maxLength: 255 }
+        size: { type: integer, format: int64, minimum: 1, maximum: 26214400 }
+        sha256:
+          type: string
+          description: Hex SHA-256 of the file; the storage then rejects any other content.
+          pattern: '^[0-9a-f]{64}$'
+
+    SignedRequest:
+      type: object
+      required: [method, url, headers, expires_at]
+      properties:
+        method: { type: string }
+        url: { type: string }
+        headers:
+          type: object
+          description: Headers to send exactly as given.
+          additionalProperties: { type: string }
+        expires_at: { type: string, format: date-time }
+
+    AttachmentUpload:
+      type: object
+      required: [attachment, upload]
+      properties:
+        attachment: { $ref: '#/components/schemas/Attachment' }
+        upload: { $ref: '#/components/schemas/SignedRequest' }
+
+    Contact:
+      type: object
+      required: [id, name, email, phone, locale, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string }
+        email: { type: [string, 'null'] }
+        phone: { type: [string, 'null'] }
+        locale: { type: [string, 'null'], description: '`ru`, `en` or `null`.' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ContactPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Contact' }
+        next_cursor: { type: [string, 'null'] }
+
+    ContactInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 32 }
+        locale:
+          type: string
+          description: '`ru` or `en`; empty clears it on update.'
+          maxLength: 2

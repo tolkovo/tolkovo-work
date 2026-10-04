@@ -17,6 +17,16 @@ func TestAllowed_Matrix(t *testing.T) {
 		MembersManage:   {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		WorkspaceManage: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		WorkspaceDelete: {RoleOwner: true, RoleAdmin: false, RoleOperator: false},
+
+		ConversationsView:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		ConversationsCreate: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		ConversationsReply:  {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		ConversationsNote:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		ConversationsTake:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		ConversationsAssign: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		ConversationsManage: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		ContactsView:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		ContactsEdit:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 	}
 	for role, perms := range rolePermissions {
 		for _, p := range perms {
@@ -44,8 +54,8 @@ func TestAllowed_UnknownRoleHasNothing(t *testing.T) {
 
 func TestPermissions_SortedCopy(t *testing.T) {
 	got := Permissions(RoleOwner)
-	if !slices.IsSorted(got) || len(got) != 4 {
-		t.Fatalf("want 4 sorted permissions, got %v", got)
+	if !slices.IsSorted(got) || len(got) != len(rolePermissions[RoleOwner]) {
+		t.Fatalf("want every owner permission sorted, got %v", got)
 	}
 	got[0] = "hacked"
 	if Allowed(RoleOwner, "hacked") {

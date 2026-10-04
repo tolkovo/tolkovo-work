@@ -39,13 +39,36 @@ const (
 	MembersManage   Permission = "members.manage"   // invite, change role, deactivate
 	WorkspaceManage Permission = "workspace.manage" // name, locale, time zone and other settings
 	WorkspaceDelete Permission = "workspace.delete" // delete or transfer the workspace
+
+	ConversationsView   Permission = "conversations.view"   // see conversations, their messages and files
+	ConversationsCreate Permission = "conversations.create" // start a conversation from the panel or API
+	ConversationsReply  Permission = "conversations.reply"  // reply and change the status of own conversations
+	ConversationsNote   Permission = "conversations.note"   // leave internal notes in any visible conversation
+	ConversationsTake   Permission = "conversations.take"   // take an unassigned conversation, release own
+	ConversationsAssign Permission = "conversations.assign" // assign to anyone, take or release anyone's
+	// ConversationsManage widens reply and status changes to conversations
+	// assigned to someone else or nobody (scope ✅ instead of 👤 in docs/04 §4.3).
+	ConversationsManage Permission = "conversations.manage"
+	ContactsView        Permission = "contacts.view" // see contacts with email and phone
+	ContactsEdit        Permission = "contacts.edit" // create and change contacts
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
 var rolePermissions = map[string][]Permission{
-	RoleOwner:    {MembersView, MembersManage, WorkspaceManage, WorkspaceDelete},
-	RoleAdmin:    {MembersView, MembersManage, WorkspaceManage},
-	RoleOperator: {MembersView},
+	RoleOwner: {
+		MembersView, MembersManage, WorkspaceManage, WorkspaceDelete,
+		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
+		ConversationsTake, ConversationsAssign, ConversationsManage, ContactsView, ContactsEdit,
+	},
+	RoleAdmin: {
+		MembersView, MembersManage, WorkspaceManage,
+		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
+		ConversationsTake, ConversationsAssign, ConversationsManage, ContactsView, ContactsEdit,
+	},
+	RoleOperator: {
+		MembersView,
+		ConversationsView, ConversationsReply, ConversationsNote, ConversationsTake, ContactsView, ContactsEdit,
+	},
 }
 
 // Allowed reports whether role has permission p. Unknown roles have none.
