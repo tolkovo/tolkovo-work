@@ -37,7 +37,13 @@ const event = (id: string, seq: number, type = "conversation.created") => ({ typ
 
 function setup({ random = (): number => 0.5 }: { random?: () => number } = {}) {
   const sockets: FakeSocket[] = [];
-  const handlers: RealtimeHandlers = { onEvent: vi.fn(), onResync: vi.fn(), onSessionEnded: vi.fn() };
+  const handlers: RealtimeHandlers = {
+    onEvent: vi.fn(),
+    onResync: vi.fn(),
+    onSessionEnded: vi.fn(),
+    onSignal: vi.fn(),
+    onReady: vi.fn(),
+  };
   const connection = new RealtimeConnection({
     url: "ws://panel.test/api/v1/realtime",
     handlers,
@@ -61,6 +67,52 @@ function setup({ random = (): number => 0.5 }: { random?: () => number } = {}) {
 describe("RealtimeConnection", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  it("hands signals over as they come, without touching the event cursor", () => {
+    const { connection, handlers, last } = setup();
+    connection.start();
+    last().open();
+    last().push(hello(10));
+    const typing = {
+      type: "conversation.typing",
+      id: "s",
+      ts,
+      data: { conversation_id: "c", actor: "operator", actor_id: "u", state: "start" },
+    };
+    last().push(typing);
+    last().push(typing); // signals are not deduplicated: a repeated start extends the indicator
+    expect(handlers.onSignal).toHaveBeenCalledTimes(2);
+    expect(handlers.onEvent).not.toHaveBeenCalled();
+
+    last().drop(1012);
+    vi.runOnlyPendingTimers();
+    last().open();
+    last().push(hello(10));
+    // The cursor is still 10: the resume asks from there.
+    expect(JSON.parse(last().sent[0] ?? "{}")).toMatchObject({ type: "resume", data: { last_seq: 10 } });
+    connection.stop();
+  });
+
+  it("sends client messages only between hello and the end of the socket, and reports each hello", () => {
+    const { connection, handlers, last } = setup();
+    connection.start();
+    expect(connection.send("x")).toBe(false);
+    last().open();
+    expect(connection.send("x")).toBe(false); // open but no hello yet
+    last().push(hello(1));
+    expect(handlers.onReady).toHaveBeenCalledTimes(1);
+    expect(connection.send("x")).toBe(true);
+    expect(last().sent).toEqual(["x"]);
+
+    last().drop(1012);
+    expect(connection.send("y")).toBe(false);
+    vi.runOnlyPendingTimers();
+    last().open();
+    last().push(hello(1));
+    expect(handlers.onReady).toHaveBeenCalledTimes(2);
+    connection.stop();
+    expect(connection.send("z")).toBe(false);
+  });
 
   it("starts from hello without history, then delivers each event once", () => {
     const { connection, handlers, last } = setup();

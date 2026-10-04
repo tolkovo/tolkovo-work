@@ -9,13 +9,16 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
+
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 )
 
 // conn is one WebSocket client. Its goroutines are owned by Gateway.Serve,
 // which waits for all of them:
 //
 //   - writeLoop is the only writer and the one that closes with a code;
-//   - readLoop reads client frames until the connection is gone;
+//   - readLoop reads client frames until the connection is gone and
+//     relays the client's signals (typing, viewing);
 //   - watchLoop sends heartbeats, pings and re-checks the session;
 //   - replayLoop answers resume and server-side resyncs from Postgres.
 //
@@ -25,6 +28,7 @@ import (
 type conn struct {
 	g           *Gateway
 	ws          *websocket.Conn
+	id          uuid.UUID
 	userID      uuid.UUID
 	workspaceID uuid.UUID
 	recheck     func(context.Context) (string, error)
@@ -43,16 +47,22 @@ type conn struct {
 	killOnce   sync.Once
 	killCode   websocket.StatusCode
 	killReason string
+
+	// Owned by readLoop, then by the cleanup after every loop has ended.
+	viewing    uuid.UUID // the conversation this connection has open
+	tokens     float64   // client message rate limit
+	lastRefill time.Time
 }
 
 func newConn(g *Gateway, ws *websocket.Conn, cl Client, cancel context.CancelFunc) *conn {
 	c := &conn{
-		g: g, ws: ws, userID: cl.UserID, workspaceID: cl.WorkspaceID, recheck: cl.Recheck, cancel: cancel,
+		g: g, ws: ws, id: uuid.New(), userID: cl.UserID, workspaceID: cl.WorkspaceID, recheck: cl.Recheck, cancel: cancel,
 		live:     make(chan []byte, g.o.SendBuffer),
 		ctrl:     make(chan []byte),
 		resumeCh: make(chan int64, 1),
 		resyncCh: make(chan struct{}, 1),
 		kill:     make(chan struct{}),
+		tokens:   ClientMessageBurst,
 	}
 	role := cl.Role
 	c.role.Store(&role)
@@ -179,18 +189,103 @@ func (c *conn) readLoop(ctx context.Context) {
 			c.fail(CloseProtocolViolation, "text frames only")
 			continue
 		}
-		last, err := parseResume(b)
+		m, err := parseClientMessage(b)
 		if err != nil {
 			c.fail(CloseProtocolViolation, "invalid message")
 			continue
 		}
-		if c.resumed.Swap(true) {
-			c.fail(CloseProtocolViolation, "resume is accepted once")
+		if !c.allowMessage() {
+			c.fail(CloseProtocolViolation, "too many messages")
 			continue
 		}
-		c.resumeCh <- last // capacity 1 and accepted once: never blocks
+		switch m.Type {
+		case TypeResume:
+			if c.resumed.Swap(true) {
+				c.fail(CloseProtocolViolation, "resume is accepted once")
+				continue
+			}
+			c.resumeCh <- m.LastSeq // capacity 1 and accepted once: never blocks
+		case TypeTyping:
+			c.typing(ctx, m.ConversationID, m.Start)
+		case TypeViewing:
+			c.view(ctx, m.ConversationID, m.Start)
+		}
 	}
 }
+
+// allowMessage takes a token of the client's rate limit.
+func (c *conn) allowMessage() bool {
+	now := c.g.now()
+	if !c.lastRefill.IsZero() {
+		c.tokens = min(ClientMessageBurst, c.tokens+now.Sub(c.lastRefill).Seconds()*ClientMessageRate)
+	}
+	c.lastRefill = now
+	if c.tokens < 1 {
+		return false
+	}
+	c.tokens--
+	return true
+}
+
+// signalTimeout bounds one Redis round trip of a signal; a slow Redis
+// costs an indicator, not the reader.
+const signalTimeout = 2 * time.Second
+
+// typing relays the operator's typing. Roles that can neither reply nor
+// leave notes have nothing to type: their signals are ignored, as the
+// role may change while the connection is open.
+func (c *conn) typing(ctx context.Context, conversationID uuid.UUID, start bool) {
+	role := c.currentRole()
+	if !authz.Allowed(role, authz.ConversationsReply) && !authz.Allowed(role, authz.ConversationsNote) {
+		return
+	}
+	sctx, cancel := context.WithTimeout(ctx, signalTimeout)
+	defer cancel()
+	if err := c.g.signals.typing(sctx, c.workspaceID, c.userID, conversationID, start); err != nil && ctx.Err() == nil {
+		c.g.log.Warn("realtime typing signal failed", "workspace_id", c.workspaceID, "err", err)
+	}
+}
+
+// view records which conversation the connection has open. Starting
+// another one leaves the previous; a stop for another one is stale.
+func (c *conn) view(ctx context.Context, conversationID uuid.UUID, start bool) {
+	if !authz.Allowed(c.currentRole(), authz.ConversationsView) {
+		return
+	}
+	switch {
+	case start && c.viewing != uuid.Nil && c.viewing != conversationID:
+		c.leaveViewing(ctx)
+	case !start && c.viewing != conversationID:
+		return
+	}
+	sctx, cancel := context.WithTimeout(ctx, signalTimeout)
+	defer cancel()
+	if err := c.g.signals.viewing(sctx, c.workspaceID, conversationID, c.viewerMember(), start); err != nil && ctx.Err() == nil {
+		c.g.log.Warn("realtime viewing signal failed", "workspace_id", c.workspaceID, "err", err)
+	}
+	if start {
+		c.viewing = conversationID
+	} else {
+		c.viewing = uuid.Nil
+	}
+}
+
+// leaveViewing removes the connection from the viewers of its open
+// conversation. It also runs after the connection has closed, so ctx may
+// already be cancelled: the removal gets a context of its own.
+func (c *conn) leaveViewing(ctx context.Context) {
+	if c.viewing == uuid.Nil {
+		return
+	}
+	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signalTimeout)
+	defer cancel()
+	if err := c.g.signals.viewing(sctx, c.workspaceID, c.viewing, c.viewerMember(), false); err != nil {
+		c.g.log.Warn("realtime viewing signal failed", "workspace_id", c.workspaceID, "err", err)
+	}
+	c.viewing = uuid.Nil
+}
+
+func (c *conn) viewerMember() string { return c.userID.String() + "/" + c.id.String() }
 
 // watchLoop keeps the connection honest: a heartbeat for the client, a
 // ping for the server (a dead peer does not answer), and a session

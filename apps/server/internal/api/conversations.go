@@ -56,6 +56,19 @@ func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, param
 	writeJSON(w, http.StatusOK, body)
 }
 
+func (s *server) GetInboxCounts(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	if !ok {
+		return
+	}
+	n, err := s.conversations.InboxCounts(r.Context(), p.WorkspaceID, p.UserID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, oapi.InboxCounts{Mine: n.Mine, Unassigned: n.Unassigned, Open: n.Open})
+}
+
 func (s *server) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	p, err := authz.Require(r.Context(), authz.ConversationsCreate)
 	if err != nil {
@@ -390,6 +403,17 @@ func conversationBody(c conversations.Conversation) oapi.Conversation {
 		Contact: oapi.ContactRef{Id: c.ContactID, Name: c.ContactName}, AssigneeId: c.AssigneeID, ChannelId: c.ChannelID,
 		Subject: c.Subject, FirstResponseAt: c.FirstResponseAt, LastMessageAt: c.LastMessageAt,
 		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, Version: c.Version, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		LastMessage: previewBody(c.LastMessage),
+	}
+}
+
+func previewBody(p *conversations.Preview) *oapi.ConversationPreview {
+	if p == nil {
+		return nil
+	}
+	return &oapi.ConversationPreview{
+		SenderType: oapi.ConversationPreviewSenderType(p.SenderType), Kind: oapi.ConversationPreviewKind(p.Kind),
+		Text: p.Text, Attachments: p.Attachments, CreatedAt: p.CreatedAt,
 	}
 }
 

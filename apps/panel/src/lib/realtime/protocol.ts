@@ -22,6 +22,9 @@ export const CLOSE_CODES = {
 
 export const CONTROL_TYPES = ["hello", "heartbeat", "resumed", "resync_required"] as const;
 
+/** Ephemeral signals: no seq, never replayed, not deduplicated (docs/02 §10.5). */
+export const SIGNAL_TYPES = ["conversation.typing", "conversation.viewers"] as const;
+
 /** Domain events the server sends today ($defs/messageType minus control messages). */
 export const EVENT_TYPES = [
   "conversation.created",
@@ -49,6 +52,20 @@ const heartbeat = envelope.extend({ type: z.literal("heartbeat"), data: z.object
 const resumed = envelope.extend({ type: z.literal("resumed"), data: seqData });
 const resyncRequired = envelope.extend({ type: z.literal("resync_required"), data: seqData });
 
+const typing = envelope.extend({
+  type: z.literal("conversation.typing"),
+  data: z.object({
+    conversation_id: z.string(),
+    actor: z.enum(["operator", "contact", "bot"]),
+    actor_id: z.string().nullable(),
+    state: z.enum(["start", "stop"]),
+  }),
+});
+const viewers = envelope.extend({
+  type: z.literal("conversation.viewers"),
+  data: z.object({ conversation_id: z.string(), user_ids: z.array(z.string()) }),
+});
+
 /**
  * A domain event. Types the panel does not know yet are still events: a new event type is not
  * a breaking change (docs/00 §8), so they advance the cursor and are otherwise ignored.
@@ -59,10 +76,11 @@ const event = envelope.extend({
   data: z.record(z.string(), z.unknown()),
 });
 
-export const serverMessageSchema = z.union([hello, heartbeat, resumed, resyncRequired, event]);
+export const serverMessageSchema = z.union([hello, heartbeat, resumed, resyncRequired, typing, viewers, event]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type RealtimeEvent = z.infer<typeof event>;
+export type RealtimeSignal = z.infer<typeof typing> | z.infer<typeof viewers>;
 
 /** Parses one text frame; undefined for anything outside the contract. */
 export function parseServerMessage(raw: unknown): ServerMessage | undefined {
@@ -77,13 +95,28 @@ export function parseServerMessage(raw: unknown): ServerMessage | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-export function isEvent(message: ServerMessage): message is RealtimeEvent {
-  return !(CONTROL_TYPES as readonly string[]).includes(message.type);
+export function isSignal(message: ServerMessage): message is RealtimeSignal {
+  return (SIGNAL_TYPES as readonly string[]).includes(message.type);
 }
 
-/** The only client message (client-message.schema.json). */
+export function isEvent(message: ServerMessage): message is RealtimeEvent {
+  return "seq" in message && !(CONTROL_TYPES as readonly string[]).includes(message.type);
+}
+
+/** Client messages (client-message.schema.json). */
 export function resumeMessage(lastSeq: number, id: string, now: Date): string {
   return JSON.stringify({ type: "resume", id, ts: now.toISOString(), data: { last_seq: lastSeq } });
+}
+
+/** typing or viewing of one conversation: start (repeated while it lasts) or stop. */
+export function signalMessage(
+  type: "typing" | "viewing",
+  conversationId: string,
+  state: "start" | "stop",
+  id: string,
+  now: Date,
+): string {
+  return JSON.stringify({ type, id, ts: now.toISOString(), data: { conversation_id: conversationId, state } });
 }
 
 /** ws(s)://host/api/v1/realtime for a page served from origin. */

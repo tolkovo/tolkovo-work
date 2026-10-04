@@ -1,10 +1,11 @@
-import type { Session } from "@tolkovo/api-client";
+import type { ApiClient, Session } from "@tolkovo/api-client";
 import { queryKeys } from "@tolkovo/api-client/react";
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConnectionOptions } from "./connection";
-import { bindRealtime, queryKeysForEvent } from "./session-binding";
+import { bindRealtime } from "./session-binding";
+import { SignalSender, useSignalStore } from "./signals";
 
 function session(userId: string, workspaceId: string): Session {
   return {
@@ -16,14 +17,23 @@ function session(userId: string, workspaceId: string): Session {
   } as unknown as Session;
 }
 
+type FakeConnection = {
+  options: ConnectionOptions;
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+};
+
 function setup() {
   const queryClient = new QueryClient();
-  const connections: { options: ConnectionOptions; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[] =
-    [];
+  const connections: FakeConnection[] = [];
+  const sender = new SignalSender({ setInterval: () => 0, clearInterval: () => undefined });
   const unbind = bindRealtime(queryClient, {
     url: "ws://panel.test/api/v1/realtime",
+    api: {} as ApiClient,
+    sender,
     createConnection: (options) => {
-      const c = { options, start: vi.fn(), stop: vi.fn() };
+      const c = { options, start: vi.fn(), stop: vi.fn(), send: vi.fn(() => true) };
       connections.push(c);
       return c;
     },
@@ -33,10 +43,8 @@ function setup() {
     if (!c) throw new Error("no connection");
     return c;
   };
-  return { queryClient, connections, current, unbind };
+  return { queryClient, connections, current, unbind, sender };
 }
-
-const event = (type: string) => ({ type, id: "1", ts: "2026-10-04T12:00:00Z", seq: 1, data: {} });
 
 describe("bindRealtime", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -63,26 +71,45 @@ describe("bindRealtime", () => {
     unbind();
   });
 
-  it("invalidates conversation and contact queries in one batch per burst", async () => {
+  it("refetches realtime-backed queries on resync, in one batch", async () => {
     const { queryClient, current, unbind } = setup();
     queryClient.setQueryData(queryKeys.session, session("u1", "w1"));
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-
-    const { handlers } = current().options;
-    handlers.onEvent(event("message.created"));
-    handlers.onEvent(event("conversation.assigned"));
-    handlers.onEvent(event("contact.updated"));
+    current().options.handlers.onResync();
+    current().options.handlers.onResync();
     expect(invalidate).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(50);
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
       queryKeys.conversations,
       queryKeys.contacts,
     ]);
+    unbind();
+  });
 
-    invalidate.mockClear();
-    handlers.onResync();
-    await vi.advanceTimersByTimeAsync(50);
-    expect(invalidate).toHaveBeenCalledTimes(2);
+  it("stores signals, sends the open conversation again on reconnect and forgets both with the session", () => {
+    const { queryClient, current, sender, unbind } = setup();
+    queryClient.setQueryData(queryKeys.session, session("u1", "w1"));
+    const { handlers } = current().options;
+    handlers.onSignal?.({
+      type: "conversation.viewers",
+      id: "v",
+      ts: "2026-10-04T12:00:00Z",
+      data: { conversation_id: "c1", user_ids: ["u2"] },
+    });
+    expect(useSignalStore.getState().viewers.c1).toEqual(["u2"]);
+
+    sender.view("c1");
+    expect(current().send).toHaveBeenCalledTimes(1);
+    handlers.onReady?.();
+    expect(current().send).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(current().send.mock.calls[1]?.[0] as string)).toMatchObject({
+      type: "viewing",
+      data: { conversation_id: "c1", state: "start" },
+    });
+
+    queryClient.setQueryData(queryKeys.session, null);
+    expect(useSignalStore.getState().viewers).toEqual({});
+    sender.view(null);
     unbind();
   });
 
@@ -100,16 +127,5 @@ describe("bindRealtime", () => {
     queryClient.setQueryData(queryKeys.session, session("u1", "w1"));
     unbind();
     expect(current().stop).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("queryKeysForEvent", () => {
-  it.each([
-    ["conversation.created", [queryKeys.conversations]],
-    ["message.created", [queryKeys.conversations]],
-    ["contact.updated", [queryKeys.contacts, queryKeys.conversations]],
-    ["sla.breached", []],
-  ])("%s", (type, keys) => {
-    expect(queryKeysForEvent(type)).toEqual(keys);
   });
 });

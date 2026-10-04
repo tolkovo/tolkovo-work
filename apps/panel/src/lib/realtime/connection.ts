@@ -1,9 +1,11 @@
 import {
   CLOSE_CODES,
   isEvent,
+  isSignal,
   parseServerMessage,
   resumeMessage,
   type RealtimeEvent,
+  type RealtimeSignal,
   type ServerMessage,
 } from "./protocol";
 
@@ -24,6 +26,10 @@ export type RealtimeHandlers = {
   onResync: () => void;
   /** The server closed with 4401: the session is over. No reconnects until restarted. */
   onSessionEnded: () => void;
+  /** An ephemeral signal (typing, viewers); may repeat, never replayed. */
+  onSignal?: (signal: RealtimeSignal) => void;
+  /** hello arrived: the connection takes client messages. Signals state lives per connection, so re-send it. */
+  onReady?: () => void;
 };
 
 export type ConnectionOptions = {
@@ -65,6 +71,8 @@ export class RealtimeConnection {
   private heartbeatMs = DEFAULT_HEARTBEAT_MS;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private watchdog: ReturnType<typeof setTimeout> | undefined;
+  /** hello seen on the current socket: client messages may go out. */
+  private ready = false;
 
   constructor({ handlers, ...options }: ConnectionOptions) {
     this.handlers = handlers;
@@ -83,6 +91,16 @@ export class RealtimeConnection {
     if (this.running) return;
     this.running = true;
     this.connect();
+  }
+
+  /**
+   * Sends a client message (signalMessage) if the connection is up; false otherwise. Signals are
+   * not queued: a stale "typing" is worse than none, and onReady re-sends what still holds.
+   */
+  send(message: string): boolean {
+    if (!this.ready || !this.socket) return false;
+    this.socket.send(message);
+    return true;
   }
 
   stop(): void {
@@ -111,6 +129,7 @@ export class RealtimeConnection {
   private detach(): WebSocketLike | null {
     const socket = this.socket;
     this.socket = null;
+    this.ready = false;
     if (socket) socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
     return socket;
   }
@@ -122,6 +141,10 @@ export class RealtimeConnection {
   }
 
   private handle(message: ServerMessage): void {
+    if (isSignal(message)) {
+      this.handlers.onSignal?.(message);
+      return;
+    }
     if (isEvent(message)) {
       this.advance(message.seq);
       if (this.seen.has(message.id)) return;
@@ -143,6 +166,8 @@ export class RealtimeConnection {
           this.pendingSeq = this.lastSeq;
           this.socket?.send(resumeMessage(this.lastSeq, this.o.newId(), this.o.now()));
         }
+        this.ready = true;
+        this.handlers.onReady?.();
         return;
       case "resumed":
         this.finishResume(message.data.seq);

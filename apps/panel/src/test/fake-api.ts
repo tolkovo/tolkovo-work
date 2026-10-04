@@ -44,6 +44,7 @@ export const deviceSessions: DeviceSession[] = [
 ];
 
 type Handler = (request: Request) => Response | Promise<Response>;
+export type FakeRoutes = Record<string, Handler>;
 
 export function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -70,6 +71,8 @@ export function fakeApi(
     "GET /members": () => json(200, { items: members }),
     "GET /me/sessions": () => json(200, { items: deviceSessions }),
     "GET /invitations": () => json(200, { items: [], email_enabled: true }),
+    "GET /conversations": () => json(200, { items: [], next_cursor: null }),
+    "GET /conversations/counts": () => json(200, { mine: 0, unassigned: 0, open: 0 }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {
       if (!session) return problem(401, "unauthenticated");

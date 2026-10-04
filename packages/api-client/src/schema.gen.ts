@@ -527,6 +527,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Counters of the inbox tabs for the caller
+         * @description Requires `conversations.view`.
+         */
+        get: operations["getInboxCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations/{id}": {
         parameters: {
             query?: never;
@@ -953,6 +973,35 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /**
+             * @description The newest message the customer could see, for the inbox list: internal notes and
+             *     system events are skipped. `null` until there is one.
+             */
+            last_message: components["schemas"]["ConversationPreview"] | null;
+        };
+        ConversationPreview: {
+            /** @enum {string} */
+            sender_type: "contact" | "operator" | "bot" | "system";
+            /** @enum {string} */
+            kind: "text" | "media";
+            /** @description The start of the message on one line; empty when it has only files. */
+            text: string;
+            /** @description Number of attached files. */
+            attachments: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @description Counters of the inbox tabs. `mine`: assigned to the caller, `assigned` or `pending`;
+         *     `unassigned`: `queued`; `open`: every status before `resolved`.
+         */
+        InboxCounts: {
+            /** Format: int64 */
+            mine: number;
+            /** Format: int64 */
+            unassigned: number;
+            /** Format: int64 */
+            open: number;
         };
         ConversationPage: {
             items: components["schemas"]["Conversation"][];
@@ -1988,6 +2037,28 @@ export interface operations {
                 };
             };
             400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getInboxCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxCounts"];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
         };

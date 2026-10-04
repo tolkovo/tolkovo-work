@@ -752,6 +752,21 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /conversations/counts:
+    get:
+      tags: [conversations]
+      operationId: getInboxCounts
+      summary: Counters of the inbox tabs for the caller
+      description: Requires `conversations.view`.
+      responses:
+        '200':
+          description: The counters.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboxCounts' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /conversations/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -1455,7 +1470,8 @@ components:
     Conversation:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
-                 first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at]
+                 first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at,
+                 last_message]
       properties:
         id:
           type: string
@@ -1485,6 +1501,37 @@ components:
           description: Bumps on every change; send it back to detect concurrent edits.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        last_message:
+          description: |
+            The newest message the customer could see, for the inbox list: internal notes and
+            system events are skipped. `null` until there is one.
+          oneOf:
+            - $ref: '#/components/schemas/ConversationPreview'
+            - type: 'null'
+
+    ConversationPreview:
+      type: object
+      required: [sender_type, kind, text, attachments, created_at]
+      properties:
+        sender_type: { type: string, enum: [contact, operator, bot, system] }
+        kind: { type: string, enum: [text, media] }
+        text:
+          type: string
+          maxLength: 200
+          description: The start of the message on one line; empty when it has only files.
+        attachments: { type: integer, minimum: 0, description: Number of attached files. }
+        created_at: { type: string, format: date-time }
+
+    InboxCounts:
+      type: object
+      description: |
+        Counters of the inbox tabs. `mine`: assigned to the caller, `assigned` or `pending`;
+        `unassigned`: `queued`; `open`: every status before `resolved`.
+      required: [mine, unassigned, open]
+      properties:
+        mine: { type: integer, format: int64, minimum: 0 }
+        unassigned: { type: integer, format: int64, minimum: 0 }
+        open: { type: integer, format: int64, minimum: 0 }
 
     ConversationPage:
       type: object

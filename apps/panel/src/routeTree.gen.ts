@@ -25,6 +25,8 @@ import { Route as AuthRegisterRouteImport } from "./routes/_auth/register"
 import { Route as LinkInviteRouteImport } from "./routes/_link/invite"
 import { Route as LinkResetPasswordRouteImport } from "./routes/_link/reset-password"
 import { Route as LinkVerifyEmailRouteImport } from "./routes/_link/verify-email"
+import { Route as AppInboxIndexRouteImport } from "./routes/_app/inbox/index"
+import { Route as AppInboxConversationIdRouteImport } from "./routes/_app/inbox/$conversationId"
 import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
 import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
@@ -109,6 +111,16 @@ const LinkVerifyEmailRoute = LinkVerifyEmailRouteImport.update({
   path: "/verify-email",
   getParentRoute: () => LinkRoute,
 } as any)
+const AppInboxIndexRoute = AppInboxIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => AppInboxRoute,
+} as any)
+const AppInboxConversationIdRoute = AppInboxConversationIdRouteImport.update({
+  id: "/$conversationId",
+  path: "/$conversationId",
+  getParentRoute: () => AppInboxRoute,
+} as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: "/",
   path: "/",
@@ -143,7 +155,7 @@ const AppSettingsTeamRoute = AppSettingsTeamRouteImport.update({
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
   "/analytics": typeof AppAnalyticsRoute
-  "/inbox": typeof AppInboxRoute
+  "/inbox": typeof AppInboxRouteWithChildren
   "/kb": typeof AppKbRoute
   "/monitor": typeof AppMonitorRoute
   "/onboarding": typeof AppOnboardingRoute
@@ -154,17 +166,18 @@ export interface FileRoutesByFullPath {
   "/invite": typeof LinkInviteRoute
   "/reset-password": typeof LinkResetPasswordRoute
   "/verify-email": typeof LinkVerifyEmailRoute
+  "/inbox/$conversationId": typeof AppInboxConversationIdRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/profile": typeof AppSettingsProfileRoute
   "/settings/security": typeof AppSettingsSecurityRoute
   "/settings/team": typeof AppSettingsTeamRoute
+  "/inbox/": typeof AppInboxIndexRoute
   "/settings/": typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/analytics": typeof AppAnalyticsRoute
-  "/inbox": typeof AppInboxRoute
   "/kb": typeof AppKbRoute
   "/monitor": typeof AppMonitorRoute
   "/onboarding": typeof AppOnboardingRoute
@@ -174,11 +187,13 @@ export interface FileRoutesByTo {
   "/invite": typeof LinkInviteRoute
   "/reset-password": typeof LinkResetPasswordRoute
   "/verify-email": typeof LinkVerifyEmailRoute
+  "/inbox/$conversationId": typeof AppInboxConversationIdRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/profile": typeof AppSettingsProfileRoute
   "/settings/security": typeof AppSettingsSecurityRoute
   "/settings/team": typeof AppSettingsTeamRoute
+  "/inbox": typeof AppInboxIndexRoute
   "/settings": typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -188,7 +203,7 @@ export interface FileRoutesById {
   "/_auth": typeof AuthRouteWithChildren
   "/_link": typeof LinkRouteWithChildren
   "/_app/analytics": typeof AppAnalyticsRoute
-  "/_app/inbox": typeof AppInboxRoute
+  "/_app/inbox": typeof AppInboxRouteWithChildren
   "/_app/kb": typeof AppKbRoute
   "/_app/monitor": typeof AppMonitorRoute
   "/_app/onboarding": typeof AppOnboardingRoute
@@ -199,11 +214,13 @@ export interface FileRoutesById {
   "/_link/invite": typeof LinkInviteRoute
   "/_link/reset-password": typeof LinkResetPasswordRoute
   "/_link/verify-email": typeof LinkVerifyEmailRoute
+  "/_app/inbox/$conversationId": typeof AppInboxConversationIdRoute
   "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
   "/_app/settings/profile": typeof AppSettingsProfileRoute
   "/_app/settings/security": typeof AppSettingsSecurityRoute
   "/_app/settings/team": typeof AppSettingsTeamRoute
+  "/_app/inbox/": typeof AppInboxIndexRoute
   "/_app/settings/": typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -222,17 +239,18 @@ export interface FileRouteTypes {
     | "/invite"
     | "/reset-password"
     | "/verify-email"
+    | "/inbox/$conversationId"
     | "/settings/appearance"
     | "/settings/general"
     | "/settings/profile"
     | "/settings/security"
     | "/settings/team"
+    | "/inbox/"
     | "/settings/"
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
     | "/analytics"
-    | "/inbox"
     | "/kb"
     | "/monitor"
     | "/onboarding"
@@ -242,11 +260,13 @@ export interface FileRouteTypes {
     | "/invite"
     | "/reset-password"
     | "/verify-email"
+    | "/inbox/$conversationId"
     | "/settings/appearance"
     | "/settings/general"
     | "/settings/profile"
     | "/settings/security"
     | "/settings/team"
+    | "/inbox"
     | "/settings"
   id:
     | "__root__"
@@ -266,11 +286,13 @@ export interface FileRouteTypes {
     | "/_link/invite"
     | "/_link/reset-password"
     | "/_link/verify-email"
+    | "/_app/inbox/$conversationId"
     | "/_app/settings/appearance"
     | "/_app/settings/general"
     | "/_app/settings/profile"
     | "/_app/settings/security"
     | "/_app/settings/team"
+    | "/_app/inbox/"
     | "/_app/settings/"
   fileRoutesById: FileRoutesById
 }
@@ -395,6 +417,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof LinkVerifyEmailRouteImport
       parentRoute: typeof LinkRoute
     }
+    "/_app/inbox/": {
+      id: "/_app/inbox/"
+      path: "/"
+      fullPath: "/inbox/"
+      preLoaderRoute: typeof AppInboxIndexRouteImport
+      parentRoute: typeof AppInboxRoute
+    }
+    "/_app/inbox/$conversationId": {
+      id: "/_app/inbox/$conversationId"
+      path: "/$conversationId"
+      fullPath: "/inbox/$conversationId"
+      preLoaderRoute: typeof AppInboxConversationIdRouteImport
+      parentRoute: typeof AppInboxRoute
+    }
     "/_app/settings/": {
       id: "/_app/settings/"
       path: "/"
@@ -440,6 +476,20 @@ declare module "@tanstack/react-router" {
   }
 }
 
+interface AppInboxRouteChildren {
+  AppInboxConversationIdRoute: typeof AppInboxConversationIdRoute
+  AppInboxIndexRoute: typeof AppInboxIndexRoute
+}
+
+const AppInboxRouteChildren: AppInboxRouteChildren = {
+  AppInboxConversationIdRoute: AppInboxConversationIdRoute,
+  AppInboxIndexRoute: AppInboxIndexRoute,
+}
+
+const AppInboxRouteWithChildren = AppInboxRoute._addFileChildren(
+  AppInboxRouteChildren,
+)
+
 interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
@@ -464,7 +514,7 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
-  AppInboxRoute: typeof AppInboxRoute
+  AppInboxRoute: typeof AppInboxRouteWithChildren
   AppKbRoute: typeof AppKbRoute
   AppMonitorRoute: typeof AppMonitorRoute
   AppOnboardingRoute: typeof AppOnboardingRoute
@@ -473,7 +523,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
-  AppInboxRoute: AppInboxRoute,
+  AppInboxRoute: AppInboxRouteWithChildren,
   AppKbRoute: AppKbRoute,
   AppMonitorRoute: AppMonitorRoute,
   AppOnboardingRoute: AppOnboardingRoute,

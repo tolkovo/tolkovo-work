@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -452,6 +453,7 @@ func TestGateway_ClosesOnProtocolViolation(t *testing.T) {
 		"unknown type":  {`{"type":"subscribe","id":"1","ts":"2026-10-04T12:00:00Z","data":{}}`},
 		"second resume": {resumeMsg(0), resumeMsg(0)},
 		"too big":       {resumeMsg(0)[:1] + strings.Repeat(" ", MaxClientMessageBytes) + resumeMsg(0)[1:]},
+		"flood":         slices.Repeat([]string{signalMsg(TypeTyping, uuid.New(), StateStop)}, ClientMessageBurst+5),
 	} {
 		c := r.dial(a, uuid.New(), authz.RoleOperator)
 		c.hello()
@@ -481,5 +483,108 @@ func TestGateway_ShutdownAsksClientsToReconnect(t *testing.T) {
 	}
 	if _, status, err := r.rawDial(a, uuid.New(), authz.RoleOperator, r.srv.URL); err == nil || status != http.StatusServiceUnavailable {
 		t.Fatalf("after shutdown: want 503, got %d %v", status, err)
+	}
+}
+
+func signalMsg(typ string, conversationID uuid.UUID, state string) string {
+	b, _ := json.Marshal(map[string]any{
+		"type": typ, "id": uuid.NewString(), "ts": time.Now().UTC().Format(time.RFC3339Nano),
+		"data": map[string]any{"conversation_id": conversationID, "state": state},
+	})
+	return string(b)
+}
+
+type viewersWire struct {
+	ConversationID uuid.UUID   `json:"conversation_id"`
+	UserIDs        []uuid.UUID `json:"user_ids"`
+}
+
+// viewers waits for the next conversation.viewers.
+func (c *wsClient) viewers() viewersWire {
+	c.t.Helper()
+	m := c.next()
+	if m.Type != TypeConversationViewers {
+		c.t.Fatalf("want %s, got %s", TypeConversationViewers, m.Type)
+	}
+	var v viewersWire
+	if err := json.Unmarshal(m.Data, &v); err != nil {
+		c.t.Fatal(err)
+	}
+	return v
+}
+
+func sortedIDs(ids ...uuid.UUID) []uuid.UUID {
+	out := slices.Clone(ids)
+	slices.SortFunc(out, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	return out
+}
+
+func TestGateway_RelaysTypingAndViewersWithinTheWorkspace(t *testing.T) {
+	r := newRig(t, Options{})
+	a, b := r.workspace(), r.workspace()
+	alice, bob, conv := uuid.New(), uuid.New(), uuid.New()
+	tab1, tab2 := r.dial(a, alice, authz.RoleOperator), r.dial(a, alice, authz.RoleOperator)
+	bobc := r.dial(a, bob, authz.RoleAdmin)
+	foreign := r.dial(b, uuid.New(), authz.RoleOperator)
+	blind := r.dial(a, uuid.New(), "nobody")
+	for _, c := range []*wsClient{tab1, tab2, bobc, foreign, blind} {
+		c.hello()
+	}
+	expect := func(want []uuid.UUID, clients ...*wsClient) {
+		t.Helper()
+		for _, c := range clients {
+			if v := c.viewers(); v.ConversationID != conv || !slices.Equal(v.UserIDs, want) {
+				t.Fatalf("viewers: got %v of %s, want %v", v.UserIDs, v.ConversationID, want)
+			}
+		}
+	}
+
+	tab1.send(signalMsg(TypeViewing, conv, StateStart))
+	expect([]uuid.UUID{alice}, tab1, tab2, bobc)
+	bobc.send(signalMsg(TypeViewing, conv, StateStart))
+	expect(sortedIDs(alice, bob), tab1, tab2, bobc)
+	// A second tab of the same user is one viewer.
+	tab2.send(signalMsg(TypeViewing, conv, StateStart))
+	expect(sortedIDs(alice, bob), tab1, tab2, bobc)
+
+	// Closing one tab keeps alice listed through the other.
+	_ = tab1.ws.Close(websocket.StatusNormalClosure, "bye")
+	expect(sortedIDs(alice, bob), tab2, bobc)
+	// Opening another conversation leaves this one.
+	tab2.send(signalMsg(TypeViewing, uuid.New(), StateStart))
+	expect([]uuid.UUID{bob}, bobc)
+	if v := tab2.viewers(); v.ConversationID != conv || !slices.Equal(v.UserIDs, []uuid.UUID{bob}) {
+		t.Fatalf("tab2 sees the old conversation without it first: %+v", v)
+	}
+	if v := tab2.viewers(); v.ConversationID == conv || !slices.Equal(v.UserIDs, []uuid.UUID{alice}) {
+		t.Fatalf("then the new one with alice: %+v", v)
+	}
+	_ = bobc.viewers() // the same new list
+
+	bobc.send(signalMsg(TypeTyping, conv, StateStart))
+	m := tab2.next()
+	var typing typingData
+	_ = json.Unmarshal(m.Data, &typing)
+	if m.Type != TypeConversationTyping || typing.ConversationID != conv || typing.Actor != "operator" ||
+		typing.ActorID == nil || *typing.ActorID != bob || typing.State != StateStart || m.Seq != 0 {
+		t.Fatalf("typing: %s %+v seq=%d", m.Type, typing, m.Seq)
+	}
+	_ = bobc.next() // its own signal comes back too; the panel hides it
+
+	// A role without permissions neither sends nor receives signals.
+	blind.send(signalMsg(TypeTyping, conv, StateStart))
+	blind.send(signalMsg(TypeViewing, conv, StateStart))
+	// The connection closing ends bob's viewing.
+	_ = bobc.ws.Close(websocket.StatusNormalClosure, "bye")
+	if v := tab2.viewers(); v.ConversationID != conv || len(v.UserIDs) != 0 {
+		t.Fatalf("bob left: %+v", v)
+	}
+	for _, c := range []*wsClient{foreign, blind} {
+		if m, err := c.read(300 * time.Millisecond); err == nil {
+			t.Fatalf("got a signal it must not see: %s %s", m.Type, m.Data)
+		}
+	}
+	if m, err := tab2.read(300 * time.Millisecond); err == nil {
+		t.Fatalf("signals of a role without permissions must be dropped, got %s %s", m.Type, m.Data)
 	}
 }

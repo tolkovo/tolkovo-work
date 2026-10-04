@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tolkovo.dev/schemas/ws/client-message.schema.json",
   "title": "Tolkovo realtime: client → server message",
-  "description": "One JSON text frame from a panel client, at most 1024 bytes. Mutations go over REST (docs/02 §10.2); the socket only resumes the event stream. resume is accepted once per connection, right after hello; anything else closes the connection with 1008.",
-  "oneOf": [{ "$ref": "#/$defs/resume" }],
+  "description": "One JSON text frame from a panel client, at most 1024 bytes. Mutations go over REST (docs/02 §10.2); the socket resumes the event stream and carries ephemeral signals: typing and who has a conversation open. resume is accepted once per connection, right after hello. At most 20 messages in a burst, then 2 per second. Anything else closes the connection with 1008.",
+  "oneOf": [{ "$ref": "#/$defs/resume" }, { "$ref": "#/$defs/typing" }, { "$ref": "#/$defs/viewing" }],
   "$defs": {
     "resume": {
       "description": "Replay the events of the workspace after last_seq that this connection may see, then resumed (or resync_required).",
@@ -20,6 +20,41 @@
             "last_seq": { "type": "integer", "minimum": 0 }
           }
         }
+      }
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "signalData": {
+      "type": "object",
+      "required": ["conversation_id", "state"],
+      "properties": {
+        "conversation_id": { "$ref": "#/$defs/uuid" },
+        "state": { "enum": ["start", "stop"] }
+      }
+    },
+    "typing": {
+      "description": "The operator is typing in a conversation (start, repeated at most every 3 s while typing) or stopped. Needs conversations.reply or conversations.note, otherwise ignored. The server relays it to the workspace as conversation.typing and stores nothing.",
+      "type": "object",
+      "required": ["type", "id", "ts", "data"],
+      "properties": {
+        "type": { "const": "typing" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "ts": { "type": "string", "format": "date-time" },
+        "data": { "$ref": "#/$defs/signalData" }
+      }
+    },
+    "viewing": {
+      "description": "The operator has the conversation open (start, repeated every 20 s while it stays open) or closed it (stop). One conversation per connection: start for another one replaces it. The server forgets a viewer 45 s after the last start or when the connection closes and relays the full list as conversation.viewers. Needs conversations.view, otherwise ignored.",
+      "type": "object",
+      "required": ["type", "id", "ts", "data"],
+      "properties": {
+        "type": { "const": "viewing" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "ts": { "type": "string", "format": "date-time" },
+        "data": { "$ref": "#/$defs/signalData" }
       }
     }
   }

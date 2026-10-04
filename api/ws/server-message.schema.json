@@ -2,12 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tolkovo.dev/schemas/ws/server-message.schema.json",
   "title": "Tolkovo realtime: server → client message",
-  "description": "One JSON text frame from the realtime gateway (GET /api/v1/realtime, docs/02 §10, ADR-0005). Every message is {type, id, ts, data}. Domain events also carry seq, the publication order a client resumes from after a reconnect; seq may have gaps and events may arrive more than once, so clients deduplicate by id. A new field in data is not a breaking change; removing or renaming one is (docs/00 §8).",
+  "description": "One JSON text frame from the realtime gateway (GET /api/v1/realtime, docs/02 §10, ADR-0005). Every message is {type, id, ts, data}. Domain events also carry seq, the publication order a client resumes from after a reconnect; seq may have gaps and events may arrive more than once, so clients deduplicate by id. Signals (conversation.typing, conversation.viewers) are ephemeral: no seq, never replayed, not deduplicated. A new field in data is not a breaking change; removing or renaming one is (docs/00 §8).",
   "oneOf": [
     { "$ref": "#/$defs/hello" },
     { "$ref": "#/$defs/heartbeat" },
     { "$ref": "#/$defs/resumed" },
     { "$ref": "#/$defs/resyncRequired" },
+    { "$ref": "#/$defs/conversationTyping" },
+    { "$ref": "#/$defs/conversationViewers" },
     { "$ref": "#/$defs/conversationCreated" },
     { "$ref": "#/$defs/conversationStatusChanged" },
     { "$ref": "#/$defs/conversationAssigned" },
@@ -17,12 +19,14 @@
   ],
   "$defs": {
     "messageType": {
-      "description": "Every server message type. Control messages have no dot; domain events are outbox topics.",
+      "description": "Every server message type. Control messages have no dot; domain events are outbox topics; conversation.typing and conversation.viewers are signals.",
       "enum": [
         "hello",
         "heartbeat",
         "resumed",
         "resync_required",
+        "conversation.typing",
+        "conversation.viewers",
         "conversation.created",
         "conversation.status_changed",
         "conversation.assigned",
@@ -127,6 +131,38 @@
           "type": "object",
           "required": ["seq"],
           "properties": { "seq": { "$ref": "#/$defs/seq" } }
+        }
+      }
+    },
+    "conversationTyping": {
+      "description": "Signal: someone is typing in a conversation or stopped. Show it for at most 6 s after the last start; a stop or a new message from the same actor ends it earlier.",
+      "allOf": [{ "$ref": "#/$defs/control" }],
+      "properties": {
+        "type": { "const": "conversation.typing" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "actor", "actor_id", "state"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "actor": { "enum": ["operator", "contact", "bot"] },
+            "actor_id": { "$ref": "#/$defs/nullableUuid" },
+            "state": { "enum": ["start", "stop"] }
+          }
+        }
+      }
+    },
+    "conversationViewers": {
+      "description": "Signal: every member who has the conversation open, sent when the list changes and when a viewer refreshes. It replaces the previous list; a list not refreshed for 60 s is stale. The receiver's own id may be in it.",
+      "allOf": [{ "$ref": "#/$defs/control" }],
+      "properties": {
+        "type": { "const": "conversation.viewers" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "user_ids"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "user_ids": { "type": "array", "items": { "$ref": "#/$defs/uuid" }, "uniqueItems": true }
+          }
         }
       }
     },

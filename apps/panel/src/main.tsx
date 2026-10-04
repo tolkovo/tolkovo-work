@@ -22,7 +22,7 @@ const queryClient = createQueryClient();
 const api = createPanelApiClient(queryClient);
 const router = createAppRouter({ queryClient, api });
 // Live updates for the signed-in session; lives as long as the page.
-bindRealtime(queryClient, { url: realtimeUrl(window.location.origin) });
+bindRealtime(queryClient, { url: realtimeUrl(window.location.origin), api });
 
 createRoot(rootElement).render(
   <StrictMode>

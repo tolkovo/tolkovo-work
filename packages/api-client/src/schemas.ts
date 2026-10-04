@@ -109,3 +109,81 @@ export const invitationPreviewSchema = z.object({
   expires_at: z.string(),
   account_exists: z.boolean(),
 }) satisfies z.ZodType<Schemas["InvitationPreview"]>;
+
+export const conversationStatusSchema = z.enum([
+  "new",
+  "bot",
+  "queued",
+  "assigned",
+  "pending",
+  "resolved",
+  "closed",
+]) satisfies z.ZodType<Schemas["ConversationStatus"]>;
+
+const senderTypeSchema = z.enum(["contact", "operator", "bot", "system"]);
+
+export const conversationPreviewSchema = z.object({
+  sender_type: senderTypeSchema,
+  kind: z.enum(["text", "media"]),
+  text: z.string(),
+  attachments: z.number(),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["ConversationPreview"]>;
+
+export const conversationSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  status: conversationStatusSchema,
+  priority: z.number(),
+  line_level: z.number(),
+  contact: z.object({ id: z.string(), name: z.string() }) satisfies z.ZodType<Schemas["ContactRef"]>,
+  assignee_id: z.string().nullable(),
+  channel_id: z.string().nullable(),
+  subject: z.string().nullable(),
+  first_response_at: z.string().nullable(),
+  last_message_at: z.string(),
+  resolved_at: z.string().nullable(),
+  closed_at: z.string().nullable(),
+  version: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  last_message: conversationPreviewSchema.nullable(),
+}) satisfies z.ZodType<Schemas["Conversation"]>;
+
+export const conversationPageSchema = z.object({
+  items: z.array(conversationSchema),
+  next_cursor: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["ConversationPage"]>;
+
+export const inboxCountsSchema = z.object({
+  mine: z.number(),
+  unassigned: z.number(),
+  open: z.number(),
+}) satisfies z.ZodType<Schemas["InboxCounts"]>;
+
+export const attachmentSchema = z.object({
+  id: z.string(),
+  file_name: z.string(),
+  content_type: z.string(),
+  size: z.number(),
+  status: z.enum(["uploading", "scanning", "ready", "rejected", "expired"]),
+}) satisfies z.ZodType<Schemas["Attachment"]>;
+
+export const messageSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  direction: z.enum(["in", "out"]),
+  sender_type: senderTypeSchema,
+  sender_id: z.string().nullable(),
+  kind: z.enum(["text", "media", "note", "event"]),
+  body: z.string(),
+  is_private: z.boolean(),
+  delivery_status: z.string().nullable(),
+  attachments: z.array(attachmentSchema),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["Message"]>;
+
+export const messagePageSchema = z.object({
+  items: z.array(messageSchema),
+  next_cursor: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["MessagePage"]>;

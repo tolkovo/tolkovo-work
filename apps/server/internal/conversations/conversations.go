@@ -34,6 +34,25 @@ type Conversation struct {
 	Version         int // bumps on every change; send it back to detect conflicts
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	// LastMessage is the newest message the customer could see (no notes,
+	// no system events): the inbox preview. Nil until there is one.
+	LastMessage *Preview
+}
+
+// Preview is a shortened message for the inbox list.
+type Preview struct {
+	SenderType  string
+	Kind        string
+	Text        string // up to 200 characters on one line; empty for files only
+	Attachments int
+	CreatedAt   time.Time
+}
+
+// InboxCounts are the counters of the inbox tabs for one operator.
+type InboxCounts struct {
+	Mine       int64 // assigned to the operator and not finished
+	Unassigned int64 // waiting in the queue
+	Open       int64 // every conversation not resolved or closed
 }
 
 // CreateConversationInput describes a conversation started from the panel
@@ -146,11 +165,27 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 	}
 	return paginate(rows, lim,
 		func(r store.ListConversationsRow) Conversation {
-			return conversationFrom(r.Conversation, r.ContactName)
+			c := conversationFrom(r.Conversation, r.ContactName)
+			c.LastMessage = previewFrom(r.LastSenderType, r.LastKind, r.LastBody, r.LastAttachments, r.LastCreatedAt)
+			return c
 		},
 		func(r store.ListConversationsRow) string {
 			return encodeTimeCursor(r.Conversation.LastMessageAt, r.Conversation.ID)
 		}), nil
+}
+
+// InboxCounts counts the conversations of the inbox tabs for userID.
+func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID) (InboxCounts, error) {
+	var out InboxCounts
+	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
+		row, err := q.CountInbox(ctx, store.CountInboxParams{WorkspaceID: workspaceID, UserID: &userID})
+		out = InboxCounts{Mine: row.Mine, Unassigned: row.Unassigned, Open: row.Open}
+		return err
+	})
+	if err != nil {
+		return InboxCounts{}, wrap(err, "count inbox")
+	}
+	return out, nil
 }
 
 // Transition changes the status along the state machine (docs/02 §8).
@@ -264,7 +299,21 @@ func getConversation(ctx context.Context, q *store.Queries, workspaceID, id uuid
 	if err != nil {
 		return Conversation{}, err
 	}
-	return conversationFrom(row.Conversation, row.ContactName), nil
+	c := conversationFrom(row.Conversation, row.ContactName)
+	c.LastMessage = previewFrom(row.LastSenderType, row.LastKind, row.LastBody, row.LastAttachments, row.LastCreatedAt)
+	return c, nil
+}
+
+// previewFrom builds the preview columns of a row; kind is empty when the
+// conversation has no visible message yet.
+func previewFrom(senderType, kind, body string, attachments int32, at time.Time) *Preview {
+	if kind == "" {
+		return nil
+	}
+	return &Preview{
+		SenderType: senderType, Kind: kind, Text: strings.Join(strings.Fields(body), " "),
+		Attachments: int(attachments), CreatedAt: at,
+	}
 }
 
 func isAssignee(st state, userID uuid.UUID) bool {

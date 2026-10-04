@@ -1,5 +1,7 @@
 import {
+  infiniteQueryOptions,
   queryOptions,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -12,8 +14,12 @@ import {
   acceptInvitation,
   changePassword,
   createInvitation,
+  fetchConversation,
+  fetchConversations,
+  fetchInboxCounts,
   fetchInvitations,
   fetchMembers,
+  fetchMessages,
   fetchMySessions,
   fetchMyWorkspaces,
   fetchSession,
@@ -35,6 +41,7 @@ import {
   verifyEmail,
   type AcceptInvitationRequest,
   type ChangePasswordRequest,
+  type ConversationFilter,
   type CreateInvitationRequest,
   type LoginRequest,
   type RegisterRequest,
@@ -73,6 +80,12 @@ export const queryKeys = {
    */
   conversations: ["conversations"] as const,
   contacts: ["contacts"] as const,
+  /** Pages of the inbox for one filter (an infinite query). */
+  conversationList: (filter: ConversationFilter) => ["conversations", "list", filter] as const,
+  conversation: (id: string) => ["conversations", "detail", id] as const,
+  /** Pages of one conversation feed, newest first (an infinite query). */
+  conversationMessages: (id: string) => ["conversations", "messages", id] as const,
+  inboxCounts: ["conversations", "counts"] as const,
 };
 
 /** The current session; `null` when signed out. */
@@ -311,5 +324,43 @@ export function useRevokeInvitation() {
   return useMutation({
     mutationFn: (id: string) => revokeInvitation(client, id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.invitations }),
+  });
+}
+
+/** The inbox for one filter, page by page; realtime events patch it in place (apps/panel/src/lib/realtime). */
+export function conversationListQueryOptions(client: ApiClient, filter: ConversationFilter) {
+  return infiniteQueryOptions({
+    queryKey: queryKeys.conversationList(filter),
+    queryFn: ({ pageParam }) => fetchConversations(client, filter, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+}
+
+export function useConversationList(filter: ConversationFilter) {
+  return useInfiniteQuery(conversationListQueryOptions(useApiClient(), filter));
+}
+
+export function conversationQueryOptions(client: ApiClient, id: string) {
+  return queryOptions({ queryKey: queryKeys.conversation(id), queryFn: () => fetchConversation(client, id) });
+}
+
+export function useConversation(id: string) {
+  return useQuery(conversationQueryOptions(useApiClient(), id));
+}
+
+export function useInboxCounts() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.inboxCounts, queryFn: () => fetchInboxCounts(client) });
+}
+
+/** The conversation feed, newest page first; each page is newest first too. */
+export function useMessages(id: string) {
+  const client = useApiClient();
+  return useInfiniteQuery({
+    queryKey: queryKeys.conversationMessages(id),
+    queryFn: ({ pageParam }) => fetchMessages(client, id, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
 }

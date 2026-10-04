@@ -310,5 +310,64 @@
   },
   "userMenu": {
     "profile": "Open profile"
+  },
+  "inbox": {
+    "tabs": {
+      "label": "Conversation folders",
+      "mine": "Mine",
+      "queue": "Queue",
+      "all": "All"
+    },
+    "listLabel": "Conversations",
+    "empty": {
+      "mine": "You have no conversations in progress",
+      "queue": "The queue is empty — nice work",
+      "all": "No conversations yet",
+      "hint": "New requests show up here by themselves, no need to reload."
+    },
+    "loadMore": "Show more",
+    "loadError": "Could not load conversations",
+    "retry": "Try again",
+    "noPreview": "No messages yet",
+    "files": "{count, plural, one {# file} other {# files}}",
+    "turn": {
+      "yours": "Your move",
+      "customer": "Waiting for the customer"
+    },
+    "status": {
+      "new": "New",
+      "bot": "With AI",
+      "queued": "Queued",
+      "assigned": "In progress",
+      "pending": "Waiting for the customer",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "pick": {
+      "title": "Pick a conversation",
+      "text": "Open a conversation from the list. Messages and changes arrive by themselves."
+    },
+    "viewing": "{names} {count, plural, one {is in this conversation} other {are in this conversation}}",
+    "typing": "{names} {count, plural, one {is typing…} other {are typing…}}",
+    "contact": "Customer",
+    "colleague": "A colleague",
+    "back": "Back to the list",
+    "number": "#{number}",
+    "assignee": "Handled by {name}",
+    "unassigned": "Unassigned",
+    "you": "you",
+    "feed": {
+      "label": "Conversation messages",
+      "older": "Show earlier",
+      "empty": "No messages in this conversation yet",
+      "error": "Could not load messages",
+      "notFound": "The conversation does not exist or is not available"
+    },
+    "sender": {
+      "bot": "AI assistant",
+      "system": "System",
+      "operator": "Operator",
+      "note": "Note · the customer does not see it"
+    }
   }
 }

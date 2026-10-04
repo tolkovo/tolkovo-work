@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -259,4 +261,74 @@ func TestConversationsAPI_ParameterBinding(t *testing.T) {
 	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/contacts/not-a-uuid", nil), http.StatusNotFound, "not_found")
 	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/conversations?limit=many", nil), http.StatusBadRequest, "invalid_request")
 	wantProblem(t, in.owner.do(http.MethodGet, "/api/v1/conversations?limit=500", nil), http.StatusBadRequest, "invalid_request")
+}
+
+func TestConversationsAPI_PreviewAndInboxCounts(t *testing.T) {
+	in := setupInbox(t)
+	counts := func(c *client) oapi.InboxCounts {
+		t.Helper()
+		rec := c.do(http.MethodGet, "/api/v1/conversations/counts", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("counts: %d %s", rec.Code, rec.Body)
+		}
+		return decode[oapi.InboxCounts](t, rec)
+	}
+	if got := counts(in.op); got != (oapi.InboxCounts{}) {
+		t.Fatalf("empty inbox: %+v", got)
+	}
+
+	first, second := in.conversation(t), in.conversation(t)
+	if first.LastMessage != nil {
+		t.Fatalf("a new conversation has no preview: %+v", first.LastMessage)
+	}
+	if got := counts(in.op); got != (oapi.InboxCounts{Mine: 0, Unassigned: 2, Open: 2}) {
+		t.Fatalf("two in the queue: %+v", got)
+	}
+
+	base := "/api/v1/conversations/" + first.Id.String()
+	if rec := in.op.do(http.MethodPut, base+"/assignee", map[string]any{"assignee_id": in.sop.User.Id}); rec.Code != http.StatusOK {
+		t.Fatalf("take: %d %s", rec.Code, rec.Body)
+	}
+	long := "Здравствуйте!\n\nЗаказ   №42 " + strings.Repeat("я", 300)
+	if rec := in.op.do(http.MethodPost, base+"/messages", map[string]any{"body": long}); rec.Code != http.StatusCreated {
+		t.Fatalf("reply: %d %s", rec.Code, rec.Body)
+	}
+	// A later internal note is not what the customer saw last.
+	if rec := in.op.do(http.MethodPost, base+"/messages", map[string]any{"body": "secret note", "private": true}); rec.Code != http.StatusCreated {
+		t.Fatalf("note: %d %s", rec.Code, rec.Body)
+	}
+	if got := counts(in.op); got != (oapi.InboxCounts{Mine: 1, Unassigned: 1, Open: 2}) {
+		t.Fatalf("operator took one: %+v", got)
+	}
+	if got := counts(in.owner); got != (oapi.InboxCounts{Mine: 0, Unassigned: 1, Open: 2}) {
+		t.Fatalf("mine is per caller: %+v", got)
+	}
+
+	rec := in.op.do(http.MethodGet, base, nil)
+	c := decode[oapi.Conversation](t, rec)
+	p := c.LastMessage
+	if p == nil || p.SenderType != "operator" || p.Kind != "text" || p.Attachments != 0 {
+		t.Fatalf("preview: %+v", p)
+	}
+	if !strings.HasPrefix(p.Text, "Здравствуйте! Заказ №42 яя") || utf8.RuneCountInString(p.Text) > 200 || strings.Contains(p.Text, "secret") {
+		t.Fatalf("preview text must be the reply on one line, at most 200 characters: %q", p.Text)
+	}
+
+	rec = in.op.do(http.MethodGet, "/api/v1/conversations?assignee=none", nil)
+	page := decode[oapi.ConversationPage](t, rec)
+	if len(page.Items) != 1 || page.Items[0].Id != second.Id || page.Items[0].LastMessage != nil {
+		t.Fatalf("queue list: %+v", page.Items)
+	}
+	rec = in.op.do(http.MethodGet, "/api/v1/conversations?assignee=me", nil)
+	page = decode[oapi.ConversationPage](t, rec)
+	if len(page.Items) != 1 || page.Items[0].LastMessage == nil || page.Items[0].LastMessage.Text != p.Text {
+		t.Fatalf("the list shows the same preview: %+v", page.Items)
+	}
+
+	if rec := in.op.do(http.MethodPost, base+"/status", map[string]any{"status": "resolved"}); rec.Code != http.StatusOK {
+		t.Fatalf("resolve: %d %s", rec.Code, rec.Body)
+	}
+	if got := counts(in.op); got != (oapi.InboxCounts{Mine: 0, Unassigned: 1, Open: 1}) {
+		t.Fatalf("resolved leaves every tab: %+v", got)
+	}
 }

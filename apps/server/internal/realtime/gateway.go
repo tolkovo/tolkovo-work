@@ -119,6 +119,7 @@ type Gateway struct {
 	log     *slog.Logger
 	hub     *hub
 	store   eventStore
+	signals signals
 	origins map[string]bool
 
 	mu      sync.Mutex // guards closing against wg.Add
@@ -137,8 +138,9 @@ func New(tdb TenantDB, rdb *redis.Client, log *slog.Logger, o Options) *Gateway 
 	log = log.With("component", "realtime")
 	return &Gateway{
 		o: o, log: log, origins: origins,
-		hub:   newHub(rdb, o.ChannelPrefix, o.MaxConnsPerUser, log),
-		store: eventStore{db: tdb},
+		hub:     newHub(rdb, o.ChannelPrefix, o.MaxConnsPerUser, log),
+		store:   eventStore{db: tdb},
+		signals: signals{rdb: rdb, prefix: o.ChannelPrefix, now: o.Now},
 	}
 }
 
@@ -246,6 +248,7 @@ func (g *Gateway) serveConn(ctx context.Context, cancel context.CancelFunc, c *c
 		}()
 	}
 	wg.Wait()
+	c.leaveViewing(ctx)
 	g.log.Debug("realtime connection closed", "workspace_id", c.workspaceID, "code", int(c.closeCode()))
 }
 

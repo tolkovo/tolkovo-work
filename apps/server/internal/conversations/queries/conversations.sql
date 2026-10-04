@@ -11,9 +11,23 @@ VALUES (@id, @workspace_id, @number, @contact_id, @status, @priority, sqlc.narg(
 RETURNING *;
 
 -- name: GetConversation :one
-SELECT sqlc.embed(c), ct.name AS contact_name
+SELECT sqlc.embed(c), ct.name AS contact_name,
+       -- An empty last_kind: no visible message yet (sqlc cannot see that
+       -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
+       coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
+       coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN LATERAL (
+    -- The newest message the customer could see: the inbox preview.
+    SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
+    FROM messages m
+    WHERE m.workspace_id = c.workspace_id AND m.conversation_id = c.id
+      AND NOT m.is_private AND m.kind <> 'event' AND m.deleted_at IS NULL
+    ORDER BY m.id DESC
+    LIMIT 1
+) lm ON true
 WHERE c.workspace_id = @workspace_id AND c.id = @id;
 
 -- name: LockConversation :one
@@ -26,9 +40,23 @@ FOR UPDATE;
 -- Newest activity first. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the
 -- unassigned ones.
-SELECT sqlc.embed(c), ct.name AS contact_name
+SELECT sqlc.embed(c), ct.name AS contact_name,
+       -- An empty last_kind: no visible message yet (sqlc cannot see that
+       -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
+       coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
+       coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN LATERAL (
+    -- The newest message the customer could see: the inbox preview.
+    SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
+    FROM messages m
+    WHERE m.workspace_id = c.workspace_id AND m.conversation_id = c.id
+      AND NOT m.is_private AND m.kind <> 'event' AND m.deleted_at IS NULL
+    ORDER BY m.id DESC
+    LIMIT 1
+) lm ON true
 WHERE c.workspace_id = @workspace_id
   AND (cardinality(@statuses::text[]) = 0 OR c.status = ANY(@statuses::text[]))
   AND (NOT @by_assignee::boolean
@@ -38,6 +66,17 @@ WHERE c.workspace_id = @workspace_id
        OR (c.last_message_at, c.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC
 LIMIT @lim;
+
+-- name: CountInbox :one
+-- Counters of the inbox tabs (docs/04 §3.1). The status sets mirror the
+-- tabs of the panel: mine and the queue are work in progress, open is
+-- everything not finished yet.
+SELECT
+    count(*) FILTER (WHERE assignee_id = @user_id AND status IN ('assigned', 'pending'))::bigint AS mine,
+    count(*) FILTER (WHERE assignee_id IS NULL AND status = 'queued')::bigint AS unassigned,
+    count(*) FILTER (WHERE status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
+FROM conversations
+WHERE workspace_id = @workspace_id AND status IN ('new', 'bot', 'queued', 'assigned', 'pending');
 
 -- name: UpdateConversationState :execrows
 -- Applies a transition computed in Go. The version guard makes a lost

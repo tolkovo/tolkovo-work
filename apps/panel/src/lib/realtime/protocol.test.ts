@@ -6,16 +6,21 @@ import {
   CLOSE_CODES,
   CONTROL_TYPES,
   EVENT_TYPES,
+  SIGNAL_TYPES,
   isEvent,
+  isSignal,
   parseServerMessage,
   realtimeUrl,
   resumeMessage,
+  signalMessage,
 } from "./protocol";
 
 // api/ws is the source of truth; this file mirrors it by hand until WS types are generated.
 describe("realtime protocol mirrors api/ws", () => {
   it("knows every message type and close code of the schema", () => {
-    expect([...CONTROL_TYPES, ...EVENT_TYPES].sort()).toEqual([...serverSchema.$defs.messageType.enum].sort());
+    expect([...CONTROL_TYPES, ...SIGNAL_TYPES, ...EVENT_TYPES].sort()).toEqual(
+      [...serverSchema.$defs.messageType.enum].sort(),
+    );
     expect(Object.values(CLOSE_CODES).sort()).toEqual([...serverSchema.$defs.closeCode.enum].sort());
   });
 
@@ -24,6 +29,22 @@ describe("realtime protocol mirrors api/ws", () => {
     const def = clientSchema.$defs.resume;
     expect(Object.keys(resume).sort()).toEqual([...def.required].sort());
     expect(resume).toEqual({ type: "resume", id: "r1", ts: "2026-10-04T12:00:00.000Z", data: { last_seq: 42 } });
+  });
+
+  it.each(["typing", "viewing"] as const)("builds %s as the client schema describes it", (type) => {
+    const message = JSON.parse(signalMessage(type, "c1", "start", "s1", new Date("2026-10-04T12:00:00Z"))) as Record<
+      string,
+      unknown
+    >;
+    const def = clientSchema.$defs[type];
+    expect(Object.keys(message).sort()).toEqual([...def.required].sort());
+    expect(Object.keys(message.data as object).sort()).toEqual([...clientSchema.$defs.signalData.required].sort());
+    expect(message).toEqual({
+      type,
+      id: "s1",
+      ts: "2026-10-04T12:00:00.000Z",
+      data: { conversation_id: "c1", state: "start" },
+    });
   });
 });
 
@@ -41,6 +62,24 @@ describe("parseServerMessage", () => {
     expect(event && isEvent(event) && event.seq).toBe(8);
   });
 
+  it("parses signals, which have no seq", () => {
+    const typing = parseServerMessage(
+      JSON.stringify({
+        type: "conversation.typing",
+        id: "t",
+        ts,
+        data: { conversation_id: "c", actor: "operator", actor_id: "u", state: "start" },
+      }),
+    );
+    expect(typing && isSignal(typing) && !isEvent(typing)).toBe(true);
+    const viewers = parseServerMessage(
+      JSON.stringify({ type: "conversation.viewers", id: "v", ts, data: { conversation_id: "c", user_ids: ["u"] } }),
+    );
+    expect(viewers && isSignal(viewers) && viewers.type === "conversation.viewers" && viewers.data.user_ids).toEqual([
+      "u",
+    ]);
+  });
+
   it("accepts event types it does not know yet: new events are not breaking", () => {
     const event = parseServerMessage(JSON.stringify({ type: "sla.breached", id: "9", ts, seq: 10, data: {} }));
     expect(event && isEvent(event)).toBe(true);
@@ -53,6 +92,7 @@ describe("parseServerMessage", () => {
     ["negative seq", JSON.stringify({ type: "resumed", id: "1", ts, data: { seq: -1 } })],
     ["hello without heartbeat", JSON.stringify({ type: "hello", id: "1", ts, data: { seq: 1 } })],
     ["unknown control", JSON.stringify({ type: "reboot", id: "1", ts, data: {} })],
+    ["viewers without ids", JSON.stringify({ type: "conversation.viewers", id: "1", ts, data: { conversation_id: "c" } })],
   ])("rejects %s", (_, raw) => {
     expect(parseServerMessage(raw)).toBeUndefined();
   });

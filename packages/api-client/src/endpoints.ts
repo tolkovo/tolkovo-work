@@ -1,11 +1,15 @@
 import { parseAnswer, unwrap, type ApiClient } from "./client";
 import { isApiError } from "./errors";
 import {
+  conversationPageSchema,
+  conversationSchema,
   deviceSessionListSchema,
+  inboxCountsSchema,
   invitationListSchema,
   invitationPreviewSchema,
   invitationSentSchema,
   memberListSchema,
+  messagePageSchema,
   sessionSchema,
   workspaceListSchema,
   workspaceSchema,
@@ -34,6 +38,19 @@ export type InvitationPreview = Schemas["InvitationPreview"];
 export type CreateInvitationRequest = Schemas["CreateInvitationRequest"];
 export type AcceptInvitationRequest = Schemas["AcceptInvitationRequest"];
 export type ResetPasswordRequest = Schemas["ResetPasswordRequest"];
+export type Conversation = Schemas["Conversation"];
+export type ConversationStatus = Schemas["ConversationStatus"];
+export type ConversationPreview = Schemas["ConversationPreview"];
+export type ConversationPage = Schemas["ConversationPage"];
+export type InboxCounts = Schemas["InboxCounts"];
+export type Message = Schemas["Message"];
+export type MessagePage = Schemas["MessagePage"];
+
+/** Filter of GET /conversations: any of the statuses, and `me` or `none` (unassigned). */
+export type ConversationFilter = {
+  status?: ConversationStatus[];
+  assignee?: "me" | "none";
+};
 
 /**
  * One function per operation the panel uses. They return checked data or throw ApiError,
@@ -159,6 +176,37 @@ export async function resendInvitation(client: ApiClient, id: string): Promise<I
 
 export async function revokeInvitation(client: ApiClient, id: string): Promise<void> {
   await unwrap(client.DELETE("/invitations/{id}", { params: { path: { id } } }));
+}
+
+/** One page of the inbox, most recent activity first; pass `next_cursor` for the next one. */
+export async function fetchConversations(
+  client: ApiClient,
+  filter: ConversationFilter,
+  cursor?: string,
+): Promise<ConversationPage> {
+  const query = { ...filter, ...(cursor ? { cursor } : {}) };
+  return parseAnswer(conversationPageSchema, await unwrap(client.GET("/conversations", { params: { query } })));
+}
+
+export async function fetchConversation(client: ApiClient, id: string): Promise<Conversation> {
+  return parseAnswer(
+    conversationSchema,
+    await unwrap(client.GET("/conversations/{id}", { params: { path: { id } } })),
+  );
+}
+
+export async function fetchInboxCounts(client: ApiClient): Promise<InboxCounts> {
+  return parseAnswer(inboxCountsSchema, await unwrap(client.GET("/conversations/counts")));
+}
+
+/** One page of the conversation feed, newest first. */
+export async function fetchMessages(client: ApiClient, id: string, cursor?: string): Promise<MessagePage> {
+  return parseAnswer(
+    messagePageSchema,
+    await unwrap(
+      client.GET("/conversations/{id}/messages", { params: { path: { id }, query: cursor ? { cursor } : {} } }),
+    ),
+  );
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

@@ -149,6 +149,22 @@ func (s *Schema) keyword(k string, arg any, v any, path string) error {
 		}
 	case "format":
 		return checkFormat(arg.(string), v, path)
+	case "items":
+		arr, _ := v.([]any)
+		for i, item := range arr {
+			if err := s.check(arg.(map[string]any), item, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case "uniqueItems":
+		arr, _ := v.([]any)
+		for i := range arr {
+			for j := range i {
+				if arg.(bool) && equal(arr[i], arr[j]) {
+					return fmt.Errorf("%s: items %d and %d are equal", path, j, i)
+				}
+			}
+		}
 	default:
 		return fmt.Errorf("schematest: keyword %q is not supported; extend the validator or the schema", k)
 	}

@@ -12,6 +12,36 @@ import (
 	"github.com/google/uuid"
 )
 
+const countInbox = `-- name: CountInbox :one
+SELECT
+    count(*) FILTER (WHERE assignee_id = $1 AND status IN ('assigned', 'pending'))::bigint AS mine,
+    count(*) FILTER (WHERE assignee_id IS NULL AND status = 'queued')::bigint AS unassigned,
+    count(*) FILTER (WHERE status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
+FROM conversations
+WHERE workspace_id = $2 AND status IN ('new', 'bot', 'queued', 'assigned', 'pending')
+`
+
+type CountInboxParams struct {
+	UserID      *uuid.UUID
+	WorkspaceID uuid.UUID
+}
+
+type CountInboxRow struct {
+	Mine       int64
+	Unassigned int64
+	Open       int64
+}
+
+// Counters of the inbox tabs (docs/04 §3.1). The status sets mirror the
+// tabs of the panel: mine and the queue are work in progress, open is
+// everything not finished yet.
+func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountInboxRow, error) {
+	row := q.db.QueryRow(ctx, countInbox, arg.UserID, arg.WorkspaceID)
+	var i CountInboxRow
+	err := row.Scan(&i.Mine, &i.Unassigned, &i.Open)
+	return i, err
+}
+
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, status, priority, subject)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -63,9 +93,23 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, ct.name AS contact_name
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, ct.name AS contact_name,
+       -- An empty last_kind: no visible message yet (sqlc cannot see that
+       -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
+       coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
+       coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN LATERAL (
+    -- The newest message the customer could see: the inbox preview.
+    SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
+    FROM messages m
+    WHERE m.workspace_id = c.workspace_id AND m.conversation_id = c.id
+      AND NOT m.is_private AND m.kind <> 'event' AND m.deleted_at IS NULL
+    ORDER BY m.id DESC
+    LIMIT 1
+) lm ON true
 WHERE c.workspace_id = $1 AND c.id = $2
 `
 
@@ -75,8 +119,13 @@ type GetConversationParams struct {
 }
 
 type GetConversationRow struct {
-	Conversation Conversation
-	ContactName  string
+	Conversation    Conversation
+	ContactName     string
+	LastSenderType  string
+	LastKind        string
+	LastBody        string
+	LastAttachments int32
+	LastCreatedAt   time.Time
 }
 
 func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams) (GetConversationRow, error) {
@@ -102,6 +151,11 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.Conversation.CreatedAt,
 		&i.Conversation.UpdatedAt,
 		&i.ContactName,
+		&i.LastSenderType,
+		&i.LastKind,
+		&i.LastBody,
+		&i.LastAttachments,
+		&i.LastCreatedAt,
 	)
 	return i, err
 }
@@ -129,9 +183,23 @@ func (q *Queries) IsActiveMember(ctx context.Context, arg IsActiveMemberParams) 
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, ct.name AS contact_name
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, ct.name AS contact_name,
+       -- An empty last_kind: no visible message yet (sqlc cannot see that
+       -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
+       coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
+       coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN LATERAL (
+    -- The newest message the customer could see: the inbox preview.
+    SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
+    FROM messages m
+    WHERE m.workspace_id = c.workspace_id AND m.conversation_id = c.id
+      AND NOT m.is_private AND m.kind <> 'event' AND m.deleted_at IS NULL
+    ORDER BY m.id DESC
+    LIMIT 1
+) lm ON true
 WHERE c.workspace_id = $1
   AND (cardinality($2::text[]) = 0 OR c.status = ANY($2::text[]))
   AND (NOT $3::boolean
@@ -154,8 +222,13 @@ type ListConversationsParams struct {
 }
 
 type ListConversationsRow struct {
-	Conversation Conversation
-	ContactName  string
+	Conversation    Conversation
+	ContactName     string
+	LastSenderType  string
+	LastKind        string
+	LastBody        string
+	LastAttachments int32
+	LastCreatedAt   time.Time
 }
 
 // Newest activity first. The cursor is (last_message_at, id) of the last
@@ -198,6 +271,11 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.Conversation.CreatedAt,
 			&i.Conversation.UpdatedAt,
 			&i.ContactName,
+			&i.LastSenderType,
+			&i.LastKind,
+			&i.LastBody,
+			&i.LastAttachments,
+			&i.LastCreatedAt,
 		); err != nil {
 			return nil, err
 		}

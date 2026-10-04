@@ -20,7 +20,22 @@ const (
 	TypeHeartbeat      = "heartbeat"
 	TypeResumed        = "resumed"
 	TypeResyncRequired = "resync_required"
-	TypeResume         = "resume" // the only client → server message
+
+	// Signals: ephemeral, relayed through Redis without the outbox, so
+	// they carry no seq and are never replayed (docs/02 §10.5).
+	TypeConversationTyping  = "conversation.typing"
+	TypeConversationViewers = "conversation.viewers"
+
+	// Client → server messages.
+	TypeResume  = "resume"
+	TypeTyping  = "typing"
+	TypeViewing = "viewing"
+)
+
+// Signal states of typing and viewing.
+const (
+	StateStart = "start"
+	StateStop  = "stop"
 )
 
 // Close codes, $defs/closeCode in api/ws/server-message.schema.json.
@@ -42,6 +57,18 @@ var CloseCodes = []websocket.StatusCode{
 
 // MaxClientMessageBytes bounds a client frame (resume is ~100 bytes).
 const MaxClientMessageBytes = 1024
+
+// Client message rate: a token bucket of ClientMessageBurst refilled at
+// ClientMessageRate per second. The panel sends typing at most every 3 s
+// and refreshes viewing every 20 s, so only a broken client hits it.
+const (
+	ClientMessageBurst = 20
+	ClientMessageRate  = 2
+)
+
+// ViewerTTL is how long a viewer stays listed after its last viewing
+// start; clients refresh every 20 s.
+const ViewerTTL = 45 * time.Second
 
 // route maps outbox topics to a fan-out channel and the permission needed
 // to receive it. Topics without a route never leave the server: a new
@@ -157,34 +184,73 @@ type seqData struct {
 	Seq int64 `json:"seq"`
 }
 
-// clientMessage is a decoded client frame; see client-message.schema.json.
+// clientMessage is a validated client frame; see client-message.schema.json.
 type clientMessage struct {
+	Type           string
+	LastSeq        int64     // resume
+	ConversationID uuid.UUID // typing, viewing
+	Start          bool      // typing, viewing: start rather than stop
+}
+
+type rawClientMessage struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
 	TS   string `json:"ts"`
 	Data struct {
-		LastSeq *int64 `json:"last_seq"`
+		LastSeq        *int64 `json:"last_seq"`
+		ConversationID string `json:"conversation_id"`
+		State          string `json:"state"`
 	} `json:"data"`
 }
 
-// parseResume validates a resume frame and returns its last_seq.
-func parseResume(b []byte) (int64, error) {
-	var m clientMessage
+// parseClientMessage validates a client frame.
+func parseClientMessage(b []byte) (clientMessage, error) {
+	var m rawClientMessage
 	if err := json.Unmarshal(b, &m); err != nil {
-		return 0, fmt.Errorf("not a JSON object: %w", err)
+		return clientMessage{}, fmt.Errorf("not a JSON object: %w", err)
 	}
-	switch {
-	case m.Type != TypeResume:
-		return 0, fmt.Errorf("unsupported message type %q", m.Type)
-	case m.ID == "" || len(m.ID) > 64:
-		return 0, fmt.Errorf("id must be 1–64 characters")
-	case m.Data.LastSeq == nil || *m.Data.LastSeq < 0:
-		return 0, fmt.Errorf("data.last_seq must be a non-negative integer")
+	if m.ID == "" || len(m.ID) > 64 {
+		return clientMessage{}, fmt.Errorf("id must be 1–64 characters")
 	}
 	if _, err := time.Parse(time.RFC3339Nano, m.TS); err != nil {
-		return 0, fmt.Errorf("ts must be an RFC 3339 time")
+		return clientMessage{}, fmt.Errorf("ts must be an RFC 3339 time")
 	}
-	return *m.Data.LastSeq, nil
+	out := clientMessage{Type: m.Type}
+	switch m.Type {
+	case TypeResume:
+		if m.Data.LastSeq == nil || *m.Data.LastSeq < 0 {
+			return clientMessage{}, fmt.Errorf("data.last_seq must be a non-negative integer")
+		}
+		out.LastSeq = *m.Data.LastSeq
+	case TypeTyping, TypeViewing:
+		id, err := parseUUID(m.Data.ConversationID)
+		if err != nil {
+			return clientMessage{}, fmt.Errorf("data.conversation_id must be a UUID")
+		}
+		if m.Data.State != StateStart && m.Data.State != StateStop {
+			return clientMessage{}, fmt.Errorf("data.state must be start or stop")
+		}
+		out.ConversationID, out.Start = id, m.Data.State == StateStart
+	default:
+		return clientMessage{}, fmt.Errorf("unsupported message type %q", m.Type)
+	}
+	return out, nil
+}
+
+// parseUUID accepts only the canonical lower-case form of the schema.
+func parseUUID(s string) (uuid.UUID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil || id.String() != s {
+		return uuid.Nil, fmt.Errorf("not a canonical UUID")
+	}
+	return id, nil
+}
+
+type typingData struct {
+	ConversationID uuid.UUID  `json:"conversation_id"`
+	Actor          string     `json:"actor"`
+	ActorID        *uuid.UUID `json:"actor_id"`
+	State          string     `json:"state"`
 }
 
 // eventSeq reads seq from an encoded event without decoding data.

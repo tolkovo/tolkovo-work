@@ -41,6 +41,48 @@ func (e AttachmentStatus) Valid() bool {
 	}
 }
 
+// Defines values for ConversationPreviewKind.
+const (
+	ConversationPreviewKindMedia ConversationPreviewKind = "media"
+	ConversationPreviewKindText  ConversationPreviewKind = "text"
+)
+
+// Valid indicates whether the value is a known member of the ConversationPreviewKind enum.
+func (e ConversationPreviewKind) Valid() bool {
+	switch e {
+	case ConversationPreviewKindMedia:
+		return true
+	case ConversationPreviewKindText:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConversationPreviewSenderType.
+const (
+	ConversationPreviewSenderTypeBot      ConversationPreviewSenderType = "bot"
+	ConversationPreviewSenderTypeContact  ConversationPreviewSenderType = "contact"
+	ConversationPreviewSenderTypeOperator ConversationPreviewSenderType = "operator"
+	ConversationPreviewSenderTypeSystem   ConversationPreviewSenderType = "system"
+)
+
+// Valid indicates whether the value is a known member of the ConversationPreviewSenderType enum.
+func (e ConversationPreviewSenderType) Valid() bool {
+	switch e {
+	case ConversationPreviewSenderTypeBot:
+		return true
+	case ConversationPreviewSenderTypeContact:
+		return true
+	case ConversationPreviewSenderTypeOperator:
+		return true
+	case ConversationPreviewSenderTypeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationStatus.
 const (
 	ConversationStatusAssigned ConversationStatus = "assigned"
@@ -130,22 +172,22 @@ func (e MessageDirection) Valid() bool {
 
 // Defines values for MessageKind.
 const (
-	Event MessageKind = "event"
-	Media MessageKind = "media"
-	Note  MessageKind = "note"
-	Text  MessageKind = "text"
+	MessageKindEvent MessageKind = "event"
+	MessageKindMedia MessageKind = "media"
+	MessageKindNote  MessageKind = "note"
+	MessageKindText  MessageKind = "text"
 )
 
 // Valid indicates whether the value is a known member of the MessageKind enum.
 func (e MessageKind) Valid() bool {
 	switch e {
-	case Event:
+	case MessageKindEvent:
 		return true
-	case Media:
+	case MessageKindMedia:
 		return true
-	case Note:
+	case MessageKindNote:
 		return true
-	case Text:
+	case MessageKindText:
 		return true
 	default:
 		return false
@@ -298,8 +340,12 @@ type Conversation struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	FirstResponseAt *time.Time `json:"first_response_at"`
 	Id              uuid.UUID  `json:"id"`
-	LastMessageAt   time.Time  `json:"last_message_at"`
-	LineLevel       int        `json:"line_level"`
+
+	// LastMessage The newest message the customer could see, for the inbox list: internal notes and
+	// system events are skipped. `null` until there is one.
+	LastMessage   *ConversationPreview `json:"last_message"`
+	LastMessageAt time.Time            `json:"last_message_at"`
+	LineLevel     int                  `json:"line_level"`
 
 	// Number Human-readable number inside the workspace.
 	Number     int64      `json:"number"`
@@ -322,6 +368,24 @@ type ConversationPage struct {
 	// NextCursor Cursor of the next page; `null` on the last one.
 	NextCursor *string `json:"next_cursor"`
 }
+
+// ConversationPreview defines model for ConversationPreview.
+type ConversationPreview struct {
+	// Attachments Number of attached files.
+	Attachments int                           `json:"attachments"`
+	CreatedAt   time.Time                     `json:"created_at"`
+	Kind        ConversationPreviewKind       `json:"kind"`
+	SenderType  ConversationPreviewSenderType `json:"sender_type"`
+
+	// Text The start of the message on one line; empty when it has only files.
+	Text string `json:"text"`
+}
+
+// ConversationPreviewKind defines model for ConversationPreview.Kind.
+type ConversationPreviewKind string
+
+// ConversationPreviewSenderType defines model for ConversationPreview.SenderType.
+type ConversationPreviewSenderType string
 
 // ConversationStatus State of a conversation (docs/02 §8).
 type ConversationStatus string
@@ -377,6 +441,14 @@ type DeviceSessionList struct {
 // ForgotPasswordRequest defines model for ForgotPasswordRequest.
 type ForgotPasswordRequest struct {
 	Email string `json:"email"`
+}
+
+// InboxCounts Counters of the inbox tabs. `mine`: assigned to the caller, `assigned` or `pending`;
+// `unassigned`: `queued`; `open`: every status before `resolved`.
+type InboxCounts struct {
+	Mine       int64 `json:"mine"`
+	Open       int64 `json:"open"`
+	Unassigned int64 `json:"unassigned"`
 }
 
 // Invitation defines model for Invitation.
@@ -797,6 +869,9 @@ type ServerInterface interface {
 	// CreateConversation Start a conversation with an existing contact
 	// (POST /conversations)
 	CreateConversation(w http.ResponseWriter, r *http.Request)
+	// GetInboxCounts Counters of the inbox tabs for the caller
+	// (GET /conversations/counts)
+	GetInboxCounts(w http.ResponseWriter, r *http.Request)
 	// GetConversation One conversation
 	// (GET /conversations/{id})
 	GetConversation(w http.ResponseWriter, r *http.Request, id Id)
@@ -956,6 +1031,12 @@ func (_ Unimplemented) ListConversations(w http.ResponseWriter, r *http.Request,
 // CreateConversation Start a conversation with an existing contact
 // (POST /conversations)
 func (_ Unimplemented) CreateConversation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInboxCounts Counters of the inbox tabs for the caller
+// (GET /conversations/counts)
+func (_ Unimplemented) GetInboxCounts(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1429,6 +1510,20 @@ func (siw *ServerInterfaceWrapper) CreateConversation(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInboxCounts operation middleware
+func (siw *ServerInterfaceWrapper) GetInboxCounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInboxCounts(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2066,6 +2161,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/conversations", wrapper.CreateConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/counts", wrapper.GetInboxCounts)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations/{id}", wrapper.GetConversation)

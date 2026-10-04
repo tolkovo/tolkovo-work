@@ -51,7 +51,7 @@ func TestSchema_ListsEveryCloseCodeAndMessageType(t *testing.T) {
 	for _, v := range s.Def("messageType")["enum"].([]any) {
 		schemaTypes = append(schemaTypes, v.(string))
 	}
-	codeTypes := []string{TypeHello, TypeHeartbeat, TypeResumed, TypeResyncRequired}
+	codeTypes := []string{TypeHello, TypeHeartbeat, TypeResumed, TypeResyncRequired, TypeConversationTyping, TypeConversationViewers}
 	for topic := range samplePayloads {
 		codeTypes = append(codeTypes, topic)
 	}
@@ -84,6 +84,9 @@ func TestEncode_EveryMessageMatchesSchema(t *testing.T) {
 		encodeControl(TypeHeartbeat, struct{}{}, now),
 		encodeControl(TypeResumed, seqData{Seq: 5}, now),
 		encodeControl(TypeResyncRequired, seqData{Seq: 9}, now),
+		encodeControl(TypeConversationTyping, typingData{ConversationID: uuid.New(), Actor: "operator", ActorID: ptr(uuid.New()), State: StateStart}, now),
+		viewers(uuid.New(), now, `[]`),
+		viewers(uuid.New(), now, `["`+uuid.NewString()+`","`+uuid.NewString()+`"]`),
 	} {
 		if err := s.Validate(msg); err != nil {
 			t.Errorf("%v\n%s", err, msg)
@@ -103,6 +106,9 @@ func TestSchema_RejectsMessagesThatBreakTheContract(t *testing.T) {
 		"negative seq":     `{"type":"resumed","id":"1","ts":"2026-10-04T12:00:00Z","data":{"seq":-1}}`,
 		"fractional seq":   `{"type":"resumed","id":"1","ts":"2026-10-04T12:00:00Z","data":{"seq":1.5}}`,
 		"missing hb field": `{"type":"hello","id":"1","ts":"2026-10-04T12:00:00Z","data":{"seq":1}}`,
+		"viewers dup id":   `{"type":"conversation.viewers","id":"1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b","user_ids":["0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b","0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b"]}}`,
+		"viewers bad id":   `{"type":"conversation.viewers","id":"1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b","user_ids":["nope"]}}`,
+		"typing no actor":  `{"type":"conversation.typing","id":"1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b","actor_id":null,"state":"start"}}`,
 		"status not enum":  `{"type":"conversation.created","id":"1","ts":"2026-10-04T12:00:00Z","seq":1,"data":{"conversation_id":"0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b","contact_id":"0b6a1f9e-3c2d-4e5f-8a9b-0c1d2e3f4a5b","number":1,"status":"lost"}}`,
 	} {
 		if err := s.Validate([]byte(msg)); err == nil {
@@ -111,31 +117,82 @@ func TestSchema_RejectsMessagesThatBreakTheContract(t *testing.T) {
 	}
 }
 
-func TestParseResume(t *testing.T) {
+func ptr[T any](v T) *T { return &v }
+
+// viewers assembles conversation.viewers as the Redis script does.
+func viewers(conversationID uuid.UUID, now time.Time, ids string) []byte {
+	head, tail := viewersMessage(conversationID, now)
+	return []byte(string(head) + ids + string(tail))
+}
+
+func TestParseClientMessage(t *testing.T) {
 	client := schematest.Load(t, schematest.ClientMessage)
-	valid := `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00.123Z","data":{"last_seq":17}}`
-	if err := client.Validate([]byte(valid)); err != nil {
-		t.Fatalf("the sample must match the client schema: %v", err)
+	conv := uuid.New()
+	valid := map[string]clientMessage{
+		`{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00.123Z","data":{"last_seq":17}}`:                                         {Type: TypeResume, LastSeq: 17},
+		`{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + conv.String() + `","state":"start"}}`: {Type: TypeTyping, ConversationID: conv, Start: true},
+		`{"type":"viewing","id":"v1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + conv.String() + `","state":"stop"}}`: {Type: TypeViewing, ConversationID: conv},
 	}
-	if seq, err := parseResume([]byte(valid)); err != nil || seq != 17 {
-		t.Fatalf("valid resume: got %d, %v", seq, err)
+	for msg, want := range valid {
+		if err := client.Validate([]byte(msg)); err != nil {
+			t.Fatalf("the sample must match the client schema: %v\n%s", err, msg)
+		}
+		if got, err := parseClientMessage([]byte(msg)); err != nil || got != want {
+			t.Fatalf("%s: got %+v, %v", msg, got, err)
+		}
 	}
+	c := conv.String()
 	for name, msg := range map[string]string{
-		"not json":      `resume 17`,
-		"other type":    `{"type":"subscribe","id":"r1","ts":"2026-10-04T12:00:00Z","data":{"last_seq":1}}`,
-		"no id":         `{"type":"resume","ts":"2026-10-04T12:00:00Z","data":{"last_seq":1}}`,
-		"long id":       `{"type":"resume","id":"` + strings.Repeat("x", 65) + `","ts":"2026-10-04T12:00:00Z","data":{"last_seq":1}}`,
-		"no last_seq":   `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00Z","data":{}}`,
-		"negative":      `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00Z","data":{"last_seq":-1}}`,
-		"string seq":    `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00Z","data":{"last_seq":"1"}}`,
-		"bad timestamp": `{"type":"resume","id":"r1","ts":"now","data":{"last_seq":1}}`,
+		"not json":        `resume 17`,
+		"other type":      `{"type":"subscribe","id":"r1","ts":"2026-10-04T12:00:00Z","data":{"last_seq":1}}`,
+		"no id":           `{"type":"resume","ts":"2026-10-04T12:00:00Z","data":{"last_seq":1}}`,
+		"long id":         `{"type":"resume","id":"` + strings.Repeat("x", 65) + `","ts":"2026-10-04T12:00:00Z","data":{"last_seq":1}}`,
+		"no last_seq":     `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00Z","data":{}}`,
+		"negative":        `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00Z","data":{"last_seq":-1}}`,
+		"string seq":      `{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00Z","data":{"last_seq":"1"}}`,
+		"bad timestamp":   `{"type":"resume","id":"r1","ts":"now","data":{"last_seq":1}}`,
+		"typing no conv":  `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"state":"start"}}`,
+		"typing bad conv": `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"42","state":"start"}}`,
+		"upper-case conv": `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + strings.ToUpper(c) + `","state":"start"}}`,
+		"typing no state": `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + c + `"}}`,
+		"viewing state":   `{"type":"viewing","id":"v1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + c + `","state":"maybe"}}`,
 	} {
-		if _, err := parseResume([]byte(msg)); err == nil {
+		if _, err := parseClientMessage([]byte(msg)); err == nil {
 			t.Errorf("%s: must be rejected", name)
 		}
 		if client.Validate([]byte(msg)) == nil {
 			t.Errorf("%s: the client schema must reject it too", name)
 		}
+	}
+}
+
+func TestAllowMessage_TokenBucket(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	g := &Gateway{o: Options{Now: func() time.Time { return now }}.withDefaults()}
+	c := newConn(g, nil, Client{UserID: uuid.New(), WorkspaceID: uuid.New(), Role: authz.RoleOperator}, func() {})
+	for i := range ClientMessageBurst {
+		if !c.allowMessage() {
+			t.Fatalf("message %d of the burst refused", i+1)
+		}
+	}
+	if c.allowMessage() {
+		t.Fatal("the burst is spent")
+	}
+	now = now.Add(time.Second)
+	for i := range ClientMessageRate {
+		if !c.allowMessage() {
+			t.Fatalf("refill message %d refused", i+1)
+		}
+	}
+	if c.allowMessage() {
+		t.Fatal("refill is ClientMessageRate per second")
+	}
+	now = now.Add(time.Hour)
+	for range ClientMessageBurst {
+		_ = c.allowMessage()
+	}
+	if c.allowMessage() {
+		t.Fatal("a long pause refills up to the burst, not beyond")
 	}
 }
 
