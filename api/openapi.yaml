@@ -36,6 +36,12 @@ security:
 tags:
   - name: auth
   - name: workspace
+  - name: files
+    description: |
+      Signed upload and download links of the `fs` storage driver
+      (docs/adr/0009-file-storage.md). Mounted only with `TOLKOVO_STORAGE_DRIVER=fs`;
+      with `s3` the links point at the bucket. Authorised by the link signature, not
+      by the session. Served by hand (`internal/api/files.go`), not generated.
 
 paths:
   /auth/register:
@@ -206,6 +212,112 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /files/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: |
+          Object key `ws/{workspace_id}/{kind}/{uuid}`. It spans several path
+          segments: the slashes are sent unescaped.
+        schema: { type: string }
+      - name: exp
+        in: query
+        required: true
+        description: Expiry of the link, Unix seconds.
+        schema: { type: integer, format: int64 }
+      - name: sig
+        in: query
+        required: true
+        description: HMAC signature over the method, the key and every other query parameter.
+        schema: { type: string }
+    get:
+      tags: [files]
+      operationId: downloadFile
+      summary: Download a file by a signed link
+      security: []
+      parameters:
+        - name: type
+          in: query
+          description: Content type to answer with; `application/octet-stream` when absent.
+          schema: { type: string }
+        - name: name
+          in: query
+          description: File name for `Content-Disposition`.
+          schema: { type: string }
+      responses:
+        '200':
+          description: |
+            The file, always as an attachment (`Content-Disposition`, `nosniff`, sandbox CSP,
+            `Cache-Control: private, no-store`). Range and conditional requests are supported.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '206':
+          description: Partial content for a `Range` request.
+        '403': { $ref: '#/components/responses/LinkRejected' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [files]
+      operationId: uploadFile
+      summary: Upload a file by a signed link
+      description: |
+        The link decides the key, the size limits, the digest and the content type; the
+        request only supplies the bytes. Each upload link works once.
+      security: []
+      parameters:
+        - name: max
+          in: query
+          required: true
+          description: Largest accepted body, bytes.
+          schema: { type: integer, format: int64 }
+        - name: size
+          in: query
+          description: Exact body size, bytes, when the link fixes it.
+          schema: { type: integer, format: int64 }
+        - name: type
+          in: query
+          description: Required `Content-Type` of the request when present.
+          schema: { type: string }
+        - name: sha256
+          in: query
+          description: Hex SHA-256 the body must match when present.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Stored (an empty body, as S3 answers a PUT).
+        '400':
+          description: '`size_mismatch` or `checksum_mismatch`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/LinkRejected' }
+        '408':
+          description: '`upload_timeout`: the client was too slow; nothing was stored.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`already_uploaded`: the link has been used.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: '`file_too_large`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '415':
+          description: '`content_type_mismatch`: `Content-Type` differs from the link.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -242,6 +354,11 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     NotFound:
       description: '`not_found`, also for resources of other workspaces.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    LinkRejected:
+      description: '`link_invalid` (bad signature or parameters) or `link_expired`.'
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }

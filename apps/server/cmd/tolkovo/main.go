@@ -16,21 +16,26 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
+	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/logging"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/migrate"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdb"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
 // version is set at build time: -ldflags "-X main.version=v0.1.0".
@@ -121,7 +126,16 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 		}
 	}
 	if runHTTP {
-		startHTTP(gctx, g, cfg, log, pool, store, *role)
+		redisClient, err := rdb.Open(ctx, cfg.RedisURL.Reveal())
+		if err != nil {
+			return err
+		}
+		defer func() { _ = redisClient.Close() }()
+		deps, err := apiDeps(ctx, cfg, log, pool, redisClient, store)
+		if err != nil {
+			return err
+		}
+		startHTTP(gctx, g, cfg, log, deps, *role)
 	}
 	log.Info("started", "role", *role, "version", version, "env", cfg.Env)
 
@@ -169,14 +183,45 @@ func startWorker(ctx context.Context, g *errgroup.Group, cfg config.Config, log 
 	return nil
 }
 
-// startHTTP serves the API until ctx is done, then drains connections.
-func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage, role string) {
-	deps := api.Deps{Log: log, DB: pool, Version: version}
+// apiDeps wires the modules the HTTP layer needs.
+func apiDeps(
+	ctx context.Context, cfg config.Config, log *slog.Logger, pool *db.DB, redisClient *redis.Client, store storage.Storage,
+) (api.Deps, error) {
+	tenants := tenancy.New(pool)
+	authSvc, err := auth.New(ctx, tenants, redisClient, auth.Options{
+		SessionIdleTimeout: cfg.SessionIdleTimeout,
+		SessionMaxAge:      cfg.SessionMaxAge,
+		HashConcurrency:    runtime.GOMAXPROCS(0),
+	})
+	if err != nil {
+		return api.Deps{}, err
+	}
+	deps := api.Deps{
+		Log: log, DB: pool, Version: version,
+		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
+		Tenancy:       tenants,
+		Auth:          authSvc,
+		SecureCookies: cfg.SecureCookies(),
+		SessionMaxAge: cfg.SessionMaxAge,
+		// The public URL is where browsers reach the api, also behind a
+		// proxy that rewrites Host, so its origin is always trusted.
+		TrustedOrigins: append(cfg.PublicOrigins(), cfg.TrustedOrigins...),
+	}
 	// Only the fs driver needs the api to carry file bytes; s3 clients go
 	// straight to the bucket.
 	if fsStore, ok := store.(*storage.FS); ok {
 		deps.Files = fsStore
 	}
+	return deps, nil
+}
+
+// pingFunc adapts a function to api.Pinger.
+type pingFunc func(ctx context.Context) error
+
+func (f pingFunc) Ping(ctx context.Context) error { return f(ctx) }
+
+// startHTTP serves the API until ctx is done, then drains connections.
+func startHTTP(ctx context.Context, g *errgroup.Group, cfg config.Config, log *slog.Logger, deps api.Deps, role string) {
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.NewRouter(deps),

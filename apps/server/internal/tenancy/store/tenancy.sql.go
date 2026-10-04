@@ -81,6 +81,62 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 	return i, err
 }
 
+const getMembership = `-- name: GetMembership :one
+SELECT u.id AS user_id, u.email, u.name AS user_name, u.locale AS user_locale,
+       w.id AS workspace_id, w.slug, w.name AS workspace_name,
+       w.locale AS workspace_locale, w.timezone, w.created_at AS workspace_created_at,
+       r.key AS role_key
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+JOIN workspaces w ON w.id = m.workspace_id
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = $1
+  AND m.user_id = $2
+  AND m.is_active
+  AND u.disabled_at IS NULL
+  AND w.deleted_at IS NULL
+`
+
+type GetMembershipParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+type GetMembershipRow struct {
+	UserID             uuid.UUID
+	Email              string
+	UserName           string
+	UserLocale         string
+	WorkspaceID        uuid.UUID
+	Slug               string
+	WorkspaceName      string
+	WorkspaceLocale    string
+	Timezone           string
+	WorkspaceCreatedAt time.Time
+	RoleKey            string
+}
+
+// The access check of every authenticated request: an active member of a
+// live workspace whose account is not disabled.
+func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (GetMembershipRow, error) {
+	row := q.db.QueryRow(ctx, getMembership, arg.WorkspaceID, arg.UserID)
+	var i GetMembershipRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.UserName,
+		&i.UserLocale,
+		&i.WorkspaceID,
+		&i.Slug,
+		&i.WorkspaceName,
+		&i.WorkspaceLocale,
+		&i.Timezone,
+		&i.WorkspaceCreatedAt,
+		&i.RoleKey,
+	)
+	return i, err
+}
+
 const getWorkspace = `-- name: GetWorkspace :one
 SELECT id, slug, name, locale, timezone, created_at
 FROM workspaces
@@ -156,4 +212,91 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 		return nil, err
 	}
 	return items, nil
+}
+
+const listUserWorkspaces = `-- name: ListUserWorkspaces :many
+SELECT w.id, w.slug, w.name, r.key AS role_key
+FROM memberships m
+JOIN workspaces w ON w.id = m.workspace_id
+JOIN roles r ON r.id = m.role_id
+WHERE m.user_id = $1
+  AND m.is_active
+  AND w.deleted_at IS NULL
+ORDER BY m.created_at, w.id
+`
+
+type ListUserWorkspacesRow struct {
+	ID      uuid.UUID
+	Slug    string
+	Name    string
+	RoleKey string
+}
+
+// Runs in db.InUserTx: the own_memberships policy shows the user's rows in
+// every workspace (migration 00003). The query filters by user_id as well.
+func (q *Queries) ListUserWorkspaces(ctx context.Context, userID uuid.UUID) ([]ListUserWorkspacesRow, error) {
+	rows, err := q.db.Query(ctx, listUserWorkspaces, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserWorkspacesRow
+	for rows.Next() {
+		var i ListUserWorkspacesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.RoleKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateWorkspace = `-- name: UpdateWorkspace :one
+UPDATE workspaces
+SET name = $1, locale = $2, timezone = $3, updated_at = now()
+WHERE id = $4 AND deleted_at IS NULL
+RETURNING id, slug, name, locale, timezone, created_at
+`
+
+type UpdateWorkspaceParams struct {
+	Name        string
+	Locale      string
+	Timezone    string
+	WorkspaceID uuid.UUID
+}
+
+type UpdateWorkspaceRow struct {
+	ID        uuid.UUID
+	Slug      string
+	Name      string
+	Locale    string
+	Timezone  string
+	CreatedAt time.Time
+}
+
+func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (UpdateWorkspaceRow, error) {
+	row := q.db.QueryRow(ctx, updateWorkspace,
+		arg.Name,
+		arg.Locale,
+		arg.Timezone,
+		arg.WorkspaceID,
+	)
+	var i UpdateWorkspaceRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Locale,
+		&i.Timezone,
+		&i.CreatedAt,
+	)
+	return i, err
 }

@@ -1,5 +1,7 @@
 // Package api is the HTTP layer: routing, middleware, mapping domain errors
 // to RFC 9457 problems. Business modules know nothing about HTTP.
+// The /api/v1 handlers implement the server interface generated from
+// api/openapi.yaml (internal/api/oapi).
 package api
 
 import (
@@ -9,6 +11,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
+	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
 // Pinger reports whether a dependency is reachable.
@@ -20,9 +26,20 @@ type Pinger interface {
 type Deps struct {
 	Log     *slog.Logger
 	DB      Pinger
+	Redis   Pinger // checked by /readyz when set
 	Version string
 	// Files serves signed links of the fs storage driver; nil with s3.
 	Files LocalFiles
+
+	Tenancy *tenancy.Service
+	Auth    *auth.Service
+	// SecureCookies marks the session cookie Secure and names it with the
+	// __Host- prefix. Off only in development over plain HTTP.
+	SecureCookies bool
+	// SessionMaxAge is the cookie lifetime; the server enforces its own.
+	SessionMaxAge time.Duration
+	// TrustedOrigins may send unsafe requests besides the API's own origin.
+	TrustedOrigins []string
 }
 
 // NewRouter builds the root handler.
@@ -36,10 +53,27 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": d.Version})
 	})
-	r.Get("/readyz", readyz(d.DB))
+	r.Get("/readyz", readyz(d.DB, d.Redis))
 	if d.Files != nil {
 		mountFiles(r, d.Files, d.Log)
 	}
+
+	srv := &server{
+		log: d.Log, tenancy: d.Tenancy, auth: d.Auth,
+		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
+	}
+	r.Group(func(r chi.Router) {
+		r.Use(noStore, sameOrigin(d.TrustedOrigins))
+		oapi.HandlerWithOptions(srv, oapi.ChiServerOptions{
+			BaseURL:    "/api/v1",
+			BaseRouter: r,
+			// Runs after routing, so authenticate sees the route pattern.
+			Middlewares: []oapi.MiddlewareFunc{srv.authenticate},
+			ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+				srv.writeError(w, r, errBadRequest)
+			},
+		})
+	})
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
@@ -50,7 +84,7 @@ func NewRouter(d Deps) http.Handler {
 	return r
 }
 
-func readyz(db Pinger) http.HandlerFunc {
+func readyz(db, redis Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
@@ -60,6 +94,15 @@ func readyz(db Pinger) http.HandlerFunc {
 				Title: "Service Unavailable", Detail: "database is not reachable",
 			})
 			return
+		}
+		if redis != nil {
+			if err := redis.Ping(ctx); err != nil {
+				writeProblem(w, r, Problem{
+					Status: http.StatusServiceUnavailable, Code: "dependency_unavailable",
+					Title: "Service Unavailable", Detail: "redis is not reachable",
+				})
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy/store"
 )
@@ -23,15 +24,17 @@ var (
 	ErrNotFound      = errors.New("tenancy: not found")
 	ErrInvalid       = errors.New("tenancy: invalid input")
 	ErrSlugTaken     = errors.New("tenancy: slug is taken")
+	ErrEmailTaken    = errors.New("tenancy: email is taken")
 	ErrAlreadyMember = errors.New("tenancy: user is already a member")
 	ErrUnknownRole   = errors.New("tenancy: unknown role")
 )
 
-// System role keys available in phase 1.
+// System role keys available in phase 1. They are the keys of the RBAC
+// matrix in platform/authz.
 const (
-	RoleOwner    = "owner"
-	RoleAdmin    = "admin"
-	RoleOperator = "operator"
+	RoleOwner    = authz.RoleOwner
+	RoleAdmin    = authz.RoleAdmin
+	RoleOperator = authz.RoleOperator
 )
 
 const pgUniqueViolation = "23505"

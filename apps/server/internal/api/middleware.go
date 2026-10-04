@@ -25,6 +25,21 @@ func requestID(next http.Handler) http.Handler {
 	})
 }
 
+// logFields collects request attributes known only deeper in the chain
+// (the workspace after authentication) for the single request log line.
+type logFields struct {
+	workspaceID string
+}
+
+type logFieldsKey struct{}
+
+// setLogWorkspace records the authenticated workspace for the request log.
+func setLogWorkspace(ctx context.Context, id string) {
+	if f, ok := ctx.Value(logFieldsKey{}).(*logFields); ok {
+		f.workspaceID = id
+	}
+}
+
 // requestLogger logs one line per request. It logs the route pattern, not
 // the raw path or query, so IDs, tokens and personal data stay out of logs.
 func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
@@ -32,6 +47,8 @@ func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			fields := &logFields{}
+			r = r.WithContext(context.WithValue(r.Context(), logFieldsKey{}, fields))
 			next.ServeHTTP(ww, r)
 
 			route := "unmatched"
@@ -42,13 +59,17 @@ func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 			if ww.Status() >= 500 {
 				level = slog.LevelError
 			}
-			log.LogAttrs(r.Context(), level, "http request",
+			attrs := []slog.Attr{
 				slog.String("request_id", middleware.GetReqID(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("route", route),
 				slog.Int("status", ww.Status()),
 				slog.Duration("duration", time.Since(start)),
-			)
+			}
+			if fields.workspaceID != "" {
+				attrs = append(attrs, slog.String("workspace_id", fields.workspaceID))
+			}
+			log.LogAttrs(r.Context(), level, "http request", attrs...)
 		})
 	}
 }

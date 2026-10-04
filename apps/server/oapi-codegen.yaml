@@ -5,3 +5,7 @@ output: internal/api/oapi/oapi.gen.go
 generate:
   models: true
   chi-server: true
+output-options:
+  # Signed file links (internal/api/files.go) are served by hand: the key is
+  # a multi-segment path and the routes exist only with the fs driver.
+  exclude-tags: [files]

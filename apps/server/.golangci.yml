@@ -27,11 +27,13 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tenancy
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/auth
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
               desc: platform must not import the HTTP layer
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
