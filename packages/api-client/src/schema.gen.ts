@@ -100,6 +100,102 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Change the current user's profile
+         * @description Name and interface language of the account. They belong to the user, not to the
+         *     workspace, so they apply in every workspace of the user. Absent fields stay as they
+         *     are; the name is trimmed. Needs a session only, no permission.
+         */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the current user's password
+         * @description Checks `current_password`; the new one follows the registration policy (8–128
+         *     characters). A wrong current password answers `422 wrong_password`. Attempts are
+         *     rate limited per user, counted before the check.
+         *
+         *     On success every other session of the user (all devices, all workspaces) is revoked
+         *     and the current one is replaced: a new cookie and a new `csrf_token`, as on login.
+         */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Active sessions (signed-in devices) of the current user
+         * @description Every live session of the user across workspaces, the current one first, then by
+         *     last activity. IP addresses are not stored.
+         */
+        get: operations["listMySessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out on every other device
+         * @description Revokes every session of the user except the current one.
+         */
+        post: operations["revokeOtherSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End one session of the current user
+         * @description `id` is the `id` of a `DeviceSession`. A session of another user, an expired one
+         *     and an unknown id answer `404`. The current session answers `409 current_session`:
+         *     sign out with `POST /auth/logout` instead.
+         */
+        delete: operations["revokeSession"];
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -537,6 +633,41 @@ export interface components {
             name?: string;
             locale?: components["schemas"]["Locale"];
             timezone?: string;
+        };
+        UpdateMeRequest: {
+            /** @description Trimmed; 1–120 characters after trimming. */
+            name?: string;
+            /** @description Interface language of the panel (docs/04 §8.2). */
+            locale?: components["schemas"]["Locale"];
+        };
+        ChangePasswordRequest: {
+            current_password: string;
+            new_password: string;
+        };
+        /**
+         * @description One signed-in browser of the user (docs/02 §13.1). The `id` is a public random
+         *     identifier, not the session token.
+         */
+        DeviceSession: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the session started.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last request; recorded at most every 5 minutes.
+             */
+            last_seen_at: string;
+            /** @description `User-Agent` at sign-in, shortened; empty when the client sent none. */
+            user_agent: string;
+            /** @description This is the session of the request. */
+            current: boolean;
+        };
+        DeviceSessionList: {
+            items: components["schemas"]["DeviceSession"][];
         };
         User: {
             id: string;
@@ -994,6 +1125,144 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeRequest"];
+            };
+        };
+        responses: {
+            /** @description The current session with the changed user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Changed; the new session. */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SetSessionCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `wrong_password`: `current_password` does not match. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listMySessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's sessions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSessionList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    revokeOtherSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Other sessions revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `current_session`: use `POST /auth/logout` to end the current session. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listMyWorkspaces: {

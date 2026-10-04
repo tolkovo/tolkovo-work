@@ -11,8 +11,8 @@ info:
     The panel authenticates with an opaque session token in an `HttpOnly`,
     `SameSite=Lax` cookie. The cookie is `Secure` outside development and is then
     named `__Host-tolkovo_session`; in development it is `tolkovo_session`.
-    Sessions live on the server (Redis): logout and workspace switching revoke them
-    immediately.
+    Sessions live on the server (Redis): logout, workspace switching, a password change
+    and `/me/sessions` revoke them immediately.
 
     The workspace of a request always comes from the session, never from the body or
     the URL. A resource of another workspace answers `404`, a missing permission in
@@ -48,12 +48,8 @@ tags:
       follow the state machine of docs/02 §8; a forbidden transition answers `409
       invalid_transition`. Operators reply in and change only conversations assigned to
       them; `conversations.manage` (owner, admin) lifts that limit.
-
-      Routes with path or query parameters are mounted by hand in
-      `internal/api/conversations.go` (models are generated): generated parameter
-      binding needs `github.com/oapi-codegen/runtime`, a dependency not yet approved.
   - name: contacts
-    description: Customers. Email and phone are personal data. Mounted by hand like `conversations`.
+    description: Customers. Email and phone are personal data.
 
   - name: waitlist
     description: |
@@ -178,6 +174,126 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Session' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      tags: [auth]
+      operationId: updateMe
+      summary: Change the current user's profile
+      description: |
+        Name and interface language of the account. They belong to the user, not to the
+        workspace, so they apply in every workspace of the user. Absent fields stay as they
+        are; the name is trimmed. Needs a session only, no permission.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMeRequest' }
+      responses:
+        '200':
+          description: The current session with the changed user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      summary: Change the current user's password
+      description: |
+        Checks `current_password`; the new one follows the registration policy (8–128
+        characters). A wrong current password answers `422 wrong_password`. Attempts are
+        rate limited per user, counted before the check.
+
+        On success every other session of the user (all devices, all workspaces) is revoked
+        and the current one is replaced: a new cookie and a new `csrf_token`, as on login.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          description: Changed; the new session.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          description: '`wrong_password`: `current_password` does not match.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /me/sessions:
+    get:
+      tags: [auth]
+      operationId: listMySessions
+      summary: Active sessions (signed-in devices) of the current user
+      description: |
+        Every live session of the user across workspaces, the current one first, then by
+        last activity. IP addresses are not stored.
+      responses:
+        '200':
+          description: The user's sessions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceSessionList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/sessions/revoke-others:
+    post:
+      tags: [auth]
+      operationId: revokeOtherSessions
+      summary: Sign out on every other device
+      description: Revokes every session of the user except the current one.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Other sessions revoked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags: [auth]
+      operationId: revokeSession
+      summary: End one session of the current user
+      description: |
+        `id` is the `id` of a `DeviceSession`. A session of another user, an expired one
+        and an unknown id answer `404`. The current session answers `409 current_session`:
+        sign out with `POST /auth/logout` instead.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: The session is revoked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`current_session`: use `POST /auth/logout` to end the current session.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /me/workspaces:
     get:
@@ -927,6 +1043,54 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         locale: { $ref: '#/components/schemas/Locale' }
         timezone: { type: string, maxLength: 64 }
+
+    UpdateMeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120, description: Trimmed; 1–120 characters after trimming. }
+        locale:
+          $ref: '#/components/schemas/Locale'
+          description: Interface language of the panel (docs/04 §8.2).
+
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, maxLength: 128 }
+        new_password: { type: string, minLength: 8, maxLength: 128 }
+
+    DeviceSession:
+      type: object
+      description: |
+        One signed-in browser of the user (docs/02 §13.1). The `id` is a public random
+        identifier, not the session token.
+      required: [id, created_at, last_seen_at, user_agent, current]
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time, description: When the session started. }
+        last_seen_at:
+          type: string
+          format: date-time
+          description: Last request; recorded at most every 5 minutes.
+        user_agent:
+          type: string
+          maxLength: 200
+          description: '`User-Agent` at sign-in, shortened; empty when the client sent none.'
+        current: { type: boolean, description: This is the session of the request. }
+
+    DeviceSessionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceSession' }
 
     User:
       type: object

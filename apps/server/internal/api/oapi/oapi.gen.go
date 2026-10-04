@@ -206,6 +206,12 @@ type AttachmentUpload struct {
 	Upload     SignedRequest `json:"upload"`
 }
 
+// ChangePasswordRequest defines model for ChangePasswordRequest.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 // ChangeStatusRequest defines model for ChangeStatusRequest.
 type ChangeStatusRequest struct {
 	// Status State of a conversation (docs/02 §8).
@@ -304,6 +310,28 @@ type CreateUploadRequest struct {
 	// Sha256 Hex SHA-256 of the file; the storage then rejects any other content.
 	Sha256 *string `json:"sha256,omitempty"`
 	Size   int64   `json:"size"`
+}
+
+// DeviceSession One signed-in browser of the user (docs/02 §13.1). The `id` is a public random
+// identifier, not the session token.
+type DeviceSession struct {
+	// CreatedAt When the session started.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Current This is the session of the request.
+	Current bool      `json:"current"`
+	Id      uuid.UUID `json:"id"`
+
+	// LastSeenAt Last request; recorded at most every 5 minutes.
+	LastSeenAt time.Time `json:"last_seen_at"`
+
+	// UserAgent `User-Agent` at sign-in, shortened; empty when the client sent none.
+	UserAgent string `json:"user_agent"`
+}
+
+// DeviceSessionList defines model for DeviceSessionList.
+type DeviceSessionList struct {
+	Items []DeviceSession `json:"items"`
 }
 
 // Locale defines model for Locale.
@@ -432,6 +460,15 @@ type SignedRequest struct {
 // SwitchWorkspaceRequest defines model for SwitchWorkspaceRequest.
 type SwitchWorkspaceRequest struct {
 	WorkspaceId uuid.UUID `json:"workspace_id"`
+}
+
+// UpdateMeRequest defines model for UpdateMeRequest.
+type UpdateMeRequest struct {
+	// Locale Interface language of the panel (docs/04 §8.2).
+	Locale *Locale `json:"locale,omitempty"`
+
+	// Name Trimmed; 1–120 characters after trimming.
+	Name *string `json:"name,omitempty"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
@@ -573,6 +610,12 @@ type PostMessageJSONRequestBody = PostMessageRequest
 // ChangeConversationStatusJSONRequestBody defines body for ChangeConversationStatus for application/json ContentType.
 type ChangeConversationStatusJSONRequestBody = ChangeStatusRequest
 
+// UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
+type UpdateMeJSONRequestBody = UpdateMeRequest
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
 // UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
 type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
@@ -632,6 +675,21 @@ type ServerInterface interface {
 	// GetMe Current user, workspace, role and permissions
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// UpdateMe Change the current user's profile
+	// (PATCH /me)
+	UpdateMe(w http.ResponseWriter, r *http.Request)
+	// ChangePassword Change the current user's password
+	// (POST /me/password)
+	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// ListMySessions Active sessions (signed-in devices) of the current user
+	// (GET /me/sessions)
+	ListMySessions(w http.ResponseWriter, r *http.Request)
+	// RevokeOtherSessions Sign out on every other device
+	// (POST /me/sessions/revoke-others)
+	RevokeOtherSessions(w http.ResponseWriter, r *http.Request)
+	// RevokeSession End one session of the current user
+	// (DELETE /me/sessions/{id})
+	RevokeSession(w http.ResponseWriter, r *http.Request, id Id)
 	// ListMyWorkspaces Workspaces the current user is an active member of
 	// (GET /me/workspaces)
 	ListMyWorkspaces(w http.ResponseWriter, r *http.Request)
@@ -752,6 +810,36 @@ func (_ Unimplemented) ChangeConversationStatus(w http.ResponseWriter, r *http.R
 // GetMe Current user, workspace, role and permissions
 // (GET /me)
 func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMe Change the current user's profile
+// (PATCH /me)
+func (_ Unimplemented) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangePassword Change the current user's password
+// (POST /me/password)
+func (_ Unimplemented) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListMySessions Active sessions (signed-in devices) of the current user
+// (GET /me/sessions)
+func (_ Unimplemented) ListMySessions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeOtherSessions Sign out on every other device
+// (POST /me/sessions/revoke-others)
+func (_ Unimplemented) RevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeSession End one session of the current user
+// (DELETE /me/sessions/{id})
+func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1285,6 +1373,88 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateMe operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangePassword operation middleware
+func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangePassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMySessions operation middleware
+func (siw *ServerInterfaceWrapper) ListMySessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMySessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeOtherSessions operation middleware
+func (siw *ServerInterfaceWrapper) RevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeOtherSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyWorkspaces operation middleware
 func (siw *ServerInterfaceWrapper) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) {
 
@@ -1454,6 +1624,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me", wrapper.GetMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/me", wrapper.UpdateMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/password", wrapper.ChangePassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/sessions", wrapper.ListMySessions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/sessions/revoke-others", wrapper.RevokeOtherSessions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/me/sessions/{id}", wrapper.RevokeSession)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/workspaces", wrapper.ListMyWorkspaces)

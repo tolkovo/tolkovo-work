@@ -40,6 +40,16 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Status: http.StatusUnauthorized, Code: "invalid_credentials", Title: "Unauthorized",
 			Detail: "wrong email or password",
 		})
+	case errors.Is(err, auth.ErrWrongPassword):
+		writeProblem(w, r, Problem{
+			Status: http.StatusUnprocessableEntity, Code: "wrong_password", Title: "Unprocessable Content",
+			Detail: "the current password does not match",
+		})
+	case errors.Is(err, auth.ErrCurrentSession):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "current_session", Title: "Conflict",
+			Detail: "use POST /auth/logout to end the current session",
+		})
 	case errors.Is(err, authz.ErrForbidden):
 		writeProblem(w, r, Problem{Status: http.StatusForbidden, Code: "forbidden", Title: "Forbidden"})
 	case errors.Is(err, auth.ErrNoWorkspace):
@@ -52,7 +62,8 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 			Status: http.StatusForbidden, Code: "not_assignee", Title: "Forbidden",
 			Detail: "the conversation is not assigned to you",
 		})
-	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, tenancy.ErrNotFound), errors.Is(err, conversations.ErrNotFound):
+	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, tenancy.ErrNotFound),
+		errors.Is(err, conversations.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	case errors.Is(err, tenancy.ErrEmailTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_taken", Title: "Conflict"})
