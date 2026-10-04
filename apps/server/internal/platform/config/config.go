@@ -95,6 +95,11 @@ type Config struct {
 	SMTP SMTP `envPrefix:"SMTP_"`
 
 	MasterKey MasterKey `envPrefix:"MASTER_"`
+
+	// EgressAllowPrivate opens private ranges (IPs or CIDRs) to requests
+	// to user-configured URLs, e.g. a local Ollama on self-host
+	// (docs/00 §9.5). Link-local stays closed; not allowed in SaaS.
+	EgressAllowPrivate []string `env:"EGRESS_ALLOW_PRIVATE" envSeparator:","`
 }
 
 // Storage configures file storage: TOLKOVO_STORAGE_*.
@@ -202,6 +207,7 @@ func (c Config) validate() error {
 	errs = append(errs, c.validateStorage()...)
 	errs = append(errs, c.validateSMTP()...)
 	errs = append(errs, c.validateMasterKey()...)
+	errs = append(errs, c.validateEgress()...)
 	errs = append(errs, c.validateTrustedProxies()...)
 	if !strings.HasPrefix(c.RedisURL.Reveal(), "redis://") && !strings.HasPrefix(c.RedisURL.Reveal(), "rediss://") {
 		errs = append(errs, fmt.Errorf("%sREDIS_URL must start with redis:// or rediss://", Prefix))

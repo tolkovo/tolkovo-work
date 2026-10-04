@@ -248,3 +248,37 @@ func TestLoadFrom_MasterKey(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadFrom_EgressAllowPrivate(t *testing.T) {
+	cfg, err := LoadFrom(map[string]string{
+		"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_EGRESS_ALLOW_PRIVATE": "127.0.0.1, 172.18.0.0/16,fd00::5",
+	})
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	got := cfg.EgressAllowPrivatePrefixes()
+	if len(got) != 3 || got[0].String() != "127.0.0.1/32" || got[1].String() != "172.18.0.0/16" || got[2].String() != "fd00::5/128" {
+		t.Fatalf("prefixes: %v", got)
+	}
+	for name, vars := range map[string]map[string]string{
+		"garbage":    {"TOLKOVO_EGRESS_ALLOW_PRIVATE": "ollama"},
+		"everything": {"TOLKOVO_EGRESS_ALLOW_PRIVATE": "0.0.0.0/0"},
+		"metadata":   {"TOLKOVO_EGRESS_ALLOW_PRIVATE": "169.254.169.254"},
+		"wide":       {"TOLKOVO_EGRESS_ALLOW_PRIVATE": "128.0.0.0/1"},
+		"saas": {
+			"TOLKOVO_EGRESS_ALLOW_PRIVATE": "127.0.0.1", "TOLKOVO_MODE": "saas", "TOLKOVO_STORAGE_DRIVER": "s3",
+			"TOLKOVO_STORAGE_S3_REGION": "eu", "TOLKOVO_STORAGE_S3_BUCKET": "b",
+			"TOLKOVO_STORAGE_S3_ACCESS_KEY_ID": "id", "TOLKOVO_STORAGE_S3_SECRET_ACCESS_KEY": "secret",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := map[string]string{"TOLKOVO_DATABASE_URL": dsn}
+			for k, val := range vars {
+				v[k] = val
+			}
+			if _, err := LoadFrom(v); err == nil || !strings.Contains(err.Error(), "TOLKOVO_EGRESS_ALLOW_PRIVATE") {
+				t.Fatalf("want an error naming TOLKOVO_EGRESS_ALLOW_PRIVATE, got %v", err)
+			}
+		})
+	}
+}
