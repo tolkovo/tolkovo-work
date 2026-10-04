@@ -1,0 +1,56 @@
+---
+// Page opened from the waitlist email (docs/05 §6). The token is in the URL fragment, which
+// browsers never send to the static host. Nothing happens on load: mail scanners open links,
+// so only a person pressing the button confirms or deletes the address.
+import { getDict, type Locale } from "../i18n";
+import Plain from "../layouts/Plain.astro";
+import { PAGES, WAITLIST_ACTION_ENDPOINTS } from "../site";
+
+interface Props {
+  locale: Locale;
+  action: "confirm" | "unsubscribe";
+}
+
+const { locale, action } = Astro.props;
+const a = getDict(locale).waitlistAction;
+const copy = a[action];
+const messages = {
+  button: copy.button,
+  sending: a.sending,
+  errNoToken: a.errNoToken,
+  errInvalid: a.errInvalid,
+  errRateLimited: a.errRateLimited,
+  errUnavailable: a.errUnavailable,
+};
+---
+
+<Plain locale={locale} title={copy.title}>
+  <header class="top">
+    <div class="wrap">
+      <a class="logo" href={PAGES[locale]} aria-label={a.home}
+        ><span class="logo-mark" aria-hidden="true"></span>Tolkovo</a
+      >
+    </div>
+  </header>
+  <main id="main" class="s wl-action">
+    <div class="wrap">
+      <div class="final single">
+        <div id="wla" data-endpoint={WAITLIST_ACTION_ENDPOINTS[action]} data-messages={JSON.stringify(messages)}>
+          <h1>{copy.heading}</h1>
+          <p class="sub">{copy.text}</p>
+          <button class="btn btn-primary" type="button" id="wla-go">{copy.button}</button>
+          <div class="status" id="wla-status" role="status" aria-live="polite"></div>
+        </div>
+        <div class="done" id="wla-done" tabindex="-1" hidden>
+          <h3>{copy.doneTitle}</h3>
+          <p>{copy.doneText}</p>
+          <p><a href={PAGES[locale]}>{a.home}</a></p>
+        </div>
+      </div>
+    </div>
+  </main>
+</Plain>
+
+<script>
+  import "../scripts/waitlist-action.ts";
+</script>

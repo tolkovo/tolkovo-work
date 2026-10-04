@@ -177,6 +177,63 @@ func (e Role) Valid() bool {
 	}
 }
 
+// Defines values for WaitlistAcceptedStatus.
+const (
+	PendingConfirmation WaitlistAcceptedStatus = "pending_confirmation"
+)
+
+// Valid indicates whether the value is a known member of the WaitlistAcceptedStatus enum.
+func (e WaitlistAcceptedStatus) Valid() bool {
+	switch e {
+	case PendingConfirmation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WaitlistChannel.
+const (
+	Email    WaitlistChannel = "email"
+	Telegram WaitlistChannel = "telegram"
+	VkMax    WaitlistChannel = "vk_max"
+	Web      WaitlistChannel = "web"
+	Whatsapp WaitlistChannel = "whatsapp"
+)
+
+// Valid indicates whether the value is a known member of the WaitlistChannel enum.
+func (e WaitlistChannel) Valid() bool {
+	switch e {
+	case Email:
+		return true
+	case Telegram:
+		return true
+	case VkMax:
+		return true
+	case Web:
+		return true
+	case Whatsapp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WaitlistConfirmedStatus.
+const (
+	Confirmed WaitlistConfirmedStatus = "confirmed"
+)
+
+// Valid indicates whether the value is a known member of the WaitlistConfirmedStatus enum.
+func (e WaitlistConfirmedStatus) Valid() bool {
+	switch e {
+	case Confirmed:
+		return true
+	default:
+		return false
+	}
+}
+
 // AssignRequest defines model for AssignRequest.
 type AssignRequest struct {
 	// AssigneeId The member to assign; `null` releases the conversation to the queue.
@@ -447,6 +504,46 @@ type User struct {
 	Name   string    `json:"name"`
 }
 
+// WaitlistAccepted defines model for WaitlistAccepted.
+type WaitlistAccepted struct {
+	Status WaitlistAcceptedStatus `json:"status"`
+}
+
+// WaitlistAcceptedStatus defines model for WaitlistAccepted.Status.
+type WaitlistAcceptedStatus string
+
+// WaitlistChannel Channels the person wants, for prioritising the roadmap (docs/05 §1).
+type WaitlistChannel string
+
+// WaitlistConfirmed defines model for WaitlistConfirmed.
+type WaitlistConfirmed struct {
+	Status WaitlistConfirmedStatus `json:"status"`
+}
+
+// WaitlistConfirmedStatus defines model for WaitlistConfirmed.Status.
+type WaitlistConfirmedStatus string
+
+// WaitlistJoinRequest defines model for WaitlistJoinRequest.
+type WaitlistJoinRequest struct {
+	Channels *[]WaitlistChannel `json:"channels,omitempty"`
+
+	// Consent Explicit consent to processing the email and channels for the beta invitation
+	// (GDPR art. 7). Must be `true`; the server stores the version of the consent text.
+	Consent bool   `json:"consent"`
+	Email   string `json:"email"`
+	Locale  Locale `json:"locale"`
+
+	// Website Honeypot: hidden from people, filled by bots. A non-empty value gets the usual
+	// `202` and nothing is saved.
+	Website *string `json:"website,omitempty"`
+}
+
+// WaitlistTokenRequest defines model for WaitlistTokenRequest.
+type WaitlistTokenRequest struct {
+	// Token Token from the link in the email (43 characters, base64url).
+	Token string `json:"token"`
+}
+
 // Workspace defines model for Workspace.
 type Workspace struct {
 	Id       uuid.UUID `json:"id"`
@@ -497,6 +594,9 @@ type LinkRejected = Problem
 
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
+
+// TokenInvalid RFC 9457 problem details.
+type TokenInvalid = Problem
 
 // TooManyRequests RFC 9457 problem details.
 type TooManyRequests = Problem

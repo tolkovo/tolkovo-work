@@ -12,6 +12,8 @@ output-options:
   # hand because generated parameter binding imports
   # github.com/oapi-codegen/runtime, a dependency awaiting the owner's
   # approval (docs/00 §16). Their models are still generated.
-  exclude-tags: [files, conversations, contacts]
+  # The public waitlist has its own route group and package
+  # (oapi-codegen.waitlist.yaml).
+  exclude-tags: [files, conversations, contacts, waitlist]
   # Keep schemas used only by the hand-routed operations.
   skip-prune: true

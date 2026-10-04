@@ -1226,6 +1226,29 @@ td.us.yes {
     grid-template-columns: 1fr;
   }
 }
+/* waitlist confirm/unsubscribe pages: the same inverted card, one column */
+.wl-action {
+  padding-block: clamp(32px, 8vw, 96px);
+}
+.final.single {
+  grid-template-columns: 1fr;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+.final.single h1 {
+  font: 700 clamp(1.5rem, 3vw, 2.1rem) / 1.2 var(--f-display);
+  color: var(--paper);
+}
+.final.single .btn-primary {
+  margin-top: 1.5rem;
+}
+.final.single .status {
+  margin-top: 1rem;
+}
+.final .done a {
+  color: var(--paper);
+  font-weight: 600;
+}
 
 /* footer */
 footer {

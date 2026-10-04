@@ -382,4 +382,29 @@ export const en: Dict = {
     ],
     bottom: "© 2026 Tolkovo contributors · This site uses no cookies",
   },
+  waitlistAction: {
+    home: "Home",
+    confirm: {
+      title: "Confirm your email — Tolkovo",
+      heading: "Confirm your email",
+      text: "Press the button to join the Tolkovo cloud beta waitlist. We will invite you when the beta starts.",
+      button: "Confirm",
+      doneTitle: "Done, you are on the list",
+      doneText: "We will write to this address when the beta opens. The email has a link to delete the address.",
+    },
+    unsubscribe: {
+      title: "Delete your email — Tolkovo",
+      heading: "Delete your email from the waitlist?",
+      text: "We will delete the address and the channels you picked. No more emails.",
+      button: "Delete email",
+      doneTitle: "Email deleted",
+      doneText: "The address is gone from the waitlist. Changed your mind? Leave it on the home page again.",
+    },
+    sending: "Sending…",
+    errNoToken: "The link has no code. Open the full link from the email.",
+    errInvalid:
+      "The link has expired, was already used, or the address is deleted. Leave your email on the home page again and we will send a new one.",
+    errRateLimited: "Too many attempts. Wait a little and try again.",
+    errUnavailable: "That did not work: the server is unavailable right now. Try again later.",
+  },
 };

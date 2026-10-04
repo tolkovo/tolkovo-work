@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Подтвердите адрес</title>
+</head>
+<body style="margin:0;padding:24px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.5;">
+<div style="max-width:520px;margin:0 auto;">
+<p>Здравствуйте!</p>
+<p>Этот адрес оставили в очереди на бету облака Tolkovo на {{.Site}}. Чтобы встать в очередь, откройте ссылку и нажмите «Подтвердить».</p>
+<p style="margin:28px 0;"><a href="{{.ConfirmURL}}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:#0d7a69;color:#ffffff;font-weight:600;text-decoration:none;">Подтвердить адрес</a></p>
+<p>Ссылка работает {{.Hours}}&nbsp;ч. Если адрес оставили не вы, ничего делать не нужно: без подтверждения мы удалим его через {{.Days}}&nbsp;дн.</p>
+<p style="font-size:14px;">Если кнопка не открывается, скопируйте ссылку:<br><span style="word-break:break-all;">{{.ConfirmURL}}</span></p>
+<p style="font-size:14px;"><a href="{{.UnsubscribeURL}}">Удалить адрес сразу</a></p>
+<p>Команда Tolkovo</p>
+</div>
+</body>
+</html>
