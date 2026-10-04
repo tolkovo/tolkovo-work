@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { fakeApi, json, operatorSession, ownerSession, workspaces } from "../../test/fake-api";
+import { fakeApi, json, operatorSession, ownerSession, problem, workspaces } from "../../test/fake-api";
 import { renderApp } from "../../test/render-app";
 
 describe("panel shell", () => {
@@ -55,10 +55,25 @@ describe("panel shell", () => {
 });
 
 describe("session in the shell", () => {
-  it("hides settings from a role without workspace.manage", async () => {
+  it("shows settings to every role: personal settings belong to everyone", async () => {
     renderApp("/inbox", { api: fakeApi({ session: operatorSession }) });
     const nav = await screen.findByRole("navigation", { name: "Разделы" });
-    expect(within(nav).queryByRole("link", { name: "Настройки" })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Настройки" })).toHaveAttribute("href", "/settings");
+  });
+
+  it("links the user's name to the profile", async () => {
+    const user = userEvent.setup();
+    const { router } = renderApp("/inbox");
+    await user.click(await screen.findByRole("link", { name: "Анна Смирнова" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Профиль" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/settings/profile");
+  });
+
+  it("applies the profile language over the one stored in the browser", async () => {
+    // The browser remembers English (e.g. the sign-in screen), the profile says Russian.
+    renderApp("/inbox", { language: "en" });
+    expect(await screen.findByRole("heading", { level: 1, name: "Диалоги" })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("ru");
   });
 
   it("shows the workspace name and no switcher with one workspace", async () => {
@@ -119,9 +134,10 @@ describe("theme switcher", () => {
 });
 
 describe("language switcher", () => {
-  it("switches the interface to English and remembers it", async () => {
+  it("switches the interface to English and saves it to the profile", async () => {
     const user = userEvent.setup();
-    renderApp("/inbox");
+    const api = fakeApi();
+    renderApp("/inbox", { api });
     const group = await screen.findByRole("group", { name: "Язык интерфейса" });
 
     await user.click(within(group).getByRole("button", { name: "EN" }));
@@ -133,5 +149,17 @@ describe("language switcher", () => {
     await waitFor(() =>
       expect(screen.getByRole("group", { name: "Interface language" })).toBeInTheDocument(),
     );
+    const call = api.calls.find((c) => c.method === "PATCH" && c.path === "/me");
+    expect(call?.body).toEqual({ locale: "en" });
+    expect(call?.headers.get("X-CSRF-Token")).toBe("csrf-owner");
+  });
+
+  it("returns to the profile language when saving fails", async () => {
+    const user = userEvent.setup();
+    renderApp("/inbox", { api: fakeApi({ routes: { "PATCH /me": () => problem(500, "internal") } }) });
+    const group = await screen.findByRole("group", { name: "Язык интерфейса" });
+    await user.click(within(group).getByRole("button", { name: "EN" }));
+    await waitFor(() => expect(document.documentElement.lang).toBe("ru"));
+    expect(screen.getByRole("heading", { level: 1, name: "Диалоги" })).toBeInTheDocument();
   });
 });

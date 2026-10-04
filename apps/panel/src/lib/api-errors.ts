@@ -27,6 +27,10 @@ export function describeApiError<F extends string = string>(
       };
     case "invalid_credentials":
       return { message: t("errors.invalidCredentials") };
+    case "wrong_password":
+      return { message: t("errors.wrongPassword"), ...(field ? { field } : {}) };
+    case "current_session":
+      return { message: t("errors.currentSession") };
     case "email_taken":
       return { message: t("errors.emailTaken"), ...(field ? { field } : {}) };
     case "slug_taken":

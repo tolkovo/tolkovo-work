@@ -11,12 +11,13 @@ export type NavItem = {
 /**
  * Panel sections in rail order (docs/07 §3). Items the user has no right to are left out,
  * not shown disabled (docs/04 §2.2). Monitor, analytics and the knowledge base get their
- * permissions with their features; until then every member sees them.
+ * permissions with their features; until then every member sees them. Settings is for
+ * everyone: personal settings belong to every role, workspace sections are filtered inside.
  */
 export const navItems: readonly NavItem[] = [
   { to: "/inbox", label: "nav.inbox", icon: Inbox },
   { to: "/monitor", label: "nav.monitor", icon: Activity },
   { to: "/analytics", label: "nav.analytics", icon: ChartColumn },
   { to: "/kb", label: "nav.kb", icon: BookOpen },
-  { to: "/settings", label: "nav.settings", icon: Settings, permission: "workspace.manage" },
+  { to: "/settings", label: "nav.settings", icon: Settings },
 ];

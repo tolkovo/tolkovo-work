@@ -8,9 +8,16 @@ import { Topbar } from "./topbar";
 
 /** Panel layout: section rail + top bar + the current section (docs/07 §3). */
 export function AppShell() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { data: session } = useSession();
   const router = useRouter();
+
+  // The profile language wins over the browser copy (docs/04 §8.2): applied after sign-in, on
+  // load and when the profile changes. i18next is outside React, so this is an effect.
+  const profileLanguage = session?.user.locale;
+  useEffect(() => {
+    if (profileLanguage && profileLanguage !== i18n.resolvedLanguage) void i18n.changeLanguage(profileLanguage);
+  }, [profileLanguage, i18n]);
 
   // The session ended while the panel was open (expired, revoked, signed out in another tab).
   // Re-running the /_app guard redirects to sign-in with the current location as return path;

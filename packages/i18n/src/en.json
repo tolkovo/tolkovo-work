@@ -85,6 +85,56 @@
       "you": "(you)",
       "active": "Active",
       "inactive": "Deactivated"
+    },
+    "groups": {
+      "workspace": "Workspace",
+      "personal": "Just for me"
+    },
+    "profile": {
+      "title": "Profile",
+      "name": "Name",
+      "nameHint": "This is how teammates see you in the team and in conversations.",
+      "email": "Email",
+      "emailHint": "The address you sign in with. It can’t be changed yet.",
+      "language": "Interface language",
+      "languageHint": "Saved in your profile and used on all your devices.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved"
+    },
+    "appearance": {
+      "title": "Appearance",
+      "theme": "Theme",
+      "themeHint": "The theme is stored in this browser only: choose it separately on other devices."
+    },
+    "security": {
+      "title": "Security and sign-in",
+      "password": {
+        "title": "Change password",
+        "text": "Changing the password signs you out on every other device.",
+        "current": "Current password",
+        "new": "New password",
+        "newHint": "8 to 128 characters.",
+        "confirm": "Repeat the new password",
+        "submit": "Change password",
+        "pending": "Changing…",
+        "done": "Password changed. You were signed out on other devices."
+      },
+      "sessions": {
+        "title": "Active sessions",
+        "text": "Devices where your account is signed in.",
+        "current": "This device",
+        "signedIn": "Signed in: {date}",
+        "lastSeen": "Last active: {date}",
+        "unknownDevice": "Unknown device",
+        "revoke": "End",
+        "revokeLabel": "End session: {device}",
+        "revoked": "Session ended.",
+        "gone": "This session has already ended.",
+        "revokeOthers": "Sign out on other devices",
+        "revokedOthers": "Signed out on other devices.",
+        "none": "No other active sessions."
+      }
     }
   },
   "roles": {
@@ -119,7 +169,8 @@
     "email": "Enter an email address, for example anna@example.com.",
     "passwordLength": "The password must be 8 to 128 characters.",
     "slug": "3 to 40 characters: Latin letters, digits and inner hyphens.",
-    "tooLong": "No more than {max} characters."
+    "tooLong": "No more than {max} characters.",
+    "passwordMismatch": "The passwords don’t match."
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
@@ -134,7 +185,9 @@
     "staleSession": "Your session is out of date. Reload the page and try again.",
     "noWorkspace": "You aren't a member of any workspace. Ask an owner to invite you.",
     "notFound": "The workspace wasn't found, or you no longer have access to it.",
-    "unknown": "That didn't work. Try again."
+    "unknown": "That didn't work. Try again.",
+    "wrongPassword": "The current password is wrong.",
+    "currentSession": "This is the current session. To end it, sign out."
   },
   "error": {
     "title": "Something went wrong",
@@ -174,5 +227,8 @@
       "switchPrompt": "Already have a workspace?",
       "switchAction": "Sign in"
     }
+  },
+  "userMenu": {
+    "profile": "Open profile"
   }
 }

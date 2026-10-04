@@ -21,7 +21,10 @@ import { Route as AppSettingsRouteImport } from "./routes/_app/settings"
 import { Route as AuthLoginRouteImport } from "./routes/_auth/login"
 import { Route as AuthRegisterRouteImport } from "./routes/_auth/register"
 import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
+import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
+import { Route as AppSettingsProfileRouteImport } from "./routes/_app/settings/profile"
+import { Route as AppSettingsSecurityRouteImport } from "./routes/_app/settings/security"
 import { Route as AppSettingsTeamRouteImport } from "./routes/_app/settings/team"
 
 const IndexRoute = IndexRouteImport.update({
@@ -82,9 +85,24 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: "/",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
+  id: "/appearance",
+  path: "/appearance",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsGeneralRoute = AppSettingsGeneralRouteImport.update({
   id: "/general",
   path: "/general",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsProfileRoute = AppSettingsProfileRouteImport.update({
+  id: "/profile",
+  path: "/profile",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsSecurityRoute = AppSettingsSecurityRouteImport.update({
+  id: "/security",
+  path: "/security",
   getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsTeamRoute = AppSettingsTeamRouteImport.update({
@@ -103,7 +121,10 @@ export interface FileRoutesByFullPath {
   "/settings": typeof AppSettingsRouteWithChildren
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
+  "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/general": typeof AppSettingsGeneralRoute
+  "/settings/profile": typeof AppSettingsProfileRoute
+  "/settings/security": typeof AppSettingsSecurityRoute
   "/settings/team": typeof AppSettingsTeamRoute
   "/settings/": typeof AppSettingsIndexRoute
 }
@@ -116,7 +137,10 @@ export interface FileRoutesByTo {
   "/onboarding": typeof AppOnboardingRoute
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
+  "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/general": typeof AppSettingsGeneralRoute
+  "/settings/profile": typeof AppSettingsProfileRoute
+  "/settings/security": typeof AppSettingsSecurityRoute
   "/settings/team": typeof AppSettingsTeamRoute
   "/settings": typeof AppSettingsIndexRoute
 }
@@ -133,7 +157,10 @@ export interface FileRoutesById {
   "/_app/settings": typeof AppSettingsRouteWithChildren
   "/_auth/login": typeof AuthLoginRoute
   "/_auth/register": typeof AuthRegisterRoute
+  "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
+  "/_app/settings/profile": typeof AppSettingsProfileRoute
+  "/_app/settings/security": typeof AppSettingsSecurityRoute
   "/_app/settings/team": typeof AppSettingsTeamRoute
   "/_app/settings/": typeof AppSettingsIndexRoute
 }
@@ -149,7 +176,10 @@ export interface FileRouteTypes {
     | "/settings"
     | "/login"
     | "/register"
+    | "/settings/appearance"
     | "/settings/general"
+    | "/settings/profile"
+    | "/settings/security"
     | "/settings/team"
     | "/settings/"
   fileRoutesByTo: FileRoutesByTo
@@ -162,7 +192,10 @@ export interface FileRouteTypes {
     | "/onboarding"
     | "/login"
     | "/register"
+    | "/settings/appearance"
     | "/settings/general"
+    | "/settings/profile"
+    | "/settings/security"
     | "/settings/team"
     | "/settings"
   id:
@@ -178,7 +211,10 @@ export interface FileRouteTypes {
     | "/_app/settings"
     | "/_auth/login"
     | "/_auth/register"
+    | "/_app/settings/appearance"
     | "/_app/settings/general"
+    | "/_app/settings/profile"
+    | "/_app/settings/security"
     | "/_app/settings/team"
     | "/_app/settings/"
   fileRoutesById: FileRoutesById
@@ -275,11 +311,32 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/appearance": {
+      id: "/_app/settings/appearance"
+      path: "/appearance"
+      fullPath: "/settings/appearance"
+      preLoaderRoute: typeof AppSettingsAppearanceRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/general": {
       id: "/_app/settings/general"
       path: "/general"
       fullPath: "/settings/general"
       preLoaderRoute: typeof AppSettingsGeneralRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    "/_app/settings/profile": {
+      id: "/_app/settings/profile"
+      path: "/profile"
+      fullPath: "/settings/profile"
+      preLoaderRoute: typeof AppSettingsProfileRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    "/_app/settings/security": {
+      id: "/_app/settings/security"
+      path: "/security"
+      fullPath: "/settings/security"
+      preLoaderRoute: typeof AppSettingsSecurityRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     "/_app/settings/team": {
@@ -293,13 +350,19 @@ declare module "@tanstack/react-router" {
 }
 
 interface AppSettingsRouteChildren {
+  AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
+  AppSettingsProfileRoute: typeof AppSettingsProfileRoute
+  AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
   AppSettingsTeamRoute: typeof AppSettingsTeamRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,
+  AppSettingsProfileRoute: AppSettingsProfileRoute,
+  AppSettingsSecurityRoute: AppSettingsSecurityRoute,
   AppSettingsTeamRoute: AppSettingsTeamRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }

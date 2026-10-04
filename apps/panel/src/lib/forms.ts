@@ -1,4 +1,11 @@
-import type { LoginRequest, RegisterRequest, UpdateWorkspaceRequest } from "@tolkovo/api-client";
+import type {
+  ChangePasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+  UpdateMeRequest,
+  UpdateWorkspaceRequest,
+} from "@tolkovo/api-client";
+import { languages } from "@tolkovo/i18n";
 import { z } from "zod";
 
 /**
@@ -6,7 +13,7 @@ import { z } from "zod";
  * before a round trip. The server validates again. Messages are keys of `validation.*`.
  * `satisfies` ties every form to the generated request type.
  */
-export const validationKeys = ["required", "email", "passwordLength", "slug", "tooLong"] as const;
+export const validationKeys = ["required", "email", "passwordLength", "passwordMismatch", "slug", "tooLong"] as const;
 export type ValidationKey = (typeof validationKeys)[number];
 
 const required = (max: number) => z.string().trim().min(1, "required").max(max, "tooLong");
@@ -39,6 +46,24 @@ export const workspaceSchema = z.object({
   locale: z.enum(["ru", "en"]),
   timezone: z.string().min(1, "required").max(64, "tooLong"),
 }) satisfies z.ZodType<UpdateWorkspaceRequest>;
+
+export const profileSchema = z.object({
+  name: required(120),
+  locale: z.enum(languages),
+}) satisfies z.ZodType<UpdateMeRequest>;
+
+const newPassword = z.string().min(1, "required").min(8, "passwordLength").max(128, "passwordLength");
+
+/** The confirmation never leaves the browser; it only catches a typo in the new password. */
+export const passwordSchema = z
+  .object({
+    current_password: z.string().min(1, "required").max(128, "tooLong"),
+    new_password: newPassword,
+    confirm_password: z.string().min(1, "required"),
+  })
+  .refine((v) => v.new_password === v.confirm_password, { path: ["confirm_password"], message: "passwordMismatch" }) satisfies z.ZodType<
+  ChangePasswordRequest & { confirm_password: string }
+>;
 
 export type FieldErrors<F extends string> = Partial<Record<F, ValidationKey>>;
 
