@@ -36,18 +36,21 @@ run: ## Run the server with role=all
 build: ## Build the server binary into bin/
 	cd $(SERVER) && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o ../../bin/tolkovo ./cmd/tolkovo
 
-gen: ## Generate code from SQL (and later OpenAPI / WS schemas)
+GENERATED := $(SERVER)/internal/*/store $(SERVER)/internal/platform/*/store $(SERVER)/internal/api/oapi
+
+gen: ## Generate code from SQL and api/openapi.yaml (later WS schemas)
 	cd $(SERVER) && $(TOOL) sqlc generate
+	cd $(SERVER) && $(TOOL) oapi-codegen -config oapi-codegen.yaml ../../api/openapi.yaml
 
 gen-check: gen ## Fail if generated code is out of date
-	@git diff --exit-code -- $(SERVER)/internal/*/store || { echo "generated code is stale: run make gen"; exit 1; }
+	@git diff --exit-code -- $(GENERATED) || { echo "generated code is stale: run make gen"; exit 1; }
 
 lint: ## gofmt, go vet, golangci-lint
 	@cd $(SERVER) && test -z "$$(gofmt -l .)" || { gofmt -l .; echo "run gofmt -w"; exit 1; }
 	cd $(SERVER) && go vet ./...
 	cd $(SERVER) && $(TOOL) golangci-lint run ./...
 
-test: ## Unit + integration tests (integration needs TOLKOVO_TEST_DATABASE_URL)
+test: ## Unit + integration tests (need TOLKOVO_TEST_DATABASE_URL, TOLKOVO_TEST_REDIS_URL)
 	cd $(SERVER) && go test -race -count=1 ./...
 
 check: gen-check lint test ## Run before every PR

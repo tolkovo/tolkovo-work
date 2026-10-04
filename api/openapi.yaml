@@ -1,0 +1,404 @@
+openapi: 3.1.0
+info:
+  title: Tolkovo API
+  version: 0.1.0
+  description: |
+    The single source of truth for the Tolkovo REST API (docs/00 §8, docs/02 §12).
+    Server code is generated from this file (`make gen`); never edit the generated code.
+
+    ## Authentication
+
+    The panel authenticates with an opaque session token in an `HttpOnly`,
+    `SameSite=Lax` cookie. The cookie is `Secure` outside development and is then
+    named `__Host-tolkovo_session`; in development it is `tolkovo_session`.
+    Sessions live on the server (Redis): logout and workspace switching revoke them
+    immediately.
+
+    The workspace of a request always comes from the session, never from the body or
+    the URL. A resource of another workspace answers `404`, a missing permission in
+    your own workspace answers `403`.
+
+    ## CSRF
+
+    Every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) authenticated by the cookie
+    must send the session's CSRF token in the `X-CSRF-Token` header. The token is
+    returned in `csrf_token` of every `Session` response (register, login, workspace
+    switch, `GET /me`) and changes with the session. Unsafe requests with an `Origin`
+    header from another origin are rejected, including login and registration.
+
+    ## Errors
+
+    Errors are RFC 9457 `application/problem+json` documents with a stable `code`.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+tags:
+  - name: auth
+  - name: workspace
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Create an account and its first workspace
+      description: |
+        Creates the user, the workspace and the owner membership atomically, then
+        starts a session in that workspace. Rate limited per client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Registered and signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`email_taken` or `slug_taken`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Sign in with email and password
+      description: |
+        Always starts a new session (any session cookie sent along is revoked) in the
+        user's first workspace; switch with `POST /auth/workspace`. The answer for an
+        unknown email, a wrong password and a disabled account is the same
+        `invalid_credentials`. Rate limited per email and client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the current session
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Signed out; the cookie is cleared.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /auth/workspace:
+    post:
+      tags: [auth]
+      operationId: switchWorkspace
+      summary: Switch the session to another workspace of the user
+      description: |
+        Requires an active membership in the target workspace, otherwise `404`.
+        The old session is revoked and a new one (new cookie, new CSRF token) is issued.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SwitchWorkspaceRequest' }
+      responses:
+        '200':
+          description: Switched.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Current user, workspace, role and permissions
+      responses:
+        '200':
+          description: The current session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/workspaces:
+    get:
+      tags: [auth]
+      operationId: listMyWorkspaces
+      summary: Workspaces the current user is an active member of
+      responses:
+        '200':
+          description: The user's workspaces, oldest membership first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /workspace:
+    patch:
+      tags: [workspace]
+      operationId: updateWorkspace
+      summary: Change settings of the current workspace
+      description: Requires `workspace.manage` (owner, admin).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateWorkspaceRequest' }
+      responses:
+        '200':
+          description: The updated workspace.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /members:
+    get:
+      tags: [workspace]
+      operationId: listMembers
+      summary: Members of the current workspace
+      description: Requires `members.view` (owner, admin, operator).
+      responses:
+        '200':
+          description: Members of the current workspace.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: tolkovo_session
+      description: '`__Host-tolkovo_session` outside development.'
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: '`csrf_token` of the current session. Required on every unsafe method.'
+
+  headers:
+    SetSessionCookie:
+      description: The session cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` outside development).
+      schema: { type: string }
+
+  responses:
+    Invalid:
+      description: '`invalid_request`: malformed JSON, unknown fields or invalid values.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: '`unauthenticated` (no or expired session) or `invalid_credentials` (login).'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: '`forbidden` (missing permission), `csrf_failed`, `cross_origin` or `no_workspace`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: '`not_found`, also for resources of other workspaces.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: '`too_many_requests`; see `Retry-After`.'
+      headers:
+        Retry-After:
+          description: Seconds until the next attempt is allowed.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        code: { type: string, description: Stable machine-readable error code. }
+        detail: { type: string }
+        instance: { type: string }
+        request_id: { type: string }
+
+    Locale:
+      type: string
+      enum: [ru, en]
+
+    Role:
+      type: string
+      description: System role in phase 1 (docs/04 §4.2).
+      enum: [owner, admin, operator]
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, name, workspace_name, workspace_slug]
+      properties:
+        email: { type: string, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        locale: { $ref: '#/components/schemas/Locale' }
+        workspace_name: { type: string, minLength: 1, maxLength: 120 }
+        workspace_slug:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'
+        timezone:
+          type: string
+          description: IANA time zone; defaults to Europe/Moscow.
+          maxLength: 64
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, maxLength: 254 }
+        password: { type: string, maxLength: 128 }
+
+    SwitchWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      required: [workspace_id]
+      properties:
+        workspace_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    UpdateWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        locale: { $ref: '#/components/schemas/Locale' }
+        timezone: { type: string, maxLength: 64 }
+
+    User:
+      type: object
+      required: [id, email, name, locale]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        email: { type: string }
+        name: { type: string }
+        locale: { $ref: '#/components/schemas/Locale' }
+
+    Workspace:
+      type: object
+      required: [id, slug, name, locale, timezone]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        slug: { type: string }
+        name: { type: string }
+        locale: { $ref: '#/components/schemas/Locale' }
+        timezone: { type: string }
+
+    WorkspaceSummary:
+      type: object
+      required: [id, slug, name, role]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        slug: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+
+    WorkspaceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/WorkspaceSummary' }
+
+    Session:
+      type: object
+      required: [user, workspace, role, permissions, csrf_token]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        workspace: { $ref: '#/components/schemas/Workspace' }
+        role: { $ref: '#/components/schemas/Role' }
+        permissions:
+          type: array
+          description: Permissions of the role in this workspace, sorted (docs/04 §4.1).
+          items: { type: string }
+        csrf_token:
+          type: string
+          description: Send it as `X-CSRF-Token` on unsafe requests.
+
+    Member:
+      type: object
+      required: [user_id, email, name, role, active]
+      properties:
+        user_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        email: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        active: { type: boolean }
+
+    MemberList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Member' }

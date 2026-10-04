@@ -1,0 +1,7 @@
+# Go server code generated from api/openapi.yaml by `make gen`. The output is
+# never edited by hand (docs/00 §8).
+package: oapi
+output: internal/api/oapi/oapi.gen.go
+generate:
+  models: true
+  chi-server: true
