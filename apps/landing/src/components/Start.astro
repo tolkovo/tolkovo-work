@@ -1,0 +1,27 @@
+---
+// Closing block (docs/05-landing.md §3.11): the owner dropped the cloud waitlist on 2026-10-04,
+// so the page ends with the way to start today, self-host, and where launches are announced.
+import { getDict, type Locale } from "../i18n";
+import { REPO_URL } from "../site";
+
+interface Props {
+  locale: Locale;
+}
+
+const s = getDict(Astro.props.locale).start;
+---
+
+<section class="s" id="start" aria-labelledby="start-title">
+  <div class="wrap">
+    <div class="final">
+      <div>
+        <h2 id="start-title">{s.title}</h2>
+        <p class="sub">{s.text}</p>
+      </div>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#selfhost">{s.ctaSelf}</a>
+        <a class="btn btn-line" href={`${REPO_URL}/releases`}>{s.ctaReleases}</a>
+      </div>
+    </div>
+  </div>
+</section>

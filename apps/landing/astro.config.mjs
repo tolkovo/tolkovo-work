@@ -1,4 +1,4 @@
-// Static waitlist landing (docs/05-landing.md, backlog L-01).
+// Static landing (docs/05-landing.md, backlog L-01).
 // RU lives at the root, EN under /en/ (05 §7.2).
 import { defineConfig } from "astro/config";
 

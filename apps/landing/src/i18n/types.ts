@@ -40,7 +40,6 @@ export interface Dict {
     h1: string;
     h1Accent: string;
     lede: string;
-    ctaCloud: string;
     ctaSelf: string;
     ctaGithub: string;
     trust: string;
@@ -138,52 +137,15 @@ export interface Dict {
     title: string;
     items: ReadonlyArray<{ q: string; a: string }>;
   };
-  waitlist: {
+  /** Closing block: where to start now that there is no cloud waitlist */
+  start: {
     title: string;
     text: string;
-    emailLabel: string;
-    emailPlaceholder: string;
-    channelsLegend: string;
-    channels: ReadonlyArray<{ value: string; label: string; checked: boolean }>;
-    consent: string;
-    privacyNote: string;
-    submit: string;
-    sending: string;
-    successTitle: string;
-    /** "{email}" is replaced on the client */
-    successText: string;
-    errEmailEmpty: string;
-    errEmailFormat: string;
-    errConsent: string;
-    errUnavailable: string;
-    errRateLimited: string;
-    errInvalid: string;
-    errFallbackLink: string;
-    honeypotLabel: string;
+    ctaSelf: string;
+    ctaReleases: string;
   };
   footer: {
     cols: ReadonlyArray<{ title: string; links: ReadonlyArray<{ label: string; href: string }> }>;
     bottom: string;
   };
-  /** Pages opened from the confirmation email: /waitlist/confirm/ and /waitlist/unsubscribe/ */
-  waitlistAction: {
-    home: string;
-    confirm: WaitlistActionCopy;
-    unsubscribe: WaitlistActionCopy;
-    sending: string;
-    errNoToken: string;
-    errInvalid: string;
-    errRateLimited: string;
-    errUnavailable: string;
-  };
-}
-
-export interface WaitlistActionCopy {
-  /** <title> of the page */
-  title: string;
-  heading: string;
-  text: string;
-  button: string;
-  doneTitle: string;
-  doneText: string;
 }

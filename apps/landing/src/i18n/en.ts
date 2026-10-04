@@ -23,7 +23,7 @@ export const en: Dict = {
     ],
     langLabel: "Language",
     github: "GitHub",
-    cta: "Get early access",
+    cta: "Self-host it",
     homeLabel: "Tolkovo, home",
   },
   hero: {
@@ -32,7 +32,6 @@ export const en: Dict = {
     h1Accent: "people decide.",
     lede:
       "Your website widget, Telegram bot and Telegram Business land in one shared team inbox. The AI handles routine questions from your knowledge base and passes the hard ones to an operator on the right line, with a short summary of the conversation. In the cloud or on your own server.",
-    ctaCloud: "Join the cloud waitlist",
     ctaSelf: "Self-host it",
     ctaGithub: "Code on GitHub →",
     trust: "AGPL-3.0 · Go + React · Docker · RU / EN · No trackers on this site",
@@ -316,35 +315,11 @@ export const en: Dict = {
       { q: "Will there be WhatsApp, VK and Email?", a: "Yes, after v1.0. The order will be decided by votes on the roadmap." },
     ],
   },
-  waitlist: {
-    title: "The cloud opens in spring 2027",
-    text: "Leave your email and we’ll invite you to the beta when it starts. Self-hosting is available from the first alpha.",
-    emailLabel: "Work email",
-    emailPlaceholder: "anna@company.com",
-    channelsLegend: "Channels you need",
-    channels: [
-      { value: "telegram", label: "Telegram", checked: true },
-      { value: "web", label: "Website", checked: true },
-      { value: "whatsapp", label: "WhatsApp", checked: false },
-      { value: "vk_max", label: "VK / MAX", checked: false },
-      { value: "email", label: "Email", checked: false },
-    ],
-    consent:
-      "I agree that Tolkovo may process my email and selected channels to send me a beta invitation and cloud launch updates. I can withdraw consent at any time via the link in every email.",
-    privacyNote:
-      "We’ll send a confirmation link: your address joins the list only after you click it. Data is stored on servers in the EU, and we delete it on request.",
-    submit: "Join the waitlist",
-    sending: "Sending…",
-    successTitle: "Check your inbox to confirm",
-    successText: "We sent an email to {email}. Click the link inside to join the waitlist. Can’t find it? Check your spam folder.",
-    errEmailEmpty: "Enter your email.",
-    errEmailFormat: "Enter an email like name@company.com.",
-    errConsent: "Please tick the consent box, we can’t store your email without it.",
-    errUnavailable: "Couldn’t send: the server is unavailable right now. Try again later or reach us on Telegram.",
-    errRateLimited: "Too many attempts. Wait a minute and try again.",
-    errInvalid: "The server didn’t accept this address. Check your email and try again.",
-    errFallbackLink: "Community chat on Telegram",
-    honeypotLabel: "Leave this field empty",
+  start: {
+    title: "Start on your own server",
+    text: "Tolkovo installs with Docker Compose in a few minutes, and your data stays with you. The EU cloud opens later: we will announce it in the Telegram community and in GitHub releases.",
+    ctaSelf: "Self-host it",
+    ctaReleases: "Watch releases",
   },
   footer: {
     cols: [
@@ -381,30 +356,5 @@ export const en: Dict = {
       },
     ],
     bottom: "© 2026 Tolkovo contributors · This site uses no cookies",
-  },
-  waitlistAction: {
-    home: "Home",
-    confirm: {
-      title: "Confirm your email — Tolkovo",
-      heading: "Confirm your email",
-      text: "Press the button to join the Tolkovo cloud beta waitlist. We will invite you when the beta starts.",
-      button: "Confirm",
-      doneTitle: "Done, you are on the list",
-      doneText: "We will write to this address when the beta opens. The email has a link to delete the address.",
-    },
-    unsubscribe: {
-      title: "Delete your email — Tolkovo",
-      heading: "Delete your email from the waitlist?",
-      text: "We will delete the address and the channels you picked. No more emails.",
-      button: "Delete email",
-      doneTitle: "Email deleted",
-      doneText: "The address is gone from the waitlist. Changed your mind? Leave it on the home page again.",
-    },
-    sending: "Sending…",
-    errNoToken: "The link has no code. Open the full link from the email.",
-    errInvalid:
-      "The link has expired, was already used, or the address is deleted. Leave your email on the home page again and we will send a new one.",
-    errRateLimited: "Too many attempts. Wait a little and try again.",
-    errUnavailable: "That did not work: the server is unavailable right now. Try again later.",
   },
 };
