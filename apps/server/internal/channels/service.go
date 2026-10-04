@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -92,6 +94,9 @@ type Channel struct {
 	ErrorCode string
 	Details   Details
 	CreatedAt time.Time
+	// LastInboundAt: when a message last came in (to the minute); nil
+	// before the first one.
+	LastInboundAt *time.Time
 }
 
 // Details are the non-secret facts shown in the panel (channels.config).
@@ -120,6 +125,8 @@ type BotClient interface {
 	GetMe(ctx context.Context, token string) (telegram.Bot, error)
 	SetWebhook(ctx context.Context, token, hookURL, secret string, allowedUpdates []string) error
 	DeleteWebhook(ctx context.Context, token string) error
+	GetUpdates(ctx context.Context, token string, offset int64, timeout int) ([]telegram.BotUpdate, error)
+	Download(ctx context.Context, token string, f telegram.File, w io.Writer, limit int64) error
 }
 
 // UserLogin signs personal accounts in and out (telegram.UserAuth).
@@ -128,6 +135,8 @@ type UserLogin interface {
 	SignIn(ctx context.Context, sess []byte, phone, hash, code string) ([]byte, telegram.Account, error)
 	Password(ctx context.Context, sess []byte, password string) ([]byte, telegram.Account, error)
 	LogOut(ctx context.Context, sess []byte) error
+	// Listen keeps the account online and passes its messages on (T-02).
+	Listen(ctx context.Context, opts telegram.ListenOptions) error
 }
 
 // Options configure the service.
@@ -142,18 +151,29 @@ type Options struct {
 	// (TOLKOVO_PUBLIC_URL). Bots fall back to polling unless it is https
 	// on a port Telegram accepts.
 	HookBaseURL string
+	// Inbox stores received messages and Files their media (T-02). The
+	// api role needs them for webhooks, the worker for polling and
+	// personal accounts.
+	Inbox Inbox
+	Files Files
+	Log   *slog.Logger
 }
 
 // Service is the module facade.
 type Service struct {
 	db   *db.DB
 	opts Options
+	log  *slog.Logger
 	now  func() time.Time
 }
 
 // New returns the channels service.
 func New(d *db.DB, opts Options) *Service {
-	return &Service{db: d, opts: opts, now: func() time.Time { return time.Now().UTC() }}
+	log := opts.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	return &Service{db: d, opts: opts, log: log, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // UserAccountsAvailable reports whether personal accounts can be connected.
@@ -231,6 +251,9 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID, id uuid.UUID) err
 		if err := q.DeleteSecret(ctx, store.DeleteSecretParams{WorkspaceID: workspaceID, ChannelID: id}); err != nil {
 			return err
 		}
+		if err := q.DeleteUpdateState(ctx, store.DeleteUpdateStateParams{WorkspaceID: workspaceID, ChannelID: id}); err != nil {
+			return err
+		}
 		now := s.now()
 		return q.SoftDeleteChannel(ctx, store.SoftDeleteChannelParams{WorkspaceID: workspaceID, ID: id, DeletedAt: &now})
 	})
@@ -305,7 +328,7 @@ func (s *Service) seal(ctx context.Context, workspaceID, id uuid.UUID, v any) ([
 }
 
 func channelFrom(r store.Channel) Channel {
-	ch := Channel{ID: r.ID, Type: r.Type, Name: r.Name, Status: r.Status, CreatedAt: r.CreatedAt}
+	ch := Channel{ID: r.ID, Type: r.Type, Name: r.Name, Status: r.Status, CreatedAt: r.CreatedAt, LastInboundAt: r.LastInboundAt}
 	if r.ErrorCode != nil {
 		ch.ErrorCode = *r.ErrorCode
 	}

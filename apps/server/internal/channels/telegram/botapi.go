@@ -58,18 +58,23 @@ type Bot struct {
 type BotAPI struct {
 	base string
 	http *http.Client
+	// files downloads media: longer than API calls.
+	files *http.Client
 }
 
 // NewBotAPI returns a client for the Bot API at baseURL (DefaultBotAPIURL
-// when empty). A nil client gets a 20 s timeout.
+// when empty). A nil client gets a 20 s timeout for calls (getUpdates
+// waits less than that) and 2 minutes for file downloads.
 func NewBotAPI(baseURL string, client *http.Client) *BotAPI {
 	if baseURL == "" {
 		baseURL = DefaultBotAPIURL
 	}
+	files := client
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
+		files = &http.Client{Timeout: 2 * time.Minute}
 	}
-	return &BotAPI{base: strings.TrimRight(baseURL, "/"), http: client}
+	return &BotAPI{base: strings.TrimRight(baseURL, "/"), http: client, files: files}
 }
 
 // GetMe checks the token and returns the bot.

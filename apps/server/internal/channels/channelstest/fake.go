@@ -5,8 +5,10 @@ package channelstest
 
 import (
 	"context"
+	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 )
@@ -25,6 +27,91 @@ type Bots struct {
 	// Hooks records SetWebhook calls; Deleted counts DeleteWebhook.
 	Hooks   []Hook
 	Deleted int
+	// Files serves downloads by file name; a missing name fails.
+	Files   map[string][]byte
+	revoked bool
+	updates []telegram.BotUpdate
+	nextID  int64
+}
+
+// Revoke makes GetUpdates answer as for a token revoked in @BotFather.
+func (b *Bots) Revoke() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.revoked = true
+}
+
+// Push queues updates for getUpdates; each is a Bot API update JSON
+// without update_id, which Push assigns.
+func (b *Bots) Push(updates ...string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, raw := range updates {
+		b.nextID++
+		u, err := telegram.ParseBotUpdate([]byte(`{"update_id":` + itoa(b.nextID) + `,` + strings.TrimPrefix(raw, "{")))
+		if err != nil {
+			panic(err)
+		}
+		b.updates = append(b.updates, u)
+	}
+}
+
+// GetUpdates returns the queued updates from offset, waiting briefly when
+// there are none.
+func (b *Bots) GetUpdates(ctx context.Context, token string, offset int64, _ int) ([]telegram.BotUpdate, error) {
+	for i := 0; i < 20; i++ {
+		b.mu.Lock()
+		if b.revoked || (token != BotToken && token != OtherBotToken) {
+			b.mu.Unlock()
+			return nil, telegram.ErrBotToken
+		}
+		var out []telegram.BotUpdate
+		for _, u := range b.updates {
+			if u.ID >= offset {
+				out = append(out, u)
+			}
+		}
+		b.mu.Unlock()
+		if len(out) > 0 {
+			return out, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return nil, nil
+}
+
+// Download serves Files[f.Name].
+func (b *Bots) Download(_ context.Context, _ string, f telegram.File, w io.Writer, limit int64) error {
+	b.mu.Lock()
+	data, ok := b.Files[f.Name]
+	b.mu.Unlock()
+	return serve(data, ok, w, limit)
+}
+
+func serve(data []byte, ok bool, w io.Writer, limit int64) error {
+	if !ok {
+		return io.ErrUnexpectedEOF
+	}
+	if int64(len(data)) > limit {
+		return telegram.ErrFileTooLarge
+	}
+	_, err := w.Write(data)
+	return err
+}
+
+func itoa(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for ; n > 0; n /= 10 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+	}
+	return string(b)
 }
 
 // Hook is one SetWebhook call.
@@ -87,6 +174,76 @@ type Users struct {
 	LoggedOut []string
 	// Sessions holds the session each call received.
 	Sessions []string
+	// Feed delivers messages to a running Listen; Files serves their
+	// downloads by name. Send ErrSessionRevoked (or any error) on Stop to
+	// end Listen with it.
+	Feed  chan telegram.Message
+	Stop  chan error
+	Files map[string][]byte
+	// Listening counts the running Listen calls; Ready is signalled each
+	// time one starts.
+	Listening int
+	Ready     chan struct{}
+}
+
+// Active is the number of running Listen calls.
+func (u *Users) Active() int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.Listening
+}
+
+// Listen passes Feed to the handler, saving the update state as a real
+// account would, until ctx ends or Stop says otherwise.
+func (u *Users) Listen(ctx context.Context, opts telegram.ListenOptions) error {
+	u.record(opts.Session)
+	st, found, err := opts.State.LoadState(ctx)
+	if err != nil {
+		return err
+	}
+	if !found {
+		st = telegram.UpdateState{Pts: 1, Date: 1}
+		if err := opts.State.SaveState(ctx, st); err != nil {
+			return err
+		}
+	}
+	u.mu.Lock()
+	u.Listening++
+	feed, stop, ready := u.Feed, u.Stop, u.Ready
+	u.mu.Unlock()
+	defer func() {
+		u.mu.Lock()
+		u.Listening--
+		u.mu.Unlock()
+	}()
+	if ready != nil {
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	}
+	fetch := func(_ context.Context, f telegram.File, w io.Writer, limit int64) error {
+		u.mu.Lock()
+		data, ok := u.Files[f.Name]
+		u.mu.Unlock()
+		return serve(data, ok, w, limit)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-stop:
+			return err
+		case m := <-feed:
+			if err := opts.Handle(ctx, m, fetch); err != nil {
+				return err
+			}
+			st.Pts++
+			if err := opts.State.SaveState(ctx, st); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (u *Users) record(sess []byte) {

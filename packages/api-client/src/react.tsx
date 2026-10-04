@@ -54,6 +54,7 @@ import {
   verifyEmail,
   type AcceptInvitationRequest,
   type ChangePasswordRequest,
+  type ChannelList,
   type ConnectTelegramBotRequest,
   type Contact,
   type NotificationSettingsInput,
@@ -317,9 +318,18 @@ export function useVerifyEmail() {
   });
 }
 
-export function useChannels() {
+/**
+ * The workspace's channels. `poll` returns the polling interval for the current list, or false to
+ * stop — e.g. while the wizard waits for the first message of a new channel.
+ */
+export function useChannels(options: { poll?: (list: ChannelList | undefined) => number | false } = {}) {
   const client = useApiClient();
-  return useQuery({ queryKey: queryKeys.channels, queryFn: () => fetchChannels(client) });
+  const { poll } = options;
+  return useQuery({
+    queryKey: queryKeys.channels,
+    queryFn: () => fetchChannels(client),
+    refetchInterval: poll ? (query) => poll(query.state.data) : false,
+  });
 }
 
 /** Mutations of channels refresh the list whatever the outcome: a failed step may still change it. */

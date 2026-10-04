@@ -203,6 +203,8 @@ export const messageSchema = z.object({
   delivery_status: z.string().nullable(),
   attachments: z.array(attachmentSchema),
   event: messageEventSchema.nullable(),
+  unsupported: z.enum(["sticker", "location", "contact", "poll", "other"]).optional(),
+  sent_outside_panel: z.boolean().optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["Message"]>;
 
@@ -235,6 +237,7 @@ export const channelSchema = z.object({
     phone_masked: z.string().nullable(),
     delivery: z.enum(["webhook", "polling"]).optional(),
   }),
+  last_inbound_at: z.string().nullable(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["Channel"]>;
 

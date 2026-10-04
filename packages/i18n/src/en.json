@@ -115,7 +115,8 @@
           "bot": "Connect a bot",
           "phone": "Connect a personal account",
           "code": "Code from Telegram",
-          "password": "Cloud password"
+          "password": "Cloud password",
+          "check": "Connection check"
         },
         "close": "Close",
         "next": "Next",
@@ -174,7 +175,25 @@
         "done": {
           "telegram_bot": "Bot “{name}” is connected. New messages will appear in the Inbox.",
           "telegram_user": "Account “{name}” is connected. Telegram lists it under Devices as Tolkovo."
+        },
+        "check": {
+          "bot": "Let's check the connection: open @{username} in Telegram and send any message.",
+          "botNoName": "Let's check the connection: send the bot any message in Telegram.",
+          "user": "Let's check the connection: message this account directly from another Telegram account.",
+          "waiting": "Waiting for a message…",
+          "received": "Message received — it is in the Inbox already.",
+          "open": "Open the Inbox",
+          "finish": "Done",
+          "later": "Check later"
         }
+      },
+      "lastInbound": "Last message:",
+      "noInbound": "No messages yet.",
+      "errorCode": {
+        "token_revoked": "The bot's token was revoked in @BotFather, messages do not arrive. Disconnect the channel and connect the bot with a new token.",
+        "session_revoked": "The Tolkovo session was ended in Telegram (Devices), messages do not arrive. Disconnect the channel and sign in again.",
+        "banned": "Telegram has banned this account, messages do not arrive.",
+        "other": "The channel does not work. Disconnect it and connect it again."
       }
     },
     "team": {
@@ -526,7 +545,8 @@
       "bot": "AI assistant",
       "system": "System",
       "operator": "Operator",
-      "note": "Note · the customer does not see it"
+      "note": "Note · the customer does not see it",
+      "outsidePanel": "Sent from Telegram"
     },
     "unread": "{count, plural, one {# unread} other {# unread}}",
     "composer": {
@@ -637,6 +657,15 @@
         "more": "Show more",
         "error": "Could not load the conversation history."
       }
+    },
+    "noText": "Message without text",
+    "attachmentRejected": "file not received: over the limit or unavailable in Telegram",
+    "unsupported": {
+      "sticker": "A sticker — the panel does not show these messages.",
+      "location": "A location — the panel does not show these messages.",
+      "contact": "A Telegram contact — the panel does not show these messages.",
+      "poll": "A poll — the panel does not show these messages.",
+      "other": "A message the panel does not show. See it in Telegram."
     }
   },
   "notifications": {

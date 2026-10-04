@@ -42,8 +42,54 @@ func (q *Queries) DeleteSecret(ctx context.Context, arg DeleteSecretParams) erro
 	return err
 }
 
+const deleteUpdateState = `-- name: DeleteUpdateState :exec
+DELETE FROM channel_update_state
+WHERE workspace_id = $1 AND channel_id = $2
+`
+
+type DeleteUpdateStateParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+}
+
+func (q *Queries) DeleteUpdateState(ctx context.Context, arg DeleteUpdateStateParams) error {
+	_, err := q.db.Exec(ctx, deleteUpdateState, arg.WorkspaceID, arg.ChannelID)
+	return err
+}
+
+const getActiveChannel = `-- name: GetActiveChannel :one
+SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at FROM channels
+WHERE workspace_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL
+`
+
+type GetActiveChannelParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) GetActiveChannel(ctx context.Context, arg GetActiveChannelParams) (Channel, error) {
+	row := q.db.QueryRow(ctx, getActiveChannel, arg.WorkspaceID, arg.ID)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Type,
+		&i.Name,
+		&i.Status,
+		&i.ErrorCode,
+		&i.ExternalID,
+		&i.Config,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.LastInboundAt,
+	)
+	return i, err
+}
+
 const getChannel = `-- name: GetChannel :one
-SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at FROM channels
+SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at FROM channels
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -68,12 +114,13 @@ func (q *Queries) GetChannel(ctx context.Context, arg GetChannelParams) (Channel
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.LastInboundAt,
 	)
 	return i, err
 }
 
 const getChannelForUpdate = `-- name: GetChannelForUpdate :one
-SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at FROM channels
+SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at FROM channels
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 FOR UPDATE
 `
@@ -99,6 +146,7 @@ func (q *Queries) GetChannelForUpdate(ctx context.Context, arg GetChannelForUpda
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.LastInboundAt,
 	)
 	return i, err
 }
@@ -120,10 +168,39 @@ func (q *Queries) GetSecret(ctx context.Context, arg GetSecretParams) ([]byte, e
 	return sealed, err
 }
 
+const getUpdateState = `-- name: GetUpdateState :one
+SELECT pts, qts, date, seq FROM channel_update_state
+WHERE workspace_id = $1 AND channel_id = $2
+`
+
+type GetUpdateStateParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+}
+
+type GetUpdateStateRow struct {
+	Pts  int32
+	Qts  int32
+	Date int32
+	Seq  int32
+}
+
+func (q *Queries) GetUpdateState(ctx context.Context, arg GetUpdateStateParams) (GetUpdateStateRow, error) {
+	row := q.db.QueryRow(ctx, getUpdateState, arg.WorkspaceID, arg.ChannelID)
+	var i GetUpdateStateRow
+	err := row.Scan(
+		&i.Pts,
+		&i.Qts,
+		&i.Date,
+		&i.Seq,
+	)
+	return i, err
+}
+
 const insertChannel = `-- name: InsertChannel :one
 INSERT INTO channels (id, workspace_id, type, name, status, external_id, config, created_by, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at
 `
 
 type InsertChannelParams struct {
@@ -164,12 +241,13 @@ func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (C
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.LastInboundAt,
 	)
 	return i, err
 }
 
 const listChannels = `-- name: ListChannels :many
-SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at FROM channels
+SELECT id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at FROM channels
 WHERE workspace_id = $1 AND deleted_at IS NULL
 ORDER BY created_at, id
 `
@@ -196,6 +274,7 @@ func (q *Queries) ListChannels(ctx context.Context, workspaceID uuid.UUID) ([]Ch
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.LastInboundAt,
 		); err != nil {
 			return nil, err
 		}
@@ -205,6 +284,61 @@ func (q *Queries) ListChannels(ctx context.Context, workspaceID uuid.UUID) ([]Ch
 		return nil, err
 	}
 	return items, nil
+}
+
+const listReceivers = `-- name: ListReceivers :many
+SELECT workspace_id, id, type FROM channels
+WHERE status = 'active' AND deleted_at IS NULL
+  AND (type = 'telegram_user' OR config->>'delivery' = 'polling')
+ORDER BY id
+`
+
+type ListReceiversRow struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	Type        string
+}
+
+// Run by tolkovo_system (policy system_see_active): the channels of every
+// workspace the worker holds a connection for — personal accounts and
+// bots without a webhook.
+func (q *Queries) ListReceivers(ctx context.Context) ([]ListReceiversRow, error) {
+	rows, err := q.db.Query(ctx, listReceivers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReceiversRow
+	for rows.Next() {
+		var i ListReceiversRow
+		if err := rows.Scan(&i.WorkspaceID, &i.ID, &i.Type); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markInbound = `-- name: MarkInbound :exec
+UPDATE channels
+SET last_inbound_at = $3
+WHERE workspace_id = $1 AND id = $2
+  AND (last_inbound_at IS NULL OR last_inbound_at < $3::timestamptz - interval '1 minute')
+`
+
+type MarkInboundParams struct {
+	WorkspaceID   uuid.UUID
+	ID            uuid.UUID
+	LastInboundAt *time.Time
+}
+
+// At most once a minute: it serves the wizard's check and channel health.
+func (q *Queries) MarkInbound(ctx context.Context, arg MarkInboundParams) error {
+	_, err := q.db.Exec(ctx, markInbound, arg.WorkspaceID, arg.ID, arg.LastInboundAt)
+	return err
 }
 
 const pruneStaleLogins = `-- name: PruneStaleLogins :execrows
@@ -244,11 +378,39 @@ func (q *Queries) PutSecret(ctx context.Context, arg PutSecretParams) error {
 	return err
 }
 
+const putUpdateState = `-- name: PutUpdateState :exec
+INSERT INTO channel_update_state (workspace_id, channel_id, pts, qts, date, seq, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now())
+ON CONFLICT (workspace_id, channel_id) DO UPDATE
+SET pts = EXCLUDED.pts, qts = EXCLUDED.qts, date = EXCLUDED.date, seq = EXCLUDED.seq, updated_at = now()
+`
+
+type PutUpdateStateParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	Pts         int32
+	Qts         int32
+	Date        int32
+	Seq         int32
+}
+
+func (q *Queries) PutUpdateState(ctx context.Context, arg PutUpdateStateParams) error {
+	_, err := q.db.Exec(ctx, putUpdateState,
+		arg.WorkspaceID,
+		arg.ChannelID,
+		arg.Pts,
+		arg.Qts,
+		arg.Date,
+		arg.Seq,
+	)
+	return err
+}
+
 const renameChannel = `-- name: RenameChannel :one
 UPDATE channels
 SET name = $3, updated_at = $4
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at
 `
 
 type RenameChannelParams struct {
@@ -279,8 +441,32 @@ func (q *Queries) RenameChannel(ctx context.Context, arg RenameChannelParams) (C
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.LastInboundAt,
 	)
 	return i, err
+}
+
+const setChannelError = `-- name: SetChannelError :exec
+UPDATE channels
+SET status = 'error', error_code = $3, updated_at = $4
+WHERE workspace_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL
+`
+
+type SetChannelErrorParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	ErrorCode   *string
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) SetChannelError(ctx context.Context, arg SetChannelErrorParams) error {
+	_, err := q.db.Exec(ctx, setChannelError,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.ErrorCode,
+		arg.UpdatedAt,
+	)
+	return err
 }
 
 const softDeleteChannel = `-- name: SoftDeleteChannel :exec
@@ -304,7 +490,7 @@ const updateChannelState = `-- name: UpdateChannelState :one
 UPDATE channels
 SET status = $3, error_code = $4, external_id = $5, config = $6, updated_at = $7
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at
+RETURNING id, workspace_id, type, name, status, error_code, external_id, config, created_by, created_at, updated_at, deleted_at, last_inbound_at
 `
 
 type UpdateChannelStateParams struct {
@@ -341,6 +527,7 @@ func (q *Queries) UpdateChannelState(ctx context.Context, arg UpdateChannelState
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.LastInboundAt,
 	)
 	return i, err
 }

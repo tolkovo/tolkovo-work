@@ -188,6 +188,8 @@ function ConversationRow({ conversation: c, tab, selected }: { conversation: Con
 function PreviewText({ text, files }: { text: string; files: number }) {
   const { t } = useTranslation();
   if (text) return <>{text}</>;
+  // A sticker, a location: what the feed explains in full.
+  if (files === 0) return <>{t("inbox.noText")}</>;
   return (
     <span className="inline-flex items-center gap-1">
       <Paperclip aria-hidden="true" className="size-3.5" />

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -16,10 +18,12 @@ import (
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/channelstest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/config"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -35,6 +39,8 @@ type fixture struct {
 	users    *channelstest.Users
 	sealer   *crypto.Sealer
 	svc      *Service
+	inbox    *conversations.Service
+	files    *storage.FS
 	wsA, wsB uuid.UUID
 	ownerA   uuid.UUID
 	ownerB   uuid.UUID
@@ -56,7 +62,19 @@ func setup(t *testing.T) *fixture {
 		t: t, ctx: context.Background(), app: app, sys: d.OpenSystem(t), ownerURL: d.OwnerURL,
 		bots: &channelstest.Bots{}, users: &channelstest.Users{}, sealer: sealer,
 	}
-	f.svc = New(app, Options{Sealer: sealer, Bots: f.bots, Users: f.users, HookBaseURL: "https://support.example.com"})
+	files, err := storage.NewFS(storage.FSOptions{
+		Root: t.TempDir(), LinkBaseURL: "http://localhost/api/v1/files",
+		SigningKey: bytes.Repeat([]byte("k"), storage.MinSigningKeyLen),
+	})
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	t.Cleanup(func() { _ = files.Close() })
+	f.files, f.inbox = files, conversations.New(app, files)
+	f.svc = New(app, Options{
+		Sealer: sealer, Bots: f.bots, Users: f.users, HookBaseURL: "https://support.example.com",
+		Inbox: f.inbox, Files: files, Log: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	})
 	tenants := tenancy.New(app)
 	f.ownerA, f.wsA = f.workspace(tenants, "alpha")
 	f.ownerB, f.wsB = f.workspace(tenants, "bravo")

@@ -49,6 +49,8 @@ type env struct {
 	ownerDB string // bypasses RLS: test fixtures only
 	// mail records the emails of the auth jobs; nil without envOptions.mail.
 	mail *mailtest.Sender
+	// bots is the fake Bot API behind the channels module.
+	bots *channelstest.Bots
 }
 
 type envOptions struct {
@@ -130,8 +132,10 @@ func newEnv(t *testing.T, o envOptions) *env {
 	if err != nil {
 		t.Fatalf("sealer: %v", err)
 	}
+	bots := &channelstest.Bots{}
 	chans := channels.New(app, channels.Options{
-		Sealer: sealer, Bots: &channelstest.Bots{}, Users: &channelstest.Users{}, HookBaseURL: "https://support.example.com",
+		Sealer: sealer, Bots: bots, Users: &channelstest.Users{}, HookBaseURL: "https://support.example.com",
+		Inbox: convs, Files: files,
 	})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
@@ -141,7 +145,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	if o.withWS {
 		deps.Realtime = startRealtime(t, d, app, rc, prefix, o)
 	}
-	return &env{t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender}
+	return &env{t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots}
 }
 
 // waitMail waits for the next email to the address and returns it along

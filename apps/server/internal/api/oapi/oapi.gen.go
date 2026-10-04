@@ -299,6 +299,33 @@ func (e MessageSenderType) Valid() bool {
 	}
 }
 
+// Defines values for MessageUnsupported.
+const (
+	MessageUnsupportedContact  MessageUnsupported = "contact"
+	MessageUnsupportedLocation MessageUnsupported = "location"
+	MessageUnsupportedOther    MessageUnsupported = "other"
+	MessageUnsupportedPoll     MessageUnsupported = "poll"
+	MessageUnsupportedSticker  MessageUnsupported = "sticker"
+)
+
+// Valid indicates whether the value is a known member of the MessageUnsupported enum.
+func (e MessageUnsupported) Valid() bool {
+	switch e {
+	case MessageUnsupportedContact:
+		return true
+	case MessageUnsupportedLocation:
+		return true
+	case MessageUnsupportedOther:
+		return true
+	case MessageUnsupportedPoll:
+		return true
+	case MessageUnsupportedSticker:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MessageEventType.
 const (
 	MessageEventTypeAssigned      MessageEventType = "assigned"
@@ -373,22 +400,22 @@ func (e TagColor) Valid() bool {
 
 // Defines values for TelegramLoginCodeVia.
 const (
-	App   TelegramLoginCodeVia = "app"
-	Call  TelegramLoginCodeVia = "call"
-	Other TelegramLoginCodeVia = "other"
-	Sms   TelegramLoginCodeVia = "sms"
+	TelegramLoginCodeViaApp   TelegramLoginCodeVia = "app"
+	TelegramLoginCodeViaCall  TelegramLoginCodeVia = "call"
+	TelegramLoginCodeViaOther TelegramLoginCodeVia = "other"
+	TelegramLoginCodeViaSms   TelegramLoginCodeVia = "sms"
 )
 
 // Valid indicates whether the value is a known member of the TelegramLoginCodeVia enum.
 func (e TelegramLoginCodeVia) Valid() bool {
 	switch e {
-	case App:
+	case TelegramLoginCodeViaApp:
 		return true
-	case Call:
+	case TelegramLoginCodeViaCall:
 		return true
-	case Other:
+	case TelegramLoginCodeViaOther:
 		return true
-	case Sms:
+	case TelegramLoginCodeViaSms:
 		return true
 	default:
 		return false
@@ -480,11 +507,16 @@ type Channel struct {
 	ErrorCode *string        `json:"error_code"`
 	Id        uuid.UUID      `json:"id"`
 
+	// LastInboundAt When a customer message last came in, to the minute; `null` before the first.
+	LastInboundAt *time.Time `json:"last_inbound_at"`
+
 	// Name Name in the panel.
 	Name string `json:"name"`
 
 	// Status `pending` — a personal-account login in progress; `active` — works; `error` — needs
-	// the admin, `error_code` says why.
+	// the admin, `error_code` says why: `token_revoked` (the bot's token was revoked in
+	// @BotFather), `session_revoked` (the session was ended in Telegram), `banned` (Telegram
+	// blocked the account). The admin disconnects the channel and connects it again.
 	Status ChannelStatus `json:"status"`
 	Type   ChannelType   `json:"type"`
 }
@@ -518,7 +550,9 @@ type ChannelList struct {
 }
 
 // ChannelStatus `pending` — a personal-account login in progress; `active` — works; `error` — needs
-// the admin, `error_code` says why.
+// the admin, `error_code` says why: `token_revoked` (the bot's token was revoked in
+// @BotFather), `session_revoked` (the session was ended in Telegram), `banned` (Telegram
+// blocked the account). The admin disconnects the channel and connects it again.
 type ChannelStatus string
 
 // ChannelType defines model for ChannelType.
@@ -811,6 +845,14 @@ type Message struct {
 	Kind       MessageKind       `json:"kind"`
 	SenderId   *uuid.UUID        `json:"sender_id"`
 	SenderType MessageSenderType `json:"sender_type"`
+
+	// SentOutsidePanel `true` on an operator message the owner of a personal Telegram account wrote in
+	// their own Telegram app (`sender_id` is `null`); absent otherwise.
+	SentOutsidePanel *bool `json:"sent_outside_panel,omitempty"`
+
+	// Unsupported Set on a customer message from a channel that holds something the panel does not
+	// show (a sticker, a location…) instead of text and files; absent otherwise.
+	Unsupported *MessageUnsupported `json:"unsupported,omitempty"`
 }
 
 // MessageDirection defines model for Message.Direction.
@@ -821,6 +863,10 @@ type MessageKind string
 
 // MessageSenderType defines model for Message.SenderType.
 type MessageSenderType string
+
+// MessageUnsupported Set on a customer message from a channel that holds something the panel does not
+// show (a sticker, a location…) instead of text and files; absent otherwise.
+type MessageUnsupported string
 
 // MessageEvent defines model for MessageEvent.
 type MessageEvent struct {

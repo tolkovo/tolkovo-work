@@ -55,3 +55,42 @@ WHERE workspace_id = $1 AND channel_id = $2;
 -- Run by tolkovo_system: unfinished personal-account logins of every workspace.
 DELETE FROM channels
 WHERE status = 'pending' AND created_at < $1;
+
+-- name: ListReceivers :many
+-- Run by tolkovo_system (policy system_see_active): the channels of every
+-- workspace the worker holds a connection for — personal accounts and
+-- bots without a webhook.
+SELECT workspace_id, id, type FROM channels
+WHERE status = 'active' AND deleted_at IS NULL
+  AND (type = 'telegram_user' OR config->>'delivery' = 'polling')
+ORDER BY id;
+
+-- name: GetActiveChannel :one
+SELECT * FROM channels
+WHERE workspace_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL;
+
+-- name: MarkInbound :exec
+-- At most once a minute: it serves the wizard's check and channel health.
+UPDATE channels
+SET last_inbound_at = $3
+WHERE workspace_id = $1 AND id = $2
+  AND (last_inbound_at IS NULL OR last_inbound_at < $3::timestamptz - interval '1 minute');
+
+-- name: SetChannelError :exec
+UPDATE channels
+SET status = 'error', error_code = $3, updated_at = $4
+WHERE workspace_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL;
+
+-- name: GetUpdateState :one
+SELECT pts, qts, date, seq FROM channel_update_state
+WHERE workspace_id = $1 AND channel_id = $2;
+
+-- name: PutUpdateState :exec
+INSERT INTO channel_update_state (workspace_id, channel_id, pts, qts, date, seq, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now())
+ON CONFLICT (workspace_id, channel_id) DO UPDATE
+SET pts = EXCLUDED.pts, qts = EXCLUDED.qts, date = EXCLUDED.date, seq = EXCLUDED.seq, updated_at = now();
+
+-- name: DeleteUpdateState :exec
+DELETE FROM channel_update_state
+WHERE workspace_id = $1 AND channel_id = $2;

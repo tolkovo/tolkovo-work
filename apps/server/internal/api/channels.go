@@ -151,7 +151,7 @@ func channelBody(ch channels.Channel) oapi.Channel {
 	d := ch.Details
 	body := oapi.Channel{
 		Id: ch.ID, Type: oapi.ChannelType(ch.Type), Name: ch.Name, Status: oapi.ChannelStatus(ch.Status),
-		ErrorCode: nonEmpty(ch.ErrorCode), CreatedAt: ch.CreatedAt,
+		ErrorCode: nonEmpty(ch.ErrorCode), LastInboundAt: ch.LastInboundAt, CreatedAt: ch.CreatedAt,
 		Details: oapi.ChannelDetails{
 			Username: nonEmpty(d.Username), DisplayName: nonEmpty(d.DisplayName), PhoneMasked: nonEmpty(d.PhoneMasked),
 		},

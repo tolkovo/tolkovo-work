@@ -13,6 +13,7 @@ const bot: Channel = {
   status: "active",
   error_code: null,
   details: { username: "zerno_help_bot", display_name: "Зерно · поддержка", phone_masked: null, delivery: "webhook" },
+  last_inbound_at: null,
   created_at: "2026-10-04T09:00:00Z",
 };
 
@@ -23,6 +24,7 @@ const pendingAccount: Channel = {
   status: "pending",
   error_code: null,
   details: { username: null, display_name: null, phone_masked: "+79•••••••67", delivery: undefined },
+  last_inbound_at: null,
   created_at: "2026-10-04T09:05:00Z",
 };
 
@@ -45,6 +47,19 @@ describe("channels settings", () => {
     expect(items[0]).toHaveTextContent("Работает");
     expect(items[0]).toHaveTextContent("Telegram-бот · @zerno_help_bot · сообщения приходят по webhook");
     expect(items[1]).toHaveTextContent("Личный аккаунт · @marina_zerno · +79•••••••67");
+    expect(items[0]).toHaveTextContent("Сообщений ещё не было.");
+  });
+
+  it("shows when a channel last received a message and why a broken one stopped", async () => {
+    const working: Channel = { ...bot, last_inbound_at: "2026-10-04T12:30:00Z" };
+    const revoked: Channel = { ...account, status: "error", error_code: "session_revoked" };
+    const odd: Channel = { ...bot, id: "ch-odd", name: "Старый бот", status: "error", error_code: "something_new" };
+    renderApp("/settings/channels", { api: fakeApi({ routes: { "GET /channels": () => list([working, revoked, odd]) } }) });
+    const items = within(await screen.findByRole("list", { name: "Подключённые каналы" })).getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent(/Последнее сообщение: 4 окт\.?,? \d{2}:30/);
+    expect(items[1]).toHaveTextContent("Ошибка");
+    expect(items[1]).toHaveTextContent("Сеанс Tolkovo завершён в Telegram («Устройства»), сообщения не приходят.");
+    expect(items[2]).toHaveTextContent("Канал не работает. Отключите его и подключите заново.");
   });
 
   it("connects a bot by its token", async () => {
@@ -56,7 +71,8 @@ describe("channels settings", () => {
         "POST /channels/telegram-bot": async (request) => {
           const body = (await request.json()) as { token: string };
           if (body.token !== "123456789:AAH-token") return problem(422, "telegram_token_invalid");
-          channels = [bot];
+          // The customer writes at once: the check sees the first message.
+          channels = [{ ...bot, last_inbound_at: "2026-10-04T12:30:00Z" }];
           return json(201, bot);
         },
       },
@@ -76,7 +92,13 @@ describe("channels settings", () => {
     await user.clear(token);
     await user.type(token, "123456789:AAH-token");
     await user.click(screen.getByRole("button", { name: "Подключить бота" }));
+    expect(await screen.findByRole("heading", { name: "Проверка связи" })).toHaveFocus();
+    expect(screen.getByText("Проверим связь: откройте в Telegram @zerno_help_bot и отправьте любое сообщение.")).toBeInTheDocument();
+    expect(await screen.findByText("Сообщение получено — оно уже во «Входящих».")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Открыть «Входящие»" })).toHaveAttribute("href", "/inbox");
+    await user.click(screen.getByRole("button", { name: "Готово" }));
     expect(await screen.findByText("Бот «Зерно · поддержка» подключён. Новые сообщения появятся во «Входящих».")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Проверка связи" })).not.toBeInTheDocument();
     expect(await screen.findByRole("list", { name: "Подключённые каналы" })).toHaveTextContent("Зерно · поддержка");
     expect(api.calls.filter((c) => c.path === "/channels/telegram-bot").at(-1)?.body).toEqual({ token: "123456789:AAH-token" });
   });
@@ -141,6 +163,12 @@ describe("channels settings", () => {
     await user.type(password, "correct horse");
     await user.click(screen.getByRole("button", { name: "Войти" }));
     expect(await screen.findByText(/Аккаунт «Марина Ковалёва» подключён/)).toBeInTheDocument();
+    // Nobody has written yet: the wizard waits, and the check can be left for later.
+    expect(screen.getByText("Проверим связь: напишите этому аккаунту в личку с другого аккаунта Telegram.")).toBeInTheDocument();
+    expect(screen.getByText("Ждём сообщение…")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Проверю позже" }));
+    expect(screen.queryByText("Ждём сообщение…")).not.toBeInTheDocument();
+    expect(screen.getByText(/Аккаунт «Марина Ковалёва» подключён/)).toBeInTheDocument();
     expect(api.calls.find((c) => c.path === "/channels/telegram-user")?.body).toEqual({ phone: "+7 900 123-45-67" });
   });
 

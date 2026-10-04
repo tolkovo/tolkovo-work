@@ -11,16 +11,17 @@ import (
 )
 
 type Channel struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Type        string
-	Name        string
-	Status      string
-	ErrorCode   *string
-	ExternalID  *string
-	Config      []byte
-	CreatedBy   *uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   *time.Time
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	Type          string
+	Name          string
+	Status        string
+	ErrorCode     *string
+	ExternalID    *string
+	Config        []byte
+	CreatedBy     *uuid.UUID
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time
+	LastInboundAt *time.Time
 }

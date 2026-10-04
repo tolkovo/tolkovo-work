@@ -1,4 +1,4 @@
-import type { Channel, TelegramLogin } from "@tolkovo/api-client";
+import type { Channel, ChannelList, TelegramLogin } from "@tolkovo/api-client";
 import {
   useCan,
   useChannels,
@@ -10,7 +10,8 @@ import {
   useSubmitTelegramUserPassword,
 } from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { Bot, Send, UserRound } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Bot, CircleCheck, LoaderCircle, Send, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -233,6 +234,10 @@ function ChannelRow({
           )}
           <span className="text-[12.5px] break-words text-ink-3">{channelFacts(t, channel)}</span>
           {pending ? <span className="text-[12.5px] text-ink-3">{t("settings.channels.pendingHint")}</span> : null}
+          {channel.status === "active" ? <LastInbound at={channel.last_inbound_at} /> : null}
+          {channel.status === "error" ? (
+            <span className="text-[12.5px] break-words text-ink">{channelError(t, channel.error_code)}</span>
+          ) : null}
         </div>
         {canManage && mode === "view" ? (
           <div className="flex shrink-0 gap-1 max-nav:flex-col">
@@ -273,12 +278,35 @@ function ChannelRow({
   );
 }
 
+/** «Последнее сообщение: 5 окт., 12:30» — the channel works; nothing yet before the first. */
+function LastInbound({ at }: { at: string | null }) {
+  const { t, i18n } = useTranslation();
+  if (!at) return <span className="text-[12.5px] text-ink-3">{t("settings.channels.noInbound")}</span>;
+  const when = new Intl.DateTimeFormat(i18n.language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(
+    new Date(at),
+  );
+  return (
+    <span className="text-[12.5px] text-ink-3">
+      {t("settings.channels.lastInbound")} <time dateTime={at}>{when}</time>
+    </span>
+  );
+}
+
+const knownErrors = ["token_revoked", "session_revoked", "banned"] as const;
+
+/** What broke and what the admin does about it (Channel.error_code in api/openapi.yaml). */
+function channelError(t: TFunction, code: string | null): string {
+  const known = knownErrors.find((k) => k === code);
+  return t(`settings.channels.errorCode.${known ?? "other"}`);
+}
+
 type Step =
   | { kind: "choose" }
   | { kind: "bot" }
   | { kind: "phone" }
   | { kind: "code"; login: TelegramLogin; phone: string }
-  | { kind: "password"; channel: Channel };
+  | { kind: "password"; channel: Channel }
+  | { kind: "check"; channel: Channel };
 
 /**
  * The wizard (docs/07 §7): what is needed is said before it starts, every step is checked by
@@ -306,8 +334,9 @@ function ConnectTelegram({
   const close = () => {
     // A login left half-way is cancelled, so its phone does not wait 15 minutes on the server.
     if (pendingId) cancelLogin.mutate(pendingId);
-    onClose();
+    onClose(step.kind === "check" ? step.channel : undefined);
   };
+  const check = (channel: Channel) => setStep({ kind: "check", channel });
 
   return (
     <section
@@ -325,7 +354,7 @@ function ConnectTelegram({
       {step.kind === "choose" ? (
         <ChooseKind userAvailable={userAvailable} onChoose={(kind) => setStep({ kind })} />
       ) : step.kind === "bot" ? (
-        <BotStep onBack={() => setStep({ kind: "choose" })} onDone={onClose} />
+        <BotStep onBack={() => setStep({ kind: "choose" })} onDone={check} />
       ) : step.kind === "phone" ? (
         <PhoneStep
           onBack={() => setStep({ kind: "choose" })}
@@ -340,10 +369,12 @@ function ConnectTelegram({
             setStep({ kind: "phone" });
           }}
           onPassword={(channel) => setStep({ kind: "password", channel })}
-          onDone={onClose}
+          onDone={check}
         />
+      ) : step.kind === "password" ? (
+        <PasswordStep channel={step.channel} onDone={check} />
       ) : (
-        <PasswordStep channel={step.channel} onDone={onClose} />
+        <CheckStep channel={step.channel} onDone={() => onClose(step.channel)} />
       )}
     </section>
   );
@@ -642,3 +673,60 @@ function PasswordStep({ channel, onDone }: { channel: Channel; onDone: (channel:
   );
 }
 
+
+/**
+ * The connection check (docs/07 §7): the channel is connected, and the wizard waits for a real
+ * message to arrive — polling the list until the channel reports one. It can be skipped.
+ */
+function CheckStep({ channel, onDone }: { channel: Channel; onDone: () => void }) {
+  const { t } = useTranslation();
+  const find = (list: ChannelList | undefined) => list?.items.find((c) => c.id === channel.id);
+  const channels = useChannels({
+    poll: (list) => {
+      const c = find(list);
+      return c?.last_inbound_at || c?.status === "error" ? false : 3000;
+    },
+  });
+  const current = find(channels.data);
+  const received = Boolean(current?.last_inbound_at);
+  const failed = current?.status === "error";
+  const username = channel.details.username;
+  const ask =
+    channel.type === "telegram_bot"
+      ? username
+        ? t("settings.channels.wizard.check.bot", { username })
+        : t("settings.channels.wizard.check.botNoName")
+      : t("settings.channels.wizard.check.user");
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="m-0 text-[13px] text-ink-2">{t(`settings.channels.wizard.done.${channel.type}`, { name: channel.name })}</p>
+      <p className="m-0 text-[13px] text-ink">{ask}</p>
+      <div role="status" aria-live="polite" className="flex items-center gap-2 text-[13px]">
+        {received ? (
+          <>
+            <CircleCheck aria-hidden="true" className="size-4 text-teal" />
+            <span className="text-ink">{t("settings.channels.wizard.check.received")}</span>
+          </>
+        ) : failed ? (
+          <span className="text-ink">{channelError(t, current.error_code)}</span>
+        ) : (
+          <>
+            <LoaderCircle aria-hidden="true" className="size-4 animate-spin text-teal motion-reduce:animate-none" />
+            <span className="text-ink-2">{t("settings.channels.wizard.check.waiting")}</span>
+          </>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {received ? (
+          <Button asChild variant="primary">
+            <Link to="/inbox">{t("settings.channels.wizard.check.open")}</Link>
+          </Button>
+        ) : null}
+        <Button variant={received ? "secondary" : "ghost"} onClick={onDone}>
+          {received ? t("settings.channels.wizard.check.finish") : t("settings.channels.wizard.check.later")}
+        </Button>
+      </div>
+    </div>
+  );
+}

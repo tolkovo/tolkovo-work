@@ -45,6 +45,17 @@ type Contact struct {
 	UpdatedAt   time.Time
 }
 
+type ContactIdentity struct {
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	ContactID      uuid.UUID
+	ChannelID      uuid.UUID
+	ExternalUserID string
+	Username       *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type Conversation struct {
 	ID               uuid.UUID
 	WorkspaceID      uuid.UUID

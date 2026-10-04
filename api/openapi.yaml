@@ -2072,6 +2072,17 @@ components:
           oneOf:
             - $ref: '#/components/schemas/MessageEvent'
             - type: 'null'
+        unsupported:
+          type: string
+          enum: [sticker, location, contact, poll, other]
+          description: |
+            Set on a customer message from a channel that holds something the panel does not
+            show (a sticker, a location…) instead of text and files; absent otherwise.
+        sent_outside_panel:
+          type: boolean
+          description: |
+            `true` on an operator message the owner of a personal Telegram account wrote in
+            their own Telegram app (`sender_id` is `null`); absent otherwise.
         created_at: { type: string, format: date-time }
 
     MessageEvent:
@@ -2256,7 +2267,9 @@ components:
       type: string
       description: |
         `pending` — a personal-account login in progress; `active` — works; `error` — needs
-        the admin, `error_code` says why.
+        the admin, `error_code` says why: `token_revoked` (the bot's token was revoked in
+        @BotFather), `session_revoked` (the session was ended in Telegram), `banned` (Telegram
+        blocked the account). The admin disconnects the channel and connects it again.
       enum: [pending, active, error]
 
     ChannelDetails:
@@ -2274,7 +2287,7 @@ components:
 
     Channel:
       type: object
-      required: [id, type, name, status, error_code, details, created_at]
+      required: [id, type, name, status, error_code, details, last_inbound_at, created_at]
       properties:
         id:
           type: string
@@ -2285,6 +2298,10 @@ components:
         status: { $ref: '#/components/schemas/ChannelStatus' }
         error_code: { type: [string, 'null'] }
         details: { $ref: '#/components/schemas/ChannelDetails' }
+        last_inbound_at:
+          type: [string, 'null']
+          format: date-time
+          description: When a customer message last came in, to the minute; `null` before the first.
         created_at: { type: string, format: date-time }
 
     ChannelList:

@@ -66,6 +66,32 @@ describe("inbox", () => {
     expect(row).toHaveTextContent("2 файла");
   });
 
+  it("shows what came through Telegram: owner replies, stickers and files that did not arrive", async () => {
+    const api = inboxApi({
+      "GET /conversations/c1/messages": () =>
+        json(200, {
+          items: [
+            msg("t3", { body: "", kind: "text", unsupported: "sticker", created_at: "2026-10-04T12:03:00Z" }),
+            msg("t2", {
+              sender_type: "operator", sender_id: null, direction: "out", sent_outside_panel: true,
+              body: "Отправил на почту", delivery_status: "sent", created_at: "2026-10-04T12:02:00Z",
+            }),
+            msg("t1", {
+              body: "", kind: "media",
+              attachments: [{ id: "a1", file_name: "видео.mp4", content_type: "video/mp4", size: 31457280, status: "rejected" }],
+            }),
+          ],
+          next_cursor: null,
+        }),
+    });
+    renderApp("/inbox/c1", { api });
+    const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
+    const articles = await within(feed).findAllByRole("article");
+    expect(articles[0]).toHaveTextContent("видео.mp4 — файл не получен: больше лимита или недоступен в Telegram");
+    expect(articles[1]).toHaveTextContent(/^Отправлено из Telegram · \d{2}:\d{2}Отправил на почту$/);
+    expect(articles[2]).toHaveTextContent("Стикер — панель такие сообщения не показывает.");
+  });
+
   it("opens a conversation with its feed in reading order and marks internal notes", async () => {
     const user = userEvent.setup();
     const { router } = renderApp("/inbox", { api: inboxApi() });

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestChannels_BotAndPersonalAccount(t *testing.T) {
 		t.Fatalf("start login: %d %s", rec.Code, rec.Body)
 	}
 	login := decode[oapi.TelegramLogin](t, rec)
-	if login.Next != oapi.Code || login.CodeVia == nil || *login.CodeVia != oapi.App ||
+	if login.Next != oapi.Code || login.CodeVia == nil || *login.CodeVia != oapi.TelegramLoginCodeViaApp ||
 		login.Channel.Status != oapi.ChannelStatusPending {
 		t.Fatalf("login: %+v", login)
 	}
@@ -94,4 +95,58 @@ func TestChannels_BotAndPersonalAccount(t *testing.T) {
 	wantProblem(t, c.do(http.MethodDelete, "/api/v1/channels/"+bot.Id.String(), nil), http.StatusNotFound, "not_found")
 	c.csrf = ""
 	wantProblem(t, c.do(http.MethodDelete, "/api/v1/channels/"+done.Channel.Id.String(), nil), http.StatusForbidden, "csrf_failed")
+}
+
+func TestHooks_TelegramBot(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	c, s := e.register("owner@example.test", "zerno")
+	bot := decode[oapi.Channel](t, c.do(http.MethodPost, "/api/v1/channels/telegram-bot", map[string]any{"token": channelstest.BotToken}))
+	secret := e.bots.Hooks[0].Secret
+	path := "/hooks/telegram/" + s.Workspace.Id.String() + "/" + bot.Id.String()
+
+	// Telegram's request: no session, no Origin, only the secret header.
+	hook := func(path, secret, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if secret != "" {
+			req.Header.Set("X-Telegram-Bot-Api-Secret-Token", secret)
+		}
+		rec := httptest.NewRecorder()
+		e.h.ServeHTTP(rec, req)
+		return rec
+	}
+	text := `{"update_id":1,"message":{"message_id":7,"from":{"id":70001,"is_bot":false,"first_name":"Пётр"},"chat":{"id":70001,"type":"private"},"date":1,"text":"Здравствуйте"}}`
+	sticker := `{"update_id":2,"message":{"message_id":8,"from":{"id":70001,"is_bot":false,"first_name":"Пётр"},"chat":{"id":70001,"type":"private"},"date":2,"sticker":{"file_id":"s"}}}`
+
+	if rec := hook(path, "", text); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no secret: %d", rec.Code)
+	}
+	if rec := hook(path, "wrong", text); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret: %d", rec.Code)
+	}
+	if rec := hook("/hooks/telegram/"+s.Workspace.Id.String()+"/"+s.Workspace.Id.String(), secret, text); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown channel: %d", rec.Code)
+	}
+	if rec := hook("/hooks/telegram/x/y", secret, text); rec.Code != http.StatusNotFound {
+		t.Fatalf("bad ids: %d", rec.Code)
+	}
+	for _, u := range []string{text, text, sticker} {
+		if rec := hook(path, secret, u); rec.Code != http.StatusOK {
+			t.Fatalf("update: %d %s", rec.Code, rec.Body)
+		}
+	}
+
+	convs := decode[oapi.ConversationPage](t, c.do(http.MethodGet, "/api/v1/conversations", nil))
+	if len(convs.Items) != 1 || convs.Items[0].ChannelId == nil || *convs.Items[0].ChannelId != bot.Id {
+		t.Fatalf("conversations: %+v", convs.Items)
+	}
+	msgs := decode[oapi.MessagePage](t, c.do(http.MethodGet, "/api/v1/conversations/"+convs.Items[0].Id.String()+"/messages", nil))
+	if len(msgs.Items) != 2 || msgs.Items[1].Body != "Здравствуйте" || msgs.Items[0].Unsupported == nil ||
+		*msgs.Items[0].Unsupported != oapi.MessageUnsupportedSticker || msgs.Items[1].Unsupported != nil || msgs.Items[1].SentOutsidePanel != nil {
+		t.Fatalf("messages: %+v", msgs.Items)
+	}
+	list := decode[oapi.ChannelList](t, c.do(http.MethodGet, "/api/v1/channels", nil))
+	if list.Items[0].LastInboundAt == nil {
+		t.Fatalf("last_inbound_at: %+v", list.Items[0])
+	}
 }

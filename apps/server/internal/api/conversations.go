@@ -507,12 +507,20 @@ func messageBody(m conversations.Message) oapi.Message {
 	for _, a := range m.Attachments {
 		atts = append(atts, attachmentBody(a))
 	}
-	return oapi.Message{
+	body := oapi.Message{
 		Id: m.ID, ConversationId: m.ConversationID, Direction: oapi.MessageDirection(m.Direction),
 		SenderType: oapi.MessageSenderType(m.SenderType), SenderId: m.SenderID, Kind: oapi.MessageKind(m.Kind),
 		Body: m.Body, IsPrivate: m.IsPrivate, DeliveryStatus: m.DeliveryStatus, Attachments: atts,
 		Event: eventBody(m.Event), CreatedAt: m.CreatedAt,
 	}
+	if m.Unsupported != "" {
+		v := oapi.MessageUnsupported(m.Unsupported)
+		body.Unsupported = &v
+	}
+	if m.SentOutsidePanel {
+		body.SentOutsidePanel = &m.SentOutsidePanel
+	}
+	return body
 }
 
 func eventBody(e *conversations.Event) *oapi.MessageEvent {

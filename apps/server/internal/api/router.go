@@ -87,6 +87,9 @@ func NewRouter(d Deps) http.Handler {
 		mountFallbacks(r)
 		return r
 	}
+	if d.Channels != nil {
+		mountHooks(r, d.Channels, d.Log)
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(noStore, sameOrigin(d.TrustedOrigins))
 		oapi.HandlerWithOptions(srv, oapi.ChiServerOptions{

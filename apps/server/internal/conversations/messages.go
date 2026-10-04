@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -45,9 +46,15 @@ type Message struct {
 	DeliveryStatus *string
 	Attachments    []Attachment
 	Event          *Event // what a system message records; nil for other kinds
-	CreatedAt      time.Time
-	EditedAt       *time.Time
-	DeletedAt      *time.Time
+	// Unsupported: what a customer sent through a channel that the panel
+	// does not show (UnsupportedSticker…); empty otherwise.
+	Unsupported string
+	// SentOutsidePanel: an operator message the owner of a personal
+	// account wrote in their own Telegram app.
+	SentOutsidePanel bool
+	CreatedAt        time.Time
+	EditedAt         *time.Time
+	DeletedAt        *time.Time
 }
 
 // MessageInput is an operator reply or an internal note.
@@ -305,6 +312,12 @@ func messageFrom(m store.Message, atts []store.Attachment) Message {
 		SenderID: m.SenderID, Kind: m.Kind, Body: m.Body, IsPrivate: m.IsPrivate,
 		DeliveryStatus: m.DeliveryStatus, Event: eventFrom(m.Kind, m.Meta),
 		CreatedAt: m.CreatedAt, EditedAt: m.EditedAt, DeletedAt: m.DeletedAt,
+	}
+	if m.Kind != KindEvent && len(m.Meta) > 2 {
+		var meta messageMeta
+		if json.Unmarshal(m.Meta, &meta) == nil {
+			out.Unsupported, out.SentOutsidePanel = meta.Unsupported, meta.OutsidePanel
+		}
 	}
 	for _, a := range atts {
 		out.Attachments = append(out.Attachments, attachmentFrom(a))

@@ -1330,6 +1330,17 @@ export interface components {
              *     system itself.
              */
             event: components["schemas"]["MessageEvent"] | null;
+            /**
+             * @description Set on a customer message from a channel that holds something the panel does not
+             *     show (a sticker, a location…) instead of text and files; absent otherwise.
+             * @enum {string}
+             */
+            unsupported?: "sticker" | "location" | "contact" | "poll" | "other";
+            /**
+             * @description `true` on an operator message the owner of a personal Telegram account wrote in
+             *     their own Telegram app (`sender_id` is `null`); absent otherwise.
+             */
+            sent_outside_panel?: boolean;
             /** Format: date-time */
             created_at: string;
         };
@@ -1431,7 +1442,9 @@ export interface components {
         ChannelType: "telegram_bot" | "telegram_user";
         /**
          * @description `pending` — a personal-account login in progress; `active` — works; `error` — needs
-         *     the admin, `error_code` says why.
+         *     the admin, `error_code` says why: `token_revoked` (the bot's token was revoked in
+         *     @BotFather), `session_revoked` (the session was ended in Telegram), `banned` (Telegram
+         *     blocked the account). The admin disconnects the channel and connects it again.
          * @enum {string}
          */
         ChannelStatus: "pending" | "active" | "error";
@@ -1457,6 +1470,11 @@ export interface components {
             status: components["schemas"]["ChannelStatus"];
             error_code: string | null;
             details: components["schemas"]["ChannelDetails"];
+            /**
+             * Format: date-time
+             * @description When a customer message last came in, to the minute; `null` before the first.
+             */
+            last_inbound_at: string | null;
             /** Format: date-time */
             created_at: string;
         };
