@@ -60,6 +60,11 @@ describe("matchesFilter", () => {
     expect(matchesFilter(tabFilter("queue"), mine, "me")).toBe(false);
     expect(matchesFilter(tabFilter("all"), conv("d", 1, { status: "closed" }), "me")).toBe(true);
   });
+
+  it("keeps a contact's history to that contact, whatever the status", () => {
+    expect(matchesFilter({ contact_id: "k-a" }, conv("a", 1, { status: "closed" }), "me")).toBe(true);
+    expect(matchesFilter({ contact_id: "k-a" }, conv("b", 1), "me")).toBe(false);
+  });
 });
 
 describe("upsertIntoPages", () => {

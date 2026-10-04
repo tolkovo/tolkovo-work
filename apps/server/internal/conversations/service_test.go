@@ -294,6 +294,55 @@ func TestConversations_FilterAndPaginate(t *testing.T) {
 	}
 }
 
+func TestConversations_ContactHistory(t *testing.T) {
+	f := setup(t)
+	anna := f.contact(f.wsA, "Anna")
+	start := func() uuid.UUID {
+		t.Helper()
+		c, err := f.svc.CreateConversation(f.ctx, f.wsA, conversations.CreateConversationInput{ContactID: anna.ID})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		return c.ID
+	}
+	first := start()
+	if _, err := f.svc.Assign(f.ctx, f.wsA, admin(f.ownerA), first, &f.ownerA, nil); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if _, err := f.svc.Transition(f.ctx, f.wsA, admin(f.ownerA), first, conversations.StatusResolved, nil); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	second := start()
+	f.conversation(f.wsA) // another contact's
+
+	var got []uuid.UUID
+	fl := conversations.ListFilter{ContactID: &anna.ID, Limit: 1}
+	for {
+		page, err := f.svc.Conversations(f.ctx, f.wsA, fl)
+		if err != nil {
+			t.Fatalf("history: %v", err)
+		}
+		for _, c := range page.Items {
+			if c.ContactID != anna.ID {
+				t.Errorf("another contact's conversation in the history: %+v", c)
+			}
+			got = append(got, c.ID)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		fl.Cursor = page.NextCursor
+	}
+	// Finished ones stay in the history; newest activity first.
+	if want := []uuid.UUID{second, first}; !slices.Equal(got, want) {
+		t.Errorf("history: got %v, want %v", got, want)
+	}
+	unknown := uuid.New()
+	if page, err := f.svc.Conversations(f.ctx, f.wsA, conversations.ListFilter{ContactID: &unknown}); err != nil || len(page.Items) != 0 {
+		t.Errorf("unknown contact: %+v %v", page.Items, err)
+	}
+}
+
 func TestPostMessage_ReplyNoteAndRules(t *testing.T) {
 	f := setup(t)
 	olga := f.member(f.wsA, "olga", tenancy.RoleOperator)

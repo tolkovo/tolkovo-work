@@ -10,8 +10,9 @@ export const Route = createFileRoute("/_app/inbox")({
 });
 
 /**
- * The operator inbox (docs/07 §4): the list and the open conversation side by side; below
- * 760 px one at a time. The customer card arrives with I-03.
+ * The operator inbox (docs/07 §4): the list, the open conversation and its customer card side
+ * by side; below 1240 px the card is a drawer, below 760 px the list and the conversation take
+ * turns.
  */
 function InboxLayout() {
   const { t } = useTranslation();

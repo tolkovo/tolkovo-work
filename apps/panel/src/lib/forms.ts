@@ -1,6 +1,7 @@
 import type {
   AcceptInvitationRequest,
   ChangePasswordRequest,
+  ContactInput,
   CreateInvitationRequest,
   LoginRequest,
   RegisterRequest,
@@ -16,10 +17,12 @@ import { z } from "zod";
  * before a round trip. The server validates again. Messages are keys of `validation.*`.
  * `satisfies` ties every form to the generated request type.
  */
-export const validationKeys = ["required", "email", "passwordLength", "passwordMismatch", "slug", "tooLong"] as const;
+export const validationKeys = ["required", "email", "passwordLength", "passwordMismatch", "slug", "tooLong", "phone"] as const;
 export type ValidationKey = (typeof validationKeys)[number];
 
 const required = (max: number) => z.string().trim().min(1, "required").max(max, "tooLong");
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const email = z
   .string()
@@ -27,7 +30,7 @@ const email = z
   .min(1, "required")
   .max(254, "tooLong")
   // The server is the authority on addresses; this only catches obvious typos.
-  .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "email");
+  .regex(EMAIL_PATTERN, "email");
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
@@ -92,6 +95,18 @@ export const inviteSchema = z.object({
   email,
   role: z.enum(["operator", "admin"]),
 }) satisfies z.ZodType<CreateInvitationRequest>;
+
+/** Contact fields (ContactInput); an empty email, phone or language clears it. */
+export const contactSchema = z.object({
+  name: z.string().trim().max(200, "tooLong"),
+  email: z.string().trim().max(254, "tooLong").refine((v) => v === "" || EMAIL_PATTERN.test(v), "email"),
+  // The same shape the server accepts (internal/conversations/contacts.go).
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\+?[0-9][0-9 ()-]{1,30}$/.test(v), "phone"),
+  locale: z.enum(["", "ru", "en"]),
+}) satisfies z.ZodType<ContactInput>;
 
 export type FieldErrors<F extends string> = Partial<Record<F, ValidationKey>>;
 

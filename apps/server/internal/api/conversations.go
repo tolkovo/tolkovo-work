@@ -22,7 +22,7 @@ func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, param
 		s.writeError(w, r, err)
 		return
 	}
-	f := conversations.ListFilter{ViewerID: p.UserID, Cursor: deref(params.Cursor)}
+	f := conversations.ListFilter{ViewerID: p.UserID, ContactID: params.ContactId, Cursor: deref(params.Cursor)}
 	if f.Limit, err = pageLimit(params.Limit); err != nil {
 		s.writeError(w, r, err)
 		return

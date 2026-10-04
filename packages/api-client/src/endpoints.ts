@@ -1,6 +1,7 @@
 import { parseAnswer, unwrap, type ApiClient } from "./client";
 import { isApiError } from "./errors";
 import {
+  contactSchema,
   conversationPageSchema,
   conversationSchema,
   deviceSessionListSchema,
@@ -41,6 +42,8 @@ export type InvitationPreview = Schemas["InvitationPreview"];
 export type CreateInvitationRequest = Schemas["CreateInvitationRequest"];
 export type AcceptInvitationRequest = Schemas["AcceptInvitationRequest"];
 export type ResetPasswordRequest = Schemas["ResetPasswordRequest"];
+export type Contact = Schemas["Contact"];
+export type ContactInput = Schemas["ContactInput"];
 export type Conversation = Schemas["Conversation"];
 export type ConversationStatus = Schemas["ConversationStatus"];
 export type ConversationPreview = Schemas["ConversationPreview"];
@@ -54,10 +57,14 @@ export type TagColor = Schemas["TagColor"];
 export type CreateTagRequest = Schemas["CreateTagRequest"];
 export type PostMessageRequest = Schemas["PostMessageRequest"];
 
-/** Filter of GET /conversations: any of the statuses, and `me` or `none` (unassigned). */
+/**
+ * Filter of GET /conversations: any of the statuses, `me` or `none` (unassigned), and one
+ * contact's conversations (the history in the customer card).
+ */
 export type ConversationFilter = {
   status?: ConversationStatus[];
   assignee?: "me" | "none";
+  contact_id?: string;
 };
 
 /**
@@ -303,6 +310,15 @@ export async function fetchTags(client: ApiClient): Promise<Tag[]> {
 
 export async function createTag(client: ApiClient, body: CreateTagRequest): Promise<Tag> {
   return parseAnswer(tagSchema, await unwrap(client.POST("/tags", { body })), 201);
+}
+
+export async function fetchContact(client: ApiClient, id: string): Promise<Contact> {
+  return parseAnswer(contactSchema, await unwrap(client.GET("/contacts/{id}", { params: { path: { id } } })));
+}
+
+/** Changes the given fields; an empty email, phone or locale clears it. */
+export async function updateContact(client: ApiClient, id: string, body: ContactInput): Promise<Contact> {
+  return parseAnswer(contactSchema, await unwrap(client.PATCH("/contacts/{id}", { params: { path: { id } }, body })));
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

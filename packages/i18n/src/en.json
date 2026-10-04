@@ -201,7 +201,8 @@
     "passwordLength": "The password must be 8 to 128 characters.",
     "slug": "3 to 40 characters: Latin letters, digits and inner hyphens.",
     "tooLong": "No more than {max} characters.",
-    "passwordMismatch": "The passwords don’t match."
+    "passwordMismatch": "The passwords don’t match.",
+    "phone": "Digits, spaces, brackets and hyphens, 3 to 32 characters, e.g. +44 20 7946 0958."
   },
   "errors": {
     "network": "Can't reach the server. Check your connection and try again.",
@@ -442,6 +443,42 @@
         "pending": "Waiting for the customer",
         "resolved": "Resolved",
         "closed": "Closed for good"
+      }
+    },
+    "card": {
+      "label": "Customer card",
+      "toggle": "Customer card (Ctrl+.)",
+      "close": "Close the card",
+      "since": "Customer since {date}",
+      "loadError": "Could not load the customer card.",
+      "section": {
+        "who": "Who this is",
+        "history": "Conversation history",
+        "tech": "Technical details"
+      },
+      "email": "Email",
+      "phone": "Phone",
+      "language": "Language",
+      "name": "Name",
+      "empty": "not set",
+      "languages": {
+        "none": "Not set",
+        "ru": "Русский",
+        "en": "English"
+      },
+      "edit": "Edit",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "contactId": "Contact ID",
+      "copy": "Copy",
+      "copied": "Copied",
+      "history": {
+        "count": "{count, plural, one {# conversation} other {# conversations}}",
+        "current": "This conversation",
+        "empty": "No other conversations.",
+        "more": "Show more",
+        "error": "Could not load the conversation history."
       }
     }
   }

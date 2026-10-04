@@ -1,4 +1,4 @@
-import type { Conversation, Message, Session } from "@tolkovo/api-client";
+import type { Contact, Conversation, Message, Session } from "@tolkovo/api-client";
 
 import { operatorSession } from "./fake-api";
 
@@ -62,5 +62,16 @@ export const msg = (id: string, patch: Partial<Message>): Message => ({
   attachments: [],
   event: null,
   created_at: "2026-10-04T12:01:00Z",
+  ...patch,
+});
+
+export const contact = (id: string, patch: Partial<Contact> = {}): Contact => ({
+  id,
+  name: "Марина Ковалёва",
+  email: "marina@example.com",
+  phone: null,
+  locale: "ru",
+  created_at: "2025-03-12T09:00:00Z",
+  updated_at: "2025-03-12T09:00:00Z",
   ...patch,
 });

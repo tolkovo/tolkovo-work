@@ -72,6 +72,10 @@ func TestIsolation_FacadeAnswersNotFoundAcrossWorkspaces(t *testing.T) {
 	if err != nil || len(convs.Items) != 0 {
 		t.Errorf("B lists A's conversations: %+v %v", convs.Items, err)
 	}
+	history, err := f.svc.Conversations(f.ctx, f.wsB, conversations.ListFilter{ContactID: &c.ContactID})
+	if err != nil || len(history.Items) != 0 {
+		t.Errorf("B reads the history of A's contact: %+v %v", history.Items, err)
+	}
 	// B's own conversation cannot carry A's tag, and B does not see A's tags.
 	if _, err := f.svc.SetTags(f.ctx, f.wsB, f.ownerB, f.conversation(f.wsB).ID, []uuid.UUID{tag.ID}, nil); !errors.Is(err, conversations.ErrInvalid) {
 		t.Errorf("A's tag on B's conversation: %v", err)

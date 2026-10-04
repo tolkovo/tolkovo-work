@@ -71,7 +71,7 @@ describe("inbox", () => {
     const { router } = renderApp("/inbox", { api: inboxApi() });
     await user.click(await screen.findByRole("link", { name: /Марина Ковалёва/ }));
     expect(router.state.location.pathname).toBe("/inbox/c1");
-    expect(await screen.findByRole("heading", { level: 2, name: /Марина Ковалёва/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: /Марина Ковалёва\s*№/ })).toBeInTheDocument();
     expect(screen.getByText("Ведёт: Пётр Иванов (вы)")).toBeInTheDocument();
 
     const feed = screen.getByRole("log", { name: "Сообщения диалога" });

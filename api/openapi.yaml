@@ -716,6 +716,16 @@ paths:
           in: query
           description: '`me`, `none` (unassigned) or a member''s user id.'
           schema: { type: string }
+        - name: contact_id
+          in: query
+          description: |
+            Only this contact's conversations: the history in the customer card. An unknown id
+            gives an empty page.
+          schema:
+            type: string
+            format: uuid
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:

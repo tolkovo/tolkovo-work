@@ -12,6 +12,7 @@ type Pages = InfiniteData<ConversationPage, string | undefined>;
 
 /** Whether the conversation belongs in a list with this filter, as the server would decide. */
 export function matchesFilter(filter: ConversationFilter, c: Conversation, meId: string | undefined): boolean {
+  if (filter.contact_id !== undefined && c.contact.id !== filter.contact_id) return false;
   if (filter.status?.length && !filter.status.includes(c.status)) return false;
   if (filter.assignee === "none" && c.assignee_id !== null) return false;
   if (filter.assignee === "me" && (meId === undefined || c.assignee_id !== meId)) return false;

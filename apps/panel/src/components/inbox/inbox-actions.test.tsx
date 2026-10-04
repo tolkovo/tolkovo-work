@@ -1,17 +1,18 @@
-import type { Conversation, Message, Tag } from "@tolkovo/api-client";
+import type { Contact, Conversation, Message, Tag } from "@tolkovo/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CARD_SECTIONS_KEY, useCardSections } from "../../lib/inbox/card-sections";
 import { resetDrafts } from "../../lib/inbox/drafts";
 import { resetSignals, signalSender } from "../../lib/realtime/signals";
 import { fakeApi, json, ownerSession, problem, type FakeRoutes } from "../../test/fake-api";
-import { conv, inboxOperator, msg } from "../../test/inbox-fixtures";
+import { contact, conv, inboxOperator, msg } from "../../test/inbox-fixtures";
 import { renderApp } from "../../test/render-app";
 
 const me = inboxOperator.user.id;
 
-type State = { conversation: Conversation; feed: Message[]; tags: Tag[] };
+type State = { conversation: Conversation; feed: Message[]; tags: Tag[]; contact: Contact; history: Conversation[] };
 
 /**
  * A small stateful server for one conversation: sending adds to the feed, changes bump the
@@ -22,6 +23,8 @@ function server(initial: Partial<State> = {}, extra: FakeRoutes = {}, session = 
     conversation: conv("c1"),
     feed: [msg("m1", { body: "С карты списали два раза" })],
     tags: [],
+    contact: contact("k-c1"),
+    history: [],
     ...initial,
   };
   const bump = (patch: Partial<Conversation>) => {
@@ -31,7 +34,24 @@ function server(initial: Partial<State> = {}, extra: FakeRoutes = {}, session = 
   const api = fakeApi({
     session,
     routes: {
-      "GET /conversations": () => json(200, { items: [state.conversation], next_cursor: null }),
+      "GET /conversations": (request) =>
+        new URL(request.url).searchParams.has("contact_id")
+          ? json(200, { items: [state.conversation, ...state.history], next_cursor: null })
+          : json(200, { items: [state.conversation], next_cursor: null }),
+      "GET /contacts/k-c1": () => json(200, state.contact),
+      "PATCH /contacts/k-c1": async (request) => {
+        const body = (await request.json()) as Partial<Contact>;
+        const cleared = (v: string | null | undefined, was: string | null) => (v === undefined ? was : v || null);
+        state.contact = {
+          ...state.contact,
+          name: body.name ?? state.contact.name,
+          email: cleared(body.email, state.contact.email),
+          phone: cleared(body.phone, state.contact.phone),
+          locale: cleared(body.locale, state.contact.locale),
+          updated_at: new Date().toISOString(),
+        };
+        return json(200, state.contact);
+      },
       "GET /conversations/c1": () => json(200, state.conversation),
       "GET /conversations/c1/messages": () => json(200, { items: [...state.feed].reverse(), next_cursor: null }),
       "GET /tags": () => json(200, { items: state.tags }),
@@ -71,6 +91,9 @@ function server(initial: Partial<State> = {}, extra: FakeRoutes = {}, session = 
 
 const calls = (api: ReturnType<typeof fakeApi>, method: string, path: string) =>
   api.calls.filter((c) => c.method === method && c.path === path);
+
+/** The open conversation, apart from the customer card that repeats its name and status. */
+const conversationRegion = () => screen.findByRole("region", { name: /Марина Ковалёва\s*№7/ });
 
 describe("composer", () => {
   afterEach(() => {
@@ -201,7 +224,7 @@ describe("conversation actions", () => {
     await waitFor(() =>
       expect(calls(api, "POST", "/conversations/c1/status")[0]?.body).toEqual({ status: "resolved", version: 3 }),
     );
-    expect(await screen.findByText("Решён")).toBeInTheDocument();
+    expect(await within(await conversationRegion()).findByText("Решён")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Переоткрыть" })).toBeInTheDocument();
   });
 
@@ -216,7 +239,7 @@ describe("conversation actions", () => {
     expect(
       await screen.findByText("Диалог успели изменить. Показываем свежую версию — повторите действие."),
     ).toBeInTheDocument();
-    expect(await screen.findByText("Ждём клиента", { selector: "span" })).toBeInTheDocument();
+    expect(await within(await conversationRegion()).findByText("Ждём клиента", { selector: "span" })).toBeInTheDocument();
   });
 
   it("transfers through the menu and moves the rest under ⋯", async () => {
@@ -246,7 +269,7 @@ describe("conversation actions", () => {
 
   it("hides actions the member may not take", async () => {
     renderApp("/inbox/c1", { api: server({ conversation: conv("c1", { assignee_id: "u-anna" }) }).api });
-    await screen.findByRole("heading", { level: 2, name: /Марина Ковалёва/ });
+    await screen.findByRole("heading", { level: 2, name: /Марина Ковалёва\s*№7/ });
     expect(screen.queryByRole("button", { name: "Закрыть" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Передать" })).not.toBeInTheDocument();
   });
@@ -365,5 +388,107 @@ describe("list", () => {
     const row = await screen.findByRole("link", { name: /Марина Ковалёва/ });
     expect(within(row).getByText("99+")).toBeInTheDocument();
     expect(within(row).getByText("120 непрочитанных")).toHaveClass("sr-only");
+  });
+});
+
+describe("customer card", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    useCardSections.setState({ collapsed: ["tech"] });
+  });
+
+  const card = () => screen.findByRole("complementary", { name: "Марина Ковалёва" });
+
+  it("shows who the customer is and their other conversations, newest first", async () => {
+    const earlier = conv("c0", {
+      number: 3,
+      status: "closed",
+      subject: null,
+      created_at: "2025-11-02T10:00:00Z",
+      last_message: { sender_type: "contact", kind: "text", text: "Где мой заказ?", attachments: 0, created_at: "2025-11-02T10:00:00Z" },
+    });
+    const { api } = server({ history: [earlier] });
+    renderApp("/inbox/c1", { api });
+    const aside = await card();
+
+    expect(await within(aside).findByText("marina@example.com")).toBeInTheDocument();
+    expect(within(aside).getByText("Русский")).toBeInTheDocument();
+    expect(within(aside).getByText("Клиент с 12 марта 2025 г.")).toBeInTheDocument();
+    expect(within(aside).getByText("не указано")).toHaveClass("sr-only");
+
+    const history = await within(aside).findAllByRole("link");
+    expect(history).toHaveLength(2);
+    expect(history[0]).toHaveAttribute("aria-current", "page");
+    expect(history[0]).toHaveTextContent("Этот диалог");
+    expect(history[1]).toHaveTextContent(/№3\s*Закрыт/);
+    expect(history[1]).toHaveTextContent("Где мой заказ?");
+    expect(history[1]).toHaveAttribute("href", "/inbox/c0?tab=mine");
+    expect(within(aside).getByLabelText("2 обращения")).toHaveTextContent("2");
+  });
+
+  it("says when there are no other conversations", async () => {
+    renderApp("/inbox/c1", { api: server().api });
+    expect(await within(await card()).findByText("Других обращений нет.")).toBeInTheDocument();
+  });
+
+  it("edits the contact, sends only what changed and checks the phone first", async () => {
+    const user = userEvent.setup();
+    const { api } = server();
+    renderApp("/inbox/c1", { api });
+    const aside = await card();
+    await user.click(await within(aside).findByRole("button", { name: "Изменить" }));
+
+    const phone = within(aside).getByRole("textbox", { name: "Телефон" });
+    await user.type(phone, "звоните");
+    await user.click(within(aside).getByRole("button", { name: "Сохранить" }));
+    expect(await within(aside).findByText(/Цифры, пробелы, скобки и дефис/)).toBeInTheDocument();
+    expect(phone).toHaveFocus();
+    expect(calls(api, "PATCH", "/contacts/k-c1")).toHaveLength(0);
+
+    await user.clear(phone);
+    await user.type(phone, "+7 900 123-45-67");
+    await user.selectOptions(within(aside).getByRole("combobox", { name: "Язык" }), "");
+    await user.click(within(aside).getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(calls(api, "PATCH", "/contacts/k-c1")[0]?.body).toEqual({ phone: "+7 900 123-45-67", locale: "" }));
+    expect(await within(aside).findByText("+7 900 123-45-67")).toBeInTheDocument();
+    expect(within(aside).queryByRole("textbox", { name: "Телефон" })).not.toBeInTheDocument();
+  });
+
+  it("hides editing from members without contacts.edit", async () => {
+    const session = { ...inboxOperator, permissions: inboxOperator.permissions.filter((p) => p !== "contacts.edit") };
+    renderApp("/inbox/c1", { api: server({}, {}, session).api });
+    const aside = await card();
+    await within(aside).findByText("marina@example.com");
+    expect(within(aside).queryByRole("button", { name: "Изменить" })).not.toBeInTheDocument();
+  });
+
+  it("opens as a drawer with Ctrl+. and closes with Escape, returning focus", async () => {
+    const user = userEvent.setup();
+    renderApp("/inbox/c1", { api: server().api });
+    const toggle = await screen.findByRole("button", { name: "Карточка клиента (Ctrl+.)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.keyboard("{Control>}.{/Control}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const heading = document.getElementById("customer-card-title");
+    await waitFor(() => expect(heading).toHaveFocus());
+
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
+  });
+
+  it("remembers folded sections", async () => {
+    const user = userEvent.setup();
+    renderApp("/inbox/c1", { api: server().api });
+    const aside = await card();
+    const who = within(aside).getByRole("button", { name: "Кто это" });
+    expect(who).toHaveAttribute("aria-expanded", "true");
+    expect(within(aside).getByRole("button", { name: "Технические детали" })).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(who);
+    expect(who).toHaveAttribute("aria-expanded", "false");
+    expect(JSON.parse(window.localStorage.getItem(CARD_SECTIONS_KEY) ?? "[]")).toEqual(["tech", "who"]);
   });
 });

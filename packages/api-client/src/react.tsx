@@ -15,6 +15,7 @@ import {
   changePassword,
   createInvitation,
   createTag,
+  fetchContact,
   fetchConversation,
   fetchConversations,
   fetchInboxCounts,
@@ -38,11 +39,14 @@ import {
   revokeOtherSessions,
   revokeSession,
   switchWorkspace,
+  updateContact,
   updateMe,
   updateWorkspace,
   verifyEmail,
   type AcceptInvitationRequest,
   type ChangePasswordRequest,
+  type Contact,
+  type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
   type CreateTagRequest,
@@ -89,6 +93,7 @@ export const queryKeys = {
   /** Pages of one conversation feed, newest first (an infinite query). */
   conversationMessages: (id: string) => ["conversations", "messages", id] as const,
   inboxCounts: ["conversations", "counts"] as const,
+  contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
 };
 
@@ -381,5 +386,25 @@ export function useCreateTag() {
   return useMutation({
     mutationFn: (body: CreateTagRequest) => createTag(client, body),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
+  });
+}
+
+export function useContact(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.contact(id), queryFn: () => fetchContact(client, id) });
+}
+
+/**
+ * Saves contact fields; the answer replaces the cached contact. Conversations that show the name
+ * are the caller's to refresh (the panel knows which of its cached lists show this contact).
+ */
+export function useUpdateContact(id: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ContactInput) => updateContact(client, id, body),
+    onSuccess: (contact: Contact) => {
+      queryClient.setQueryData(queryKeys.contact(id), contact);
+    },
   });
 }

@@ -862,6 +862,10 @@ type ListConversationsParams struct {
 	// Assignee `me`, `none` (unassigned) or a member's user id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
 
+	// ContactId Only this contact's conversations: the history in the customer card. An unknown id
+	// gives an empty page.
+	ContactId *uuid.UUID `form:"contact_id,omitempty" json:"contact_id,omitempty"`
+
 	// Cursor Opaque `next_cursor` of the previous page.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -1632,6 +1636,19 @@ func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "contact_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "contact_id", r.URL.Query(), &params.ContactId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "contact_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "contact_id", Err: err})
 		}
 		return
 	}

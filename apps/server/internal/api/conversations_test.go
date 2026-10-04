@@ -182,7 +182,13 @@ func TestConversationsAPI_ListFiltersAndCursor(t *testing.T) {
 	if len(mine.Items) != 1 || mine.Items[0].Id != ids[0] || len(none.Items) != 2 {
 		t.Fatalf("mine %+v, none %+v", mine.Items, none.Items)
 	}
-	for _, bad := range []string{"?limit=0", "?limit=101", "?assignee=someone", "?status=archived", "?cursor=!!"} {
+	// Each helper conversation has its own contact: the history holds just that one.
+	one := decode[oapi.Conversation](t, in.op.do(http.MethodGet, "/api/v1/conversations/"+ids[1].String(), nil))
+	history := decode[oapi.ConversationPage](t, in.op.do(http.MethodGet, "/api/v1/conversations?contact_id="+one.Contact.Id.String(), nil))
+	if len(history.Items) != 1 || history.Items[0].Id != ids[1] {
+		t.Fatalf("contact history: %+v", history.Items)
+	}
+	for _, bad := range []string{"?limit=0", "?limit=101", "?assignee=someone", "?status=archived", "?cursor=!!", "?contact_id=nope"} {
 		wantProblem(t, in.op.do(http.MethodGet, "/api/v1/conversations"+bad, nil), http.StatusBadRequest, "invalid_request")
 	}
 }
@@ -253,6 +259,9 @@ func TestIsolation_ConversationsEndpoints(t *testing.T) {
 		http.StatusBadRequest, "invalid_request")
 	if l := decode[oapi.ConversationPage](t, stranger.do(http.MethodGet, "/api/v1/conversations", nil)); len(l.Items) != 0 {
 		t.Fatalf("stranger lists conversations: %+v", l.Items)
+	}
+	if l := decode[oapi.ConversationPage](t, stranger.do(http.MethodGet, "/api/v1/conversations?contact_id="+c.Contact.Id.String(), nil)); len(l.Items) != 0 {
+		t.Fatalf("stranger reads a contact's history: %+v", l.Items)
 	}
 	if l := decode[oapi.ContactPage](t, stranger.do(http.MethodGet, "/api/v1/contacts", nil)); len(l.Items) != 0 {
 		t.Fatalf("stranger lists contacts: %+v", l.Items)

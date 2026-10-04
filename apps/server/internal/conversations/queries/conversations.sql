@@ -58,7 +58,8 @@ FOR UPDATE;
 -- name: ListConversations :many
 -- Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the
--- unassigned ones.
+-- unassigned ones. contact_id narrows it to one customer's history (served by
+-- conversations_contact_idx: a contact has few conversations to sort).
 SELECT sqlc.embed(c), ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
@@ -99,6 +100,7 @@ WHERE c.workspace_id = @workspace_id
   AND (NOT @by_assignee::boolean
        OR (sqlc.narg(assignee_id)::uuid IS NULL AND c.assignee_id IS NULL)
        OR c.assignee_id = sqlc.narg(assignee_id)::uuid)
+  AND (sqlc.narg(contact_id)::uuid IS NULL OR c.contact_id = sqlc.narg(contact_id)::uuid)
   AND (sqlc.narg(before_at)::timestamptz IS NULL
        OR (c.last_message_at, c.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC

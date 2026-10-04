@@ -153,6 +153,16 @@ export const conversationSchema = z.object({
   unread_count: z.number(),
 }) satisfies z.ZodType<Schemas["Conversation"]>;
 
+export const contactSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  locale: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}) satisfies z.ZodType<Schemas["Contact"]>;
+
 export const conversationPageSchema = z.object({
   items: z.array(conversationSchema),
   next_cursor: z.string().nullable(),

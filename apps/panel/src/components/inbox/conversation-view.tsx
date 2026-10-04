@@ -2,8 +2,8 @@ import { isApiError, type Conversation, type Message, type MessageEvent } from "
 import { useConversation, useMessages, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { ChevronLeft, Paperclip } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronLeft, Paperclip, UserRound } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationChange, useMarkRead } from "../../lib/inbox/actions";
@@ -11,6 +11,7 @@ import type { InboxTab } from "../../lib/inbox/tabs";
 import { useViewingSignal } from "../../lib/realtime/signals";
 import { Composer } from "./composer";
 import { ActionErrorLine, ConversationActions } from "./conversation-actions";
+import { CUSTOMER_CARD_ID, CustomerCard } from "./customer-card";
 import { PresenceLine, useMemberNames } from "./presence";
 import { ConversationTags } from "./tags";
 
@@ -50,21 +51,75 @@ export function ConversationView({ conversationId, tab }: ConversationViewProps)
   return <Loaded conversation={conversation.data} tab={tab} />;
 }
 
+/** Wide enough for the customer card as a column (--breakpoint-wide, docs/07 §4). */
+const WIDE = "(min-width: 77.5rem)";
+
 function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: InboxTab }) {
+  const { t } = useTranslation();
   const change = useConversationChange(c.id);
   // Bumped by the composer's "show it": the feed scrolls to the newest message.
   const [latestRequest, setLatestRequest] = useState(0);
+  const cardToggle = useRef<HTMLButtonElement>(null);
+  const cardHeading = useRef<HTMLHeadingElement>(null);
+  const card = useCardDrawer(cardToggle, cardHeading);
   return (
-    <section aria-labelledby="conversation-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <Header conversation={c} tab={tab}>
-        <ConversationActions conversation={c} change={change} />
-      </Header>
-      {change.isError && <ActionErrorLine error={change.error} onDismiss={() => change.reset()} />}
-      <ConversationTags conversation={c} change={change} />
-      <Feed conversation={c} latestRequest={latestRequest} />
-      <Composer conversation={c} onShowLatest={() => setLatestRequest((n) => n + 1)} />
-    </section>
+    <>
+      <section aria-labelledby="conversation-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Header conversation={c} tab={tab}>
+          <ConversationActions conversation={c} change={change} />
+          <button
+            ref={cardToggle}
+            type="button"
+            aria-label={t("inbox.card.toggle")}
+            aria-expanded={card.open}
+            aria-controls={CUSTOMER_CARD_ID}
+            onClick={card.toggle}
+            className="grid size-8 shrink-0 place-items-center rounded-md text-ink-2 hover:bg-hover aria-expanded:bg-sel wide:hidden"
+          >
+            <UserRound aria-hidden="true" className="size-4" />
+          </button>
+        </Header>
+        {change.isError && <ActionErrorLine error={change.error} onDismiss={() => change.reset()} />}
+        <ConversationTags conversation={c} change={change} />
+        <Feed conversation={c} latestRequest={latestRequest} />
+        <Composer conversation={c} onShowLatest={() => setLatestRequest((n) => n + 1)} />
+      </section>
+      <CustomerCard conversation={c} tab={tab} open={card.open} onClose={card.close} headingRef={cardHeading} />
+    </>
   );
+}
+
+/**
+ * The customer card below 1240 px: a drawer opened by the header button or Ctrl+. (docs/07 §4).
+ * Opening moves focus into the card, closing returns it to the button. Wider, the card is always
+ * there and Ctrl+. only moves focus to it.
+ */
+function useCardDrawer(toggleRef: RefObject<HTMLButtonElement | null>, headingRef: RefObject<HTMLHeadingElement | null>) {
+  const [open, setOpen] = useState(false);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    toggleRef.current?.focus();
+  }, [toggleRef]);
+  const show = useCallback(() => {
+    if (!window.matchMedia?.(WIDE).matches) setOpen(true);
+    // After the drawer renders.
+    requestAnimationFrame(() => headingRef.current?.focus());
+  }, [headingRef]);
+  const toggle = useCallback(() => (open ? close() : show()), [open, close, show]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === ".") {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [toggle]);
+
+  return { open, toggle, close };
 }
 
 function BackLink({ tab }: { tab: InboxTab }) {
@@ -91,9 +146,10 @@ function Header({ conversation: c, tab, children }: { conversation: Conversation
       : (names.get(c.assignee_id) ?? t("inbox.colleague"))
     : null;
   return (
-    <header className="flex min-h-[58px] items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
+    // Wraps on a phone: the actions move under the name instead of squeezing it.
+    <header className="flex min-h-[58px] flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-surface px-4 py-2.5 max-nav:px-3">
       <BackLink tab={tab} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[min(15rem,70%)] flex-1">
         <h2 id="conversation-title" className="m-0 flex items-center gap-2 text-[15px] font-semibold">
           <span className="truncate">{c.contact.name}</span>
           <span className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-3">

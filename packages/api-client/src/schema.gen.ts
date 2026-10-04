@@ -2112,6 +2112,11 @@ export interface operations {
                 status?: components["schemas"]["ConversationStatus"][];
                 /** @description `me`, `none` (unassigned) or a member's user id. */
                 assignee?: string;
+                /**
+                 * @description Only this contact's conversations: the history in the customer card. An unknown id
+                 *     gives an empty page.
+                 */
+                contact_id?: string;
                 /** @description Opaque `next_cursor` of the previous page. */
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Page size, 1–100; 50 when absent. */

@@ -80,8 +80,10 @@ type ListFilter struct {
 	// conversations when AssigneeID is nil.
 	ByAssignee bool
 	AssigneeID *uuid.UUID
-	Cursor     string
-	Limit      int
+	// ContactID restricts the list to one contact's conversations.
+	ContactID *uuid.UUID
+	Cursor    string
+	Limit     int
 }
 
 // CreateConversation starts a conversation with an existing contact. It
@@ -165,7 +167,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 	err = s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
 		rows, err = q.ListConversations(ctx, store.ListConversationsParams{
 			UserID: f.ViewerID, WorkspaceID: workspaceID, Statuses: statuses,
-			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID,
+			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID, ContactID: f.ContactID,
 			BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
 		})
 		return err
