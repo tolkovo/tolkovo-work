@@ -16,9 +16,13 @@ import { Route as AppAnalyticsRouteImport } from "./routes/_app/analytics"
 import { Route as AppInboxRouteImport } from "./routes/_app/inbox"
 import { Route as AppKbRouteImport } from "./routes/_app/kb"
 import { Route as AppMonitorRouteImport } from "./routes/_app/monitor"
+import { Route as AppOnboardingRouteImport } from "./routes/_app/onboarding"
 import { Route as AppSettingsRouteImport } from "./routes/_app/settings"
 import { Route as AuthLoginRouteImport } from "./routes/_auth/login"
 import { Route as AuthRegisterRouteImport } from "./routes/_auth/register"
+import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
+import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
+import { Route as AppSettingsTeamRouteImport } from "./routes/_app/settings/team"
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -53,6 +57,11 @@ const AppMonitorRoute = AppMonitorRouteImport.update({
   path: "/monitor",
   getParentRoute: () => AppRoute,
 } as any)
+const AppOnboardingRoute = AppOnboardingRouteImport.update({
+  id: "/onboarding",
+  path: "/onboarding",
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: "/settings",
   path: "/settings",
@@ -68,6 +77,21 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
   path: "/register",
   getParentRoute: () => AuthRoute,
 } as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsGeneralRoute = AppSettingsGeneralRouteImport.update({
+  id: "/general",
+  path: "/general",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsTeamRoute = AppSettingsTeamRouteImport.update({
+  id: "/team",
+  path: "/team",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
@@ -75,9 +99,13 @@ export interface FileRoutesByFullPath {
   "/inbox": typeof AppInboxRoute
   "/kb": typeof AppKbRoute
   "/monitor": typeof AppMonitorRoute
-  "/settings": typeof AppSettingsRoute
+  "/onboarding": typeof AppOnboardingRoute
+  "/settings": typeof AppSettingsRouteWithChildren
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
+  "/settings/general": typeof AppSettingsGeneralRoute
+  "/settings/team": typeof AppSettingsTeamRoute
+  "/settings/": typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
@@ -85,9 +113,12 @@ export interface FileRoutesByTo {
   "/inbox": typeof AppInboxRoute
   "/kb": typeof AppKbRoute
   "/monitor": typeof AppMonitorRoute
-  "/settings": typeof AppSettingsRoute
+  "/onboarding": typeof AppOnboardingRoute
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
+  "/settings/general": typeof AppSettingsGeneralRoute
+  "/settings/team": typeof AppSettingsTeamRoute
+  "/settings": typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,9 +129,13 @@ export interface FileRoutesById {
   "/_app/inbox": typeof AppInboxRoute
   "/_app/kb": typeof AppKbRoute
   "/_app/monitor": typeof AppMonitorRoute
-  "/_app/settings": typeof AppSettingsRoute
+  "/_app/onboarding": typeof AppOnboardingRoute
+  "/_app/settings": typeof AppSettingsRouteWithChildren
   "/_auth/login": typeof AuthLoginRoute
   "/_auth/register": typeof AuthRegisterRoute
+  "/_app/settings/general": typeof AppSettingsGeneralRoute
+  "/_app/settings/team": typeof AppSettingsTeamRoute
+  "/_app/settings/": typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -110,9 +145,13 @@ export interface FileRouteTypes {
     | "/inbox"
     | "/kb"
     | "/monitor"
+    | "/onboarding"
     | "/settings"
     | "/login"
     | "/register"
+    | "/settings/general"
+    | "/settings/team"
+    | "/settings/"
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
@@ -120,9 +159,12 @@ export interface FileRouteTypes {
     | "/inbox"
     | "/kb"
     | "/monitor"
-    | "/settings"
+    | "/onboarding"
     | "/login"
     | "/register"
+    | "/settings/general"
+    | "/settings/team"
+    | "/settings"
   id:
     | "__root__"
     | "/"
@@ -132,9 +174,13 @@ export interface FileRouteTypes {
     | "/_app/inbox"
     | "/_app/kb"
     | "/_app/monitor"
+    | "/_app/onboarding"
     | "/_app/settings"
     | "/_auth/login"
     | "/_auth/register"
+    | "/_app/settings/general"
+    | "/_app/settings/team"
+    | "/_app/settings/"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -194,6 +240,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppMonitorRouteImport
       parentRoute: typeof AppRoute
     }
+    "/_app/onboarding": {
+      id: "/_app/onboarding"
+      path: "/onboarding"
+      fullPath: "/onboarding"
+      preLoaderRoute: typeof AppOnboardingRouteImport
+      parentRoute: typeof AppRoute
+    }
     "/_app/settings": {
       id: "/_app/settings"
       path: "/settings"
@@ -215,15 +268,53 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AuthRegisterRouteImport
       parentRoute: typeof AuthRoute
     }
+    "/_app/settings/": {
+      id: "/_app/settings/"
+      path: "/"
+      fullPath: "/settings/"
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    "/_app/settings/general": {
+      id: "/_app/settings/general"
+      path: "/general"
+      fullPath: "/settings/general"
+      preLoaderRoute: typeof AppSettingsGeneralRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    "/_app/settings/team": {
+      id: "/_app/settings/team"
+      path: "/team"
+      fullPath: "/settings/team"
+      preLoaderRoute: typeof AppSettingsTeamRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
   }
 }
+
+interface AppSettingsRouteChildren {
+  AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
+  AppSettingsTeamRoute: typeof AppSettingsTeamRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsGeneralRoute: AppSettingsGeneralRoute,
+  AppSettingsTeamRoute: AppSettingsTeamRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
 
 interface AppRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppInboxRoute: typeof AppInboxRoute
   AppKbRoute: typeof AppKbRoute
   AppMonitorRoute: typeof AppMonitorRoute
-  AppSettingsRoute: typeof AppSettingsRoute
+  AppOnboardingRoute: typeof AppOnboardingRoute
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -231,7 +322,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppInboxRoute: AppInboxRoute,
   AppKbRoute: AppKbRoute,
   AppMonitorRoute: AppMonitorRoute,
-  AppSettingsRoute: AppSettingsRoute,
+  AppOnboardingRoute: AppOnboardingRoute,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

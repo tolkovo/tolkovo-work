@@ -1,12 +1,22 @@
+import { createApiClient, type ApiClient } from "@tolkovo/api-client";
+import { csrfTokenFrom } from "@tolkovo/api-client/react";
+import type { QueryClient } from "@tanstack/react-query";
+
 /**
- * Where the panel connects to the Tolkovo REST API.
- *
- * The typed client will come from `packages/api-client`, generated from `api/openapi.yaml`
- * (docs/00 §7.1, §8). It is created here once, from this base URL, and passed to queries
- * through the router context next to the QueryClient. Responses are validated with zod at
- * this boundary. Until the contract exists this module holds only the base path, so no
- * hand-written backend types appear in the panel.
- *
- * In development Vite proxies /api to the Go server on http://localhost:8080 (vite.config.ts).
+ * The panel's REST client (docs/00 §7.1, §8): types and runtime from packages/api-client.
+ * The API lives on the panel's own origin, so the session cookie is same-origin; in
+ * development Vite proxies /api to the Go server on http://localhost:8080 (vite.config.ts).
  */
-export const API_BASE_URL = "/api/v1";
+export const API_BASE_PATH = "/api/v1";
+
+export function createPanelApiClient(
+  queryClient: QueryClient,
+  { origin = window.location.origin, fetch }: { origin?: string; fetch?: (request: Request) => Promise<Response> } = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: new URL(API_BASE_PATH, origin).href,
+    // The CSRF token lives in the cached session (server state stays in TanStack Query).
+    getCsrfToken: () => csrfTokenFrom(queryClient),
+    ...(fetch ? { fetch } : {}),
+  });
+}

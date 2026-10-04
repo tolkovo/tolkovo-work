@@ -57,13 +57,84 @@
       }
     },
     "settings": {
-      "title": "Settings",
-      "empty": {
-        "title": "Settings open after you sign in",
-        "text": "Channels, team, lines and AI are configured inside a workspace. Sign in or create a new one.",
-        "action": "Sign in"
-      }
+      "title": "Settings"
     }
+  },
+  "settings": {
+    "nav": "Settings sections",
+    "general": {
+      "title": "General",
+      "address": "Workspace address: {slug}",
+      "name": "Name",
+      "locale": "Workspace language",
+      "localeHint": "Default language of the workspace's system messages.",
+      "timezone": "Time zone",
+      "timezoneHint": "Used for working hours and daily reports.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "readOnly": "Only the owner and admins can change workspace settings."
+    },
+    "team": {
+      "title": "Team",
+      "count": "{count, plural, one {# member} other {# members}}",
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "you": "(you)",
+      "active": "Active",
+      "inactive": "Deactivated"
+    }
+  },
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "operator": "Operator"
+  },
+  "workspace": {
+    "switcher": {
+      "label": "Workspace"
+    }
+  },
+  "onboarding": {
+    "title": "Getting started",
+    "subtitle": "The “{name}” workspace is ready. Check the basic settings — it takes a minute.",
+    "progress": "{done} of {total} done",
+    "stepDone": "Step done",
+    "stepTodo": "Step not done",
+    "created": {
+      "title": "Workspace created",
+      "text": "Workspace address: {slug}. You are its owner."
+    },
+    "locale": {
+      "title": "Language and time zone",
+      "text": "We took them from your browser. If the workspace works in another time zone, change it.",
+      "submit": "Confirm"
+    },
+    "finish": "Go to inbox"
+  },
+  "validation": {
+    "required": "Fill in this field.",
+    "email": "Enter an email address, for example anna@example.com.",
+    "passwordLength": "The password must be 8 to 128 characters.",
+    "slug": "3 to 40 characters: Latin letters, digits and inner hyphens.",
+    "tooLong": "No more than {max} characters."
+  },
+  "errors": {
+    "network": "Can't reach the server. Check your connection and try again.",
+    "rateLimited": "Too many attempts. Try again in {seconds, plural, one {# second} other {# seconds}}.",
+    "rateLimitedLater": "Too many attempts. Wait a little and try again.",
+    "invalidCredentials": "Wrong email or password.",
+    "emailTaken": "This email is already registered. Sign in or use another one.",
+    "slugTaken": "This address is taken. Choose another one.",
+    "invalidRequest": "The server didn't accept the data. Check the fields and try again.",
+    "unauthenticated": "Your session has ended. Sign in again.",
+    "forbidden": "You don't have permission. Ask the workspace owner.",
+    "staleSession": "Your session is out of date. Reload the page and try again.",
+    "noWorkspace": "You aren't a member of any workspace. Ask an owner to invite you.",
+    "notFound": "The workspace wasn't found, or you no longer have access to it.",
+    "unknown": "That didn't work. Try again."
   },
   "error": {
     "title": "Something went wrong",
@@ -81,10 +152,12 @@
     "tagline": "Support in Telegram and on your website: AI on the first line, people when it matters.",
     "email": "Email",
     "password": "Password",
+    "logout": "Sign out",
     "login": {
       "title": "Sign in",
       "subtitle": "Sign in to answer your customers.",
       "submit": "Sign in",
+      "pending": "Signing in…",
       "switchPrompt": "No workspace yet?",
       "switchAction": "Create workspace"
     },
@@ -93,7 +166,11 @@
       "subtitle": "A workspace is your company in Tolkovo: channels, team and conversations.",
       "name": "Your name",
       "workspace": "Company name",
+      "slug": "Workspace address",
+      "slugHint": "Latin letters, digits and hyphens, for example zerno-coffee.",
+      "passwordHint": "At least 8 characters.",
       "submit": "Create workspace",
+      "pending": "Creating…",
       "switchPrompt": "Already have a workspace?",
       "switchAction": "Sign in"
     }

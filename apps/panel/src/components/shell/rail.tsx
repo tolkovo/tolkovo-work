@@ -1,3 +1,5 @@
+import { hasPermission } from "@tolkovo/api-client";
+import { useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@tolkovo/ui";
 import { useTranslation } from "react-i18next";
@@ -8,6 +10,8 @@ import { navItems } from "./nav-items";
 /** Section rail: on the left on wide screens, at the bottom below 760 px (docs/07 §3). */
 export function Rail() {
   const { t } = useTranslation();
+  const { data: session } = useSession();
+  const items = navItems.filter((item) => !item.permission || hasPermission(session, item.permission));
   return (
     <nav
       aria-label={t("nav.label")}
@@ -18,7 +22,7 @@ export function Rail() {
       )}
     >
       <LogoMark className="mb-3 max-nav:hidden" />
-      {navItems.map(({ to, label, icon: Icon }) => (
+      {items.map(({ to, label, icon: Icon }) => (
         <Link
           key={to}
           to={to}

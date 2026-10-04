@@ -1,3 +1,4 @@
+import { isApiError } from "@tolkovo/api-client";
 import { useQueryErrorResetBoundary } from "@tanstack/react-query";
 import { useRouter, type ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@tolkovo/ui";
@@ -8,8 +9,9 @@ import { useTranslation } from "react-i18next";
  * Error state (docs/00 §7.4): what happened and what to do. Technical details are not shown:
  * they may contain data of other people; the router already logs the error to the console.
  */
-export function ErrorView({ reset }: Pick<ErrorComponentProps, "reset">) {
+export function ErrorView({ error, reset }: Pick<ErrorComponentProps, "reset"> & { error?: unknown }) {
   const { t } = useTranslation();
+  const offline = isApiError(error) && error.code === "network";
   const router = useRouter();
   const queryErrorReset = useQueryErrorResetBoundary();
 
@@ -31,7 +33,7 @@ export function ErrorView({ reset }: Pick<ErrorComponentProps, "reset">) {
       <h1 id="error-title" className="m-0 text-base font-semibold text-ink">
         {t("error.title")}
       </h1>
-      <p className="m-0 text-ink-2">{t("error.text")}</p>
+      <p className="m-0 text-ink-2">{offline ? t("errors.network") : t("error.text")}</p>
       <div className="mt-1 flex flex-wrap justify-center gap-2">
         <Button variant="primary" size="lg" onClick={retry}>
           {t("error.retry")}

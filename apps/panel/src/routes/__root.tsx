@@ -11,10 +11,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFound,
 });
 
-function RootError({ reset }: { reset: () => void }) {
+function RootError({ error, reset }: { error: unknown; reset: () => void }) {
   return (
     <main className="grid min-h-dvh place-items-center bg-paper p-4">
-      <ErrorView reset={reset} />
+      <ErrorView error={error} reset={reset} />
     </main>
   );
 }

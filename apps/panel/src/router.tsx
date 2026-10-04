@@ -1,3 +1,4 @@
+import type { ApiClient } from "@tolkovo/api-client";
 import type { QueryClient } from "@tanstack/react-query";
 import { createRouter, type RouterHistory } from "@tanstack/react-router";
 
@@ -8,12 +9,13 @@ import { routeTree } from "./routeTree.gen";
 
 export type RouterContext = {
   queryClient: QueryClient;
+  api: ApiClient;
 };
 
-export function createAppRouter({ queryClient, history }: RouterContext & { history?: RouterHistory }) {
+export function createAppRouter({ queryClient, api, history }: RouterContext & { history?: RouterHistory }) {
   return createRouter({
     routeTree,
-    context: { queryClient },
+    context: { queryClient, api },
     ...(history ? { history } : {}),
     defaultPreload: "intent",
     // Loader data lives in TanStack Query; the router must not cache it a second time.

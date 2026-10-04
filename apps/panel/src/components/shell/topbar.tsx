@@ -1,11 +1,14 @@
 import { Link } from "@tanstack/react-router";
+
 import { LogoMark, Wordmark } from "../logo";
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeSwitcher } from "./theme-switcher";
+import { UserMenu } from "./user-menu";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 /**
- * Top bar (docs/07 §3). The workspace switcher, ⌘K palette, connection state, notifications,
- * status with capacity and avatar join it with the features behind them (P-02, I-01, R-02).
+ * Top bar (docs/07 §3): workspace, preferences, user. The ⌘K palette, connection state,
+ * notifications and status with capacity join it with the features behind them (I-01, R-02).
  */
 export function Topbar() {
   return (
@@ -14,9 +17,12 @@ export function Topbar() {
         <LogoMark className="hidden size-6 after:top-[3px] after:right-[3px] after:size-[7px] max-nav:inline-block" />
         <Wordmark />
       </Link>
+      <span aria-hidden="true" className="h-5 w-px bg-line max-nav:hidden" />
+      <WorkspaceSwitcher />
       <div className="flex-1" />
       <LanguageSwitcher />
       <ThemeSwitcher />
+      <UserMenu />
     </header>
   );
 }

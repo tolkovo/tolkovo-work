@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { fakeApi, json, operatorSession, ownerSession, workspaces } from "../../test/fake-api";
 import { renderApp } from "../../test/render-app";
 
 describe("panel shell", () => {
@@ -25,7 +26,6 @@ describe("panel shell", () => {
     ["/monitor", "Сейчас никого нет на смене", "Пригласить операторов", "/settings"],
     ["/analytics", "Данных пока нет", "Открыть диалоги", "/inbox"],
     ["/kb", "Статей пока нет", "Настроить ИИ", "/settings"],
-    ["/settings", "Настройки откроются после входа", "Войти", "/login"],
   ])("%s shows an empty state with a call to action", async (url, title, action, href) => {
     renderApp(url);
     expect(await screen.findByRole("heading", { level: 2, name: title })).toBeInTheDocument();
@@ -51,6 +51,53 @@ describe("panel shell", () => {
     const skip = await screen.findByRole("link", { name: "Перейти к содержимому" });
     expect(skip).toHaveAttribute("href", "#main");
     expect(document.getElementById("main")).toBeInTheDocument();
+  });
+});
+
+describe("session in the shell", () => {
+  it("hides settings from a role without workspace.manage", async () => {
+    renderApp("/inbox", { api: fakeApi({ session: operatorSession }) });
+    const nav = await screen.findByRole("navigation", { name: "Разделы" });
+    expect(within(nav).queryByRole("link", { name: "Настройки" })).not.toBeInTheDocument();
+  });
+
+  it("shows the workspace name and no switcher with one workspace", async () => {
+    renderApp("/inbox");
+    expect(await screen.findByText("Зерно")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Пространство")).not.toBeInTheDocument();
+  });
+
+  it("switches the workspace and refetches workspace data", async () => {
+    const user = userEvent.setup();
+    const other = { id: "w-other", slug: "other", name: "Другое", role: "admin" as const };
+    const switched = { ...ownerSession, workspace: { ...ownerSession.workspace, ...other }, role: "admin" as const, csrf_token: "csrf-2" };
+    const api = fakeApi({
+      routes: {
+        "GET /me/workspaces": () => json(200, { items: [...workspaces, other] }),
+        "POST /auth/workspace": () => json(200, switched),
+      },
+    });
+    const { router } = renderApp("/settings/team", { api });
+    const select = await screen.findByLabelText("Пространство");
+    await screen.findByRole("table");
+
+    await user.selectOptions(select, "w-other");
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/inbox"));
+    expect(screen.getByLabelText("Пространство")).toHaveValue("w-other");
+    const call = api.calls.find((c) => c.path === "/auth/workspace");
+    expect(call?.body).toEqual({ workspace_id: "w-other" });
+    expect(call?.headers.get("X-CSRF-Token")).toBe("csrf-owner");
+  });
+
+  it("signs out and returns to sign-in", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    const { router } = renderApp("/inbox", { api });
+    await user.click(await screen.findByRole("button", { name: "Выйти" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Вход" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(api.calls.find((c) => c.path === "/auth/logout")?.headers.get("X-CSRF-Token")).toBe("csrf-owner");
   });
 });
 
