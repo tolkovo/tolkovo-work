@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tolkovo.dev/schemas/ws/server-message.schema.json",
+  "title": "Tolkovo realtime: server → client message",
+  "description": "One JSON text frame from the realtime gateway (GET /api/v1/realtime, docs/02 §10, ADR-0005). Every message is {type, id, ts, data}. Domain events also carry seq, the publication order a client resumes from after a reconnect; seq may have gaps and events may arrive more than once, so clients deduplicate by id. A new field in data is not a breaking change; removing or renaming one is (docs/00 §8).",
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/heartbeat" },
+    { "$ref": "#/$defs/resumed" },
+    { "$ref": "#/$defs/resyncRequired" },
+    { "$ref": "#/$defs/conversationCreated" },
+    { "$ref": "#/$defs/conversationStatusChanged" },
+    { "$ref": "#/$defs/conversationAssigned" },
+    { "$ref": "#/$defs/messageCreated" },
+    { "$ref": "#/$defs/contactCreated" },
+    { "$ref": "#/$defs/contactUpdated" }
+  ],
+  "$defs": {
+    "messageType": {
+      "description": "Every server message type. Control messages have no dot; domain events are outbox topics.",
+      "enum": [
+        "hello",
+        "heartbeat",
+        "resumed",
+        "resync_required",
+        "conversation.created",
+        "conversation.status_changed",
+        "conversation.assigned",
+        "message.created",
+        "contact.created",
+        "contact.updated"
+      ]
+    },
+    "closeCode": {
+      "description": "WebSocket close codes the gateway uses. 1008: protocol violation (unknown or repeated client message), do not retry without a fix. 1009: client message above the size limit. 1011: internal error, reconnect with backoff. 1012: server restart or shutdown, reconnect with jitter. 4401: the session ended (signed out, revoked, expired, membership removed), do not reconnect, re-check the session over REST. 4408: slow consumer, the send buffer overflowed, reconnect and resume. 4429: too many connections of this user, reconnect only after a long backoff.",
+      "enum": [1008, 1009, 1011, 1012, 4401, 4408, 4429]
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "nullableUuid": {
+      "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+    },
+    "seq": {
+      "description": "Publication order of outbox events. Monotonic per installation, gaps allowed.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "ts": {
+      "description": "RFC 3339 time: when the event happened, or when a control message was sent.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "id": {
+      "description": "Unique message id. For domain events it is the outbox event id, the same on every redelivery: the deduplication key.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "conversationStatus": {
+      "enum": ["new", "bot", "queued", "assigned", "pending", "resolved", "closed"]
+    },
+    "control": {
+      "type": "object",
+      "required": ["type", "id", "ts", "data"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "ts": { "$ref": "#/$defs/ts" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["type", "id", "ts", "seq", "data"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "ts": { "$ref": "#/$defs/ts" },
+        "seq": { "$ref": "#/$defs/seq" }
+      }
+    },
+    "hello": {
+      "description": "First message after the handshake. A client without history starts from data.seq and refetches over REST; a client with history answers with resume.",
+      "allOf": [{ "$ref": "#/$defs/control" }],
+      "properties": {
+        "type": { "const": "hello" },
+        "data": {
+          "type": "object",
+          "required": ["seq", "heartbeat_interval_ms"],
+          "properties": {
+            "seq": { "$ref": "#/$defs/seq" },
+            "heartbeat_interval_ms": {
+              "description": "The server sends heartbeat this often; a client that hears nothing for twice as long reconnects.",
+              "type": "integer",
+              "minimum": 1000
+            }
+          }
+        }
+      }
+    },
+    "heartbeat": {
+      "description": "Sent every heartbeat_interval_ms so clients notice a dead connection.",
+      "allOf": [{ "$ref": "#/$defs/control" }],
+      "properties": {
+        "type": { "const": "heartbeat" },
+        "data": { "type": "object" }
+      }
+    },
+    "resumed": {
+      "description": "Catch-up after resume is complete: every missed event up to data.seq has been sent.",
+      "allOf": [{ "$ref": "#/$defs/control" }],
+      "properties": {
+        "type": { "const": "resumed" },
+        "data": {
+          "type": "object",
+          "required": ["seq"],
+          "properties": { "seq": { "$ref": "#/$defs/seq" } }
+        }
+      }
+    },
+    "resyncRequired": {
+      "description": "Missed events cannot be replayed (pruned by retention or too many): refetch everything over REST and continue from data.seq.",
+      "allOf": [{ "$ref": "#/$defs/control" }],
+      "properties": {
+        "type": { "const": "resync_required" },
+        "data": {
+          "type": "object",
+          "required": ["seq"],
+          "properties": { "seq": { "$ref": "#/$defs/seq" } }
+        }
+      }
+    },
+    "conversationCreated": {
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.created" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "contact_id", "number", "status"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "contact_id": { "$ref": "#/$defs/uuid" },
+            "number": { "type": "integer", "minimum": 1 },
+            "status": { "$ref": "#/$defs/conversationStatus" }
+          }
+        }
+      }
+    },
+    "conversationStatusChanged": {
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.status_changed" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "from", "to", "assignee_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "from": { "$ref": "#/$defs/conversationStatus" },
+            "to": { "$ref": "#/$defs/conversationStatus" },
+            "assignee_id": { "$ref": "#/$defs/nullableUuid" }
+          }
+        }
+      }
+    },
+    "conversationAssigned": {
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.assigned" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "assignee_id", "previous_assignee_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "assignee_id": { "$ref": "#/$defs/nullableUuid" },
+            "previous_assignee_id": { "$ref": "#/$defs/nullableUuid" }
+          }
+        }
+      }
+    },
+    "messageCreated": {
+      "description": "Ids and kind only: the text is fetched over REST, so message bodies never pass through Redis.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "message.created" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "message_id", "kind", "is_private", "sender_type", "sender_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "message_id": { "$ref": "#/$defs/uuid" },
+            "kind": { "enum": ["text", "media", "note", "event"] },
+            "is_private": { "type": "boolean" },
+            "sender_type": { "enum": ["contact", "operator", "bot", "system"] },
+            "sender_id": { "$ref": "#/$defs/nullableUuid" }
+          }
+        }
+      }
+    },
+    "contactCreated": {
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "contact.created" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id"],
+          "properties": { "contact_id": { "$ref": "#/$defs/uuid" } }
+        }
+      }
+    },
+    "contactUpdated": {
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "contact.updated" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id"],
+          "properties": { "contact_id": { "$ref": "#/$defs/uuid" } }
+        }
+      }
+    }
+  }
+}
