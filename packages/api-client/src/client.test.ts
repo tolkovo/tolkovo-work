@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { CSRF_HEADER, createApiClient } from "./client";
-import { fetchSession, login, logout, updateWorkspace, type Session } from "./endpoints";
+import {
+  changePassword,
+  fetchMySessions,
+  fetchSession,
+  login,
+  logout,
+  revokeSession,
+  updateWorkspace,
+  type Session,
+} from "./endpoints";
 import { ApiError } from "./errors";
 
 const BASE = "http://panel.test/api/v1";
@@ -94,5 +103,35 @@ describe("errors", () => {
   it("marks a non-problem error body as unknown", async () => {
     const { client } = setup(() => new Response("<html>Bad gateway</html>", { status: 502 }));
     await expect(fetchSession(client)).rejects.toMatchObject({ status: 502, code: "unknown" });
+  });
+});
+
+describe("personal settings", () => {
+  it("revokes a session by its id in the path, with the CSRF token", async () => {
+    const { client, requests } = setup(() => new Response(null, { status: 204 }));
+    await revokeSession(client, "0b6f4a6e-1c55-4d43-9d8e-4bd1f1f2a9a1");
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.url).toBe(`${BASE}/me/sessions/0b6f4a6e-1c55-4d43-9d8e-4bd1f1f2a9a1`);
+    expect(requests[0]?.headers.get(CSRF_HEADER)).toBe("csrf-1");
+  });
+
+  it("returns the rotated session after a password change", async () => {
+    const { client } = setup(() => json(200, { ...session, csrf_token: "csrf-2" }));
+    const next = await changePassword(client, { current_password: "old-pass", new_password: "new-pass-1" });
+    expect(next.csrf_token).toBe("csrf-2");
+  });
+
+  it("checks the session list against the contract", async () => {
+    const item = {
+      id: "s1",
+      created_at: "2026-10-04T10:00:00Z",
+      last_seen_at: "2026-10-04T11:00:00Z",
+      user_agent: "",
+      current: true,
+    };
+    const { client } = setup(() => json(200, { items: [item] }));
+    await expect(fetchMySessions(client)).resolves.toEqual([item]);
+    const broken = setup(() => json(200, { items: [{ ...item, current: "yes" }] }));
+    await expect(fetchMySessions(broken.client)).rejects.toMatchObject({ code: "invalid_response" });
   });
 });

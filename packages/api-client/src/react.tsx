@@ -9,18 +9,25 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import {
+  changePassword,
   fetchMembers,
+  fetchMySessions,
   fetchMyWorkspaces,
   fetchSession,
   hasPermission,
   login,
   logout,
   register,
+  revokeOtherSessions,
+  revokeSession,
   switchWorkspace,
+  updateMe,
   updateWorkspace,
+  type ChangePasswordRequest,
   type LoginRequest,
   type RegisterRequest,
   type Session,
+  type UpdateMeRequest,
   type UpdateWorkspaceRequest,
 } from "./endpoints";
 
@@ -45,6 +52,7 @@ export const queryKeys = {
   session: ["session"] as const,
   myWorkspaces: ["me", "workspaces"] as const,
   members: ["members"] as const,
+  mySessions: ["me", "sessions"] as const,
 };
 
 /** The current session; `null` when signed out. */
@@ -145,5 +153,55 @@ export function useUpdateWorkspace() {
       queryClient.setQueryData<Session | null>(queryKeys.session, (s) => (s ? { ...s, workspace } : s));
       void queryClient.invalidateQueries({ queryKey: queryKeys.myWorkspaces });
     },
+  });
+}
+
+/** Saves the profile; the cached session takes the server's answer (name, language). */
+export function useUpdateMe() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateMeRequest) => updateMe(client, body),
+    onSuccess: (session) => queryClient.setQueryData(queryKeys.session, session),
+  });
+}
+
+/**
+ * Changes the password. The server rotates the current session, so the cached one (with the
+ * new CSRF token) is replaced; the session list changes because other devices were signed out.
+ */
+export function useChangePassword() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ChangePasswordRequest) => changePassword(client, body),
+    onSuccess: (session) => {
+      queryClient.setQueryData(queryKeys.session, session);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.mySessions });
+    },
+  });
+}
+
+/** The signed-in user's active sessions (devices), the current one first. */
+export function useMySessions() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.mySessions, queryFn: () => fetchMySessions(client) });
+}
+
+export function useRevokeSession() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => revokeSession(client, id),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.mySessions }),
+  });
+}
+
+export function useRevokeOtherSessions() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => revokeOtherSessions(client),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.mySessions }),
   });
 }

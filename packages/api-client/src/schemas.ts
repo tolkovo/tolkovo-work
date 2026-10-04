@@ -68,3 +68,15 @@ export const memberListSchema = z.object({
     }) satisfies z.ZodType<Schemas["Member"]>,
   ),
 }) satisfies z.ZodType<Schemas["MemberList"]>;
+
+export const deviceSessionListSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      created_at: z.string(),
+      last_seen_at: z.string(),
+      user_agent: z.string(),
+      current: z.boolean(),
+    }) satisfies z.ZodType<Schemas["DeviceSession"]>,
+  ),
+}) satisfies z.ZodType<Schemas["DeviceSessionList"]>;
