@@ -28,6 +28,28 @@ func TestLoadFrom_AppliesDefaults(t *testing.T) {
 	if cfg.SystemDatabaseURL != "" {
 		t.Fatalf("SystemDatabaseURL must never fall back to DatabaseURL")
 	}
+	if cfg.RedisURL.Reveal() != "redis://localhost:6379/0" || cfg.SessionIdleTimeout != 168*time.Hour ||
+		cfg.SessionMaxAge != 720*time.Hour || len(cfg.TrustedOrigins) != 0 || cfg.SecureCookies() {
+		t.Fatalf("unexpected session defaults: %+v", cfg)
+	}
+}
+
+func TestLoadFrom_SecureCookiesOutsideDevelopment(t *testing.T) {
+	cfg, err := LoadFrom(map[string]string{
+		"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_ENV": "production",
+		"TOLKOVO_STORAGE_SIGNING_KEY": strings.Repeat("k", 32),
+		"TOLKOVO_TRUSTED_ORIGINS":     "https://panel.example.com,http://localhost:5173",
+	})
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if !cfg.SecureCookies() || len(cfg.TrustedOrigins) != 2 {
+		t.Fatalf("want secure cookies and 2 origins, got %v %v", cfg.SecureCookies(), cfg.TrustedOrigins)
+	}
+	cfg.PublicURL = "https://support.example.com/base/"
+	if got := cfg.PublicOrigins(); len(got) != 1 || got[0] != "https://support.example.com" {
+		t.Fatalf("PublicOrigins: %v", got)
+	}
 }
 
 func TestLoadFrom_RequiresDatabaseURL(t *testing.T) {
@@ -47,6 +69,10 @@ func TestLoadFrom_RejectsInvalidValues(t *testing.T) {
 		{"zero shutdown timeout", "TOLKOVO_SHUTDOWN_TIMEOUT", "0s", "TOLKOVO_SHUTDOWN_TIMEOUT"},
 		{"bad log level", "TOLKOVO_LOG_LEVEL", "loud", "TOLKOVO_LOG_LEVEL"},
 		{"tiny outbox retention", "TOLKOVO_OUTBOX_RETENTION", "10s", "TOLKOVO_OUTBOX_RETENTION"},
+		{"redis url scheme", "TOLKOVO_REDIS_URL", "localhost:6379", "TOLKOVO_REDIS_URL"},
+		{"idle above max age", "TOLKOVO_SESSION_IDLE_TIMEOUT", "1000h", "TOLKOVO_SESSION_IDLE_TIMEOUT"},
+		{"origin with path", "TOLKOVO_TRUSTED_ORIGINS", "https://panel.example.com/app", "TOLKOVO_TRUSTED_ORIGINS"},
+		{"origin without scheme", "TOLKOVO_TRUSTED_ORIGINS", "panel.example.com", "TOLKOVO_TRUSTED_ORIGINS"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

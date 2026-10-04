@@ -13,8 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrNoWorkspace is returned when InTenantTx gets the zero workspace ID.
-var ErrNoWorkspace = errors.New("db: workspace id is required")
+// Errors for a missing scope.
+var (
+	// ErrNoWorkspace is returned when InTenantTx gets the zero workspace ID.
+	ErrNoWorkspace = errors.New("db: workspace id is required")
+	// ErrNoUser is returned when InUserTx gets the zero user ID.
+	ErrNoUser = errors.New("db: user id is required")
+)
 
 // DB wraps the connection pool of the application role.
 type DB struct {
@@ -66,4 +71,21 @@ func (d *DB) InTenantTx(ctx context.Context, workspaceID uuid.UUID, fn func(pgx.
 // (users) are reachable: RLS hides every tenant row.
 func (d *DB) InGlobalTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	return pgx.BeginFunc(ctx, d.pool, fn)
+}
+
+// InUserTx runs fn in a transaction without a workspace but on behalf of one
+// user. It sets app.user_id (SET LOCAL semantics), which read-only policies
+// use to show that user's own memberships and their workspaces, so the user
+// can list and pick a workspace before one is chosen (migration 00003).
+// Writes to tenant tables are still rejected: no workspace is set.
+func (d *DB) InUserTx(ctx context.Context, userID uuid.UUID, fn func(pgx.Tx) error) error {
+	if userID == uuid.Nil {
+		return ErrNoUser
+	}
+	return pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT set_config('app.user_id', $1, true)", userID.String()); err != nil {
+			return fmt.Errorf("set user: %w", err)
+		}
+		return fn(tx)
+	})
 }

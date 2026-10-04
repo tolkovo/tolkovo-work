@@ -64,6 +64,16 @@ type Config struct {
 	// OutboxRetention is how long published events stay for realtime catch-up.
 	OutboxRetention time.Duration `env:"OUTBOX_RETENTION" envDefault:"24h"`
 
+	// RedisURL (redis:// or rediss://) holds sessions and rate limits.
+	RedisURL Secret `env:"REDIS_URL" envDefault:"redis://localhost:6379/0"`
+	// SessionIdleTimeout ends a session after this long without requests;
+	// SessionMaxAge ends it this long after sign-in (docs/02 §13.1).
+	SessionIdleTimeout time.Duration `env:"SESSION_IDLE_TIMEOUT" envDefault:"168h"`
+	SessionMaxAge      time.Duration `env:"SESSION_MAX_AGE" envDefault:"720h"`
+	// TrustedOrigins may send unsafe API requests besides the API's own
+	// origin, e.g. a panel served from another host.
+	TrustedOrigins []string `env:"TRUSTED_ORIGINS" envSeparator:","`
+
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"20s"`
 
 	// Mode is selfhost or saas; saas refuses single-node shortcuts.
@@ -121,6 +131,20 @@ func LoadFrom(vars map[string]string) (Config, error) {
 	return cfg, nil
 }
 
+// SecureCookies reports whether cookies get the Secure flag: everywhere
+// except development, which runs over plain HTTP on localhost.
+func (c Config) SecureCookies() bool { return c.Env != EnvDevelopment }
+
+// PublicOrigins returns the origin (scheme://host) of PublicURL, the one
+// browsers use to reach the api. validate guarantees it parses.
+func (c Config) PublicOrigins() []string {
+	u, err := url.Parse(c.PublicURL)
+	if err != nil || u.Host == "" {
+		return nil
+	}
+	return []string{u.Scheme + "://" + u.Host}
+}
+
 func (c Config) validate() error {
 	var errs []error
 	if c.Env != EnvDevelopment && c.Env != EnvProduction {
@@ -146,6 +170,17 @@ func (c Config) validate() error {
 		errs = append(errs, fmt.Errorf("%sPUBLIC_URL must be an absolute http(s) URL without query, got %q", Prefix, c.PublicURL))
 	}
 	errs = append(errs, c.validateStorage()...)
+	if !strings.HasPrefix(c.RedisURL.Reveal(), "redis://") && !strings.HasPrefix(c.RedisURL.Reveal(), "rediss://") {
+		errs = append(errs, fmt.Errorf("%sREDIS_URL must start with redis:// or rediss://", Prefix))
+	}
+	if c.SessionIdleTimeout < time.Minute || c.SessionMaxAge < c.SessionIdleTimeout {
+		errs = append(errs, fmt.Errorf("%sSESSION_IDLE_TIMEOUT must be at least 1m and not above %sSESSION_MAX_AGE", Prefix, Prefix))
+	}
+	for _, o := range c.TrustedOrigins {
+		if u, err := url.Parse(o); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" {
+			errs = append(errs, fmt.Errorf("%sTRUSTED_ORIGINS: %q is not an origin like https://panel.example.com", Prefix, o))
+		}
+	}
 	return errors.Join(errs...)
 }
 
