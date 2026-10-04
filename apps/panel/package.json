@@ -10,9 +10,13 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint --max-warnings=0 .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "size": "size-limit"
   },
   "dependencies": {
+    "@fontsource/golos-text": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/unbounded": "5.3.0",
     "@tanstack/react-query": "5.104.1",
     "@tanstack/react-router": "1.170.41",
     "@tolkovo/api-client": "workspace:*",
@@ -29,6 +33,7 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@size-limit/file": "14.1.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/router-plugin": "1.168.42",
     "@testing-library/dom": "10.4.2",
@@ -41,6 +46,7 @@
     "@vitejs/plugin-react": "6.1.1",
     "eslint": "10.12.0",
     "jsdom": "30.1.2",
+    "size-limit": "14.1.0",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "vite": "8.3.2",

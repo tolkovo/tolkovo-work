@@ -58,7 +58,7 @@ jobs:
         with:
           node-version: 22.12
           cache: pnpm
-      - name: make web-check (typecheck, lint, test, build)
+      - name: make web-check (typecheck, lint, test, build, size)
         run: make web-check
       - name: pnpm audit
         run: pnpm audit --audit-level high

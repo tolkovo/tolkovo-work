@@ -1,0 +1,8 @@
+/* Self-hosted fonts (docs/07, OFL). Each file declares every subset with unicode-range,
+   so the browser downloads only the Latin or Cyrillic files a screen actually uses. */
+@import "@fontsource/unbounded/600.css";
+@import "@fontsource/golos-text/400.css";
+@import "@fontsource/golos-text/500.css";
+@import "@fontsource/golos-text/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";

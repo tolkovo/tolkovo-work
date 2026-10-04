@@ -67,13 +67,14 @@ WEB_GENERATED := apps/panel/src/routeTree.gen.ts packages/api-client/src/schema.
 web-install: ## Install JS dependencies from pnpm-lock.yaml
 	pnpm install --frozen-lockfile
 
-web-check: web-install ## Generate, typecheck, lint, test and build panel, landing and packages
+web-check: web-install ## Generate, typecheck, lint, test, build and size-check panel, landing and packages
 	pnpm -r --if-present run gen
 	pnpm -r --if-present run typecheck
 	pnpm -r --if-present run lint
 	pnpm -r --if-present run test
 	pnpm -r --if-present run check
 	pnpm -r --if-present run build
+	pnpm -r --if-present run size
 	@git diff --exit-code -- $(WEB_GENERATED) || { echo "generated TS is stale: run make gen-web and pnpm -C apps/panel build"; exit 1; }
 
 check: gen-check lint test web-check ## Run before every PR
