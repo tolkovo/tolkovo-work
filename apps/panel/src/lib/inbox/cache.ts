@@ -100,6 +100,15 @@ export function addToFeed(queryClient: QueryClient, m: Message): void {
   });
 }
 
+/** Puts a newer state of a message already in the feed (a retried delivery). */
+export function replaceInFeed(queryClient: QueryClient, m: Message): void {
+  queryClient.setQueryData<Feed>(queryKeys.conversationMessages(m.conversation_id), (data) =>
+    data
+      ? { ...data, pages: data.pages.map((p) => ({ ...p, items: p.items.map((other) => (other.id === m.id ? m : other)) })) }
+      : data,
+  );
+}
+
 /** The conversation is gone for this user (deleted, or no longer visible). */
 export function dropConversation(queryClient: QueryClient, id: string): void {
   queryClient.removeQueries({ queryKey: queryKeys.conversation(id), exact: true });

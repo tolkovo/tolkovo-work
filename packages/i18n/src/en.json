@@ -666,6 +666,23 @@
       "contact": "A Telegram contact — the panel does not show these messages.",
       "poll": "A poll — the panel does not show these messages.",
       "other": "A message the panel does not show. See it in Telegram."
+    },
+    "delivery": {
+      "pending": "sending",
+      "sent": "sent",
+      "delivered": "delivered",
+      "read": "read",
+      "failed": "Not delivered",
+      "retry": "Retry",
+      "retryError": "Could not send it again. Reload the page and try once more.",
+      "error": {
+        "blocked": "the customer blocked the bot or the account",
+        "chat_not_found": "the chat is unavailable: the customer deleted their account or the account cannot write to them yet",
+        "limited": "Telegram restricted the account, it cannot write now",
+        "rejected": "Telegram refused the message (size or format)",
+        "channel_unavailable": "the channel is disconnected or broken, check Settings → Channels",
+        "failed": "Telegram did not answer, no retries left"
+      }
     }
   },
   "notifications": {
@@ -678,5 +695,10 @@
       "title": "Tolkovo: test",
       "body": "This is how conversation notifications will look."
     }
+  },
+  "channelAlert": {
+    "one": "The {name} channel is down: {reason}",
+    "many": "Channels down: {count}. Customer messages through them do not arrive, replies do not go out.",
+    "open": "Open channels"
   }
 }

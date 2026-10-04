@@ -87,6 +87,28 @@ func TestUserAuth_Listen(t *testing.T) {
 		})
 	})
 
+	var sendReq tg.MessagesSendMessageRequest
+	d.HandleFunc(tg.MessagesSendMessageRequestTypeID, func(s *tgtest.Server, req *tgtest.Request) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if err := sendReq.Decode(req.Buf); err != nil {
+			return err
+		}
+		return s.SendResult(req, &tg.UpdateShortSentMessage{Out: true, ID: 20, Pts: 105, PtsCount: 1, Date: now})
+	})
+	d.HandleFunc(tg.MessagesSetTypingRequestTypeID, func(s *tgtest.Server, req *tgtest.Request) error {
+		return s.SendBool(req, true)
+	})
+	var readReq tg.MessagesReadHistoryRequest
+	d.HandleFunc(tg.MessagesReadHistoryRequestTypeID, func(s *tgtest.Server, req *tgtest.Request) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if err := readReq.Decode(req.Buf); err != nil {
+			return err
+		}
+		return s.SendResult(req, &tg.MessagesAffectedMessages{Pts: 106, PtsCount: 1})
+	})
+
 	up := make(chan error, 1)
 	go func() { up <- c.Up(ctx) }()
 	select {
@@ -107,7 +129,9 @@ func TestUserAuth_Listen(t *testing.T) {
 
 	state := &lockedState{}
 	got := make(chan Message, 10)
-	ready := make(chan struct{})
+	ready := make(chan Conn, 1)
+	reads := make(chan [2]int64, 1)
+	var peers []Peer
 	lctx, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
@@ -117,11 +141,22 @@ func TestUserAuth_Listen(t *testing.T) {
 				got <- m
 				return nil
 			},
-			OnReady: func() { close(ready) },
+			Read: func(_ context.Context, chatID, maxID int64) error {
+				reads <- [2]int64{chatID, maxID}
+				return nil
+			},
+			SavePeer: func(_ context.Context, p Peer) error {
+				mu.Lock()
+				defer mu.Unlock()
+				peers = append(peers, p)
+				return nil
+			},
+			OnReady: func(c Conn) { ready <- c },
 		})
 	}()
+	var conn Conn
 	select {
-	case <-ready:
+	case conn = <-ready:
 	case err := <-done:
 		t.Fatalf("listen: %v", err)
 	}
@@ -180,6 +215,68 @@ func TestUserAuth_Listen(t *testing.T) {
 	case m := <-got:
 		t.Fatalf("unexpected message %+v", m)
 	default:
+	}
+	mu.Lock()
+	gotPeers := append([]Peer(nil), peers...)
+	mu.Unlock()
+	if len(gotPeers) != 2 || gotPeers[0] != (Peer{UserID: 70001, AccessHash: 11}) || gotPeers[1] != (Peer{UserID: 70003, AccessHash: 13}) {
+		t.Fatalf("peers %+v", gotPeers)
+	}
+
+	// Replies go through the live connection; the answer keeps the stream whole.
+	mu.Lock()
+	diffsBefore := diffs
+	mu.Unlock()
+	olga := Peer{UserID: 70001, AccessHash: 11}
+	id, err := conn.SendText(ctx, olga, 777, "Завтра до 18:00")
+	if err != nil || id != 20 {
+		t.Fatalf("send: %d %v", id, err)
+	}
+	mu.Lock()
+	sentTo, ok := sendReq.Peer.(*tg.InputPeerUser)
+	mu.Unlock()
+	if !ok || *sentTo != (tg.InputPeerUser{UserID: 70001, AccessHash: 11}) || sendReq.RandomID != 777 || sendReq.Message != "Завтра до 18:00" {
+		t.Fatalf("request %+v", sendReq)
+	}
+	if err := conn.Typing(ctx, olga); err != nil {
+		t.Fatalf("typing: %v", err)
+	}
+	if err := conn.ReadHistory(ctx, olga, 12); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	mu.Lock()
+	readMax := readReq.MaxID
+	mu.Unlock()
+	if readMax != 12 {
+		t.Fatalf("readHistory max %d", readMax)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for state.pts() != 106 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if state.pts() != 106 {
+		t.Fatalf("the sent message and the read move pts without a gap: %d", state.pts())
+	}
+	// The customer read the account's messages.
+	if err := srv.Send(ctx, k, proto.MessageFromServer, &tg.Updates{
+		Updates: []tg.UpdateClass{&tg.UpdateReadHistoryOutbox{Peer: &tg.PeerUser{UserID: 70001}, MaxID: 20, Pts: 107, PtsCount: 1}},
+		Date:    now,
+	}); err != nil {
+		t.Fatalf("push read: %v", err)
+	}
+	select {
+	case r := <-reads:
+		if r != [2]int64{70001, 20} {
+			t.Fatalf("read %v", r)
+		}
+	case <-ctx.Done():
+		t.Fatal("no read")
+	}
+	mu.Lock()
+	diffsNow := diffs
+	mu.Unlock()
+	if diffsNow != diffsBefore {
+		t.Fatalf("sending and reading must not open a gap: %d getDifference calls after %d", diffsNow, diffsBefore)
 	}
 
 	stop()

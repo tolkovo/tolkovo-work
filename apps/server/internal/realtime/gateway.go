@@ -74,6 +74,11 @@ type Options struct {
 
 	// Now defaults to time.Now.
 	Now func() time.Time
+
+	// OnReplyTyping hears that a member started typing a reply (not a
+	// note), so a channel can show it to the customer (T-03). It must not
+	// block: it runs in the connection's reader.
+	OnReplyTyping func(ctx context.Context, workspaceID, conversationID uuid.UUID)
 }
 
 func (o Options) withDefaults() Options {

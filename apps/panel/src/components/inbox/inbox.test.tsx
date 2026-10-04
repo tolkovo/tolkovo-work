@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { applySignal, resetSignals } from "../../lib/realtime/signals";
 import { fakeApi, json, operatorSession, problem, type FakeRoutes } from "../../test/fake-api";
-import { conv, msg } from "../../test/inbox-fixtures";
+import { conv, inboxOperator, msg } from "../../test/inbox-fixtures";
 import { renderApp } from "../../test/render-app";
 
 const me = operatorSession.user.id;
@@ -90,6 +90,47 @@ describe("inbox", () => {
     expect(articles[0]).toHaveTextContent("видео.mp4 — файл не получен: больше лимита или недоступен в Telegram");
     expect(articles[1]).toHaveTextContent(/^Отправлено из Telegram · \d{2}:\d{2}Отправил на почту$/);
     expect(articles[2]).toHaveTextContent("Стикер — панель такие сообщения не показывает.");
+  });
+
+  it("shows how far replies got through Telegram and sends a failed one again", async () => {
+    const user = userEvent.setup();
+    const reply = (id: string, patch: Parameters<typeof msg>[1]) =>
+      msg(id, { sender_type: "operator", sender_id: me, direction: "out", ...patch });
+    const failed = reply("r3", { body: "Курьер выехал", delivery_status: "failed", delivery_error: "blocked", created_at: "2026-10-04T12:03:00Z" });
+    const pending = { ...failed, delivery_status: "pending" as const, delivery_error: undefined };
+    let retried = 0;
+    const api = fakeApi({
+      session: inboxOperator,
+      routes: {
+        "GET /conversations/c1": () => json(200, conv("c1", { channel_id: "ch1" })),
+        "GET /conversations/c1/messages": () =>
+          json(200, {
+            items: [
+              retried ? pending : failed,
+              reply("r2", { body: "Заказ собран", delivery_status: "read", created_at: "2026-10-04T12:02:00Z" }),
+              reply("r1", { body: "Проверяю", delivery_status: "pending", created_at: "2026-10-04T12:01:00Z" }),
+              msg("n1", { kind: "note", is_private: true, sender_type: "operator", sender_id: me, direction: "out", body: "VIP", created_at: "2026-10-04T12:00:00Z" }),
+            ],
+            next_cursor: null,
+          }),
+        "POST /conversations/c1/messages/r3/retry": () => {
+          retried++;
+          return json(200, pending);
+        },
+      },
+    });
+    renderApp("/inbox/c1", { api });
+    const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
+    const articles = await within(feed).findAllByRole("article");
+    expect(articles[0]).not.toHaveTextContent(/отправ|прочитано/); // a note goes nowhere
+    expect(articles[1]).toHaveTextContent(/Проверяюотправляется$/);
+    expect(articles[2]).toHaveTextContent(/Заказ собранпрочитано$/);
+    expect(articles[3]).toHaveTextContent("Не доставлено: клиент заблокировал бота или аккаунт");
+
+    await user.click(within(articles[3]!).getByRole("button", { name: "Повторить" }));
+    expect(retried).toBe(1);
+    expect(await within(feed).findAllByText("отправляется")).toHaveLength(2);
+    expect(within(feed).queryByText(/Не доставлено/)).not.toBeInTheDocument();
   });
 
   it("opens a conversation with its feed in reading order and marks internal notes", async () => {

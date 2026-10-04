@@ -206,7 +206,7 @@ func (c *conn) readLoop(ctx context.Context) {
 			}
 			c.resumeCh <- m.LastSeq // capacity 1 and accepted once: never blocks
 		case TypeTyping:
-			c.typing(ctx, m.ConversationID, m.Start)
+			c.typing(ctx, m.ConversationID, m.Start, m.Reply)
 		case TypeViewing:
 			c.view(ctx, m.ConversationID, m.Start)
 		}
@@ -234,7 +234,7 @@ const signalTimeout = 2 * time.Second
 // typing relays the operator's typing. Roles that can neither reply nor
 // leave notes have nothing to type: their signals are ignored, as the
 // role may change while the connection is open.
-func (c *conn) typing(ctx context.Context, conversationID uuid.UUID, start bool) {
+func (c *conn) typing(ctx context.Context, conversationID uuid.UUID, start, reply bool) {
 	role := c.currentRole()
 	if !authz.Allowed(role, authz.ConversationsReply) && !authz.Allowed(role, authz.ConversationsNote) {
 		return
@@ -243,6 +243,9 @@ func (c *conn) typing(ctx context.Context, conversationID uuid.UUID, start bool)
 	defer cancel()
 	if err := c.g.signals.typing(sctx, c.workspaceID, c.userID, conversationID, start); err != nil && ctx.Err() == nil {
 		c.g.log.Warn("realtime typing signal failed", "workspace_id", c.workspaceID, "err", err)
+	}
+	if start && reply && c.g.o.OnReplyTyping != nil && authz.Allowed(role, authz.ConversationsReply) {
+		c.g.o.OnReplyTyping(sctx, c.workspaceID, conversationID)
 	}
 }
 

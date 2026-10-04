@@ -138,6 +138,11 @@ func (b *BotAPI) call(ctx context.Context, token, method string, params, out any
 		return fmt.Errorf("telegram %s: %w", method, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	return decodeAnswer(method, resp, out)
+}
+
+// decodeAnswer reads the Bot API envelope and decodes result into out.
+func decodeAnswer(method string, resp *http.Response, out any) error {
 	var env struct {
 		OK          bool            `json:"ok"`
 		Result      json.RawMessage `json:"result"`

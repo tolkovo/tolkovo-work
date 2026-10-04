@@ -150,3 +150,33 @@ func TestHooks_TelegramBot(t *testing.T) {
 		t.Fatalf("last_inbound_at: %+v", list.Items[0])
 	}
 }
+
+func TestRetryMessageDelivery(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	c, s := e.register("owner@example.test", "zerno")
+	bot := decode[oapi.Channel](t, c.do(http.MethodPost, "/api/v1/channels/telegram-bot", map[string]any{"token": channelstest.BotToken}))
+	req := httptest.NewRequest(http.MethodPost, "/hooks/telegram/"+s.Workspace.Id.String()+"/"+bot.Id.String(),
+		strings.NewReader(`{"update_id":1,"message":{"message_id":7,"from":{"id":70001,"is_bot":false,"first_name":"Пётр"},"chat":{"id":70001,"type":"private"},"date":1,"text":"Здравствуйте"}}`))
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", e.bots.Hooks[0].Secret)
+	e.h.ServeHTTP(httptest.NewRecorder(), req)
+	conv := decode[oapi.ConversationPage](t, c.do(http.MethodGet, "/api/v1/conversations", nil)).Items[0]
+	base := "/api/v1/conversations/" + conv.Id.String() + "/messages"
+
+	m := decode[oapi.Message](t, c.do(http.MethodPost, base, map[string]any{"body": "Заказ в пути"}))
+	if m.DeliveryStatus == nil || *m.DeliveryStatus != "pending" || m.DeliveryError != nil {
+		t.Fatalf("a reply in a Telegram conversation is pending: %+v", m)
+	}
+	retry := base + "/" + m.Id.String() + "/retry"
+	wantProblem(t, c.do(http.MethodPost, retry, nil), http.StatusConflict, "not_failed")
+
+	e.ownerExec("UPDATE messages SET delivery_status = 'failed', delivery_error = 'blocked' WHERE id = $1", m.Id)
+	feed := decode[oapi.MessagePage](t, c.do(http.MethodGet, base, nil))
+	if feed.Items[0].DeliveryError == nil || *feed.Items[0].DeliveryError != oapi.MessageDeliveryErrorBlocked {
+		t.Fatalf("the reason is shown: %+v", feed.Items[0])
+	}
+	again := decode[oapi.Message](t, c.do(http.MethodPost, retry, nil))
+	if again.Id != m.Id || again.DeliveryStatus == nil || *again.DeliveryStatus != "pending" || again.DeliveryError != nil {
+		t.Fatalf("retried: %+v", again)
+	}
+	wantProblem(t, c.do(http.MethodPost, base+"/"+conv.Id.String()+"/retry", nil), http.StatusNotFound, "not_found")
+}

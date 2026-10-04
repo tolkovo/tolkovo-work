@@ -46,6 +46,14 @@ describe("realtime protocol mirrors api/ws", () => {
       data: { conversation_id: "c1", state: "start" },
     });
   });
+
+  it("marks a typing start as a reply with a mode the client schema knows", () => {
+    const message = JSON.parse(signalMessage("typing", "c1", "start", "s1", new Date(0), "reply")) as {
+      data: Record<string, unknown>;
+    };
+    expect(message.data).toEqual({ conversation_id: "c1", state: "start", mode: "reply" });
+    expect(clientSchema.$defs.typingData.properties.mode.enum).toContain(message.data.mode);
+  });
 });
 
 describe("parseServerMessage", () => {

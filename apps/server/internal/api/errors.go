@@ -110,6 +110,11 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, conversations.ErrTagExists):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "tag_exists", Title: "Conflict"})
+	case errors.Is(err, conversations.ErrNotFailed):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "not_failed", Title: "Conflict",
+			Detail: "only a reply that failed to deliver can be sent again",
+		})
 	case errors.Is(err, conversations.ErrClosed):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "conversation_closed", Title: "Conflict"})
 	case errors.Is(err, conversations.ErrNotUploaded):

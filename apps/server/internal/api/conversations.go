@@ -175,6 +175,10 @@ func (s *server) MarkConversationRead(w http.ResponseWriter, r *http.Request, id
 		s.writeError(w, r, err)
 		return
 	}
+	if s.channels != nil {
+		// A personal Telegram account shows the customer the chat was read.
+		s.channels.ConversationRead(r.Context(), p.WorkspaceID, id)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -269,6 +273,20 @@ func (s *server) PostMessage(w http.ResponseWriter, r *http.Request, id oapi.Id,
 		status = http.StatusOK
 	}
 	writeJSON(w, status, messageBody(m))
+}
+
+// RetryMessageDelivery implements POST /conversations/{id}/messages/{message_id}/retry.
+func (s *server) RetryMessageDelivery(w http.ResponseWriter, r *http.Request, id oapi.Id, messageID oapi.MessageId) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsReply)
+	if !ok {
+		return
+	}
+	m, err := s.conversations.RetryDelivery(r.Context(), p.WorkspaceID, actorOf(p), id, messageID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, messageBody(m))
 }
 
 func (s *server) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, id oapi.Id) {
@@ -519,6 +537,10 @@ func messageBody(m conversations.Message) oapi.Message {
 	}
 	if m.SentOutsidePanel {
 		body.SentOutsidePanel = &m.SentOutsidePanel
+	}
+	if m.DeliveryError != "" {
+		v := oapi.MessageDeliveryError(m.DeliveryError)
+		body.DeliveryError = &v
 	}
 	return body
 }

@@ -588,3 +588,38 @@ func TestGateway_RelaysTypingAndViewersWithinTheWorkspace(t *testing.T) {
 		t.Fatalf("signals of a role without permissions must be dropped, got %s %s", m.Type, m.Data)
 	}
 }
+
+// TestGateway_ReplyTypingReachesChannels: only a reply start goes on to
+// the channel (T-03); typing a note or stopping stays among colleagues.
+func TestGateway_ReplyTypingReachesChannels(t *testing.T) {
+	heard := make(chan uuid.UUID, 4)
+	r := newRig(t, Options{OnReplyTyping: func(_ context.Context, _, conversationID uuid.UUID) { heard <- conversationID }})
+	ws := r.workspace()
+	c := r.dial(ws, uuid.New(), authz.RoleOperator)
+	c.hello()
+	typing := func(conv uuid.UUID, state, mode string) string {
+		b, _ := json.Marshal(map[string]any{
+			"type": TypeTyping, "id": uuid.NewString(), "ts": time.Now().UTC().Format(time.RFC3339Nano),
+			"data": map[string]any{"conversation_id": conv, "state": state, "mode": mode},
+		})
+		return string(b)
+	}
+	note, stop, reply := uuid.New(), uuid.New(), uuid.New()
+	c.send(typing(note, StateStart, ModeNote))
+	c.send(signalMsg(TypeTyping, note, StateStart)) // no mode: a note
+	c.send(typing(stop, StateStop, ModeReply))
+	c.send(typing(reply, StateStart, ModeReply))
+	select {
+	case got := <-heard:
+		if got != reply {
+			t.Fatalf("channels heard %s, want the reply %s", got, reply)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a reply start must reach the channels")
+	}
+	select {
+	case got := <-heard:
+		t.Fatalf("only the reply start goes on, also got %s", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+}

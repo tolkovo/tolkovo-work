@@ -17,6 +17,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
+import { channelError } from "../../lib/channels/errors";
 import { formValues } from "../../lib/forms";
 import { FormMessage, TextField } from "../form/fields";
 
@@ -290,14 +291,6 @@ function LastInbound({ at }: { at: string | null }) {
       {t("settings.channels.lastInbound")} <time dateTime={at}>{when}</time>
     </span>
   );
-}
-
-const knownErrors = ["token_revoked", "session_revoked", "banned"] as const;
-
-/** What broke and what the admin does about it (Channel.error_code in api/openapi.yaml). */
-function channelError(t: TFunction, code: string | null): string {
-  const known = knownErrors.find((k) => k === code);
-  return t(`settings.channels.errorCode.${known ?? "other"}`);
 }
 
 type Step =

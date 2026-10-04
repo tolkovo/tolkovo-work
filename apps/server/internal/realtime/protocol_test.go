@@ -25,6 +25,7 @@ var samplePayloads = map[string]string{
 	"conversation.tags_changed":   `{"conversation_id":"%c"}`,
 	"conversation.read":           `{"conversation_id":"%c","reader_type":"operator","reader_id":"%u","up_to_message_id":"%m"}`,
 	"message.created":             `{"conversation_id":"%c","message_id":"%m","kind":"text","is_private":false,"sender_type":"operator","sender_id":"%u"}`,
+	"message.delivery":            `{"conversation_id":"%c","message_id":"%m","status":"failed","error":"blocked"}`,
 	"contact.created":             `{"contact_id":"%k"}`,
 	"contact.updated":             `{"contact_id":"%k"}`,
 }
@@ -134,6 +135,12 @@ func TestParseClientMessage(t *testing.T) {
 		`{"type":"resume","id":"r1","ts":"2026-10-04T12:00:00.123Z","data":{"last_seq":17}}`:                                         {Type: TypeResume, LastSeq: 17},
 		`{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + conv.String() + `","state":"start"}}`: {Type: TypeTyping, ConversationID: conv, Start: true},
 		`{"type":"viewing","id":"v1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + conv.String() + `","state":"stop"}}`: {Type: TypeViewing, ConversationID: conv},
+		`{"type":"typing","id":"t2","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + conv.String() + `","state":"start","mode":"reply"}}`: {
+			Type: TypeTyping, ConversationID: conv, Start: true, Reply: true,
+		},
+		`{"type":"typing","id":"t3","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + conv.String() + `","state":"start","mode":"note"}}`: {
+			Type: TypeTyping, ConversationID: conv, Start: true,
+		},
 	}
 	for msg, want := range valid {
 		if err := client.Validate([]byte(msg)); err != nil {
@@ -157,6 +164,7 @@ func TestParseClientMessage(t *testing.T) {
 		"typing bad conv": `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"42","state":"start"}}`,
 		"upper-case conv": `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + strings.ToUpper(c) + `","state":"start"}}`,
 		"typing no state": `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + c + `"}}`,
+		"typing mode":     `{"type":"typing","id":"t1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + c + `","state":"start","mode":"loud"}}`,
 		"viewing state":   `{"type":"viewing","id":"v1","ts":"2026-10-04T12:00:00Z","data":{"conversation_id":"` + c + `","state":"maybe"}}`,
 	} {
 		if _, err := parseClientMessage([]byte(msg)); err == nil {

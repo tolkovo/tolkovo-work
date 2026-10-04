@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/channelstest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
@@ -44,6 +45,7 @@ type fixture struct {
 	wsA, wsB uuid.UUID
 	ownerA   uuid.UUID
 	ownerB   uuid.UUID
+	rdb      *redis.Client // sendSetup only
 }
 
 func setup(t *testing.T) *fixture {

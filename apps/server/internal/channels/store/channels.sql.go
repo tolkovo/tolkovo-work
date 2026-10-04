@@ -12,6 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const deletePeers = `-- name: DeletePeers :exec
+DELETE FROM channel_peers
+WHERE workspace_id = $1 AND channel_id = $2
+`
+
+type DeletePeersParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+}
+
+func (q *Queries) DeletePeers(ctx context.Context, arg DeletePeersParams) error {
+	_, err := q.db.Exec(ctx, deletePeers, arg.WorkspaceID, arg.ChannelID)
+	return err
+}
+
 const deletePendingChannel = `-- name: DeletePendingChannel :exec
 DELETE FROM channels
 WHERE workspace_id = $1 AND id = $2 AND status = 'pending'
@@ -149,6 +164,24 @@ func (q *Queries) GetChannelForUpdate(ctx context.Context, arg GetChannelForUpda
 		&i.LastInboundAt,
 	)
 	return i, err
+}
+
+const getPeer = `-- name: GetPeer :one
+SELECT access_hash FROM channel_peers
+WHERE workspace_id = $1 AND channel_id = $2 AND user_id = $3
+`
+
+type GetPeerParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	UserID      int64
+}
+
+func (q *Queries) GetPeer(ctx context.Context, arg GetPeerParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getPeer, arg.WorkspaceID, arg.ChannelID, arg.UserID)
+	var access_hash int64
+	err := row.Scan(&access_hash)
+	return access_hash, err
 }
 
 const getSecret = `-- name: GetSecret :one
@@ -353,6 +386,31 @@ func (q *Queries) PruneStaleLogins(ctx context.Context, createdAt time.Time) (in
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const putPeer = `-- name: PutPeer :exec
+INSERT INTO channel_peers (workspace_id, channel_id, user_id, access_hash, updated_at)
+VALUES ($1, $2, $3, $4, now())
+ON CONFLICT (workspace_id, channel_id, user_id) DO UPDATE
+SET access_hash = EXCLUDED.access_hash, updated_at = EXCLUDED.updated_at
+WHERE channel_peers.access_hash <> EXCLUDED.access_hash
+`
+
+type PutPeerParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	UserID      int64
+	AccessHash  int64
+}
+
+func (q *Queries) PutPeer(ctx context.Context, arg PutPeerParams) error {
+	_, err := q.db.Exec(ctx, putPeer,
+		arg.WorkspaceID,
+		arg.ChannelID,
+		arg.UserID,
+		arg.AccessHash,
+	)
+	return err
 }
 
 const putSecret = `-- name: PutSecret :exec

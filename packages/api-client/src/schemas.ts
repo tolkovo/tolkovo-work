@@ -201,6 +201,9 @@ export const messageSchema = z.object({
   body: z.string(),
   is_private: z.boolean(),
   delivery_status: z.string().nullable(),
+  delivery_error: z
+    .enum(["blocked", "chat_not_found", "limited", "rejected", "channel_unavailable", "failed"])
+    .optional(),
   attachments: z.array(attachmentSchema),
   event: messageEventSchema.nullable(),
   unsupported: z.enum(["sticker", "location", "contact", "poll", "other"]).optional(),

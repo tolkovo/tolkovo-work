@@ -16,25 +16,25 @@ import (
 
 // Defines values for AttachmentStatus.
 const (
-	Expired   AttachmentStatus = "expired"
-	Ready     AttachmentStatus = "ready"
-	Rejected  AttachmentStatus = "rejected"
-	Scanning  AttachmentStatus = "scanning"
-	Uploading AttachmentStatus = "uploading"
+	AttachmentStatusExpired   AttachmentStatus = "expired"
+	AttachmentStatusReady     AttachmentStatus = "ready"
+	AttachmentStatusRejected  AttachmentStatus = "rejected"
+	AttachmentStatusScanning  AttachmentStatus = "scanning"
+	AttachmentStatusUploading AttachmentStatus = "uploading"
 )
 
 // Valid indicates whether the value is a known member of the AttachmentStatus enum.
 func (e AttachmentStatus) Valid() bool {
 	switch e {
-	case Expired:
+	case AttachmentStatusExpired:
 		return true
-	case Ready:
+	case AttachmentStatusReady:
 		return true
-	case Rejected:
+	case AttachmentStatusRejected:
 		return true
-	case Scanning:
+	case AttachmentStatusScanning:
 		return true
-	case Uploading:
+	case AttachmentStatusUploading:
 		return true
 	default:
 		return false
@@ -227,6 +227,36 @@ func (e Locale) Valid() bool {
 	case En:
 		return true
 	case Ru:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MessageDeliveryError.
+const (
+	MessageDeliveryErrorBlocked            MessageDeliveryError = "blocked"
+	MessageDeliveryErrorChannelUnavailable MessageDeliveryError = "channel_unavailable"
+	MessageDeliveryErrorChatNotFound       MessageDeliveryError = "chat_not_found"
+	MessageDeliveryErrorFailed             MessageDeliveryError = "failed"
+	MessageDeliveryErrorLimited            MessageDeliveryError = "limited"
+	MessageDeliveryErrorRejected           MessageDeliveryError = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the MessageDeliveryError enum.
+func (e MessageDeliveryError) Valid() bool {
+	switch e {
+	case MessageDeliveryErrorBlocked:
+		return true
+	case MessageDeliveryErrorChannelUnavailable:
+		return true
+	case MessageDeliveryErrorChatNotFound:
+		return true
+	case MessageDeliveryErrorFailed:
+		return true
+	case MessageDeliveryErrorLimited:
+		return true
+	case MessageDeliveryErrorRejected:
 		return true
 	default:
 		return false
@@ -828,8 +858,20 @@ type Message struct {
 	ConversationId uuid.UUID    `json:"conversation_id"`
 	CreatedAt      time.Time    `json:"created_at"`
 
+	// DeliveryError Why a reply was not delivered; present only with `delivery_status: failed`.
+	// `blocked`: the customer blocked the bot or the account. `chat_not_found`: the
+	// chat or the customer's account is gone, or the personal account cannot address
+	// them. `limited`: Telegram restricted the account from writing. `rejected`:
+	// Telegram refused this message (size, format). `channel_unavailable`: the channel
+	// is disconnected or needs the admin. `failed`: Telegram stayed unreachable
+	// through every retry (about 40 minutes); `POST …/retry` sends it again.
+	DeliveryError *MessageDeliveryError `json:"delivery_error,omitempty"`
+
 	// DeliveryStatus `pending`, `sent`, `delivered`, `read` or `failed`; `null` when there is nothing
-	// to deliver (notes, conversations without a channel).
+	// to deliver (notes, conversations without a channel). A reply in a Telegram
+	// conversation is `pending` until the channel sends it, then `sent`; a personal
+	// account also reports `read` when the customer opens the chat (a bot cannot).
+	// Changes come as `message.delivery` over the realtime connection.
 	DeliveryStatus *string          `json:"delivery_status"`
 	Direction      MessageDirection `json:"direction"`
 
@@ -854,6 +896,15 @@ type Message struct {
 	// show (a sticker, a location…) instead of text and files; absent otherwise.
 	Unsupported *MessageUnsupported `json:"unsupported,omitempty"`
 }
+
+// MessageDeliveryError Why a reply was not delivered; present only with `delivery_status: failed`.
+// `blocked`: the customer blocked the bot or the account. `chat_not_found`: the
+// chat or the customer's account is gone, or the personal account cannot address
+// them. `limited`: Telegram restricted the account from writing. `rejected`:
+// Telegram refused this message (size, format). `channel_unavailable`: the channel
+// is disconnected or needs the admin. `failed`: Telegram stayed unreachable
+// through every retry (about 40 minutes); `POST …/retry` sends it again.
+type MessageDeliveryError string
 
 // MessageDirection defines model for Message.Direction.
 type MessageDirection string
@@ -1117,6 +1168,9 @@ type IdempotencyKey = string
 // Limit defines model for Limit.
 type Limit = int
 
+// MessageId defines model for MessageId.
+type MessageId = uuid.UUID
+
 // ChannelExists RFC 9457 problem details.
 type ChannelExists = Problem
 
@@ -1373,6 +1427,9 @@ type ServerInterface interface {
 	// PostMessage Reply or leave an internal note
 	// (POST /conversations/{id}/messages)
 	PostMessage(w http.ResponseWriter, r *http.Request, id Id, params PostMessageParams)
+	// RetryMessageDelivery Send a failed reply again
+	// (POST /conversations/{id}/messages/{message_id}/retry)
+	RetryMessageDelivery(w http.ResponseWriter, r *http.Request, id Id, messageId MessageId)
 	// MarkConversationRead Mark the conversation read up to a message for the caller
 	// (POST /conversations/{id}/read)
 	MarkConversationRead(w http.ResponseWriter, r *http.Request, id Id)
@@ -1613,6 +1670,12 @@ func (_ Unimplemented) ListMessages(w http.ResponseWriter, r *http.Request, id I
 // PostMessage Reply or leave an internal note
 // (POST /conversations/{id}/messages)
 func (_ Unimplemented) PostMessage(w http.ResponseWriter, r *http.Request, id Id, params PostMessageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RetryMessageDelivery Send a failed reply again
+// (POST /conversations/{id}/messages/{message_id}/retry)
+func (_ Unimplemented) RetryMessageDelivery(w http.ResponseWriter, r *http.Request, id Id, messageId MessageId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2457,6 +2520,41 @@ func (siw *ServerInterfaceWrapper) PostMessage(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// RetryMessageDelivery operation middleware
+func (siw *ServerInterfaceWrapper) RetryMessageDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "message_id" -------------
+	var messageId MessageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "message_id", chi.URLParam(r, "message_id"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "message_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryMessageDelivery(w, r, id, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MarkConversationRead operation middleware
 func (siw *ServerInterfaceWrapper) MarkConversationRead(w http.ResponseWriter, r *http.Request) {
 
@@ -3055,6 +3153,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/conversations/{id}/messages", wrapper.PostMessage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/messages/{message_id}/retry", wrapper.RetryMessageDelivery)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/conversations/{id}/tags", wrapper.SetConversationTags)

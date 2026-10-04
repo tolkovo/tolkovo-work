@@ -32,6 +32,12 @@ const (
 	TypeViewing = "viewing"
 )
 
+// Typing modes: a reply reaches the customer's channel, a note does not.
+const (
+	ModeReply = "reply"
+	ModeNote  = "note"
+)
+
 // Signal states of typing and viewing.
 const (
 	StateStart = "start"
@@ -190,6 +196,7 @@ type clientMessage struct {
 	LastSeq        int64     // resume
 	ConversationID uuid.UUID // typing, viewing
 	Start          bool      // typing, viewing: start rather than stop
+	Reply          bool      // typing: of a reply the customer will get, not a note
 }
 
 type rawClientMessage struct {
@@ -200,6 +207,7 @@ type rawClientMessage struct {
 		LastSeq        *int64 `json:"last_seq"`
 		ConversationID string `json:"conversation_id"`
 		State          string `json:"state"`
+		Mode           string `json:"mode"`
 	} `json:"data"`
 }
 
@@ -231,6 +239,12 @@ func parseClientMessage(b []byte) (clientMessage, error) {
 			return clientMessage{}, fmt.Errorf("data.state must be start or stop")
 		}
 		out.ConversationID, out.Start = id, m.Data.State == StateStart
+		if m.Type == TypeTyping {
+			if m.Data.Mode != "" && m.Data.Mode != ModeReply && m.Data.Mode != ModeNote {
+				return clientMessage{}, fmt.Errorf("data.mode must be reply or note")
+			}
+			out.Reply = m.Data.Mode == ModeReply
+		}
 	default:
 		return clientMessage{}, fmt.Errorf("unsupported message type %q", m.Type)
 	}

@@ -138,7 +138,7 @@ func TestBotAPI_GetUpdatesAndDownload(t *testing.T) {
 }
 
 func TestListener_KeepsPrivateChatsWithPeople(t *testing.T) {
-	l := &listener{selfID: 1, people: map[int64]Person{}, bots: map[int64]bool{}}
+	l := &listener{selfID: 1, people: map[int64]Person{}, bots: map[int64]bool{}, hashes: map[int64]int64{}, saved: map[int64]int64{}}
 	l.remember(map[int64]*tg.User{
 		70001: {ID: 70001, FirstName: "Ольга", LastName: "К", Username: "olga_k"},
 		90000: {ID: 90000, FirstName: "Shop", Bot: true},

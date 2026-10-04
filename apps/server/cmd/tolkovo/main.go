@@ -158,7 +158,10 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 		}
 		var gw *realtime.Gateway
 		if runRealtime {
-			gw = realtime.New(pool, redisClient, log, realtime.Options{TrustedOrigins: deps.TrustedOrigins})
+			gw = realtime.New(pool, redisClient, log, realtime.Options{
+				TrustedOrigins: deps.TrustedOrigins,
+				OnReplyTyping:  deps.Channels.ReplyTyping,
+			})
 			g.Go(func() error { return gw.Run(gctx) })
 			deps.Realtime = gw
 			deps.RealtimeOnly = !runREST
@@ -190,9 +193,21 @@ func startWorker(
 		return err
 	}
 
+	// Personal Telegram accounts and bots without a webhook (T-02), replies
+	// to every channel (T-03).
+	convs, err := conversationsService(cfg, log, pool, store)
+	if err != nil {
+		return err
+	}
+	chans, err := channelsService(cfg, log, pool, redisClient, convs, store)
+	if err != nil {
+		return err
+	}
+
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
+	chans.AddWorkers(workers)
 	periodic := []*river.PeriodicJob{outbox.PrunePeriodic(), channels.PruneLoginsPeriodic()}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
@@ -212,16 +227,6 @@ func startWorker(
 		return fmt.Errorf("start jobs: %w", err)
 	}
 	g.Go(func() error { return relay.Run(ctx) })
-
-	// Personal Telegram accounts and bots without a webhook (T-02).
-	convs, err := conversationsService(cfg, log, pool, store)
-	if err != nil {
-		return err
-	}
-	chans, err := channelsService(cfg, log, pool, convs, store)
-	if err != nil {
-		return err
-	}
 	g.Go(func() error {
 		return chans.RunReceivers(ctx, channels.ReceiverOptions{System: sys.Pool(), Redis: redisClient})
 	})
@@ -295,10 +300,13 @@ func apiDeps(
 	notifs := notifications.New(pool, mailJobs)
 	convs := conversations.New(pool, store)
 	convs.SetNotifier(notifs)
-	chans, err := channelsService(cfg, log, pool, convs, store)
+	chans, err := channelsService(cfg, log, pool, redisClient, convs, store)
 	if err != nil {
 		return api.Deps{}, err
 	}
+	// Replies are queued here and sent by the worker (T-03).
+	chans.SetJobs(inserter)
+	convs.SetDeliverer(chans)
 	deps := api.Deps{
 		Log: log, DB: pool, Version: version,
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
@@ -323,8 +331,8 @@ func apiDeps(
 }
 
 // conversationsService is the conversations module of the worker: it
-// stores received messages and, when email is configured, queues the
-// reminders about them (I-05).
+// stores received messages and the delivery of replies and, when email is
+// configured, queues the reminders about them (I-05).
 func conversationsService(cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage) (*conversations.Service, error) {
 	convs := conversations.New(pool, store)
 	var mailJobs *jobs.Client
@@ -339,11 +347,11 @@ func conversationsService(cfg config.Config, log *slog.Logger, pool *db.DB, stor
 	return convs, nil
 }
 
-// channelsService wires Telegram into the channels module (T-01, T-02,
+// channelsService wires Telegram into the channels module (T-01–T-03,
 // ADR-0014). Without TOLKOVO_MASTER_KEY (development only) nothing can be
 // connected; without a Telegram application personal accounts are off.
 func channelsService(
-	cfg config.Config, log *slog.Logger, pool *db.DB, inbox channels.Inbox, files storage.Storage,
+	cfg config.Config, log *slog.Logger, pool *db.DB, redisClient *redis.Client, inbox channels.Inbox, files storage.Storage,
 ) (*channels.Service, error) {
 	opts := channels.Options{
 		Bots:        telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil),
@@ -351,6 +359,7 @@ func channelsService(
 		Inbox:       inbox,
 		Files:       files,
 		Log:         log,
+		Redis:       redisClient,
 	}
 	if cfg.MasterKey.Key == "" {
 		log.Warn("TOLKOVO_MASTER_KEY is not set: channels cannot be connected (generate a key with `tolkovo keygen`)")

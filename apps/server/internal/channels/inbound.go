@@ -24,15 +24,24 @@ const (
 	UserFileLimit = conversations.MaxAttachmentSize
 )
 
-// Inbox stores received messages (conversations.Service).
+// Inbox stores received messages and the delivery of replies
+// (conversations.Service).
 type Inbox interface {
 	InboundState(ctx context.Context, workspaceID, channelID uuid.UUID, thread, externalID string) (seen, open bool, err error)
 	Receive(ctx context.Context, workspaceID uuid.UUID, in conversations.Inbound) (conversations.Received, error)
+	// Replies (T-03).
+	Outgoing(ctx context.Context, workspaceID, messageID uuid.UUID) (conversations.Outgoing, error)
+	AddSentPart(ctx context.Context, workspaceID, messageID uuid.UUID, externalID string) error
+	SetDelivery(ctx context.Context, workspaceID, messageID uuid.UUID, d conversations.Delivery) error
+	MarkContactRead(ctx context.Context, workspaceID, channelID uuid.UUID, thread string, upTo int64) error
+	ConversationThread(ctx context.Context, workspaceID, conversationID uuid.UUID) (conversations.Thread, error)
 }
 
-// Files keeps received media (storage.Storage).
+// Files keeps received media and gives the files of replies
+// (storage.Storage).
 type Files interface {
 	Put(ctx context.Context, key string, r io.Reader, opts storage.PutOptions) (storage.Object, error)
+	Open(ctx context.Context, key string) (io.ReadCloser, storage.Object, error)
 	Delete(ctx context.Context, key string) error
 }
 
@@ -44,7 +53,7 @@ type fetchFunc func(ctx context.Context, f telegram.File, w io.Writer, limit int
 // message seen before, or an owner's message without an open conversation,
 // is dropped before anything is downloaded.
 func (s *Service) deliver(ctx context.Context, workspaceID, channelID uuid.UUID, m telegram.Message, fetch fetchFunc, limit int64) error {
-	thread, ext := strconv.FormatInt(m.ChatID, 10), strconv.FormatInt(m.ID, 10)
+	thread, ext := threadOf(m.ChatID), strconv.FormatInt(m.ID, 10)
 	seen, open, err := s.opts.Inbox.InboundState(ctx, workspaceID, channelID, thread, ext)
 	if err != nil {
 		return err

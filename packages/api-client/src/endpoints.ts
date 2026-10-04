@@ -254,6 +254,16 @@ export async function postMessage(
   return parseAnswer(messageSchema, data, 201);
 }
 
+/** Sends a reply that failed to deliver again (`409 not_failed` for any other). */
+export async function retryMessageDelivery(client: ApiClient, conversationId: string, messageId: string): Promise<Message> {
+  const data = await unwrap(
+    client.POST("/conversations/{id}/messages/{message_id}/retry", {
+      params: { path: { id: conversationId, message_id: messageId } },
+    }),
+  );
+  return parseAnswer(messageSchema, data);
+}
+
 /** Moves the conversation along the state machine; `version` guards against concurrent changes. */
 export async function changeConversationStatus(
   client: ApiClient,

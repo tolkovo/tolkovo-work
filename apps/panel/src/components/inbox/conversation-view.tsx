@@ -2,11 +2,11 @@ import { isApiError, type Conversation, type Message, type MessageEvent } from "
 import { useConversation, useMessages, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { ChevronLeft, Paperclip, UserRound } from "lucide-react";
+import { AlertCircle, Check, CheckCheck, ChevronLeft, Clock, Paperclip, UserRound } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useConversationChange, useMarkRead } from "../../lib/inbox/actions";
+import { useAbilities, useConversationChange, useMarkRead, useRetryDelivery } from "../../lib/inbox/actions";
 import type { InboxTab } from "../../lib/inbox/tabs";
 import { useViewingSignal } from "../../lib/realtime/signals";
 import { Composer } from "./composer";
@@ -251,7 +251,7 @@ function Feed({ conversation, latestRequest }: { conversation: Conversation; lat
       {items.map((m, i) => [
         days[i] !== days[i - 1] ? <SystemLine key={`day-${days[i]}`} text={days[i] ?? ""} /> : null,
         m.id === firstNew && m.id !== items[0]?.id ? <NewMessagesLine key="new" /> : null,
-        <MessageItem key={m.id} message={m} contactName={conversation.contact.name} />,
+        <MessageItem key={m.id} message={m} conversation={conversation} />,
       ])}
       <PresenceLine conversationId={conversation.id} />
     </div>
@@ -280,8 +280,9 @@ function SystemLine({ text }: { text: ReactNode }) {
   );
 }
 
-function MessageItem({ message: m, contactName }: { message: Message; contactName: string }) {
+function MessageItem({ message: m, conversation }: { message: Message; conversation: Conversation }) {
   const { t, i18n } = useTranslation();
+  const contactName = conversation.contact.name;
   const names = useMemberNames();
   const time = new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" }).format(
     new Date(m.created_at),
@@ -346,7 +347,54 @@ function MessageItem({ message: m, contactName }: { message: Message; contactNam
           </ul>
         )}
       </div>
+      {!note && outgoing && !m.sent_outside_panel && m.delivery_status && (
+        <Delivery message={m} conversation={conversation} />
+      )}
     </article>
+  );
+}
+
+const DELIVERY_ICONS = { pending: Clock, sent: Check, delivered: Check, read: CheckCheck } as const;
+
+/**
+ * How far a reply got through its channel (docs/07 §4): ⏳ while it is on its way, ✓ sent, ✓✓
+ * read (personal Telegram accounts tell), or a red line with the reason and "Повторить".
+ */
+function Delivery({ message: m, conversation }: { message: Message; conversation: Conversation }) {
+  const { t } = useTranslation();
+  const can = useAbilities(conversation);
+  const retry = useRetryDelivery(conversation.id);
+  if (m.delivery_status === "failed") {
+    return (
+      <div role="status" className="flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs text-danger">
+        <span className="flex min-w-0 items-start gap-1">
+          <AlertCircle aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+          <span className="min-w-0">
+            {t("inbox.delivery.failed")}: {t(`inbox.delivery.error.${m.delivery_error ?? "failed"}`)}
+          </span>
+        </span>
+        {can.reply && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs"
+            disabled={retry.isPending}
+            onClick={() => retry.mutate(m.id)}
+          >
+            {t("inbox.delivery.retry")}
+          </Button>
+        )}
+        {retry.isError && <span className="w-full text-right">{t("inbox.delivery.retryError")}</span>}
+      </div>
+    );
+  }
+  const status = m.delivery_status as keyof typeof DELIVERY_ICONS;
+  const Icon = DELIVERY_ICONS[status] ?? Check;
+  return (
+    <p className="m-0 flex items-center gap-1 text-[11px] text-ink-3">
+      <Icon aria-hidden="true" className={cn("size-3.5", status === "read" && "text-teal")} />
+      {t(`inbox.delivery.${status in DELIVERY_ICONS ? status : "sent"}`)}
+    </p>
   );
 }
 

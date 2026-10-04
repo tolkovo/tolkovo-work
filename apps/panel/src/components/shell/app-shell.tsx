@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useUnreadTitle } from "../../lib/notifications/use-unread-title";
+import { ChannelAlert } from "./channel-alert";
 import { Rail } from "./rail";
 import { Topbar } from "./topbar";
 
@@ -38,8 +39,9 @@ export function AppShell() {
         {t("app.skipToContent")}
       </a>
       <Rail />
-      <div className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] max-nav:row-start-1">
+      <div className="grid min-h-0 min-w-0 grid-rows-[48px_auto_minmax(0,1fr)] max-nav:row-start-1">
         <Topbar />
+        <ChannelAlert />
         <main id="main" tabIndex={-1} className="min-h-0 min-w-0 overflow-auto outline-none">
           <Outlet />
         </main>

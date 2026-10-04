@@ -820,6 +820,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations/{id}/messages/{message_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                message_id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a failed reply again
+         * @description Needs the same rights as replying (`conversations.reply`, and without
+         *     `conversations.manage` a conversation assigned to the caller). The reply goes back
+         *     to `delivery_status: pending` and is queued; pieces delivered before (the first part
+         *     of a long text, the first files) are not sent twice. Only a reply with
+         *     `delivery_status: failed` can be retried: others answer `409 not_failed`; a closed
+         *     conversation answers `409 conversation_closed`.
+         */
+        post: operations["retryMessageDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations/{id}/tags": {
         parameters: {
             query?: never;
@@ -1319,9 +1347,23 @@ export interface components {
             is_private: boolean;
             /**
              * @description `pending`, `sent`, `delivered`, `read` or `failed`; `null` when there is nothing
-             *     to deliver (notes, conversations without a channel).
+             *     to deliver (notes, conversations without a channel). A reply in a Telegram
+             *     conversation is `pending` until the channel sends it, then `sent`; a personal
+             *     account also reports `read` when the customer opens the chat (a bot cannot).
+             *     Changes come as `message.delivery` over the realtime connection.
              */
             delivery_status: string | null;
+            /**
+             * @description Why a reply was not delivered; present only with `delivery_status: failed`.
+             *     `blocked`: the customer blocked the bot or the account. `chat_not_found`: the
+             *     chat or the customer's account is gone, or the personal account cannot address
+             *     them. `limited`: Telegram restricted the account from writing. `rejected`:
+             *     Telegram refused this message (size, format). `channel_unavailable`: the channel
+             *     is disconnected or needs the admin. `failed`: Telegram stayed unreachable
+             *     through every retry (about 40 minutes); `POST …/retry` sends it again.
+             * @enum {string}
+             */
+            delivery_error?: "blocked" | "chat_not_found" | "limited" | "rejected" | "channel_unavailable" | "failed";
             attachments: components["schemas"]["Attachment"][];
             /**
              * @description What a system message (`kind: event`) records; `null` for other kinds. The body of
@@ -1662,6 +1704,7 @@ export interface components {
     };
     parameters: {
         Id: string;
+        MessageId: string;
         /** @description Opaque `next_cursor` of the previous page. */
         Cursor: string;
         /** @description Page size, 1–100; 50 when absent. */
@@ -2955,6 +2998,41 @@ export interface operations {
             409: components["responses"]["Conflict"];
             /** @description `idempotency_key_reused`: the key was used with a different body. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retryMessageDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                message_id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reply, pending again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `not_failed` or `conversation_closed`. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

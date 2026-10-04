@@ -28,10 +28,87 @@ type Bots struct {
 	Hooks   []Hook
 	Deleted int
 	// Files serves downloads by file name; a missing name fails.
-	Files   map[string][]byte
+	Files map[string][]byte
+	// Sent records the messages sent; Typing the chats shown "typing".
+	// Fail is returned by the next sends, one error per send.
+	Sent    []Sent
+	Typing  []int64
+	Fail    []error
 	revoked bool
 	updates []telegram.BotUpdate
 	nextID  int64
+	sentID  int64
+}
+
+// Sent is one message a fake sent: a text or a file.
+type Sent struct {
+	ChatID   int64
+	Text     string
+	File     string // name
+	Data     []byte
+	Photo    bool
+	RandomID int64 // personal accounts
+}
+
+// SnapshotSent returns a copy of what was sent so far.
+func (b *Bots) SnapshotSent() []Sent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]Sent(nil), b.Sent...)
+}
+
+// FailNext makes the next sends fail with errs, in order.
+func (b *Bots) FailNext(errs ...error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.Fail = append(b.Fail, errs...)
+}
+
+func (b *Bots) send(token string, s Sent) (int64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.revoked || (token != BotToken && token != OtherBotToken) {
+		return 0, telegram.ErrBotToken
+	}
+	if len(b.Fail) > 0 {
+		err := b.Fail[0]
+		b.Fail = b.Fail[1:]
+		if err != nil {
+			return 0, err
+		}
+	}
+	b.Sent = append(b.Sent, s)
+	b.sentID++
+	return 1000 + b.sentID, nil
+}
+
+// SendMessage records the text.
+func (b *Bots) SendMessage(_ context.Context, token string, chatID int64, text string) (int64, error) {
+	return b.send(token, Sent{ChatID: chatID, Text: text})
+}
+
+// SendFile records the file with its bytes.
+func (b *Bots) SendFile(_ context.Context, token string, chatID int64, f telegram.OutFile, r io.Reader) (int64, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return 0, err
+	}
+	return b.send(token, Sent{ChatID: chatID, File: f.Name, Data: data, Photo: f.AsPhoto})
+}
+
+// SendChatAction records the chat.
+func (b *Bots) SendChatAction(_ context.Context, _ string, chatID int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.Typing = append(b.Typing, chatID)
+	return nil
+}
+
+// Typed returns the chats shown "typing" so far.
+func (b *Bots) Typed() []int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]int64(nil), b.Typing...)
 }
 
 // Revoke makes GetUpdates answer as for a token revoked in @BotFather.
@@ -184,6 +261,142 @@ type Users struct {
 	// time one starts.
 	Listening int
 	Ready     chan struct{}
+	// Reads delivers "the person read up to" to a running Listen: chat id
+	// and message id.
+	Reads chan [2]int64
+	// Conn is the account's connection, live while Listen runs and lent to
+	// Connect otherwise; Connects counts the latter.
+	Conn     *UserConn
+	Connects int
+}
+
+// PeerHash is the access hash the fake account gets for a person.
+func PeerHash(userID int64) int64 { return userID*10 + 7 }
+
+// UserConn fakes the sending side of a personal account.
+type UserConn struct {
+	mu      sync.Mutex
+	Sent    []Sent
+	typing  []int64
+	Reads   [][2]int64
+	Fail    []error
+	nextID  int64
+	randoms map[int64]int64
+	// echo, set while Listen runs, brings sent messages back into the
+	// stream as the owner's, as Telegram does.
+	echo chan telegram.Message
+}
+
+// SnapshotSent returns a copy of what was sent so far.
+func (c *UserConn) SnapshotSent() []Sent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]Sent(nil), c.Sent...)
+}
+
+// SnapshotReads returns the readHistory calls so far.
+func (c *UserConn) SnapshotReads() [][2]int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([][2]int64(nil), c.Reads...)
+}
+
+// Typed returns the people shown "typing" so far.
+func (c *UserConn) Typed() []int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]int64(nil), c.typing...)
+}
+
+// FailNext makes the next sends fail with errs, in order.
+func (c *UserConn) FailNext(errs ...error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Fail = append(c.Fail, errs...)
+}
+
+func (c *UserConn) send(to telegram.Peer, s Sent) (int64, error) {
+	c.mu.Lock()
+	if to.AccessHash != PeerHash(to.UserID) {
+		c.mu.Unlock()
+		return 0, &telegram.UndeliverableError{Reason: telegram.ReasonChatNotFound, Detail: "PEER_ID_INVALID"}
+	}
+	if len(c.Fail) > 0 {
+		err := c.Fail[0]
+		c.Fail = c.Fail[1:]
+		if err != nil {
+			c.mu.Unlock()
+			return 0, err
+		}
+	}
+	if c.randoms == nil {
+		c.randoms = map[int64]int64{}
+	}
+	if _, dup := c.randoms[s.RandomID]; dup {
+		c.mu.Unlock()
+		return 0, telegram.ErrDuplicate
+	}
+	c.nextID++
+	id := 9000 + c.nextID
+	c.randoms[s.RandomID] = id
+	s.ChatID = to.UserID
+	c.Sent = append(c.Sent, s)
+	echo := c.echo
+	c.mu.Unlock()
+	if echo != nil {
+		echo <- telegram.Message{ID: id, ChatID: to.UserID, From: telegram.Person{ID: to.UserID}, Out: true, Text: s.Text}
+	}
+	return id, nil
+}
+
+// SendText records the text.
+func (c *UserConn) SendText(_ context.Context, to telegram.Peer, randomID int64, text string) (int64, error) {
+	return c.send(to, Sent{Text: text, RandomID: randomID})
+}
+
+// SendFile records the file.
+func (c *UserConn) SendFile(_ context.Context, to telegram.Peer, randomID int64, f telegram.OutFile, r io.Reader) (int64, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return 0, err
+	}
+	return c.send(to, Sent{File: f.Name, Data: data, Photo: f.AsPhoto, RandomID: randomID})
+}
+
+// Typing records the person.
+func (c *UserConn) Typing(_ context.Context, to telegram.Peer) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.typing = append(c.typing, to.UserID)
+	return nil
+}
+
+// ReadHistory records the call.
+func (c *UserConn) ReadHistory(_ context.Context, to telegram.Peer, maxID int64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Reads = append(c.Reads, [2]int64{to.UserID, maxID})
+	return nil
+}
+
+// Connect lends Conn to fn, as a connection that only sends.
+func (u *Users) Connect(ctx context.Context, sess []byte, fn func(ctx context.Context, c telegram.Conn) error) error {
+	u.record(sess)
+	u.mu.Lock()
+	u.Connects++
+	c := u.Conn
+	u.mu.Unlock()
+	if c == nil {
+		return telegram.ErrSessionRevoked
+	}
+	return fn(ctx, c)
+}
+
+// OneShots is the number of Connect calls.
+func (u *Users) OneShots() int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.Connects
 }
 
 // Active is the number of running Listen calls.
@@ -209,24 +422,50 @@ func (u *Users) Listen(ctx context.Context, opts telegram.ListenOptions) error {
 	}
 	u.mu.Lock()
 	u.Listening++
-	feed, stop, ready := u.Feed, u.Stop, u.Ready
+	feed, stop, ready, reads, conn := u.Feed, u.Stop, u.Ready, u.Reads, u.Conn
 	u.mu.Unlock()
-	defer func() {
-		u.mu.Lock()
-		u.Listening--
-		u.mu.Unlock()
-	}()
-	if ready != nil {
-		select {
-		case ready <- struct{}{}:
-		default:
-		}
-	}
 	fetch := func(_ context.Context, f telegram.File, w io.Writer, limit int64) error {
 		u.mu.Lock()
 		data, ok := u.Files[f.Name]
 		u.mu.Unlock()
 		return serve(data, ok, w, limit)
+	}
+	echo := make(chan telegram.Message, 16)
+	if conn != nil {
+		conn.mu.Lock()
+		conn.echo = echo
+		conn.mu.Unlock()
+		if opts.OnReady != nil {
+			opts.OnReady(conn)
+		}
+	}
+	defer func() {
+		if conn != nil {
+			conn.mu.Lock()
+			conn.echo = nil
+			conn.mu.Unlock()
+		}
+		u.mu.Lock()
+		u.Listening--
+		u.mu.Unlock()
+	}()
+	handle := func(m telegram.Message) error {
+		if opts.SavePeer != nil && !m.Out {
+			if err := opts.SavePeer(ctx, telegram.Peer{UserID: m.ChatID, AccessHash: PeerHash(m.ChatID)}); err != nil {
+				return err
+			}
+		}
+		if err := opts.Handle(ctx, m, fetch); err != nil {
+			return err
+		}
+		st.Pts++
+		return opts.State.SaveState(ctx, st)
+	}
+	if ready != nil {
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
 	}
 	for {
 		select {
@@ -235,12 +474,18 @@ func (u *Users) Listen(ctx context.Context, opts telegram.ListenOptions) error {
 		case err := <-stop:
 			return err
 		case m := <-feed:
-			if err := opts.Handle(ctx, m, fetch); err != nil {
+			if err := handle(m); err != nil {
 				return err
 			}
-			st.Pts++
-			if err := opts.State.SaveState(ctx, st); err != nil {
+		case m := <-echo:
+			if err := handle(m); err != nil {
 				return err
+			}
+		case r := <-reads:
+			if opts.Read != nil {
+				if err := opts.Read(ctx, r[0], r[1]); err != nil {
+					return err
+				}
 			}
 		}
 	}

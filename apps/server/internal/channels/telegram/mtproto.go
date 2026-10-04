@@ -193,7 +193,13 @@ func (u *UserAuth) LogOut(ctx context.Context, sess []byte) error {
 }
 
 func (u *UserAuth) run(ctx context.Context, sess []byte, f func(context.Context, *gotd.Client) error) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, u.timeout)
+	return u.runFor(ctx, u.timeout, sess, f)
+}
+
+// runFor is run with its own time limit: sending a file takes longer than
+// a login step.
+func (u *UserAuth) runFor(ctx context.Context, timeout time.Duration, sess []byte, f func(context.Context, *gotd.Client) error) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	storage := &session.StorageMemory{}
 	if len(sess) > 0 {

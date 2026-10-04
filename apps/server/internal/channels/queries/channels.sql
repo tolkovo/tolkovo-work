@@ -94,3 +94,18 @@ SET pts = EXCLUDED.pts, qts = EXCLUDED.qts, date = EXCLUDED.date, seq = EXCLUDED
 -- name: DeleteUpdateState :exec
 DELETE FROM channel_update_state
 WHERE workspace_id = $1 AND channel_id = $2;
+
+-- name: GetPeer :one
+SELECT access_hash FROM channel_peers
+WHERE workspace_id = $1 AND channel_id = $2 AND user_id = $3;
+
+-- name: PutPeer :exec
+INSERT INTO channel_peers (workspace_id, channel_id, user_id, access_hash, updated_at)
+VALUES ($1, $2, $3, $4, now())
+ON CONFLICT (workspace_id, channel_id, user_id) DO UPDATE
+SET access_hash = EXCLUDED.access_hash, updated_at = EXCLUDED.updated_at
+WHERE channel_peers.access_hash <> EXCLUDED.access_hash;
+
+-- name: DeletePeers :exec
+DELETE FROM channel_peers
+WHERE workspace_id = $1 AND channel_id = $2;

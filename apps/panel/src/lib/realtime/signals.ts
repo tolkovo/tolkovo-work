@@ -174,12 +174,15 @@ export class SignalSender {
     }, VIEWING_REFRESH_MS);
   }
 
-  /** Call on every keystroke: start goes out at most every TYPING_THROTTLE_MS. */
+  /**
+   * Call on every keystroke of a reply (the composer keeps notes silent): start goes out at most
+   * every TYPING_THROTTLE_MS, marked as a reply, so a Telegram customer sees "typing…" too.
+   */
   typing(conversationId: string): void {
     const at = this.o.now().getTime();
     const last = this.lastTyping;
     if (last && last.conversationId === conversationId && at - last.at < TYPING_THROTTLE_MS) return;
-    if (this.send("typing", conversationId, "start")) this.lastTyping = { conversationId, at };
+    if (this.send("typing", conversationId, "start", "reply")) this.lastTyping = { conversationId, at };
   }
 
   /** Sent, cleared or left the composer. */
@@ -189,8 +192,8 @@ export class SignalSender {
     this.send("typing", conversationId, "stop");
   }
 
-  private send(type: "typing" | "viewing", conversationId: string, state: "start" | "stop"): boolean {
-    return this.sink?.send(signalMessage(type, conversationId, state, this.o.newId(), this.o.now())) ?? false;
+  private send(type: "typing" | "viewing", conversationId: string, state: "start" | "stop", mode?: "reply"): boolean {
+    return this.sink?.send(signalMessage(type, conversationId, state, this.o.newId(), this.o.now(), mode)) ?? false;
   }
 }
 

@@ -58,7 +58,7 @@ INSERT INTO messages (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13
 )
-RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at
+RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error
 `
 
 type CreateInboundMessageParams struct {
@@ -113,6 +113,7 @@ func (q *Queries) CreateInboundMessage(ctx context.Context, arg CreateInboundMes
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.DeliveryError,
 	)
 	return i, err
 }

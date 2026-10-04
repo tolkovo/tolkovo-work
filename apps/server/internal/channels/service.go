@@ -18,16 +18,20 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/store"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/crypto"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/ratelimit"
 )
 
 // Channel types (migration 00010).
@@ -127,6 +131,10 @@ type BotClient interface {
 	DeleteWebhook(ctx context.Context, token string) error
 	GetUpdates(ctx context.Context, token string, offset int64, timeout int) ([]telegram.BotUpdate, error)
 	Download(ctx context.Context, token string, f telegram.File, w io.Writer, limit int64) error
+	// Sending (T-03).
+	SendMessage(ctx context.Context, token string, chatID int64, text string) (int64, error)
+	SendFile(ctx context.Context, token string, chatID int64, f telegram.OutFile, r io.Reader) (int64, error)
+	SendChatAction(ctx context.Context, token string, chatID int64) error
 }
 
 // UserLogin signs personal accounts in and out (telegram.UserAuth).
@@ -137,6 +145,9 @@ type UserLogin interface {
 	LogOut(ctx context.Context, sess []byte) error
 	// Listen keeps the account online and passes its messages on (T-02).
 	Listen(ctx context.Context, opts telegram.ListenOptions) error
+	// Connect opens a connection that only sends, for a worker that does
+	// not hold the listening one (T-03).
+	Connect(ctx context.Context, sess []byte, fn func(ctx context.Context, c telegram.Conn) error) error
 }
 
 // Options configure the service.
@@ -157,14 +168,27 @@ type Options struct {
 	Inbox Inbox
 	Files Files
 	Log   *slog.Logger
+	// Jobs queues replies for delivery (T-03): the api role inserts, the
+	// worker runs them.
+	Jobs *jobs.Client
+	// Redis holds the send limits, the marks against echoes of a personal
+	// account and the operators' actions (typing, read) for the worker.
+	Redis *redis.Client
 }
 
 // Service is the module facade.
 type Service struct {
-	db   *db.DB
-	opts Options
-	log  *slog.Logger
-	now  func() time.Time
+	db      *db.DB
+	opts    Options
+	log     *slog.Logger
+	limiter *ratelimit.Limiter
+	limits  sendLimits
+	now     func() time.Time
+
+	// live are the listening connections of personal accounts this process
+	// holds; replies and actions go through them.
+	liveMu sync.Mutex
+	live   map[uuid.UUID]telegram.Conn
 }
 
 // New returns the channels service.
@@ -173,7 +197,13 @@ func New(d *db.DB, opts Options) *Service {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Service{db: d, opts: opts, log: log, now: func() time.Time { return time.Now().UTC() }}
+	s := &Service{db: d, opts: opts, log: log, now: func() time.Time { return time.Now().UTC() },
+		limits: defaultLimits, live: map[uuid.UUID]telegram.Conn{},
+	}
+	if opts.Redis != nil {
+		s.limiter = ratelimit.New(opts.Redis, "")
+	}
+	return s
 }
 
 // UserAccountsAvailable reports whether personal accounts can be connected.
@@ -252,6 +282,9 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID, id uuid.UUID) err
 			return err
 		}
 		if err := q.DeleteUpdateState(ctx, store.DeleteUpdateStateParams{WorkspaceID: workspaceID, ChannelID: id}); err != nil {
+			return err
+		}
+		if err := q.DeletePeers(ctx, store.DeletePeersParams{WorkspaceID: workspaceID, ChannelID: id}); err != nil {
 			return err
 		}
 		now := s.now()

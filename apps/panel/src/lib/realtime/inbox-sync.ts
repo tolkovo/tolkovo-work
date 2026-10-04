@@ -115,6 +115,9 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
         if (sender === "operator" || sender === "contact" || sender === "bot") {
           clearTyping(conversationId, sender, str(event.data.sender_id) ?? null);
         }
+      } else if (event.type === "message.delivery" && conversationId) {
+        // A reply was sent, read or failed: the open feed shows its new mark.
+        feeds.add(conversationId);
       } else if (event.type.startsWith("contact.")) {
         const contactId = str(event.data.contact_id);
         roots.set("contacts", queryKeys.contacts);

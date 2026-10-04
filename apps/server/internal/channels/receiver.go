@@ -61,6 +61,11 @@ func (s *Service) RunReceivers(ctx context.Context, opts ReceiverOptions) error 
 	}
 	r := &receivers{svc: s, opts: opts, node: node, running: map[uuid.UUID]context.CancelFunc{}}
 	defer r.stopAll()
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		s.runActions(ctx)
+	}()
 	tick := time.NewTicker(opts.Refresh)
 	defer tick.Stop()
 	for {
@@ -233,6 +238,7 @@ func (s *Service) listenUser(ctx context.Context, workspaceID, channelID uuid.UU
 	if err := json.Unmarshal(raw, &sec); err != nil {
 		return fmt.Errorf("decode account secret: %w", err)
 	}
+	defer s.setLive(channelID, nil)
 	return s.opts.Users.Listen(ctx, telegram.ListenOptions{
 		Session: sec.Session,
 		SaveSession: func(ctx context.Context, sess []byte) error {
@@ -240,8 +246,18 @@ func (s *Service) listenUser(ctx context.Context, workspaceID, channelID uuid.UU
 		},
 		State: &updateState{svc: s, workspaceID: workspaceID, channelID: channelID},
 		Handle: func(ctx context.Context, m telegram.Message, fetch telegram.Fetch) error {
+			if s.isOutgoingEcho(ctx, channelID, m) {
+				return nil
+			}
 			return s.deliverRetrying(ctx, workspaceID, channelID, m, fetchFunc(fetch), UserFileLimit)
 		},
+		Read: func(ctx context.Context, chatID, maxID int64) error {
+			return s.opts.Inbox.MarkContactRead(ctx, workspaceID, channelID, threadOf(chatID), maxID)
+		},
+		SavePeer: func(ctx context.Context, p telegram.Peer) error {
+			return s.savePeer(ctx, workspaceID, channelID, p)
+		},
+		OnReady: func(c telegram.Conn) { s.setLive(channelID, c) },
 	})
 }
 

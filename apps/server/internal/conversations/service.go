@@ -84,7 +84,9 @@ type Service struct {
 	db       *db.DB
 	files    Files
 	notifier Notifier
-	now      func() time.Time
+	// deliverer queues replies for channels (T-03); nil leaves them pending.
+	deliverer Deliverer
+	now       func() time.Time
 }
 
 // New returns the conversations service.
@@ -126,7 +128,7 @@ func pageSize(limit int) int32 {
 
 var domainErrors = []error{
 	ErrNotFound, ErrInvalid, ErrTransition, ErrConflict, ErrNotAssignee,
-	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists,
+	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists, ErrNotFailed,
 }
 
 // wrap returns domain errors as they are, turns "no rows" into ErrNotFound

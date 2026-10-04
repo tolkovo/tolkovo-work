@@ -163,3 +163,47 @@ describe("language switcher", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Диалоги" })).toBeInTheDocument();
   });
 });
+
+describe("broken channels", () => {
+  const broken = {
+    id: "ch1",
+    type: "telegram_bot",
+    name: "Бот магазина",
+    status: "error",
+    error_code: "token_revoked",
+    details: { username: "zerno_shop_bot", display_name: "Зерно", phone_masked: null, delivery: "webhook" },
+    created_at: "2026-10-01T10:00:00Z",
+    last_inbound_at: null,
+  };
+
+  it("tells those who manage channels which one is down and where to fix it", async () => {
+    renderApp("/inbox", {
+      api: fakeApi({
+        routes: {
+          "GET /channels": () => json(200, { items: [broken], telegram_user_available: true, encryption_available: true }),
+        },
+      }),
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Канал «Бот магазина» не работает: Токен бота отозван в @BotFather");
+    expect(within(alert).getByRole("link", { name: "Открыть каналы" })).toHaveAttribute("href", "/settings/channels");
+  });
+
+  it("does not ask for channels without the right to see them", async () => {
+    let asked = 0;
+    renderApp("/inbox", {
+      api: fakeApi({
+        session: operatorSession,
+        routes: {
+          "GET /channels": () => {
+            asked++;
+            return json(200, { items: [broken], telegram_user_available: true, encryption_available: true });
+          },
+        },
+      }),
+    });
+    expect(await screen.findByRole("heading", { level: 1, name: "Диалоги" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(asked).toBe(0);
+  });
+});

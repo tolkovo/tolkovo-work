@@ -35,15 +35,27 @@
         "state": { "enum": ["start", "stop"] }
       }
     },
+    "typingData": {
+      "type": "object",
+      "required": ["conversation_id", "state"],
+      "properties": {
+        "conversation_id": { "$ref": "#/$defs/uuid" },
+        "state": { "enum": ["start", "stop"] },
+        "mode": {
+          "description": "What is being typed: reply (the customer will get it) or note (internal). Absent counts as note. Only a reply start is shown to the customer in a channel that can show typing (Telegram).",
+          "enum": ["reply", "note"]
+        }
+      }
+    },
     "typing": {
-      "description": "The operator is typing in a conversation (start, repeated at most every 3 s while typing) or stopped. Needs conversations.reply or conversations.note, otherwise ignored. The server relays it to the workspace as conversation.typing and stores nothing.",
+      "description": "The operator is typing in a conversation (start, repeated at most every 3 s while typing) or stopped. Needs conversations.reply or conversations.note, otherwise ignored. The server relays it to the workspace as conversation.typing and stores nothing; a reply start in a Telegram conversation also shows typing to the customer (needs conversations.reply).",
       "type": "object",
       "required": ["type", "id", "ts", "data"],
       "properties": {
         "type": { "const": "typing" },
         "id": { "type": "string", "minLength": 1, "maxLength": 64 },
         "ts": { "type": "string", "format": "date-time" },
-        "data": { "$ref": "#/$defs/signalData" }
+        "data": { "$ref": "#/$defs/typingData" }
       }
     },
     "viewing": {

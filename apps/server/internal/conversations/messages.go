@@ -44,8 +44,10 @@ type Message struct {
 	Body           string
 	IsPrivate      bool // internal note, never shown to the customer
 	DeliveryStatus *string
-	Attachments    []Attachment
-	Event          *Event // what a system message records; nil for other kinds
+	// DeliveryError: why a failed reply was not delivered (DeliveryBlocked…).
+	DeliveryError string
+	Attachments   []Attachment
+	Event         *Event // what a system message records; nil for other kinds
 	// Unsupported: what a customer sent through a channel that the panel
 	// does not show (UnsupportedSticker…); empty otherwise.
 	Unsupported string
@@ -132,8 +134,14 @@ func (s *Service) PostMessage(
 			return err
 		}
 		msg, err = insertMessage(ctx, q, tx, conv, actor, in, s.now())
-		created = err == nil
-		return err
+		if err != nil {
+			return err
+		}
+		created = true
+		if msg.DeliveryStatus != nil && *msg.DeliveryStatus == DeliveryPending {
+			return s.queueDelivery(ctx, tx, workspaceID, msg.ID)
+		}
+		return nil
 	})
 	if err != nil {
 		return Message{}, false, wrap(err, "post message")
@@ -190,7 +198,7 @@ func insertMessage(
 	}
 	var delivery *string
 	if !in.Private && conv.ChannelID != nil {
-		delivery = ptr("pending") // the outbound queue (T-03) delivers it
+		delivery = ptr(DeliveryPending) // the channel's job delivers it (T-03)
 	}
 	row, err := q.CreateMessage(ctx, store.CreateMessageParams{
 		ID: id, WorkspaceID: conv.WorkspaceID, ConversationID: conv.ID,
@@ -312,6 +320,9 @@ func messageFrom(m store.Message, atts []store.Attachment) Message {
 		SenderID: m.SenderID, Kind: m.Kind, Body: m.Body, IsPrivate: m.IsPrivate,
 		DeliveryStatus: m.DeliveryStatus, Event: eventFrom(m.Kind, m.Meta),
 		CreatedAt: m.CreatedAt, EditedAt: m.EditedAt, DeletedAt: m.DeletedAt,
+	}
+	if m.DeliveryError != nil {
+		out.DeliveryError = *m.DeliveryError
 	}
 	if m.Kind != KindEvent && len(m.Meta) > 2 {
 		var meta messageMeta

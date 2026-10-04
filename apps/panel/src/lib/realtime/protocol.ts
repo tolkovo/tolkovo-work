@@ -33,6 +33,7 @@ export const EVENT_TYPES = [
   "conversation.tags_changed",
   "conversation.read",
   "message.created",
+  "message.delivery",
   "contact.created",
   "contact.updated",
 ] as const;
@@ -110,15 +111,20 @@ export function resumeMessage(lastSeq: number, id: string, now: Date): string {
   return JSON.stringify({ type: "resume", id, ts: now.toISOString(), data: { last_seq: lastSeq } });
 }
 
-/** typing or viewing of one conversation: start (repeated while it lasts) or stop. */
+/**
+ * typing or viewing of one conversation: start (repeated while it lasts) or stop. A typing start
+ * says whether it is a reply: only that one reaches the customer's Telegram as "typing…".
+ */
 export function signalMessage(
   type: "typing" | "viewing",
   conversationId: string,
   state: "start" | "stop",
   id: string,
   now: Date,
+  mode?: "reply" | "note",
 ): string {
-  return JSON.stringify({ type, id, ts: now.toISOString(), data: { conversation_id: conversationId, state } });
+  const data = mode ? { conversation_id: conversationId, state, mode } : { conversation_id: conversationId, state };
+  return JSON.stringify({ type, id, ts: now.toISOString(), data });
 }
 
 /** ws(s)://host/api/v1/realtime for a page served from origin. */

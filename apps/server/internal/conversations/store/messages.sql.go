@@ -67,7 +67,7 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 const createEventMessage = `-- name: CreateEventMessage :one
 INSERT INTO messages (id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, meta, created_at)
 VALUES ($1, $2, $3, 'out', 'system', $4, 'event', $5, $6)
-RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at
+RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error
 `
 
 type CreateEventMessageParams struct {
@@ -110,6 +110,7 @@ func (q *Queries) CreateEventMessage(ctx context.Context, arg CreateEventMessage
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.DeliveryError,
 	)
 	return i, err
 }
@@ -122,7 +123,7 @@ INSERT INTO messages (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13
 )
-RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at
+RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error
 `
 
 type CreateMessageParams struct {
@@ -177,6 +178,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.DeliveryError,
 	)
 	return i, err
 }
@@ -216,7 +218,7 @@ func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (A
 }
 
 const getMessageByIdempotencyKey = `-- name: GetMessageByIdempotencyKey :one
-SELECT id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at FROM messages
+SELECT id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error FROM messages
 WHERE workspace_id = $1 AND conversation_id = $2 AND idempotency_key = $3
 `
 
@@ -248,6 +250,7 @@ func (q *Queries) GetMessageByIdempotencyKey(ctx context.Context, arg GetMessage
 		&i.CreatedAt,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.DeliveryError,
 	)
 	return i, err
 }
@@ -284,7 +287,7 @@ func (q *Queries) LinkAttachments(ctx context.Context, arg LinkAttachmentsParams
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at FROM messages
+SELECT id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at, delivery_error FROM messages
 WHERE workspace_id = $1
   AND conversation_id = $2
   AND ($3::uuid IS NULL OR id < $3::uuid)
@@ -334,6 +337,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.CreatedAt,
 			&i.EditedAt,
 			&i.DeletedAt,
+			&i.DeliveryError,
 		); err != nil {
 			return nil, err
 		}

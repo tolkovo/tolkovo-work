@@ -4,6 +4,7 @@ import {
   isApiError,
   markConversationRead,
   postMessage,
+  retryMessageDelivery,
   type ApiClient,
   type Conversation,
   type Message,
@@ -13,7 +14,7 @@ import { queryKeys, useApiClient, useSession } from "@tolkovo/api-client/react";
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 
-import { addToFeed, applyConversation, patchConversation } from "./cache";
+import { addToFeed, applyConversation, patchConversation, replaceInFeed } from "./cache";
 
 /**
  * What the signed-in member may do with a conversation, as the server decides it
@@ -122,6 +123,20 @@ export function useSendMessage(conversationId: string) {
       // A reply changes the preview, the first response time and whose move it is.
       if (!m.is_private) void refreshConversation(queryClient, api, conversationId);
     },
+  });
+}
+
+/**
+ * Sends a reply that failed to deliver again. Whatever the answer, the feed is refetched after
+ * an error: someone may have retried it first (409) or the conversation moved on.
+ */
+export function useRetryDelivery(conversationId: string) {
+  const api = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string): Promise<Message> => retryMessageDelivery(api, conversationId, messageId),
+    onSuccess: (m) => replaceInFeed(queryClient, m),
+    onError: () => void queryClient.invalidateQueries({ queryKey: queryKeys.conversationMessages(conversationId) }),
   });
 }
 

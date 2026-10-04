@@ -1169,6 +1169,39 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /conversations/{id}/messages/{message_id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/MessageId'
+    post:
+      tags: [conversations]
+      operationId: retryMessageDelivery
+      summary: Send a failed reply again
+      description: |
+        Needs the same rights as replying (`conversations.reply`, and without
+        `conversations.manage` a conversation assigned to the caller). The reply goes back
+        to `delivery_status: pending` and is queued; pieces delivered before (the first part
+        of a long text, the first files) are not sent twice. Only a reply with
+        `delivery_status: failed` can be retried: others answer `409 not_failed`; a closed
+        conversation answers `409 conversation_closed`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The reply, pending again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`not_failed` or `conversation_closed`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
   /conversations/{id}/tags:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -1410,6 +1443,15 @@ components:
   parameters:
     Id:
       name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+        x-go-type: uuid.UUID
+        x-go-type-import: { path: github.com/google/uuid }
+    MessageId:
+      name: message_id
       in: path
       required: true
       schema:
@@ -2059,7 +2101,21 @@ components:
           type: [string, 'null']
           description: |
             `pending`, `sent`, `delivered`, `read` or `failed`; `null` when there is nothing
-            to deliver (notes, conversations without a channel).
+            to deliver (notes, conversations without a channel). A reply in a Telegram
+            conversation is `pending` until the channel sends it, then `sent`; a personal
+            account also reports `read` when the customer opens the chat (a bot cannot).
+            Changes come as `message.delivery` over the realtime connection.
+        delivery_error:
+          type: string
+          enum: [blocked, chat_not_found, limited, rejected, channel_unavailable, failed]
+          description: |
+            Why a reply was not delivered; present only with `delivery_status: failed`.
+            `blocked`: the customer blocked the bot or the account. `chat_not_found`: the
+            chat or the customer's account is gone, or the personal account cannot address
+            them. `limited`: Telegram restricted the account from writing. `rejected`:
+            Telegram refused this message (size, format). `channel_unavailable`: the channel
+            is disconnected or needs the admin. `failed`: Telegram stayed unreachable
+            through every retry (about 40 minutes); `POST …/retry` sends it again.
         attachments:
           type: array
           items: { $ref: '#/components/schemas/Attachment' }

@@ -16,6 +16,7 @@
     { "$ref": "#/$defs/conversationTagsChanged" },
     { "$ref": "#/$defs/conversationRead" },
     { "$ref": "#/$defs/messageCreated" },
+    { "$ref": "#/$defs/messageDelivery" },
     { "$ref": "#/$defs/contactCreated" },
     { "$ref": "#/$defs/contactUpdated" }
   ],
@@ -35,6 +36,7 @@
         "conversation.tags_changed",
         "conversation.read",
         "message.created",
+        "message.delivery",
         "contact.created",
         "contact.updated"
       ]
@@ -268,6 +270,28 @@
             "is_private": { "type": "boolean" },
             "sender_type": { "enum": ["contact", "operator", "bot", "system"] },
             "sender_id": { "$ref": "#/$defs/nullableUuid" }
+          }
+        }
+      }
+    },
+    "messageDelivery": {
+      "description": "The delivery of an operator reply through its channel moved on: pending (queued again after a retry), sent, read (the customer opened the chat; personal Telegram accounts only) or failed with a reason. Refetch the message or patch its delivery_status and delivery_error.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "message.delivery" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "message_id", "status", "error"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "message_id": { "$ref": "#/$defs/uuid" },
+            "status": { "enum": ["pending", "sent", "delivered", "read", "failed"] },
+            "error": {
+              "anyOf": [
+                { "enum": ["blocked", "chat_not_found", "limited", "rejected", "channel_unavailable", "failed"] },
+                { "type": "null" }
+              ]
+            }
           }
         }
       }

@@ -96,6 +96,7 @@ type Message struct {
 	CreatedAt        time.Time
 	EditedAt         *time.Time
 	DeletedAt        *time.Time
+	DeliveryError    *string
 }
 
 type Tag struct {

@@ -42,8 +42,15 @@ type ListenOptions struct {
 	// order. An error is logged by gotd and the message is not delivered
 	// again, so Handle retries what it can by itself.
 	Handle func(ctx context.Context, m Message, fetch Fetch) error
-	// OnReady is called once the account is connected and receiving.
-	OnReady func()
+	// Read hears that the person read the chat up to the account's message
+	// maxID (updateReadHistoryOutbox). Optional.
+	Read func(ctx context.Context, chatID, maxID int64) error
+	// SavePeer stores the access hash of a person the account saw, so a
+	// reply can reach them later. Called again only when the hash changes.
+	SavePeer func(ctx context.Context, p Peer) error
+	// OnReady is called once the account is connected and receiving, with
+	// the connection to send through while Listen runs.
+	OnReady func(c Conn)
 }
 
 // Listen keeps a personal account online and passes its new private
@@ -53,9 +60,13 @@ type ListenOptions struct {
 // a banned account, and ctx.Err() on a normal stop.
 func (u *UserAuth) Listen(ctx context.Context, opts ListenOptions) error {
 	sess := &persistentSession{data: opts.Session, save: opts.SaveSession}
-	l := &listener{handle: opts.Handle, people: map[int64]Person{}, bots: map[int64]bool{}}
+	l := &listener{
+		handle: opts.Handle, read: opts.Read, savePeer: opts.SavePeer,
+		people: map[int64]Person{}, bots: map[int64]bool{}, hashes: map[int64]int64{}, saved: map[int64]int64{},
+	}
 	dispatcher := tg.NewUpdateDispatcher()
 	dispatcher.OnNewMessage(l.onNewMessage)
+	dispatcher.OnReadHistoryOutbox(l.onReadOutbox)
 	gaps := updates.New(updates.Config{
 		Handler: dispatcher,
 		Storage: &stateAdapter{store: opts.State},
@@ -85,9 +96,18 @@ func (u *UserAuth) Listen(ctx context.Context, opts ListenOptions) error {
 		l.selfID = self.ID
 		return gaps.Run(ctx, client.API(), self.ID, updates.AuthOptions{
 			OnStart: func(context.Context) {
-				if opts.OnReady != nil {
-					opts.OnReady()
+				if opts.OnReady == nil {
+					return
 				}
+				opts.OnReady(&conn{
+					api: client.API(),
+					feed: func(ctx context.Context, u tg.UpdatesClass) {
+						_ = gaps.Handle(ctx, u) // a lost answer becomes a gap, which gotd fills
+					},
+					affected: func(ctx context.Context, pts, count int) {
+						_ = gaps.HandleAffected(ctx, 0, pts, count)
+					},
+				})
 			},
 		})
 	})
@@ -98,14 +118,19 @@ func (u *UserAuth) Listen(ctx context.Context, opts ListenOptions) error {
 }
 
 type listener struct {
-	selfID int64
-	handle func(ctx context.Context, m Message, fetch Fetch) error
-	fetch  Fetch
-	// people and bots remember users from earlier updates: a short update
-	// for a known user comes without the user.
+	selfID   int64
+	handle   func(ctx context.Context, m Message, fetch Fetch) error
+	read     func(ctx context.Context, chatID, maxID int64) error
+	savePeer func(ctx context.Context, p Peer) error
+	fetch    Fetch
+	// people, bots and hashes remember users from earlier updates: a short
+	// update for a known user comes without the user. saved are the access
+	// hashes stored through savePeer.
 	mu     sync.Mutex
 	people map[int64]Person
 	bots   map[int64]bool
+	hashes map[int64]int64
+	saved  map[int64]int64
 }
 
 func (l *listener) onNewMessage(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
@@ -118,7 +143,34 @@ func (l *listener) onNewMessage(ctx context.Context, e tg.Entities, u *tg.Update
 	if !ok {
 		return nil
 	}
+	l.keepPeer(ctx, msg.ChatID)
 	return l.handle(ctx, msg, l.fetch)
+}
+
+// keepPeer stores the access hash of the person of a private chat the
+// inbox gets, so replies can reach them. People of groups are never kept.
+func (l *listener) keepPeer(ctx context.Context, userID int64) {
+	l.mu.Lock()
+	hash := l.hashes[userID]
+	fresh := hash != 0 && l.saved[userID] != hash
+	l.mu.Unlock()
+	if !fresh || l.savePeer == nil {
+		return
+	}
+	if l.savePeer(ctx, Peer{UserID: userID, AccessHash: hash}) == nil {
+		l.mu.Lock()
+		l.saved[userID] = hash
+		l.mu.Unlock()
+	}
+}
+
+// onReadOutbox: the person read the account's messages in a private chat.
+func (l *listener) onReadOutbox(ctx context.Context, _ tg.Entities, u *tg.UpdateReadHistoryOutbox) error {
+	peer, ok := u.Peer.(*tg.PeerUser)
+	if !ok || l.read == nil || peer.UserID == l.selfID {
+		return nil
+	}
+	return l.read(ctx, peer.UserID, int64(u.MaxID))
 }
 
 func (l *listener) remember(users map[int64]*tg.User) {
@@ -126,10 +178,13 @@ func (l *listener) remember(users map[int64]*tg.User) {
 	defer l.mu.Unlock()
 	for id, u := range users {
 		if u.Min {
-			continue // may lack fields
+			continue // may lack fields, and its access hash cannot be used
 		}
 		l.people[id] = Person{ID: id, FirstName: u.FirstName, LastName: u.LastName, Username: u.Username}
 		l.bots[id] = u.Bot
+		if u.AccessHash != 0 {
+			l.hashes[id] = u.AccessHash
+		}
 	}
 }
 

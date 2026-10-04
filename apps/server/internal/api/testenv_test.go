@@ -133,10 +133,16 @@ func newEnv(t *testing.T, o envOptions) *env {
 		t.Fatalf("sealer: %v", err)
 	}
 	bots := &channelstest.Bots{}
+	// Replies are queued as the api role does: an insert-only client.
+	inserter, err := jobs.New(app.Pool(), jobs.Options{Log: quiet}) //nolint:forbidigo // see above
+	if err != nil {
+		t.Fatalf("jobs: %v", err)
+	}
 	chans := channels.New(app, channels.Options{
 		Sealer: sealer, Bots: bots, Users: &channelstest.Users{}, HookBaseURL: "https://support.example.com",
-		Inbox: convs, Files: files,
+		Inbox: convs, Files: files, Jobs: inserter, Redis: rc,
 	})
+	convs.SetDeliverer(chans)
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,

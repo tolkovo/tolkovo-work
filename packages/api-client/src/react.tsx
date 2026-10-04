@@ -322,13 +322,16 @@ export function useVerifyEmail() {
  * The workspace's channels. `poll` returns the polling interval for the current list, or false to
  * stop — e.g. while the wizard waits for the first message of a new channel.
  */
-export function useChannels(options: { poll?: (list: ChannelList | undefined) => number | false } = {}) {
+export function useChannels(
+  options: { poll?: (list: ChannelList | undefined) => number | false; enabled?: boolean } = {},
+) {
   const client = useApiClient();
-  const { poll } = options;
+  const { poll, enabled = true } = options;
   return useQuery({
     queryKey: queryKeys.channels,
     queryFn: () => fetchChannels(client),
     refetchInterval: poll ? (query) => poll(query.state.data) : false,
+    enabled,
   });
 }
 
