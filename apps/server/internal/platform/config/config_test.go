@@ -78,3 +78,72 @@ func TestSecret_NeverPrintsValue(t *testing.T) {
 		t.Fatalf("Reveal must return the value")
 	}
 }
+
+func TestLoadFrom_StorageDefaultsToFSInSelfHost(t *testing.T) {
+	cfg, err := LoadFrom(map[string]string{"TOLKOVO_DATABASE_URL": dsn})
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if cfg.Mode != ModeSelfHost || cfg.Storage.Driver != StorageFS || cfg.Storage.FSRoot == "" ||
+		cfg.Storage.URLTTL != 15*time.Minute || cfg.PublicURL != "http://localhost:8080" {
+		t.Fatalf("unexpected storage defaults: mode=%q %+v public=%q", cfg.Mode, cfg.Storage, cfg.PublicURL)
+	}
+}
+
+func TestLoadFrom_RejectsInvalidStorage(t *testing.T) {
+	s3 := map[string]string{
+		"TOLKOVO_STORAGE_DRIVER":               "s3",
+		"TOLKOVO_STORAGE_S3_REGION":            "garage",
+		"TOLKOVO_STORAGE_S3_BUCKET":            "tolkovo",
+		"TOLKOVO_STORAGE_S3_ACCESS_KEY_ID":     "GK1",
+		"TOLKOVO_STORAGE_S3_SECRET_ACCESS_KEY": "s3-very-private",
+	}
+	key := strings.Repeat("k", 32)
+	tests := []struct {
+		name string
+		vars map[string]string
+		want string
+	}{
+		{"saas with fs", map[string]string{"TOLKOVO_MODE": "saas", "TOLKOVO_STORAGE_SIGNING_KEY": key}, "TOLKOVO_STORAGE_DRIVER=fs"},
+		{"unknown mode", map[string]string{"TOLKOVO_MODE": "cloud"}, "TOLKOVO_MODE"},
+		{"unknown driver", map[string]string{"TOLKOVO_STORAGE_DRIVER": "minio"}, "TOLKOVO_STORAGE_DRIVER"},
+		{"fs without key in production", map[string]string{"TOLKOVO_ENV": "production"}, "TOLKOVO_STORAGE_SIGNING_KEY"},
+		{"short signing key", map[string]string{"TOLKOVO_STORAGE_SIGNING_KEY": "short"}, "TOLKOVO_STORAGE_SIGNING_KEY"},
+		{"empty fs root", map[string]string{"TOLKOVO_STORAGE_FS_ROOT": " "}, "TOLKOVO_STORAGE_FS_ROOT"},
+		{"ttl too long", map[string]string{"TOLKOVO_STORAGE_URL_TTL": "48h"}, "TOLKOVO_STORAGE_URL_TTL"},
+		{"relative public url", map[string]string{"TOLKOVO_PUBLIC_URL": "/x"}, "TOLKOVO_PUBLIC_URL"},
+		{"s3 without bucket", with(s3, "TOLKOVO_STORAGE_S3_BUCKET", ""), "TOLKOVO_STORAGE_S3_BUCKET"},
+		{"s3 without secret", with(s3, "TOLKOVO_STORAGE_S3_SECRET_ACCESS_KEY", ""), "TOLKOVO_STORAGE_S3_SECRET_ACCESS_KEY"},
+		{"s3 bad endpoint", with(s3, "TOLKOVO_STORAGE_S3_ENDPOINT", "localhost:3900"), "TOLKOVO_STORAGE_S3_ENDPOINT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadFrom(with(tt.vars, "TOLKOVO_DATABASE_URL", dsn))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("want error containing %q, got %v", tt.want, err)
+			}
+		})
+	}
+
+	t.Run("saas with s3 is accepted", func(t *testing.T) {
+		cfg, err := LoadFrom(with(with(s3, "TOLKOVO_MODE", "saas"), "TOLKOVO_DATABASE_URL", dsn))
+		if err != nil {
+			t.Fatalf("LoadFrom: %v", err)
+		}
+		if cfg.Storage.S3SecretAccessKey.Reveal() != "s3-very-private" {
+			t.Fatalf("s3 secret not loaded")
+		}
+		if strings.Contains(fmt.Sprintf("%+v", cfg), "s3-very-private") {
+			t.Fatalf("s3 secret leaked through fmt")
+		}
+	})
+}
+
+func with(vars map[string]string, k, v string) map[string]string {
+	out := make(map[string]string, len(vars)+1)
+	for key, val := range vars {
+		out[key] = val
+	}
+	out[k] = v
+	return out
+}

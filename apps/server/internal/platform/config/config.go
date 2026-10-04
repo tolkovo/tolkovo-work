@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +22,19 @@ const Prefix = "TOLKOVO_"
 const (
 	EnvDevelopment = "development"
 	EnvProduction  = "production"
+)
+
+// Deployment modes. SaaS forbids single-node shortcuts such as the fs
+// storage driver (docs/02 §5.4).
+const (
+	ModeSelfHost = "selfhost"
+	ModeSaaS     = "saas"
+)
+
+// Storage drivers (docs/adr/0009-file-storage.md).
+const (
+	StorageFS = "fs"
+	StorageS3 = "s3"
 )
 
 // Config is the full process configuration. Every field has a safe default
@@ -51,6 +65,33 @@ type Config struct {
 	OutboxRetention time.Duration `env:"OUTBOX_RETENTION" envDefault:"24h"`
 
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"20s"`
+
+	// Mode is selfhost or saas; saas refuses single-node shortcuts.
+	Mode string `env:"MODE" envDefault:"selfhost"`
+	// PublicURL is where clients reach the api; signed fs storage links
+	// point here.
+	PublicURL string  `env:"PUBLIC_URL" envDefault:"http://localhost:8080"`
+	Storage   Storage `envPrefix:"STORAGE_"`
+}
+
+// Storage configures file storage: TOLKOVO_STORAGE_*.
+type Storage struct {
+	Driver string `env:"DRIVER" envDefault:"fs"`
+	// FSRoot is the directory of the fs driver.
+	FSRoot string `env:"FS_ROOT" envDefault:"./data/files"`
+	// SigningKey authenticates fs upload and download links. Required in
+	// production; in development an empty key is replaced by a random one at
+	// startup, so links stop working after a restart.
+	SigningKey Secret `env:"SIGNING_KEY"`
+	// URLTTL is the lifetime of signed links for both drivers.
+	URLTTL time.Duration `env:"URL_TTL" envDefault:"15m"`
+
+	S3Endpoint        string `env:"S3_ENDPOINT"`
+	S3Region          string `env:"S3_REGION"`
+	S3Bucket          string `env:"S3_BUCKET"`
+	S3AccessKeyID     string `env:"S3_ACCESS_KEY_ID"`
+	S3SecretAccessKey Secret `env:"S3_SECRET_ACCESS_KEY"`
+	S3PathStyle       bool   `env:"S3_PATH_STYLE" envDefault:"false"`
 }
 
 // Load reads the configuration from the process environment.
@@ -97,7 +138,59 @@ func (c Config) validate() error {
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("%sSHUTDOWN_TIMEOUT must be positive", Prefix))
 	}
+	if c.Mode != ModeSelfHost && c.Mode != ModeSaaS {
+		errs = append(errs, fmt.Errorf("%sMODE must be %q or %q, got %q", Prefix, ModeSelfHost, ModeSaaS, c.Mode))
+	}
+	if u, err := url.Parse(c.PublicURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") ||
+		u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		errs = append(errs, fmt.Errorf("%sPUBLIC_URL must be an absolute http(s) URL without query, got %q", Prefix, c.PublicURL))
+	}
+	errs = append(errs, c.validateStorage()...)
 	return errors.Join(errs...)
+}
+
+// minSigningKeyLen matches storage.MinSigningKeyLen; config does not import
+// storage to stay a leaf package.
+const minSigningKeyLen = 32
+
+func (c Config) validateStorage() []error {
+	s, p := c.Storage, Prefix+"STORAGE_"
+	var errs []error
+	if s.URLTTL < time.Minute || s.URLTTL > 24*time.Hour {
+		errs = append(errs, fmt.Errorf("%sURL_TTL must be between 1m and 24h", p))
+	}
+	switch s.Driver {
+	case StorageFS:
+		if c.Mode == ModeSaaS {
+			errs = append(errs, fmt.Errorf("%sDRIVER=fs is single-node and not allowed with %sMODE=saas: use s3", p, Prefix))
+		}
+		if strings.TrimSpace(s.FSRoot) == "" {
+			errs = append(errs, fmt.Errorf("%sFS_ROOT must not be empty", p))
+		}
+		if s.SigningKey == "" && c.Env == EnvProduction {
+			errs = append(errs, fmt.Errorf("%sSIGNING_KEY is required for the fs driver in production (generate with `openssl rand -hex 32`)", p))
+		}
+		if s.SigningKey != "" && len(s.SigningKey.Reveal()) < minSigningKeyLen {
+			errs = append(errs, fmt.Errorf("%sSIGNING_KEY must be at least %d characters", p, minSigningKeyLen))
+		}
+	case StorageS3:
+		for _, f := range []struct{ name, value string }{
+			{"S3_REGION", s.S3Region}, {"S3_BUCKET", s.S3Bucket},
+			{"S3_ACCESS_KEY_ID", s.S3AccessKeyID}, {"S3_SECRET_ACCESS_KEY", s.S3SecretAccessKey.Reveal()},
+		} {
+			if f.value == "" {
+				errs = append(errs, fmt.Errorf("%s%s is required for the s3 driver", p, f.name))
+			}
+		}
+		if s.S3Endpoint != "" {
+			if u, err := url.Parse(s.S3Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				errs = append(errs, fmt.Errorf("%sS3_ENDPOINT must be an absolute http(s) URL, got %q", p, s.S3Endpoint))
+			}
+		}
+	default:
+		errs = append(errs, fmt.Errorf("%sDRIVER must be %q or %q, got %q", p, StorageFS, StorageS3, s.Driver))
+	}
+	return errs
 }
 
 func environ() map[string]string {
