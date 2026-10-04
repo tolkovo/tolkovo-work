@@ -113,9 +113,22 @@ func TestConversationsAPI_OperatorFlow(t *testing.T) {
 	wantProblem(t, in.op.do(http.MethodPost, base+"/status", map[string]any{"status": "pending"}), http.StatusConflict, "invalid_transition")
 	wantProblem(t, in.op.do(http.MethodPost, base+"/status", map[string]any{"status": "closed", "version": 1}), http.StatusConflict, "version_conflict")
 
+	// The feed: the reply between two system lines (taken, resolved).
 	list := decode[oapi.MessagePage](t, in.op.do(http.MethodGet, base+"/messages", nil))
-	if len(list.Items) != 1 || list.NextCursor != nil {
+	if len(list.Items) != 3 || list.NextCursor != nil {
 		t.Fatalf("feed: %+v", list)
+	}
+	resolved, reply, taken := list.Items[0], list.Items[1], list.Items[2]
+	if reply.Id != m.Id || reply.Event != nil {
+		t.Fatalf("reply in feed: %+v", reply)
+	}
+	if resolved.Kind != "event" || resolved.SenderType != "system" || *resolved.SenderId != in.sop.User.Id || resolved.Body != "" ||
+		resolved.Event == nil || resolved.Event.Type != "status_changed" || resolved.Event.From != "assigned" || resolved.Event.To != "resolved" {
+		t.Fatalf("resolved line: %+v %+v", resolved, resolved.Event)
+	}
+	if e := taken.Event; e == nil || e.Type != "assigned" || e.From != "queued" || e.To != "assigned" ||
+		*e.AssigneeId != in.sop.User.Id || e.PreviousAssigneeId != nil {
+		t.Fatalf("taken line: %+v", e)
 	}
 }
 
@@ -330,5 +343,72 @@ func TestConversationsAPI_PreviewAndInboxCounts(t *testing.T) {
 	}
 	if got := counts(in.op); got != (oapi.InboxCounts{Mine: 0, Unassigned: 1, Open: 1}) {
 		t.Fatalf("resolved leaves every tab: %+v", got)
+	}
+}
+
+func TestConversationsAPI_TagsAndReadMarks(t *testing.T) {
+	in := setupInbox(t)
+	c := in.conversation(t)
+	base := "/api/v1/conversations/" + c.Id.String()
+	if c.TagIds == nil || len(c.TagIds) != 0 || c.UnreadCount != 0 || c.LastReadMessageId != nil {
+		t.Fatalf("new conversation: %+v", c)
+	}
+
+	// tags.manage: owner creates, operator does not.
+	rec := in.owner.do(http.MethodPost, "/api/v1/tags", map[string]any{"name": "Refund", "color": "amber"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create tag: %d %s", rec.Code, rec.Body)
+	}
+	refund := decode[oapi.Tag](t, rec)
+	wantProblem(t, in.owner.do(http.MethodPost, "/api/v1/tags", map[string]any{"name": "refund"}), http.StatusConflict, "tag_exists")
+	wantProblem(t, in.owner.do(http.MethodPost, "/api/v1/tags", map[string]any{"name": "x", "color": "pink"}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.op.do(http.MethodPost, "/api/v1/tags", map[string]any{"name": "mine"}), http.StatusForbidden, "forbidden")
+	tags := decode[oapi.TagList](t, in.op.do(http.MethodGet, "/api/v1/tags", nil))
+	if len(tags.Items) != 1 || tags.Items[0] != refund || refund.Color != "amber" {
+		t.Fatalf("list tags: %+v", tags.Items)
+	}
+
+	// conversations.tag: the operator tags a conversation that is not theirs.
+	rec = in.op.do(http.MethodPut, base+"/tags", map[string]any{"tag_ids": []uuid.UUID{refund.Id}, "version": c.Version})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set tags: %d %s", rec.Code, rec.Body)
+	}
+	tagged := decode[oapi.Conversation](t, rec)
+	if len(tagged.TagIds) != 1 || tagged.TagIds[0] != refund.Id || tagged.Version != c.Version+1 {
+		t.Fatalf("tagged: %+v", tagged)
+	}
+	wantProblem(t, in.op.do(http.MethodPut, base+"/tags", map[string]any{}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.op.do(http.MethodPut, base+"/tags", map[string]any{"tag_ids": []uuid.UUID{uuid.New()}}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.op.do(http.MethodPut, base+"/tags", map[string]any{"tag_ids": []uuid.UUID{}, "version": c.Version}), http.StatusConflict, "version_conflict")
+
+	// Read marks: customer messages after the caller's mark are unread.
+	msg := uuid.Must(uuid.NewV7())
+	in.e.ownerExec(`INSERT INTO messages (id, workspace_id, conversation_id, direction, sender_type, kind, body)
+		VALUES ($1, $2, $3, 'in', 'contact', 'text', 'hello')`, msg, in.so.Workspace.Id, c.Id)
+	if got := decode[oapi.Conversation](t, in.op.do(http.MethodGet, base, nil)); got.UnreadCount != 1 {
+		t.Fatalf("unread before reading: %+v", got)
+	}
+	wantProblem(t, in.op.do(http.MethodPost, base+"/read", map[string]any{}), http.StatusBadRequest, "invalid_request")
+	if rec := in.op.do(http.MethodPost, base+"/read", map[string]any{"up_to_message_id": msg}); rec.Code != http.StatusNoContent {
+		t.Fatalf("mark read: %d %s", rec.Code, rec.Body)
+	}
+	if got := decode[oapi.Conversation](t, in.op.do(http.MethodGet, base, nil)); got.UnreadCount != 0 || *got.LastReadMessageId != msg {
+		t.Fatalf("after reading: %+v", got)
+	}
+	// Per member: the owner has not read it.
+	page := decode[oapi.ConversationPage](t, in.owner.do(http.MethodGet, "/api/v1/conversations", nil))
+	if len(page.Items) != 1 || page.Items[0].UnreadCount != 1 || page.Items[0].LastReadMessageId != nil {
+		t.Fatalf("owner's list: %+v", page.Items)
+	}
+	other := in.conversation(t)
+	wantProblem(t, in.op.do(http.MethodPost, "/api/v1/conversations/"+other.Id.String()+"/read", map[string]any{"up_to_message_id": msg}),
+		http.StatusBadRequest, "invalid_request")
+
+	// Another workspace: 404 on both, and no tags in its list.
+	stranger, _ := in.e.register("stranger@example.test", "stranger")
+	wantProblem(t, stranger.do(http.MethodPut, base+"/tags", map[string]any{"tag_ids": []uuid.UUID{}}), http.StatusNotFound, "not_found")
+	wantProblem(t, stranger.do(http.MethodPost, base+"/read", map[string]any{"up_to_message_id": msg}), http.StatusNotFound, "not_found")
+	if l := decode[oapi.TagList](t, stranger.do(http.MethodGet, "/api/v1/tags", nil)); len(l.Items) != 0 {
+		t.Fatalf("stranger lists tags: %+v", l.Items)
 	}
 }

@@ -826,8 +826,8 @@ paths:
       summary: Assign, transfer or release the conversation
       description: |
         `conversations.take` allows taking an unassigned conversation for yourself and
-        releasing your own (`assignee_id: null`); `conversations.assign` (owner, admin)
-        allows any assignment. The assignee must be an active member of the workspace.
+        releasing (`assignee_id: null`) or transferring your own; `conversations.assign`
+        (owner, admin) allows any assignment. The assignee must be an active member of the workspace.
         `queued` and `resolved` become `assigned`; `assigned` and `pending` keep their
         status (transfer); releasing makes an `assigned` conversation `queued`.
       security:
@@ -914,6 +914,63 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /conversations/{id}/tags:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [conversations]
+      operationId: setConversationTags
+      summary: Replace the tags of the conversation
+      description: |
+        Requires `conversations.tag`; works in any visible conversation, closed ones too.
+        At most 20 tags; every id must be a tag of the workspace (`GET /tags`).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetTagsRequest' }
+      responses:
+        '200':
+          description: The conversation with its new tags.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /conversations/{id}/read:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [conversations]
+      operationId: markConversationRead
+      summary: Mark the conversation read up to a message for the caller
+      description: |
+        Requires `conversations.view`. Read marks are per member and only move forward:
+        an older message than the current mark changes nothing. A move sends
+        `conversation.read` over the realtime connection.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarkReadRequest' }
+      responses:
+        '204':
+          description: Marked, or the mark was already further.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /conversations/{id}/attachments:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -965,6 +1022,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /tags:
+    get:
+      tags: [conversations]
+      operationId: listTags
+      summary: Every tag of the workspace, by name
+      description: Requires `conversations.view`. At most 500, so there are no pages.
+      responses:
+        '200':
+          description: The tags.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TagList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [conversations]
+      operationId: createTag
+      summary: Create a tag
+      description: |
+        Requires `tags.manage` (owner, admin). Names are unique in the workspace without
+        regard to case; a taken name answers `409 tag_exists`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTagRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tag' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`tag_exists`: a tag with this name exists.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /contacts:
     get:
@@ -1471,7 +1572,7 @@ components:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
                  first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at,
-                 last_message]
+                 last_message, tag_ids, last_read_message_id, unread_count]
       properties:
         id:
           type: string
@@ -1508,6 +1609,24 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ConversationPreview'
             - type: 'null'
+        tag_ids:
+          type: array
+          maxItems: 20
+          description: Tags in the order they were added; names and colors are in `GET /tags`.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        last_read_message_id:
+          type: [string, 'null']
+          description: The caller's read mark; `null` when they have not read the conversation.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        unread_count:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Customer messages after the caller's read mark, counted up to 100.
 
     ConversationPreview:
       type: object
@@ -1598,7 +1717,7 @@ components:
     Message:
       type: object
       required: [id, conversation_id, direction, sender_type, sender_id, kind, body, is_private,
-                 delivery_status, attachments, created_at]
+                 delivery_status, attachments, event, created_at]
       properties:
         id:
           type: string
@@ -1625,7 +1744,99 @@ components:
         attachments:
           type: array
           items: { $ref: '#/components/schemas/Attachment' }
+        event:
+          description: |
+            What a system message (`kind: event`) records; `null` for other kinds. The body of
+            a system message is empty: clients render the line in the reader's language.
+            For `sender_type: system` `sender_id` is the member who acted, `null` for the
+            system itself.
+          oneOf:
+            - $ref: '#/components/schemas/MessageEvent'
+            - type: 'null'
         created_at: { type: string, format: date-time }
+
+    MessageEvent:
+      type: object
+      required: [type, from, to, assignee_id, previous_assignee_id]
+      properties:
+        type:
+          type: string
+          enum: [status_changed, assigned]
+          description: '`assigned` covers taking, transferring and releasing.'
+        from: { $ref: '#/components/schemas/ConversationStatus' }
+        to: { $ref: '#/components/schemas/ConversationStatus' }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        previous_assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    Tag:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string, minLength: 1, maxLength: 40 }
+        color: { $ref: '#/components/schemas/TagColor' }
+
+    TagColor:
+      type: string
+      enum: [gray, teal, amber, red, violet, blue, green]
+      description: A palette key of the panel, readable in both themes.
+
+    TagList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Tag' }
+
+    CreateTagRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Spaces are collapsed; must contain more than spaces.
+        color: { $ref: '#/components/schemas/TagColor' }
+
+    SetTagsRequest:
+      type: object
+      additionalProperties: false
+      required: [tag_ids]
+      properties:
+        tag_ids:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        version:
+          type: integer
+          description: When set, must equal the current version, otherwise `409 version_conflict`.
+
+    MarkReadRequest:
+      type: object
+      additionalProperties: false
+      required: [up_to_message_id]
+      properties:
+        up_to_message_id:
+          type: string
+          description: The newest message the caller has seen; a message of this conversation.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
 
     MessagePage:
       type: object

@@ -218,6 +218,24 @@ func (e MessageSenderType) Valid() bool {
 	}
 }
 
+// Defines values for MessageEventType.
+const (
+	MessageEventTypeAssigned      MessageEventType = "assigned"
+	MessageEventTypeStatusChanged MessageEventType = "status_changed"
+)
+
+// Valid indicates whether the value is a known member of the MessageEventType enum.
+func (e MessageEventType) Valid() bool {
+	switch e {
+	case MessageEventTypeAssigned:
+		return true
+	case MessageEventTypeStatusChanged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	RoleAdmin    Role = "admin"
@@ -233,6 +251,39 @@ func (e Role) Valid() bool {
 	case RoleOperator:
 		return true
 	case RoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TagColor.
+const (
+	Amber  TagColor = "amber"
+	Blue   TagColor = "blue"
+	Gray   TagColor = "gray"
+	Green  TagColor = "green"
+	Red    TagColor = "red"
+	Teal   TagColor = "teal"
+	Violet TagColor = "violet"
+)
+
+// Valid indicates whether the value is a known member of the TagColor enum.
+func (e TagColor) Valid() bool {
+	switch e {
+	case Amber:
+		return true
+	case Blue:
+		return true
+	case Gray:
+		return true
+	case Green:
+		return true
+	case Red:
+		return true
+	case Teal:
+		return true
+	case Violet:
 		return true
 	default:
 		return false
@@ -345,7 +396,10 @@ type Conversation struct {
 	// system events are skipped. `null` until there is one.
 	LastMessage   *ConversationPreview `json:"last_message"`
 	LastMessageAt time.Time            `json:"last_message_at"`
-	LineLevel     int                  `json:"line_level"`
+
+	// LastReadMessageId The caller's read mark; `null` when they have not read the conversation.
+	LastReadMessageId *uuid.UUID `json:"last_read_message_id"`
+	LineLevel         int        `json:"line_level"`
 
 	// Number Human-readable number inside the workspace.
 	Number     int64      `json:"number"`
@@ -353,9 +407,15 @@ type Conversation struct {
 	ResolvedAt *time.Time `json:"resolved_at"`
 
 	// Status State of a conversation (docs/02 §8).
-	Status    ConversationStatus `json:"status"`
-	Subject   *string            `json:"subject"`
-	UpdatedAt time.Time          `json:"updated_at"`
+	Status  ConversationStatus `json:"status"`
+	Subject *string            `json:"subject"`
+
+	// TagIds Tags in the order they were added; names and colors are in `GET /tags`.
+	TagIds []uuid.UUID `json:"tag_ids"`
+
+	// UnreadCount Customer messages after the caller's read mark, counted up to 100.
+	UnreadCount int       `json:"unread_count"`
+	UpdatedAt   time.Time `json:"updated_at"`
 
 	// Version Bumps on every change; send it back to detect concurrent edits.
 	Version int `json:"version"`
@@ -405,6 +465,15 @@ type CreateInvitationRequest struct {
 
 // CreateInvitationRequestRole defines model for CreateInvitationRequest.Role.
 type CreateInvitationRequestRole string
+
+// CreateTagRequest defines model for CreateTagRequest.
+type CreateTagRequest struct {
+	// Color A palette key of the panel, readable in both themes.
+	Color *TagColor `json:"color,omitempty"`
+
+	// Name Spaces are collapsed; must contain more than spaces.
+	Name string `json:"name"`
+}
 
 // CreateUploadRequest defines model for CreateUploadRequest.
 type CreateUploadRequest struct {
@@ -503,6 +572,12 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// MarkReadRequest defines model for MarkReadRequest.
+type MarkReadRequest struct {
+	// UpToMessageId The newest message the caller has seen; a message of this conversation.
+	UpToMessageId uuid.UUID `json:"up_to_message_id"`
+}
+
 // Member defines model for Member.
 type Member struct {
 	Active bool   `json:"active"`
@@ -530,7 +605,13 @@ type Message struct {
 	// to deliver (notes, conversations without a channel).
 	DeliveryStatus *string          `json:"delivery_status"`
 	Direction      MessageDirection `json:"direction"`
-	Id             uuid.UUID        `json:"id"`
+
+	// Event What a system message (`kind: event`) records; `null` for other kinds. The body of
+	// a system message is empty: clients render the line in the reader's language.
+	// For `sender_type: system` `sender_id` is the member who acted, `null` for the
+	// system itself.
+	Event *MessageEvent `json:"event"`
+	Id    uuid.UUID     `json:"id"`
 
 	// IsPrivate Internal note; never shown to the customer.
 	IsPrivate  bool              `json:"is_private"`
@@ -547,6 +628,24 @@ type MessageKind string
 
 // MessageSenderType defines model for Message.SenderType.
 type MessageSenderType string
+
+// MessageEvent defines model for MessageEvent.
+type MessageEvent struct {
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+
+	// From State of a conversation (docs/02 §8).
+	From               ConversationStatus `json:"from"`
+	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
+
+	// To State of a conversation (docs/02 §8).
+	To ConversationStatus `json:"to"`
+
+	// Type `assigned` covers taking, transferring and releasing.
+	Type MessageEventType `json:"type"`
+}
+
+// MessageEventType `assigned` covers taking, transferring and releasing.
+type MessageEventType string
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {
@@ -613,6 +712,14 @@ type Session struct {
 	Workspace Workspace `json:"workspace"`
 }
 
+// SetTagsRequest defines model for SetTagsRequest.
+type SetTagsRequest struct {
+	TagIds []uuid.UUID `json:"tag_ids"`
+
+	// Version When set, must equal the current version, otherwise `409 version_conflict`.
+	Version *int `json:"version,omitempty"`
+}
+
 // SignedRequest defines model for SignedRequest.
 type SignedRequest struct {
 	ExpiresAt time.Time `json:"expires_at"`
@@ -626,6 +733,22 @@ type SignedRequest struct {
 // SwitchWorkspaceRequest defines model for SwitchWorkspaceRequest.
 type SwitchWorkspaceRequest struct {
 	WorkspaceId uuid.UUID `json:"workspace_id"`
+}
+
+// Tag defines model for Tag.
+type Tag struct {
+	// Color A palette key of the panel, readable in both themes.
+	Color TagColor  `json:"color"`
+	Id    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+}
+
+// TagColor A palette key of the panel, readable in both themes.
+type TagColor string
+
+// TagList defines model for TagList.
+type TagList struct {
+	Items []Tag `json:"items"`
 }
 
 // TokenRequest defines model for TokenRequest.
@@ -804,8 +927,14 @@ type CreateAttachmentUploadJSONRequestBody = CreateUploadRequest
 // PostMessageJSONRequestBody defines body for PostMessage for application/json ContentType.
 type PostMessageJSONRequestBody = PostMessageRequest
 
+// MarkConversationReadJSONRequestBody defines body for MarkConversationRead for application/json ContentType.
+type MarkConversationReadJSONRequestBody = MarkReadRequest
+
 // ChangeConversationStatusJSONRequestBody defines body for ChangeConversationStatus for application/json ContentType.
 type ChangeConversationStatusJSONRequestBody = ChangeStatusRequest
+
+// SetConversationTagsJSONRequestBody defines body for SetConversationTags for application/json ContentType.
+type SetConversationTagsJSONRequestBody = SetTagsRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
@@ -815,6 +944,9 @@ type UpdateMeJSONRequestBody = UpdateMeRequest
 
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
+// CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
+type CreateTagJSONRequestBody = CreateTagRequest
 
 // UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
 type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
@@ -887,9 +1019,15 @@ type ServerInterface interface {
 	// PostMessage Reply or leave an internal note
 	// (POST /conversations/{id}/messages)
 	PostMessage(w http.ResponseWriter, r *http.Request, id Id, params PostMessageParams)
+	// MarkConversationRead Mark the conversation read up to a message for the caller
+	// (POST /conversations/{id}/read)
+	MarkConversationRead(w http.ResponseWriter, r *http.Request, id Id)
 	// ChangeConversationStatus Move the conversation along the state machine
 	// (POST /conversations/{id}/status)
 	ChangeConversationStatus(w http.ResponseWriter, r *http.Request, id Id)
+	// SetConversationTags Replace the tags of the conversation
+	// (PUT /conversations/{id}/tags)
+	SetConversationTags(w http.ResponseWriter, r *http.Request, id Id)
 	// ListInvitations Open invitations of the current workspace
 	// (GET /invitations)
 	ListInvitations(w http.ResponseWriter, r *http.Request)
@@ -929,6 +1067,12 @@ type ServerInterface interface {
 	// ListMembers Members of the current workspace
 	// (GET /members)
 	ListMembers(w http.ResponseWriter, r *http.Request)
+	// ListTags Every tag of the workspace, by name
+	// (GET /tags)
+	ListTags(w http.ResponseWriter, r *http.Request)
+	// CreateTag Create a tag
+	// (POST /tags)
+	CreateTag(w http.ResponseWriter, r *http.Request)
 	// UpdateWorkspace Change settings of the current workspace
 	// (PATCH /workspace)
 	UpdateWorkspace(w http.ResponseWriter, r *http.Request)
@@ -1070,9 +1214,21 @@ func (_ Unimplemented) PostMessage(w http.ResponseWriter, r *http.Request, id Id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// MarkConversationRead Mark the conversation read up to a message for the caller
+// (POST /conversations/{id}/read)
+func (_ Unimplemented) MarkConversationRead(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ChangeConversationStatus Move the conversation along the state machine
 // (POST /conversations/{id}/status)
 func (_ Unimplemented) ChangeConversationStatus(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetConversationTags Replace the tags of the conversation
+// (PUT /conversations/{id}/tags)
+func (_ Unimplemented) SetConversationTags(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1151,6 +1307,18 @@ func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) 
 // ListMembers Members of the current workspace
 // (GET /members)
 func (_ Unimplemented) ListMembers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTags Every tag of the workspace, by name
+// (GET /tags)
+func (_ Unimplemented) ListTags(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTag Create a tag
+// (POST /tags)
+func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1716,6 +1884,32 @@ func (siw *ServerInterfaceWrapper) PostMessage(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// MarkConversationRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkConversationRead(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkConversationRead(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ChangeConversationStatus operation middleware
 func (siw *ServerInterfaceWrapper) ChangeConversationStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -1733,6 +1927,32 @@ func (siw *ServerInterfaceWrapper) ChangeConversationStatus(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ChangeConversationStatus(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetConversationTags operation middleware
+func (siw *ServerInterfaceWrapper) SetConversationTags(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetConversationTags(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1951,6 +2171,34 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMembers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTags operation middleware
+func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTag(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2181,10 +2429,22 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/conversations/{id}/messages", wrapper.PostMessage)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/conversations/{id}/tags", wrapper.SetConversationTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/read", wrapper.MarkConversationRead)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/conversations/{id}/attachments", wrapper.CreateAttachmentUpload)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/attachments/{id}/download-link", wrapper.GetAttachmentDownloadLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tags", wrapper.ListTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tags", wrapper.CreateTag)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/contacts", wrapper.ListContacts)

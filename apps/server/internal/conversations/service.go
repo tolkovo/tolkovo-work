@@ -38,6 +38,8 @@ var (
 	ErrIdempotencyMismatch = errors.New("conversations: idempotency key reused with a different request")
 	// ErrNotUploaded is an attachment whose file is missing in storage.
 	ErrNotUploaded = errors.New("conversations: attachment is not uploaded")
+	// ErrTagExists is a new tag whose name is taken.
+	ErrTagExists = errors.New("conversations: tag name is taken")
 )
 
 // Limits of the API (docs/00 §9.4).
@@ -112,7 +114,7 @@ func pageSize(limit int) int32 {
 
 var domainErrors = []error{
 	ErrNotFound, ErrInvalid, ErrTransition, ErrConflict, ErrNotAssignee,
-	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded,
+	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists,
 }
 
 // wrap returns domain errors as they are, turns "no rows" into ErrNotFound

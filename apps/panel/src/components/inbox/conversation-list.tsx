@@ -15,6 +15,9 @@ import {
 } from "../../lib/inbox/tabs";
 import { CollaboratorMarks } from "./presence";
 
+/** The server counts unread messages up to this (Conversation.unread_count). */
+const MAX_UNREAD = 100;
+
 type ConversationListProps = {
   tab: InboxTab;
   selectedId?: string | undefined;
@@ -124,6 +127,7 @@ function ConversationRow({ conversation: c, tab, selected }: { conversation: Con
   const preview = c.last_message;
   const customerLast = preview?.sender_type === "contact";
   const finished = c.status === "resolved" || c.status === "closed";
+  const unread = c.unread_count > 0;
   return (
     <Link
       to="/inbox/$conversationId"
@@ -142,11 +146,17 @@ function ConversationRow({ conversation: c, tab, selected }: { conversation: Con
         />
       )}
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate font-medium">{c.contact.name}</span>
+        <span className={cn("truncate", unread ? "font-semibold" : "font-medium")}>{c.contact.name}</span>
         <span className="font-mono text-[10px] text-ink-3">{t("inbox.number", { number: c.number })}</span>
       </span>
       <span className="flex items-center gap-1.5 justify-self-end">
         <CollaboratorMarks conversationId={c.id} />
+        {unread && (
+          <span className="rounded-full bg-teal px-1.5 font-mono text-[10.5px] leading-[17px] font-medium text-teal-ink tabular-nums">
+            <span aria-hidden="true">{c.unread_count >= MAX_UNREAD ? "99+" : c.unread_count}</span>
+            <span className="sr-only">{t("inbox.unread", { count: c.unread_count })}</span>
+          </span>
+        )}
         <time dateTime={c.last_message_at} className="text-xs whitespace-nowrap text-ink-3">
           {formatListTime(c.last_message_at, i18n.language)}
         </time>

@@ -25,6 +25,8 @@ func TestAllowed_Matrix(t *testing.T) {
 		ConversationsTake:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 		ConversationsAssign: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		ConversationsManage: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		ConversationsTag:    {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		TagsManage:          {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		ContactsView:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 		ContactsEdit:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 	}

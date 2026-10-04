@@ -49,8 +49,10 @@ const (
 	// ConversationsManage widens reply and status changes to conversations
 	// assigned to someone else or nobody (scope ✅ instead of 👤 in docs/04 §4.3).
 	ConversationsManage Permission = "conversations.manage"
-	ContactsView        Permission = "contacts.view" // see contacts with email and phone
-	ContactsEdit        Permission = "contacts.edit" // create and change contacts
+	ConversationsTag    Permission = "conversations.tag" // put tags on any visible conversation
+	TagsManage          Permission = "tags.manage"       // create tags
+	ContactsView        Permission = "contacts.view"     // see contacts with email and phone
+	ContactsEdit        Permission = "contacts.edit"     // create and change contacts
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
@@ -58,16 +60,19 @@ var rolePermissions = map[string][]Permission{
 	RoleOwner: {
 		MembersView, MembersManage, WorkspaceManage, WorkspaceDelete,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
-		ConversationsTake, ConversationsAssign, ConversationsManage, ContactsView, ContactsEdit,
+		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
+		ContactsView, ContactsEdit,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
-		ConversationsTake, ConversationsAssign, ConversationsManage, ContactsView, ContactsEdit,
+		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
+		ContactsView, ContactsEdit,
 	},
 	RoleOperator: {
 		MembersView,
-		ConversationsView, ConversationsReply, ConversationsNote, ConversationsTake, ContactsView, ContactsEdit,
+		ConversationsView, ConversationsReply, ConversationsNote, ConversationsTake, ConversationsTag,
+		ContactsView, ContactsEdit,
 	},
 }
 

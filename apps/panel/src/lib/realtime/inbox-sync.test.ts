@@ -27,6 +27,9 @@ const conv = (id: string, minute: number, patch: Partial<Conversation> = {}): Co
   created_at: "2026-10-04T12:00:00Z",
   updated_at: "2026-10-04T12:00:00Z",
   last_message: null,
+  tag_ids: [],
+  last_read_message_id: null,
+  unread_count: 0,
   ...patch,
 });
 
@@ -105,6 +108,22 @@ describe("createInboxSync", () => {
     sync.onEvent(event("conversation.status_changed", { conversation_id: "c1" }));
     await vi.advanceTimersByTimeAsync(50);
     expect(queryClient.getQueryData<Conversation>(queryKeys.conversation("c1"))?.subject).toBe("new");
+    sync.stop();
+  });
+
+  it("refreshes unread counters only for the reader's own read marks", async () => {
+    const { api, queryClient, sync } = setup({ "GET /conversations/c1": () => json(200, conv("c1", 5)) });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    sync.onEvent(event("conversation.read", { conversation_id: "c1", reader_type: "operator", reader_id: "u-someone" }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(0);
+
+    sync.onEvent(event("conversation.read", { conversation_id: "c1", reader_type: "operator", reader_id: ownerSession.user.id }));
+    sync.onEvent(event("conversation.tags_changed", { conversation_id: "c1" }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
+    // Neither changes what the tabs count.
+    expect(invalidate).not.toHaveBeenCalled();
     sync.stop();
   });
 

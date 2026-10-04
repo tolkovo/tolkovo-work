@@ -14,6 +14,7 @@ import {
   acceptInvitation,
   changePassword,
   createInvitation,
+  createTag,
   fetchConversation,
   fetchConversations,
   fetchInboxCounts,
@@ -23,6 +24,7 @@ import {
   fetchMySessions,
   fetchMyWorkspaces,
   fetchSession,
+  fetchTags,
   forgotPassword,
   hasPermission,
   login,
@@ -43,6 +45,7 @@ import {
   type ChangePasswordRequest,
   type ConversationFilter,
   type CreateInvitationRequest,
+  type CreateTagRequest,
   type LoginRequest,
   type RegisterRequest,
   type ResetPasswordRequest,
@@ -86,6 +89,7 @@ export const queryKeys = {
   /** Pages of one conversation feed, newest first (an infinite query). */
   conversationMessages: (id: string) => ["conversations", "messages", id] as const,
   inboxCounts: ["conversations", "counts"] as const,
+  tags: ["tags"] as const,
 };
 
 /** The current session; `null` when signed out. */
@@ -362,5 +366,20 @@ export function useMessages(id: string) {
     queryFn: ({ pageParam }) => fetchMessages(client, id, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+}
+
+/** Every tag of the workspace by name; there are at most 500, so no pages. */
+export function useTags() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.tags, queryFn: () => fetchTags(client), staleTime: 5 * 60_000 });
+}
+
+export function useCreateTag() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateTagRequest) => createTag(client, body),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
   });
 }

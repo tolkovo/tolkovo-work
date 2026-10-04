@@ -10,7 +10,10 @@ import {
   invitationSentSchema,
   memberListSchema,
   messagePageSchema,
+  messageSchema,
   sessionSchema,
+  tagListSchema,
+  tagSchema,
   workspaceListSchema,
   workspaceSchema,
 } from "./schemas";
@@ -44,7 +47,12 @@ export type ConversationPreview = Schemas["ConversationPreview"];
 export type ConversationPage = Schemas["ConversationPage"];
 export type InboxCounts = Schemas["InboxCounts"];
 export type Message = Schemas["Message"];
+export type MessageEvent = Schemas["MessageEvent"];
 export type MessagePage = Schemas["MessagePage"];
+export type Tag = Schemas["Tag"];
+export type TagColor = Schemas["TagColor"];
+export type CreateTagRequest = Schemas["CreateTagRequest"];
+export type PostMessageRequest = Schemas["PostMessageRequest"];
 
 /** Filter of GET /conversations: any of the statuses, and `me` or `none` (unassigned). */
 export type ConversationFilter = {
@@ -207,6 +215,94 @@ export async function fetchMessages(client: ApiClient, id: string, cursor?: stri
       client.GET("/conversations/{id}/messages", { params: { path: { id }, query: cursor ? { cursor } : {} } }),
     ),
   );
+}
+
+/**
+ * A reply or an internal note. The same Idempotency-Key on a retry returns the first message
+ * instead of posting twice (docs/00 §8), so keep the key until the send succeeds.
+ */
+export async function postMessage(
+  client: ApiClient,
+  id: string,
+  body: PostMessageRequest,
+  idempotencyKey: string,
+): Promise<Message> {
+  const data = await unwrap(
+    client.POST("/conversations/{id}/messages", {
+      params: { path: { id }, header: { "Idempotency-Key": idempotencyKey } },
+      body,
+    }),
+  );
+  return parseAnswer(messageSchema, data, 201);
+}
+
+/** Moves the conversation along the state machine; `version` guards against concurrent changes. */
+export async function changeConversationStatus(
+  client: ApiClient,
+  id: string,
+  status: ConversationStatus,
+  version?: number,
+): Promise<Conversation> {
+  return parseAnswer(
+    conversationSchema,
+    await unwrap(
+      client.POST("/conversations/{id}/status", {
+        params: { path: { id } },
+        body: version === undefined ? { status } : { status, version },
+      }),
+    ),
+  );
+}
+
+/** Takes, transfers or (with `null`) releases the conversation. */
+export async function assignConversation(
+  client: ApiClient,
+  id: string,
+  assigneeId: string | null,
+  version?: number,
+): Promise<Conversation> {
+  return parseAnswer(
+    conversationSchema,
+    await unwrap(
+      client.PUT("/conversations/{id}/assignee", {
+        params: { path: { id } },
+        body: version === undefined ? { assignee_id: assigneeId } : { assignee_id: assigneeId, version },
+      }),
+    ),
+  );
+}
+
+/** Replaces the tags of the conversation. */
+export async function setConversationTags(
+  client: ApiClient,
+  id: string,
+  tagIds: string[],
+  version?: number,
+): Promise<Conversation> {
+  return parseAnswer(
+    conversationSchema,
+    await unwrap(
+      client.PUT("/conversations/{id}/tags", {
+        params: { path: { id } },
+        body: version === undefined ? { tag_ids: tagIds } : { tag_ids: tagIds, version },
+      }),
+    ),
+  );
+}
+
+/** Moves the caller's read mark up to the message; never back. */
+export async function markConversationRead(client: ApiClient, id: string, upToMessageId: string): Promise<void> {
+  await unwrap(
+    client.POST("/conversations/{id}/read", { params: { path: { id } }, body: { up_to_message_id: upToMessageId } }),
+  );
+}
+
+export async function fetchTags(client: ApiClient): Promise<Tag[]> {
+  return parseAnswer(tagListSchema, await unwrap(client.GET("/tags"))).items;
+}
+
+export async function createTag(client: ApiClient, body: CreateTagRequest): Promise<Tag> {
+  return parseAnswer(tagSchema, await unwrap(client.POST("/tags", { body })), 201);
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

@@ -129,12 +129,35 @@ func TestTransition_FollowsStateMachineAndRecordsEvents(t *testing.T) {
 	}
 
 	got := f.events(f.wsA)
-	want := []string{"contact.created", "conversation.created", "conversation.status_changed", "conversation.assigned"}
+	// Every change also writes a system line to the feed (message.created).
+	want := []string{"contact.created", "conversation.created", "conversation.status_changed", "conversation.assigned", "message.created"}
 	for range steps {
-		want = append(want, "conversation.status_changed")
+		want = append(want, "conversation.status_changed", "message.created")
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("events:\n got %v\nwant %v", got, want)
+	}
+
+	feed, err := f.svc.Messages(f.ctx, f.wsA, c.ID, "", 10)
+	if err != nil || len(feed.Items) != 1+len(steps) {
+		t.Fatalf("feed: %d items, %v", len(feed.Items), err)
+	}
+	last := feed.Items[0]
+	if last.Kind != conversations.KindEvent || last.SenderType != conversations.SenderSystem || *last.SenderID != f.ownerA ||
+		last.Body != "" || last.IsPrivate || last.Event == nil {
+		t.Fatalf("system line: %+v", last)
+	}
+	if e := *last.Event; e.Type != conversations.EventStatusChanged || e.From != conversations.StatusResolved ||
+		e.To != conversations.StatusClosed || *e.AssigneeID != f.ownerA {
+		t.Fatalf("closing event: %+v", e)
+	}
+	if e := feed.Items[len(feed.Items)-1].Event; e == nil || e.Type != conversations.EventAssigned || e.From != conversations.StatusQueued ||
+		e.To != conversations.StatusAssigned || e.PreviousAssigneeID != nil || *e.AssigneeID != f.ownerA {
+		t.Fatalf("assignment event: %+v", e)
+	}
+	// System lines are not activity: the inbox order stays.
+	if c.LastMessage != nil {
+		t.Fatalf("a system line must not be the preview: %+v", c.LastMessage)
 	}
 }
 
@@ -163,7 +186,7 @@ func TestTransition_RejectsStaleVersionAndForeignConversation(t *testing.T) {
 	}
 }
 
-func TestAssign_OperatorTakesAndReleasesOnlyOwn(t *testing.T) {
+func TestAssign_OperatorTakesReleasesAndTransfersOnlyOwn(t *testing.T) {
 	f := setup(t)
 	olga := f.member(f.wsA, "olga", tenancy.RoleOperator)
 	petr := f.member(f.wsA, "petr", tenancy.RoleOperator)
@@ -181,12 +204,17 @@ func TestAssign_OperatorTakesAndReleasesOnlyOwn(t *testing.T) {
 	if _, err := f.svc.Assign(f.ctx, f.wsA, operator(petr), c.ID, nil, nil); !errors.Is(err, conversations.ErrNotAssignee) {
 		t.Fatalf("release foreign: %v", err)
 	}
-	// Nor can an operator assign to a colleague.
-	if _, err := f.svc.Assign(f.ctx, f.wsA, operator(olga), c.ID, &petr, nil); !errors.Is(err, conversations.ErrNotAssignee) {
-		t.Fatalf("operator transfer: %v", err)
+	// The assignee hands their own conversation to a colleague ("transfer (own)", docs/04 §4.3)...
+	c, err = f.svc.Assign(f.ctx, f.wsA, operator(olga), c.ID, &petr, nil)
+	if err != nil || *c.AssigneeID != petr || c.Status != conversations.StatusAssigned {
+		t.Fatalf("operator transfers own: %+v %v", c, err)
+	}
+	// ...and then it is no longer hers to move.
+	if _, err := f.svc.Assign(f.ctx, f.wsA, operator(olga), c.ID, &olga, nil); !errors.Is(err, conversations.ErrNotAssignee) {
+		t.Fatalf("take back: %v", err)
 	}
 	// Release back to the queue.
-	c, err = f.svc.Assign(f.ctx, f.wsA, operator(olga), c.ID, nil, nil)
+	c, err = f.svc.Assign(f.ctx, f.wsA, operator(petr), c.ID, nil, nil)
 	if err != nil || c.Status != conversations.StatusQueued || c.AssigneeID != nil {
 		t.Fatalf("release: %+v %v", c, err)
 	}
@@ -279,7 +307,7 @@ func TestPostMessage_ReplyNoteAndRules(t *testing.T) {
 		m.SenderType != conversations.SenderOperator || *m.SenderID != olga || m.IsPrivate || m.DeliveryStatus != nil {
 		t.Fatalf("reply: %+v", m)
 	}
-	after, _ := f.svc.Conversation(f.ctx, f.wsA, c.ID)
+	after, _ := f.svc.Conversation(f.ctx, f.wsA, f.ownerA, c.ID)
 	if after.FirstResponseAt == nil || !after.LastMessageAt.Equal(m.CreatedAt) {
 		t.Fatalf("reply must set first response and activity: %+v", after)
 	}
@@ -294,7 +322,7 @@ func TestPostMessage_ReplyNoteAndRules(t *testing.T) {
 		t.Fatalf("foreign reply: %v", err)
 	}
 	// A note does not move the conversation up the inbox.
-	if again, _ := f.svc.Conversation(f.ctx, f.wsA, c.ID); !again.LastMessageAt.Equal(after.LastMessageAt) {
+	if again, _ := f.svc.Conversation(f.ctx, f.wsA, f.ownerA, c.ID); !again.LastMessageAt.Equal(after.LastMessageAt) {
 		t.Fatal("a note must not change last_message_at")
 	}
 
@@ -337,8 +365,8 @@ func TestPostMessage_IdempotencyKey(t *testing.T) {
 		t.Fatalf("reused key: %v", err)
 	}
 	page, _ := f.svc.Messages(f.ctx, f.wsA, c.ID, "", 10)
-	if len(page.Items) != 1 {
-		t.Fatalf("want one message, got %d", len(page.Items))
+	if n := len(withoutEvents(page.Items)); n != 1 {
+		t.Fatalf("want one message, got %d", n)
 	}
 }
 
@@ -360,7 +388,7 @@ func TestMessages_PaginateNewestFirst(t *testing.T) {
 		if err != nil {
 			t.Fatalf("page: %v", err)
 		}
-		for _, m := range page.Items {
+		for _, m := range withoutEvents(page.Items) {
 			got = append(got, m.ID)
 		}
 		if page.NextCursor == "" {
@@ -446,4 +474,15 @@ func TestCreateUpload_Validates(t *testing.T) {
 	if err != nil || up.Attachment.FileName != "passwd" || up.Attachment.ContentType != "text/plain" {
 		t.Fatalf("sanitised upload: %+v %v", up.Attachment, err)
 	}
+}
+
+// withoutEvents drops system lines (the assignment of the fixture).
+func withoutEvents(msgs []conversations.Message) []conversations.Message {
+	var out []conversations.Message
+	for _, m := range msgs {
+		if m.Kind != conversations.KindEvent {
+			out = append(out, m)
+		}
+	}
+	return out
 }

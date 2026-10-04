@@ -12,6 +12,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const bumpConversation = `-- name: BumpConversation :exec
+UPDATE conversations
+SET version = version + 1, updated_at = now()
+WHERE workspace_id = $1 AND id = $2
+`
+
+type BumpConversationParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// A change that is not a state transition (tags): clients compare versions.
+func (q *Queries) BumpConversation(ctx context.Context, arg BumpConversationParams) error {
+	_, err := q.db.Exec(ctx, bumpConversation, arg.WorkspaceID, arg.ID)
+	return err
+}
+
 const countInbox = `-- name: CountInbox :one
 SELECT
     count(*) FILTER (WHERE assignee_id = $1 AND status IN ('assigned', 'pending'))::bigint AS mine,
@@ -98,9 +115,27 @@ SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_th
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
        coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
-       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at,
+       coalesce(tg.ids, '{}')::uuid[] AS tag_ids,
+       rd.last_read_message_id,
+       (SELECT count(*) FROM (
+           -- Unread for the caller: customer messages after their read mark,
+           -- counted up to 100 (the panel shows "99+").
+           SELECT 1 FROM messages um
+           WHERE um.workspace_id = c.workspace_id AND um.conversation_id = c.id
+             AND um.sender_type = 'contact' AND um.deleted_at IS NULL
+             AND (rd.last_read_message_id IS NULL OR um.id > rd.last_read_message_id)
+           LIMIT 100
+       ) u)::integer AS unread_count
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN conversation_reads rd
+    ON rd.workspace_id = c.workspace_id AND rd.conversation_id = c.id AND rd.user_id = $1
+LEFT JOIN LATERAL (
+    SELECT array_agg(t.tag_id ORDER BY t.created_at, t.tag_id) AS ids
+    FROM conversation_tags t
+    WHERE t.workspace_id = c.workspace_id AND t.conversation_id = c.id
+) tg ON true
 LEFT JOIN LATERAL (
     -- The newest message the customer could see: the inbox preview.
     SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
@@ -110,26 +145,31 @@ LEFT JOIN LATERAL (
     ORDER BY m.id DESC
     LIMIT 1
 ) lm ON true
-WHERE c.workspace_id = $1 AND c.id = $2
+WHERE c.workspace_id = $2 AND c.id = $3
 `
 
 type GetConversationParams struct {
+	UserID      uuid.UUID
 	WorkspaceID uuid.UUID
 	ID          uuid.UUID
 }
 
 type GetConversationRow struct {
-	Conversation    Conversation
-	ContactName     string
-	LastSenderType  string
-	LastKind        string
-	LastBody        string
-	LastAttachments int32
-	LastCreatedAt   time.Time
+	Conversation      Conversation
+	ContactName       string
+	LastSenderType    string
+	LastKind          string
+	LastBody          string
+	LastAttachments   int32
+	LastCreatedAt     time.Time
+	TagIds            []uuid.UUID
+	LastReadMessageID *uuid.UUID
+	UnreadCount       int32
 }
 
+// One conversation as user_id sees it: unread counters are per operator.
 func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams) (GetConversationRow, error) {
-	row := q.db.QueryRow(ctx, getConversation, arg.WorkspaceID, arg.ID)
+	row := q.db.QueryRow(ctx, getConversation, arg.UserID, arg.WorkspaceID, arg.ID)
 	var i GetConversationRow
 	err := row.Scan(
 		&i.Conversation.ID,
@@ -156,6 +196,9 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.LastBody,
 		&i.LastAttachments,
 		&i.LastCreatedAt,
+		&i.TagIds,
+		&i.LastReadMessageID,
+		&i.UnreadCount,
 	)
 	return i, err
 }
@@ -188,9 +231,27 @@ SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_th
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
        coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
-       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at,
+       coalesce(tg.ids, '{}')::uuid[] AS tag_ids,
+       rd.last_read_message_id,
+       (SELECT count(*) FROM (
+           -- Unread for the caller: customer messages after their read mark,
+           -- counted up to 100 (the panel shows "99+").
+           SELECT 1 FROM messages um
+           WHERE um.workspace_id = c.workspace_id AND um.conversation_id = c.id
+             AND um.sender_type = 'contact' AND um.deleted_at IS NULL
+             AND (rd.last_read_message_id IS NULL OR um.id > rd.last_read_message_id)
+           LIMIT 100
+       ) u)::integer AS unread_count
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN conversation_reads rd
+    ON rd.workspace_id = c.workspace_id AND rd.conversation_id = c.id AND rd.user_id = $1
+LEFT JOIN LATERAL (
+    SELECT array_agg(t.tag_id ORDER BY t.created_at, t.tag_id) AS ids
+    FROM conversation_tags t
+    WHERE t.workspace_id = c.workspace_id AND t.conversation_id = c.id
+) tg ON true
 LEFT JOIN LATERAL (
     -- The newest message the customer could see: the inbox preview.
     SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
@@ -200,18 +261,19 @@ LEFT JOIN LATERAL (
     ORDER BY m.id DESC
     LIMIT 1
 ) lm ON true
-WHERE c.workspace_id = $1
-  AND (cardinality($2::text[]) = 0 OR c.status = ANY($2::text[]))
-  AND (NOT $3::boolean
-       OR ($4::uuid IS NULL AND c.assignee_id IS NULL)
-       OR c.assignee_id = $4::uuid)
-  AND ($5::timestamptz IS NULL
-       OR (c.last_message_at, c.id) < ($5::timestamptz, $6::uuid))
+WHERE c.workspace_id = $2
+  AND (cardinality($3::text[]) = 0 OR c.status = ANY($3::text[]))
+  AND (NOT $4::boolean
+       OR ($5::uuid IS NULL AND c.assignee_id IS NULL)
+       OR c.assignee_id = $5::uuid)
+  AND ($6::timestamptz IS NULL
+       OR (c.last_message_at, c.id) < ($6::timestamptz, $7::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC
-LIMIT $7
+LIMIT $8
 `
 
 type ListConversationsParams struct {
+	UserID      uuid.UUID
 	WorkspaceID uuid.UUID
 	Statuses    []string
 	ByAssignee  bool
@@ -222,20 +284,24 @@ type ListConversationsParams struct {
 }
 
 type ListConversationsRow struct {
-	Conversation    Conversation
-	ContactName     string
-	LastSenderType  string
-	LastKind        string
-	LastBody        string
-	LastAttachments int32
-	LastCreatedAt   time.Time
+	Conversation      Conversation
+	ContactName       string
+	LastSenderType    string
+	LastKind          string
+	LastBody          string
+	LastAttachments   int32
+	LastCreatedAt     time.Time
+	TagIds            []uuid.UUID
+	LastReadMessageID *uuid.UUID
+	UnreadCount       int32
 }
 
-// Newest activity first. The cursor is (last_message_at, id) of the last
+// Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 // row of the previous page. by_assignee with a NULL assignee_id lists the
 // unassigned ones.
 func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsParams) ([]ListConversationsRow, error) {
 	rows, err := q.db.Query(ctx, listConversations,
+		arg.UserID,
 		arg.WorkspaceID,
 		arg.Statuses,
 		arg.ByAssignee,
@@ -276,6 +342,9 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.LastBody,
 			&i.LastAttachments,
 			&i.LastCreatedAt,
+			&i.TagIds,
+			&i.LastReadMessageID,
+			&i.UnreadCount,
 		); err != nil {
 			return nil, err
 		}

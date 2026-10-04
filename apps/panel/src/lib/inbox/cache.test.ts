@@ -1,9 +1,18 @@
-import type { Conversation, ConversationPage } from "@tolkovo/api-client";
+import type { Conversation, ConversationPage, MessagePage } from "@tolkovo/api-client";
 import { queryKeys } from "@tolkovo/api-client/react";
 import { QueryClient, type InfiniteData } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
-import { applyConversation, dropConversation, matchesFilter, queriesShowingContact, upsertIntoPages } from "./cache";
+import { msg } from "../../test/inbox-fixtures";
+import {
+  addToFeed,
+  applyConversation,
+  dropConversation,
+  matchesFilter,
+  patchConversation,
+  queriesShowingContact,
+  upsertIntoPages,
+} from "./cache";
 import { tabFilter } from "./tabs";
 
 function conv(id: string, minute: number, patch: Partial<Conversation> = {}): Conversation {
@@ -25,6 +34,9 @@ function conv(id: string, minute: number, patch: Partial<Conversation> = {}): Co
     created_at: "2026-10-04T12:00:00Z",
     updated_at: "2026-10-04T12:00:00Z",
     last_message: null,
+    tag_ids: [],
+    last_read_message_id: null,
+    unread_count: 0,
     ...patch,
   };
 }
@@ -99,5 +111,34 @@ describe("applyConversation", () => {
     expect(queriesShowingContact(qc, "k-a")).toEqual([queue]);
     expect(queriesShowingContact(qc, "k-b")).toEqual([queryKeys.conversation("b")]);
     expect(queriesShowingContact(qc, "k-none")).toEqual([]);
+  });
+});
+
+describe("patchConversation", () => {
+  it("changes the conversation in place in every list and the detail query", () => {
+    const queryClient = new QueryClient();
+    const all = queryKeys.conversationList(tabFilter("all"));
+    queryClient.setQueryData(all, pages([[conv("a", 9), conv("b", 8, { unread_count: 3 })], null]));
+    queryClient.setQueryData(queryKeys.conversation("b"), conv("b", 8, { unread_count: 3 }));
+    patchConversation(queryClient, "b", (c) => ({ ...c, unread_count: 0 }));
+    const list = queryClient.getQueryData<Pages>(all);
+    expect(ids(list)).toEqual([["a", "b"]]);
+    expect(list?.pages[0]?.items[1]?.unread_count).toBe(0);
+    expect(queryClient.getQueryData<Conversation>(queryKeys.conversation("b"))?.unread_count).toBe(0);
+  });
+});
+
+describe("addToFeed", () => {
+  it("puts a sent message on top of the newest page once", () => {
+    const queryClient = new QueryClient();
+    const key = queryKeys.conversationMessages("c1");
+    queryClient.setQueryData<InfiniteData<MessagePage, string | undefined>>(key, {
+      pages: [{ items: [msg("m1", {})], next_cursor: null }],
+      pageParams: [undefined],
+    });
+    addToFeed(queryClient, msg("m2", {}));
+    addToFeed(queryClient, msg("m2", {}));
+    const feed = queryClient.getQueryData<InfiniteData<MessagePage, string | undefined>>(key);
+    expect(feed?.pages[0]?.items.map((m) => m.id)).toEqual(["m2", "m1"]);
   });
 });

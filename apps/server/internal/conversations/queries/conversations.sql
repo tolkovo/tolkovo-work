@@ -11,14 +11,33 @@ VALUES (@id, @workspace_id, @number, @contact_id, @status, @priority, sqlc.narg(
 RETURNING *;
 
 -- name: GetConversation :one
+-- One conversation as user_id sees it: unread counters are per operator.
 SELECT sqlc.embed(c), ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
        coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
-       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at,
+       coalesce(tg.ids, '{}')::uuid[] AS tag_ids,
+       rd.last_read_message_id,
+       (SELECT count(*) FROM (
+           -- Unread for the caller: customer messages after their read mark,
+           -- counted up to 100 (the panel shows "99+").
+           SELECT 1 FROM messages um
+           WHERE um.workspace_id = c.workspace_id AND um.conversation_id = c.id
+             AND um.sender_type = 'contact' AND um.deleted_at IS NULL
+             AND (rd.last_read_message_id IS NULL OR um.id > rd.last_read_message_id)
+           LIMIT 100
+       ) u)::integer AS unread_count
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN conversation_reads rd
+    ON rd.workspace_id = c.workspace_id AND rd.conversation_id = c.id AND rd.user_id = @user_id
+LEFT JOIN LATERAL (
+    SELECT array_agg(t.tag_id ORDER BY t.created_at, t.tag_id) AS ids
+    FROM conversation_tags t
+    WHERE t.workspace_id = c.workspace_id AND t.conversation_id = c.id
+) tg ON true
 LEFT JOIN LATERAL (
     -- The newest message the customer could see: the inbox preview.
     SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
@@ -37,7 +56,7 @@ WHERE workspace_id = @workspace_id AND id = @id
 FOR UPDATE;
 
 -- name: ListConversations :many
--- Newest activity first. The cursor is (last_message_at, id) of the last
+-- Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the
 -- unassigned ones.
 SELECT sqlc.embed(c), ct.name AS contact_name,
@@ -45,9 +64,27 @@ SELECT sqlc.embed(c), ct.name AS contact_name,
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
        coalesce(lm.body, '')::text AS last_body, coalesce(lm.attachments_count, 0)::integer AS last_attachments,
-       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at
+       coalesce(lm.created_at, c.created_at)::timestamptz AS last_created_at,
+       coalesce(tg.ids, '{}')::uuid[] AS tag_ids,
+       rd.last_read_message_id,
+       (SELECT count(*) FROM (
+           -- Unread for the caller: customer messages after their read mark,
+           -- counted up to 100 (the panel shows "99+").
+           SELECT 1 FROM messages um
+           WHERE um.workspace_id = c.workspace_id AND um.conversation_id = c.id
+             AND um.sender_type = 'contact' AND um.deleted_at IS NULL
+             AND (rd.last_read_message_id IS NULL OR um.id > rd.last_read_message_id)
+           LIMIT 100
+       ) u)::integer AS unread_count
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+LEFT JOIN conversation_reads rd
+    ON rd.workspace_id = c.workspace_id AND rd.conversation_id = c.id AND rd.user_id = @user_id
+LEFT JOIN LATERAL (
+    SELECT array_agg(t.tag_id ORDER BY t.created_at, t.tag_id) AS ids
+    FROM conversation_tags t
+    WHERE t.workspace_id = c.workspace_id AND t.conversation_id = c.id
+) tg ON true
 LEFT JOIN LATERAL (
     -- The newest message the customer could see: the inbox preview.
     SELECT m.sender_type, m.kind, left(m.body, 200) AS body, m.attachments_count, m.created_at
@@ -107,3 +144,9 @@ SELECT EXISTS (
     SELECT 1 FROM memberships m
     WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active
 );
+
+-- name: BumpConversation :exec
+-- A change that is not a state transition (tags): clients compare versions.
+UPDATE conversations
+SET version = version + 1, updated_at = now()
+WHERE workspace_id = @workspace_id AND id = @id;

@@ -1,20 +1,24 @@
-import { isApiError, type Conversation, type Message } from "@tolkovo/api-client";
+import { isApiError, type Conversation, type Message, type MessageEvent } from "@tolkovo/api-client";
 import { useConversation, useMessages, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { ChevronLeft, Paperclip } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useConversationChange, useMarkRead } from "../../lib/inbox/actions";
 import type { InboxTab } from "../../lib/inbox/tabs";
 import { useViewingSignal } from "../../lib/realtime/signals";
+import { Composer } from "./composer";
+import { ActionErrorLine, ConversationActions } from "./conversation-actions";
 import { PresenceLine, useMemberNames } from "./presence";
+import { ConversationTags } from "./tags";
 
 type ConversationViewProps = { conversationId: string; tab: InboxTab };
 
 /**
- * The open conversation (docs/07 §4): header, feed and who else is here. Colleagues see that
- * this operator has it open while the view is mounted. Replying and notes come with I-02.
+ * The open conversation (docs/07 §4): header with actions, tags, the feed with who else is
+ * here, and the composer. Colleagues see that this operator has it open while it is mounted.
  */
 export function ConversationView({ conversationId, tab }: ConversationViewProps) {
   const { t } = useTranslation();
@@ -43,10 +47,22 @@ export function ConversationView({ conversationId, tab }: ConversationViewProps)
       </div>
     );
   }
+  return <Loaded conversation={conversation.data} tab={tab} />;
+}
+
+function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: InboxTab }) {
+  const change = useConversationChange(c.id);
+  // Bumped by the composer's "show it": the feed scrolls to the newest message.
+  const [latestRequest, setLatestRequest] = useState(0);
   return (
     <section aria-labelledby="conversation-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <Header conversation={conversation.data} tab={tab} />
-      <Feed conversation={conversation.data} />
+      <Header conversation={c} tab={tab}>
+        <ConversationActions conversation={c} change={change} />
+      </Header>
+      {change.isError && <ActionErrorLine error={change.error} onDismiss={() => change.reset()} />}
+      <ConversationTags conversation={c} change={change} />
+      <Feed conversation={c} latestRequest={latestRequest} />
+      <Composer conversation={c} onShowLatest={() => setLatestRequest((n) => n + 1)} />
     </section>
   );
 }
@@ -65,7 +81,7 @@ function BackLink({ tab }: { tab: InboxTab }) {
   );
 }
 
-function Header({ conversation: c, tab }: { conversation: Conversation; tab: InboxTab }) {
+function Header({ conversation: c, tab, children }: { conversation: Conversation; tab: InboxTab; children: ReactNode }) {
   const { t } = useTranslation();
   const { data: session } = useSession();
   const names = useMemberNames();
@@ -90,6 +106,7 @@ function Header({ conversation: c, tab }: { conversation: Conversation; tab: Inb
           {c.subject && <span className="truncate">{c.subject}</span>}
         </p>
       </div>
+      {children}
     </header>
   );
 }
@@ -98,27 +115,51 @@ function Header({ conversation: c, tab }: { conversation: Conversation; tab: Inb
 // The presence line sits at the end of the feed, as typing does in the prototype (docs/07 §4).
 const STICK_TO_BOTTOM_PX = 80;
 
-function Feed({ conversation }: { conversation: Conversation }) {
+function Feed({ conversation, latestRequest }: { conversation: Conversation; latestRequest: number }) {
   const { t, i18n } = useTranslation();
   const messages = useMessages(conversation.id);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
+  const markRead = useMarkRead(conversation);
+  // Unread when the conversation was opened: "new messages" stays where it was while the
+  // operator reads (reading moves the mark) and never appears for what came in before their eyes.
+  const [opened] = useState(() => ({ mark: conversation.last_read_message_id, unread: conversation.unread_count }));
   // Pages and their items are newest first; the feed reads top to bottom.
   const items = messages.data ? messages.data.pages.flatMap((p) => p.items).reverse() : [];
-  const newest = items.at(-1)?.id;
+  const newest = messages.data?.pages[0]?.items[0]?.id;
+  const firstNew =
+    opened.unread > 0
+      ? items.find((m) => m.sender_type === "contact" && (opened.mark === null || m.id > opened.mark))?.id
+      : undefined;
+
+  // Seen means: the tab is visible and the operator is at the latest message.
+  const markIfSeen = useCallback(() => {
+    if (newest && atBottom.current && document.visibilityState === "visible") markRead(newest);
+  }, [newest, markRead]);
 
   // A new message keeps the feed at the bottom only if the operator was reading the latest.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && atBottom.current) el.scrollTop = el.scrollHeight;
-  }, [newest]);
-  useEffect(() => {
+    markIfSeen();
+  }, [newest, markIfSeen]);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || latestRequest === 0) return;
+    el.scrollTop = el.scrollHeight;
     atBottom.current = true;
-  }, [conversation.id]);
+    markIfSeen();
+  }, [latestRequest, markIfSeen]);
+  useEffect(() => {
+    document.addEventListener("visibilitychange", markIfSeen);
+    return () => document.removeEventListener("visibilitychange", markIfSeen);
+  }, [markIfSeen]);
 
   const onScroll = () => {
     const el = scroller.current;
-    if (el) atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_TO_BOTTOM_PX;
+    if (!el) return;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_TO_BOTTOM_PX;
+    markIfSeen();
   };
 
   const day = new Intl.DateTimeFormat(i18n.language, { dateStyle: "long" });
@@ -153,6 +194,7 @@ function Feed({ conversation }: { conversation: Conversation }) {
       )}
       {items.map((m, i) => [
         days[i] !== days[i - 1] ? <SystemLine key={`day-${days[i]}`} text={days[i] ?? ""} /> : null,
+        m.id === firstNew && m.id !== items[0]?.id ? <NewMessagesLine key="new" /> : null,
         <MessageItem key={m.id} message={m} contactName={conversation.contact.name} />,
       ])}
       <PresenceLine conversationId={conversation.id} />
@@ -160,10 +202,24 @@ function Feed({ conversation }: { conversation: Conversation }) {
   );
 }
 
-function SystemLine({ text }: { text: string }) {
+/** Where the unread part began when the operator opened the conversation (docs/07 §4). */
+function NewMessagesLine() {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="separator"
+      aria-label={t("inbox.feed.new")}
+      className="flex w-full items-center gap-2 self-center text-xs font-medium text-lamp-ink before:h-px before:flex-1 before:bg-lamp after:h-px after:flex-1 after:bg-lamp"
+    >
+      {t("inbox.feed.new")}
+    </div>
+  );
+}
+
+function SystemLine({ text }: { text: ReactNode }) {
   return (
     <div className="flex w-full items-center gap-2 self-center text-xs text-ink-3 before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
-      {text}
+      <span className="max-w-[80%] text-center">{text}</span>
     </div>
   );
 }
@@ -174,7 +230,18 @@ function MessageItem({ message: m, contactName }: { message: Message; contactNam
   const time = new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" }).format(
     new Date(m.created_at),
   );
-  if (m.kind === "event" || m.sender_type === "system") return <SystemLine text={`${m.body} · ${time}`} />;
+  if (m.kind === "event" || m.sender_type === "system") {
+    const text = m.event ? <EventText event={m.event} actorId={m.sender_id} /> : m.body;
+    return (
+      <SystemLine
+        text={
+          <>
+            {text} · <time dateTime={m.created_at}>{time}</time>
+          </>
+        }
+      />
+    );
+  }
 
   const operatorName = m.sender_id ? (names.get(m.sender_id) ?? t("inbox.sender.operator")) : t("inbox.sender.operator");
   const by =
@@ -217,4 +284,30 @@ function MessageItem({ message: m, contactName }: { message: Message; contactNam
       </div>
     </article>
   );
+}
+
+/**
+ * A system line in the reader's language, from ids (MessageEvent in api/openapi.yaml). The
+ * wording avoids gendered verbs: «Взят в работу: Анна», not «Анна взяла».
+ */
+function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string | null }) {
+  const { t } = useTranslation();
+  const names = useMemberNames();
+  const name = (id: string | null) => (id ? (names.get(id) ?? t("inbox.colleague")) : t("inbox.sender.system"));
+  const by = actorId ? ` · ${name(actorId)}` : "";
+  if (e.type === "assigned") {
+    if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
+    if (e.previous_assignee_id === null) {
+      return e.assignee_id === actorId ? (
+        <>{t("inbox.event.taken", { name: name(e.assignee_id) })}</>
+      ) : (
+        <>{t("inbox.event.assigned", { name: name(e.assignee_id) }) + by}</>
+      );
+    }
+    const transfer = t("inbox.event.transferred", { from: name(e.previous_assignee_id), to: name(e.assignee_id) });
+    return <>{transfer + (actorId === e.previous_assignee_id ? "" : by)}</>;
+  }
+  if (e.to === "assigned" && e.from === "resolved") return <>{t("inbox.event.reopened") + by}</>;
+  if (e.to === "assigned" && e.from === "pending") return <>{t("inbox.event.resumed") + by}</>;
+  return <>{t(`inbox.event.status.${e.to}`) + by}</>;
 }

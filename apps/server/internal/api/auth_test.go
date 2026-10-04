@@ -20,8 +20,8 @@ func TestRegister_CreatesOwnerAndSignsIn(t *testing.T) {
 	}
 	if !slices.Equal(s.Permissions, []string{
 		"contacts.edit", "contacts.view", "conversations.assign", "conversations.create", "conversations.manage",
-		"conversations.note", "conversations.reply", "conversations.take", "conversations.view",
-		"members.manage", "members.view", "workspace.delete", "workspace.manage",
+		"conversations.note", "conversations.reply", "conversations.tag", "conversations.take", "conversations.view",
+		"members.manage", "members.view", "tags.manage", "workspace.delete", "workspace.manage",
 	}) {
 		t.Fatalf("owner permissions: %v", s.Permissions)
 	}

@@ -44,6 +44,7 @@ type Message struct {
 	IsPrivate      bool // internal note, never shown to the customer
 	DeliveryStatus *string
 	Attachments    []Attachment
+	Event          *Event // what a system message records; nil for other kinds
 	CreatedAt      time.Time
 	EditedAt       *time.Time
 	DeletedAt      *time.Time
@@ -302,7 +303,8 @@ func messageFrom(m store.Message, atts []store.Attachment) Message {
 	out := Message{
 		ID: m.ID, ConversationID: m.ConversationID, Direction: m.Direction, SenderType: m.SenderType,
 		SenderID: m.SenderID, Kind: m.Kind, Body: m.Body, IsPrivate: m.IsPrivate,
-		DeliveryStatus: m.DeliveryStatus, CreatedAt: m.CreatedAt, EditedAt: m.EditedAt, DeletedAt: m.DeletedAt,
+		DeliveryStatus: m.DeliveryStatus, Event: eventFrom(m.Kind, m.Meta),
+		CreatedAt: m.CreatedAt, EditedAt: m.EditedAt, DeletedAt: m.DeletedAt,
 	}
 	for _, a := range atts {
 		out.Attachments = append(out.Attachments, attachmentFrom(a))

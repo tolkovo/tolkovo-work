@@ -53,6 +53,10 @@
   --note: #fff6da;
   --note-line: #e9cf7e;
 
+  /* tag dots: tags are labels people choose, the other tag colors reuse the tokens above */
+  --tag-blue: #2f6fd0;
+  --tag-green: #3d8a2f;
+
   --shadow-color: 205deg 35% 12%;
   --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.14), 0 2px 6px hsl(var(--shadow-color) / 0.08);
 
@@ -92,6 +96,8 @@
     --danger-ink: #2a0d08;
     --note: #2e2710;
     --note-line: #6b5a22;
+    --tag-blue: #7aa7f0;
+    --tag-green: #7cc96b;
     --shadow-color: 0deg 0% 0%;
     --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.5), 0 2px 6px hsl(var(--shadow-color) / 0.4);
     color-scheme: dark;
@@ -125,6 +131,8 @@
   --danger-ink: #2a0d08;
   --note: #2e2710;
   --note-line: #6b5a22;
+  --tag-blue: #7aa7f0;
+  --tag-green: #7cc96b;
   --shadow-color: 0deg 0% 0%;
   --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.5), 0 2px 6px hsl(var(--shadow-color) / 0.4);
   color-scheme: dark;

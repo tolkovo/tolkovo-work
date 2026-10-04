@@ -361,13 +361,88 @@
       "older": "Show earlier",
       "empty": "No messages in this conversation yet",
       "error": "Could not load messages",
-      "notFound": "The conversation does not exist or is not available"
+      "notFound": "The conversation does not exist or is not available",
+      "new": "New messages"
     },
     "sender": {
       "bot": "AI assistant",
       "system": "System",
       "operator": "Operator",
       "note": "Note · the customer does not see it"
+    },
+    "unread": "{count, plural, one {# unread} other {# unread}}",
+    "composer": {
+      "mode": "Write as",
+      "reply": "Reply",
+      "note": "Note",
+      "noteHint": "The customer will not see it",
+      "replyLabel": "Reply to the customer",
+      "noteLabel": "Internal note",
+      "replyPlaceholder": "Write a reply…",
+      "notePlaceholder": "A note for colleagues — the customer will not see it",
+      "keys": "Enter to send, Shift+Enter for a new line, Ctrl+Alt+N for a note",
+      "counter": "{count} / {max}",
+      "send": "Send",
+      "saveNote": "Save note",
+      "sending": "Sending…",
+      "moreSend": "More ways to send",
+      "sendAndClose": "Send and close",
+      "collision": "A new message came in while you were typing.",
+      "showLatest": "Show it",
+      "sendAnyway": "Send anyway",
+      "takeFirst": "This conversation is in the queue. Take it to reply.",
+      "someoneElse": "{name} handles this conversation. You can reply after a transfer and leave a note now.",
+      "noReply": "You cannot reply in this conversation.",
+      "closed": "The conversation is closed for good; replies are not possible.",
+      "writeNote": "Write a note",
+      "error": "The message was not sent. Your text is kept — try again.",
+      "errorOffline": "No connection to the server. Your text is kept — send it when the connection is back.",
+      "errorNotAssignee": "This conversation is no longer yours: its assignee replies. Your text is kept.",
+      "sentNotClosed": "The message was sent, but the conversation was not closed."
+    },
+    "actions": {
+      "take": "Take",
+      "transfer": "Transfer",
+      "close": "Close",
+      "reopen": "Reopen",
+      "more": "More actions",
+      "wait": "Wait for customer",
+      "resume": "Back to work",
+      "release": "Return to queue",
+      "dismiss": "Dismiss",
+      "conflict": "Someone changed the conversation first. It is up to date now — try again.",
+      "notAssignee": "This conversation is no longer yours.",
+      "invalid": "This action is not available now: the conversation status changed.",
+      "error": "That did not work. Check the connection and try again."
+    },
+    "tags": {
+      "label": "Tags",
+      "add": "Tag",
+      "pick": "Conversation tags",
+      "search": "Find a tag",
+      "none": "No tags found",
+      "remove": "Remove tag “{name}”",
+      "create": "Create tag “{name}”",
+      "exists": "This tag already exists.",
+      "createError": "The tag was not created. Try again.",
+      "full": "A conversation can have at most {max} tags."
+    },
+    "event": {
+      "taken": "Taken by {name}",
+      "assigned": "Assigned to {name}",
+      "transferred": "Transferred: {from} → {to}",
+      "released": "Returned to the queue",
+      "reopened": "Reopened",
+      "resumed": "Back in work",
+      "status": {
+        "new": "New",
+        "bot": "Handed to the AI",
+        "queued": "Returned to the queue",
+        "assigned": "In work",
+        "pending": "Waiting for the customer",
+        "resolved": "Resolved",
+        "closed": "Closed for good"
+      }
     }
   }
 }

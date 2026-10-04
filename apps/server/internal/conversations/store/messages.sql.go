@@ -64,6 +64,56 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 	return i, err
 }
 
+const createEventMessage = `-- name: CreateEventMessage :one
+INSERT INTO messages (id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, meta, created_at)
+VALUES ($1, $2, $3, 'out', 'system', $4, 'event', $5, $6)
+RETURNING id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, body, body_format, attachments_count, is_private, external_id, delivery_status, idempotency_key, meta, created_at, edited_at, deleted_at
+`
+
+type CreateEventMessageParams struct {
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	SenderID       *uuid.UUID
+	Meta           []byte
+	CreatedAt      time.Time
+}
+
+// A system line of the feed (status change, assignment). The panel renders
+// it from meta in the reader's language; body stays empty.
+func (q *Queries) CreateEventMessage(ctx context.Context, arg CreateEventMessageParams) (Message, error) {
+	row := q.db.QueryRow(ctx, createEventMessage,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.SenderID,
+		arg.Meta,
+		arg.CreatedAt,
+	)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.Direction,
+		&i.SenderType,
+		&i.SenderID,
+		&i.Kind,
+		&i.Body,
+		&i.BodyFormat,
+		&i.AttachmentsCount,
+		&i.IsPrivate,
+		&i.ExternalID,
+		&i.DeliveryStatus,
+		&i.IdempotencyKey,
+		&i.Meta,
+		&i.CreatedAt,
+		&i.EditedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (
     id, workspace_id, conversation_id, direction, sender_type, sender_id, kind,
@@ -295,6 +345,38 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 	return items, nil
 }
 
+const markRead = `-- name: MarkRead :execrows
+INSERT INTO conversation_reads (workspace_id, conversation_id, user_id, last_read_message_id, read_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (workspace_id, conversation_id, user_id) DO UPDATE
+SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = EXCLUDED.read_at
+WHERE conversation_reads.last_read_message_id < EXCLUDED.last_read_message_id
+`
+
+type MarkReadParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	UserID         uuid.UUID
+	MessageID      uuid.UUID
+	ReadAt         time.Time
+}
+
+// Moves the caller's read mark forward only: a late request from another
+// tab must not mark newer messages unread again.
+func (q *Queries) MarkRead(ctx context.Context, arg MarkReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRead,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.UserID,
+		arg.MessageID,
+		arg.ReadAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const messageAttachments = `-- name: MessageAttachments :many
 SELECT id, workspace_id, conversation_id, message_id, storage_key, file_name, mime, size, sha256, width, height, duration_ms, status, uploaded_by, created_at, updated_at FROM attachments
 WHERE workspace_id = $1 AND message_id = ANY($2::uuid[])
@@ -342,6 +424,26 @@ func (q *Queries) MessageAttachments(ctx context.Context, arg MessageAttachments
 		return nil, err
 	}
 	return items, nil
+}
+
+const messageExists = `-- name: MessageExists :one
+SELECT EXISTS (
+    SELECT 1 FROM messages
+    WHERE workspace_id = $1 AND conversation_id = $2 AND id = $3
+)
+`
+
+type MessageExistsParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	ID             uuid.UUID
+}
+
+func (q *Queries) MessageExists(ctx context.Context, arg MessageExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, messageExists, arg.WorkspaceID, arg.ConversationID, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const pendingAttachments = `-- name: PendingAttachments :many

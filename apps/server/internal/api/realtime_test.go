@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/google/uuid"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime/schematest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
@@ -136,22 +138,34 @@ func TestRealtime_DeliversDomainEventsOfOwnWorkspaceWithinContract(t *testing.T)
 	if rec := owner.do(http.MethodPut, base+"/assignee", map[string]any{"assignee_id": so.User.Id}); rec.Code != http.StatusOK {
 		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
 	}
-	if rec := owner.do(http.MethodPost, base+"/messages", map[string]any{"body": "hello"}); rec.Code != http.StatusCreated {
+	rec := owner.do(http.MethodPost, base+"/messages", map[string]any{"body": "hello"})
+	if rec.Code != http.StatusCreated {
 		t.Fatalf("reply: %d %s", rec.Code, rec.Body)
 	}
+	reply := decode[oapi.Message](t, rec)
+	tag := decode[oapi.Tag](t, owner.do(http.MethodPost, "/api/v1/tags", map[string]any{"name": "vip"}))
+	if rec := owner.do(http.MethodPut, base+"/tags", map[string]any{"tag_ids": []uuid.UUID{tag.Id}}); rec.Code != http.StatusOK {
+		t.Fatalf("tags: %d %s", rec.Code, rec.Body)
+	}
+	if rec := owner.do(http.MethodPost, base+"/read", map[string]any{"up_to_message_id": reply.Id}); rec.Code != http.StatusNoContent {
+		t.Fatalf("read: %d %s", rec.Code, rec.Body)
+	}
 
-	want := map[string]bool{
-		"contact.created": true, "conversation.created": true, "conversation.status_changed": true,
-		"conversation.assigned": true, "message.created": true,
+	// message.created twice: the system line of the assignment and the reply.
+	want := map[string]int{
+		"contact.created": 1, "conversation.created": 1, "conversation.status_changed": 1,
+		"conversation.assigned": 1, "message.created": 2, "conversation.tags_changed": 1, "conversation.read": 1,
 	}
 	var lastSeq float64
 	for len(want) > 0 {
 		m := ow.mustNext()
 		typ, _ := m["type"].(string)
-		if !want[typ] {
+		if want[typ] == 0 {
 			t.Fatalf("unexpected or repeated %s", typ)
 		}
-		delete(want, typ)
+		if want[typ]--; want[typ] == 0 {
+			delete(want, typ)
+		}
 		if seq := m["seq"].(float64); seq <= lastSeq {
 			t.Fatalf("seq must grow: %v after %v", seq, lastSeq)
 		} else {

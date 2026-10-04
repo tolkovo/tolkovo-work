@@ -30,6 +30,8 @@ export const EVENT_TYPES = [
   "conversation.created",
   "conversation.status_changed",
   "conversation.assigned",
+  "conversation.tags_changed",
+  "conversation.read",
   "message.created",
   "contact.created",
   "contact.updated",

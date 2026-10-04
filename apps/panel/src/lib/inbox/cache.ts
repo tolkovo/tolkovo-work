@@ -1,4 +1,4 @@
-import type { Conversation, ConversationFilter, ConversationPage } from "@tolkovo/api-client";
+import type { Conversation, ConversationFilter, ConversationPage, Message, MessagePage } from "@tolkovo/api-client";
 import { queryKeys } from "@tolkovo/api-client/react";
 import type { InfiniteData, QueryClient, QueryKey } from "@tanstack/react-query";
 
@@ -66,6 +66,37 @@ export function applyConversation(queryClient: QueryClient, c: Conversation, meI
       return matchesFilter(filter, c, meId) ? upsertIntoPages(data, c) : removeFromPages(data, c.id);
     });
   }
+}
+
+/**
+ * Changes fields of a cached conversation in place, without moving it: for fields that do not
+ * affect order or filters (the caller's read mark). Version stays, so a fresh copy still wins.
+ */
+export function patchConversation(
+  queryClient: QueryClient,
+  id: string,
+  patch: (c: Conversation) => Conversation,
+): void {
+  queryClient.setQueryData<Conversation>(queryKeys.conversation(id), (c) => (c ? patch(c) : c));
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: queryKeys.conversations })) {
+    if (!listFilter(query.queryKey) || query.state.data === undefined) continue;
+    queryClient.setQueryData<Pages>(query.queryKey, (data) => {
+      if (!data?.pages.some((p) => p.items.some((c) => c.id === id))) return data;
+      return { ...data, pages: data.pages.map((p) => ({ ...p, items: p.items.map((c) => (c.id === id ? patch(c) : c)) })) };
+    });
+  }
+}
+
+type Feed = InfiniteData<MessagePage, string | undefined>;
+
+/** Shows a message just sent at the top of the feed (newest first) unless it is there already. */
+export function addToFeed(queryClient: QueryClient, m: Message): void {
+  queryClient.setQueryData<Feed>(queryKeys.conversationMessages(m.conversation_id), (data) => {
+    if (!data || data.pages.some((p) => p.items.some((other) => other.id === m.id))) return data;
+    const [first, ...rest] = data.pages;
+    if (!first) return data;
+    return { ...data, pages: [{ ...first, items: [m, ...first.items] }, ...rest] };
+  });
 }
 
 /** The conversation is gone for this user (deleted, or no longer visible). */

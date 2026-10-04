@@ -22,7 +22,7 @@ func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, param
 		s.writeError(w, r, err)
 		return
 	}
-	f := conversations.ListFilter{Cursor: deref(params.Cursor)}
+	f := conversations.ListFilter{ViewerID: p.UserID, Cursor: deref(params.Cursor)}
 	if f.Limit, err = pageLimit(params.Limit); err != nil {
 		s.writeError(w, r, err)
 		return
@@ -95,7 +95,7 @@ func (s *server) GetConversation(w http.ResponseWriter, r *http.Request, id oapi
 	if !ok {
 		return
 	}
-	c, err := s.conversations.Conversation(r.Context(), p.WorkspaceID, id)
+	c, err := s.conversations.Conversation(r.Context(), p.WorkspaceID, p.UserID, id)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -141,6 +141,78 @@ func (s *server) AssignConversation(w http.ResponseWriter, r *http.Request, id o
 		return
 	}
 	writeJSON(w, http.StatusOK, conversationBody(c))
+}
+
+func (s *server) SetConversationTags(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsTag)
+	if !ok {
+		return
+	}
+	var req oapi.SetTagsRequest
+	if err := decodeRequired(w, r, &req, "tag_ids"); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	c, err := s.conversations.SetTags(r.Context(), p.WorkspaceID, p.UserID, id, req.TagIds, req.Version)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, conversationBody(c))
+}
+
+func (s *server) MarkConversationRead(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	if !ok {
+		return
+	}
+	var req oapi.MarkReadRequest
+	if err := decodeRequired(w, r, &req, "up_to_message_id"); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.conversations.MarkRead(r.Context(), p.WorkspaceID, p.UserID, id, req.UpToMessageId); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) ListTags(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	if !ok {
+		return
+	}
+	tags, err := s.conversations.Tags(r.Context(), p.WorkspaceID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	body := oapi.TagList{Items: make([]oapi.Tag, 0, len(tags))}
+	for _, t := range tags {
+		body.Items = append(body.Items, tagBody(t))
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.TagsManage)
+	if !ok {
+		return
+	}
+	var req oapi.CreateTagRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	t, err := s.conversations.CreateTag(r.Context(), p.WorkspaceID, p.UserID, conversations.TagInput{
+		Name: req.Name, Color: string(deref(req.Color)),
+	})
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, tagBody(t))
 }
 
 func (s *server) ListMessages(w http.ResponseWriter, r *http.Request, id oapi.Id, params oapi.ListMessagesParams) {
@@ -403,8 +475,21 @@ func conversationBody(c conversations.Conversation) oapi.Conversation {
 		Contact: oapi.ContactRef{Id: c.ContactID, Name: c.ContactName}, AssigneeId: c.AssigneeID, ChannelId: c.ChannelID,
 		Subject: c.Subject, FirstResponseAt: c.FirstResponseAt, LastMessageAt: c.LastMessageAt,
 		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, Version: c.Version, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
-		LastMessage: previewBody(c.LastMessage),
+		LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs),
+		LastReadMessageId: c.LastReadMessageID, UnreadCount: c.UnreadCount,
 	}
+}
+
+func tagBody(t conversations.Tag) oapi.Tag {
+	return oapi.Tag{Id: t.ID, Name: t.Name, Color: oapi.TagColor(t.Color)}
+}
+
+// nonNil keeps an empty list an array in JSON, not null.
+func nonNil[T any](v []T) []T {
+	if v == nil {
+		return []T{}
+	}
+	return v
 }
 
 func previewBody(p *conversations.Preview) *oapi.ConversationPreview {
@@ -425,7 +510,18 @@ func messageBody(m conversations.Message) oapi.Message {
 	return oapi.Message{
 		Id: m.ID, ConversationId: m.ConversationID, Direction: oapi.MessageDirection(m.Direction),
 		SenderType: oapi.MessageSenderType(m.SenderType), SenderId: m.SenderID, Kind: oapi.MessageKind(m.Kind),
-		Body: m.Body, IsPrivate: m.IsPrivate, DeliveryStatus: m.DeliveryStatus, Attachments: atts, CreatedAt: m.CreatedAt,
+		Body: m.Body, IsPrivate: m.IsPrivate, DeliveryStatus: m.DeliveryStatus, Attachments: atts,
+		Event: eventBody(m.Event), CreatedAt: m.CreatedAt,
+	}
+}
+
+func eventBody(e *conversations.Event) *oapi.MessageEvent {
+	if e == nil {
+		return nil
+	}
+	return &oapi.MessageEvent{
+		Type: oapi.MessageEventType(e.Type), From: oapi.ConversationStatus(e.From), To: oapi.ConversationStatus(e.To),
+		AssigneeId: e.AssigneeID, PreviousAssigneeId: e.PreviousAssigneeID,
 	}
 }
 

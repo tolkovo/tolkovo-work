@@ -227,7 +227,7 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 	me := decode[oapi.Session](t, clients["operator"].do(http.MethodGet, "/api/v1/me", nil))
 	if me.Role != oapi.RoleOperator || !slices.Equal(me.Permissions, []string{
 		"contacts.edit", "contacts.view", "conversations.note", "conversations.reply",
-		"conversations.take", "conversations.view", "members.view",
+		"conversations.tag", "conversations.take", "conversations.view", "members.view",
 	}) {
 		t.Fatalf("operator /me: %+v", me)
 	}

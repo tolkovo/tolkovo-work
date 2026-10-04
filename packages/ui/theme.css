@@ -54,6 +54,8 @@
   --color-danger-ink: var(--danger-ink);
   --color-note: var(--note);
   --color-note-line: var(--note-line);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-green: var(--tag-green);
 
   /* shadcn/ui aliases */
   --color-background: var(--paper);

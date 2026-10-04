@@ -148,6 +148,9 @@ export const conversationSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   last_message: conversationPreviewSchema.nullable(),
+  tag_ids: z.array(z.string()),
+  last_read_message_id: z.string().nullable(),
+  unread_count: z.number(),
 }) satisfies z.ZodType<Schemas["Conversation"]>;
 
 export const conversationPageSchema = z.object({
@@ -169,6 +172,14 @@ export const attachmentSchema = z.object({
   status: z.enum(["uploading", "scanning", "ready", "rejected", "expired"]),
 }) satisfies z.ZodType<Schemas["Attachment"]>;
 
+export const messageEventSchema = z.object({
+  type: z.enum(["status_changed", "assigned"]),
+  from: conversationStatusSchema,
+  to: conversationStatusSchema,
+  assignee_id: z.string().nullable(),
+  previous_assignee_id: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["MessageEvent"]>;
+
 export const messageSchema = z.object({
   id: z.string(),
   conversation_id: z.string(),
@@ -180,6 +191,7 @@ export const messageSchema = z.object({
   is_private: z.boolean(),
   delivery_status: z.string().nullable(),
   attachments: z.array(attachmentSchema),
+  event: messageEventSchema.nullable(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["Message"]>;
 
@@ -187,3 +199,15 @@ export const messagePageSchema = z.object({
   items: z.array(messageSchema),
   next_cursor: z.string().nullable(),
 }) satisfies z.ZodType<Schemas["MessagePage"]>;
+
+export const tagColorSchema = z.enum(["gray", "teal", "amber", "red", "violet", "blue", "green"]) satisfies z.ZodType<
+  Schemas["TagColor"]
+>;
+
+export const tagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: tagColorSchema,
+}) satisfies z.ZodType<Schemas["Tag"]>;
+
+export const tagListSchema = z.object({ items: z.array(tagSchema) }) satisfies z.ZodType<Schemas["TagList"]>;

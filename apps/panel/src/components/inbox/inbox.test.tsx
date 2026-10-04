@@ -1,55 +1,13 @@
-import type { Conversation, Message } from "@tolkovo/api-client";
 import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { applySignal, resetSignals } from "../../lib/realtime/signals";
 import { fakeApi, json, operatorSession, problem, type FakeRoutes } from "../../test/fake-api";
+import { conv, msg } from "../../test/inbox-fixtures";
 import { renderApp } from "../../test/render-app";
 
 const me = operatorSession.user.id;
-
-const conv = (id: string, patch: Partial<Conversation> = {}): Conversation => ({
-  id,
-  number: 7,
-  status: "assigned",
-  priority: 0,
-  line_level: 1,
-  contact: { id: `k-${id}`, name: "Марина Ковалёва" },
-  assignee_id: me,
-  channel_id: null,
-  subject: "Двойное списание",
-  first_response_at: null,
-  last_message_at: new Date().toISOString(),
-  resolved_at: null,
-  closed_at: null,
-  version: 1,
-  created_at: "2026-10-04T12:00:00Z",
-  updated_at: "2026-10-04T12:00:00Z",
-  last_message: {
-    sender_type: "contact",
-    kind: "text",
-    text: "Тут есть кто-нибудь?",
-    attachments: 0,
-    created_at: "2026-10-04T12:05:00Z",
-  },
-  ...patch,
-});
-
-const msg = (id: string, patch: Partial<Message>): Message => ({
-  id,
-  conversation_id: "c1",
-  direction: "in",
-  sender_type: "contact",
-  sender_id: "k-c1",
-  kind: "text",
-  body: "",
-  is_private: false,
-  delivery_status: null,
-  attachments: [],
-  created_at: "2026-10-04T12:01:00Z",
-  ...patch,
-});
 
 function inboxApi(extra: FakeRoutes = {}) {
   const queued = conv("c2", {

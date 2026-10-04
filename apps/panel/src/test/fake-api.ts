@@ -73,6 +73,7 @@ export function fakeApi(
     "GET /invitations": () => json(200, { items: [], email_enabled: true }),
     "GET /conversations": () => json(200, { items: [], next_cursor: null }),
     "GET /conversations/counts": () => json(200, { mine: 0, unassigned: 0, open: 0 }),
+    "GET /tags": () => json(200, { items: [] }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {
       if (!session) return problem(401, "unauthenticated");

@@ -607,8 +607,8 @@ export interface paths {
         /**
          * Assign, transfer or release the conversation
          * @description `conversations.take` allows taking an unassigned conversation for yourself and
-         *     releasing your own (`assignee_id: null`); `conversations.assign` (owner, admin)
-         *     allows any assignment. The assignee must be an active member of the workspace.
+         *     releasing (`assignee_id: null`) or transferring your own; `conversations.assign`
+         *     (owner, admin) allows any assignment. The assignee must be an active member of the workspace.
          *     `queued` and `resolved` become `assigned`; `assigned` and `pending` keep their
          *     status (transfer); releasing makes an `assigned` conversation `queued`.
          */
@@ -645,6 +645,53 @@ export interface paths {
          *     `409 conversation_closed`.
          */
         post: operations["postMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the tags of the conversation
+         * @description Requires `conversations.tag`; works in any visible conversation, closed ones too.
+         *     At most 20 tags; every id must be a tag of the workspace (`GET /tags`).
+         */
+        put: operations["setConversationTags"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark the conversation read up to a message for the caller
+         * @description Requires `conversations.view`. Read marks are per member and only move forward:
+         *     an older message than the current mark changes nothing. A move sends
+         *     `conversation.read` over the realtime connection.
+         */
+        post: operations["markConversationRead"];
         delete?: never;
         options?: never;
         head?: never;
@@ -694,6 +741,31 @@ export interface paths {
         get: operations["getAttachmentDownloadLink"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every tag of the workspace, by name
+         * @description Requires `conversations.view`. At most 500, so there are no pages.
+         */
+        get: operations["listTags"];
+        put?: never;
+        /**
+         * Create a tag
+         * @description Requires `tags.manage` (owner, admin). Names are unique in the workspace without
+         *     regard to case; a taken name answers `409 tag_exists`.
+         */
+        post: operations["createTag"];
         delete?: never;
         options?: never;
         head?: never;
@@ -978,6 +1050,12 @@ export interface components {
              *     system events are skipped. `null` until there is one.
              */
             last_message: components["schemas"]["ConversationPreview"] | null;
+            /** @description Tags in the order they were added; names and colors are in `GET /tags`. */
+            tag_ids: string[];
+            /** @description The caller's read mark; `null` when they have not read the conversation. */
+            last_read_message_id: string | null;
+            /** @description Customer messages after the caller's read mark, counted up to 100. */
+            unread_count: number;
         };
         ConversationPreview: {
             /** @enum {string} */
@@ -1052,8 +1130,53 @@ export interface components {
              */
             delivery_status: string | null;
             attachments: components["schemas"]["Attachment"][];
+            /**
+             * @description What a system message (`kind: event`) records; `null` for other kinds. The body of
+             *     a system message is empty: clients render the line in the reader's language.
+             *     For `sender_type: system` `sender_id` is the member who acted, `null` for the
+             *     system itself.
+             */
+            event: components["schemas"]["MessageEvent"] | null;
             /** Format: date-time */
             created_at: string;
+        };
+        MessageEvent: {
+            /**
+             * @description `assigned` covers taking, transferring and releasing.
+             * @enum {string}
+             */
+            type: "status_changed" | "assigned";
+            from: components["schemas"]["ConversationStatus"];
+            to: components["schemas"]["ConversationStatus"];
+            assignee_id: string | null;
+            previous_assignee_id: string | null;
+        };
+        Tag: {
+            id: string;
+            name: string;
+            color: components["schemas"]["TagColor"];
+        };
+        /**
+         * @description A palette key of the panel, readable in both themes.
+         * @enum {string}
+         */
+        TagColor: "gray" | "teal" | "amber" | "red" | "violet" | "blue" | "green";
+        TagList: {
+            items: components["schemas"]["Tag"][];
+        };
+        CreateTagRequest: {
+            /** @description Spaces are collapsed; must contain more than spaces. */
+            name: string;
+            color?: components["schemas"]["TagColor"];
+        };
+        SetTagsRequest: {
+            tag_ids: string[];
+            /** @description When set, must equal the current version, otherwise `409 version_conflict`. */
+            version?: number;
+        };
+        MarkReadRequest: {
+            /** @description The newest message the caller has seen; a message of this conversation. */
+            up_to_message_id: string;
         };
         MessagePage: {
             items: components["schemas"]["Message"][];
@@ -2236,6 +2359,65 @@ export interface operations {
             };
         };
     };
+    setConversationTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation with its new tags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    markConversationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Marked, or the mark was already further. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     createAttachmentUpload: {
         parameters: {
             query?: never;
@@ -2290,6 +2472,64 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `tag_exists`: a tag with this name exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listContacts: {

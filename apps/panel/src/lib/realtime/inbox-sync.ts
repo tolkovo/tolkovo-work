@@ -77,7 +77,13 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS }: I
   return {
     onEvent(event: RealtimeEvent) {
       const conversationId = str(event.data.conversation_id);
-      if (event.type.startsWith("conversation.") && conversationId) {
+      if (event.type === "conversation.read") {
+        // Read marks are per member: only the reader's own tabs refresh their unread counter.
+        if (!conversationId || str(event.data.reader_id) !== meId()) return;
+        conversations.add(conversationId);
+      } else if (event.type === "conversation.tags_changed" && conversationId) {
+        conversations.add(conversationId);
+      } else if (event.type.startsWith("conversation.") && conversationId) {
         conversations.add(conversationId);
         counts = true;
       } else if (event.type === "message.created" && conversationId) {

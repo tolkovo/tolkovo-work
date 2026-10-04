@@ -86,3 +86,12 @@ type Message struct {
 	EditedAt         *time.Time
 	DeletedAt        *time.Time
 }
+
+type Tag struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Name        string
+	Color       string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}

@@ -55,3 +55,25 @@ WHERE workspace_id = @workspace_id
 SELECT * FROM attachments
 WHERE workspace_id = @workspace_id AND message_id = ANY(@message_ids::uuid[])
 ORDER BY created_at, id;
+
+-- name: CreateEventMessage :one
+-- A system line of the feed (status change, assignment). The panel renders
+-- it from meta in the reader's language; body stays empty.
+INSERT INTO messages (id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, meta, created_at)
+VALUES (@id, @workspace_id, @conversation_id, 'out', 'system', sqlc.narg(sender_id), 'event', @meta, @created_at)
+RETURNING *;
+
+-- name: MessageExists :one
+SELECT EXISTS (
+    SELECT 1 FROM messages
+    WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id AND id = @id
+);
+
+-- name: MarkRead :execrows
+-- Moves the caller's read mark forward only: a late request from another
+-- tab must not mark newer messages unread again.
+INSERT INTO conversation_reads (workspace_id, conversation_id, user_id, last_read_message_id, read_at)
+VALUES (@workspace_id, @conversation_id, @user_id, @message_id, @read_at)
+ON CONFLICT (workspace_id, conversation_id, user_id) DO UPDATE
+SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = EXCLUDED.read_at
+WHERE conversation_reads.last_read_message_id < EXCLUDED.last_read_message_id;

@@ -2,6 +2,7 @@ import type { ApiClient, Session } from "@tolkovo/api-client";
 import { queryKeys } from "@tolkovo/api-client/react";
 import { hashKey, type QueryClient } from "@tanstack/react-query";
 
+import { resetDrafts } from "../inbox/drafts";
 import { RealtimeConnection, type ConnectionOptions } from "./connection";
 import { createInboxSync } from "./inbox-sync";
 import { applySignal, resetSignals, signalSender, type SignalSender } from "./signals";
@@ -34,6 +35,7 @@ export function bindRealtime(
     current.sync.stop();
     sender.attach(null);
     resetSignals();
+    resetDrafts();
     current = null;
   };
 

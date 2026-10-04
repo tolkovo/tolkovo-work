@@ -37,7 +37,16 @@ type Conversation struct {
 	// LastMessage is the newest message the customer could see (no notes,
 	// no system events): the inbox preview. Nil until there is one.
 	LastMessage *Preview
+	TagIDs      []uuid.UUID // in the order they were added
+	// LastReadMessageID and UnreadCount are the viewer's: read marks are per
+	// operator. UnreadCount counts customer messages after the mark, up to
+	// MaxUnreadCount.
+	LastReadMessageID *uuid.UUID
+	UnreadCount       int
 }
+
+// MaxUnreadCount caps the unread counter of a conversation.
+const MaxUnreadCount = 100
 
 // Preview is a shortened message for the inbox list.
 type Preview struct {
@@ -65,7 +74,8 @@ type CreateConversationInput struct {
 
 // ListFilter selects conversations for the inbox.
 type ListFilter struct {
-	Statuses []Status // any of them; empty means all
+	ViewerID uuid.UUID // whose unread counters to return
+	Statuses []Status  // any of them; empty means all
 	// ByAssignee restricts the list to AssigneeID, or to unassigned
 	// conversations when AssigneeID is nil.
 	ByAssignee bool
@@ -114,7 +124,7 @@ func (s *Service) CreateConversation(ctx context.Context, workspaceID uuid.UUID,
 		if err != nil {
 			return err
 		}
-		out, err = getConversation(ctx, q, workspaceID, id)
+		out, err = getConversation(ctx, q, workspaceID, uuid.Nil, id)
 		return err
 	})
 	if err != nil {
@@ -123,12 +133,12 @@ func (s *Service) CreateConversation(ctx context.Context, workspaceID uuid.UUID,
 	return out, nil
 }
 
-// Conversation returns a conversation of the workspace.
-func (s *Service) Conversation(ctx context.Context, workspaceID, id uuid.UUID) (Conversation, error) {
+// Conversation returns a conversation of the workspace as viewerID sees it.
+func (s *Service) Conversation(ctx context.Context, workspaceID, viewerID, id uuid.UUID) (Conversation, error) {
 	var out Conversation
 	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
 		var err error
-		out, err = getConversation(ctx, q, workspaceID, id)
+		out, err = getConversation(ctx, q, workspaceID, viewerID, id)
 		return err
 	})
 	if err != nil {
@@ -154,7 +164,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 	var rows []store.ListConversationsRow
 	err = s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
 		rows, err = q.ListConversations(ctx, store.ListConversationsParams{
-			WorkspaceID: workspaceID, Statuses: statuses,
+			UserID: f.ViewerID, WorkspaceID: workspaceID, Statuses: statuses,
 			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID,
 			BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
 		})
@@ -167,6 +177,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		func(r store.ListConversationsRow) Conversation {
 			c := conversationFrom(r.Conversation, r.ContactName)
 			c.LastMessage = previewFrom(r.LastSenderType, r.LastKind, r.LastBody, r.LastAttachments, r.LastCreatedAt)
+			c.TagIDs, c.LastReadMessageID, c.UnreadCount = r.TagIds, r.LastReadMessageID, int(r.UnreadCount)
 			return c
 		},
 		func(r store.ListConversationsRow) string {
@@ -194,7 +205,7 @@ func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID
 func (s *Service) Transition(
 	ctx context.Context, workspaceID uuid.UUID, actor Actor, id uuid.UUID, to Status, version *int,
 ) (Conversation, error) {
-	return s.change(ctx, workspaceID, id, version, func(_ *store.Queries, cur state) (state, error) {
+	return s.change(ctx, workspaceID, actor.UserID, id, version, func(_ *store.Queries, cur state) (state, error) {
 		if !actor.AnyConversation && !isAssignee(cur, actor.UserID) {
 			return state{}, ErrNotAssignee
 		}
@@ -204,15 +215,16 @@ func (s *Service) Transition(
 
 // Assign gives the conversation to assignee, or releases it to the queue
 // when assignee is nil. Without AssignOthers the actor may only take an
-// unassigned conversation for themselves or release their own.
+// unassigned conversation for themselves and release or transfer their own.
 func (s *Service) Assign(
 	ctx context.Context, workspaceID uuid.UUID, actor Actor, id uuid.UUID, assignee *uuid.UUID, version *int,
 ) (Conversation, error) {
-	return s.change(ctx, workspaceID, id, version, func(q *store.Queries, cur state) (state, error) {
+	return s.change(ctx, workspaceID, actor.UserID, id, version, func(q *store.Queries, cur state) (state, error) {
 		if !actor.AssignOthers {
-			takesForSelf := assignee != nil && *assignee == actor.UserID && (cur.AssigneeID == nil || isAssignee(cur, actor.UserID))
-			releasesOwn := assignee == nil && isAssignee(cur, actor.UserID)
-			if !takesForSelf && !releasesOwn {
+			takesForSelf := assignee != nil && *assignee == actor.UserID && cur.AssigneeID == nil
+			// Releasing or transferring one's own conversation ("transfer (own)" in docs/04 §4.3).
+			ownsIt := isAssignee(cur, actor.UserID)
+			if !takesForSelf && !ownsIt {
 				return state{}, ErrNotAssignee
 			}
 		}
@@ -230,9 +242,10 @@ func (s *Service) Assign(
 }
 
 // change runs one locked read-modify-write of a conversation's state and
-// records the matching events.
+// records the matching events and the system line of the feed. The result
+// is the conversation as actorID sees it.
 func (s *Service) change(
-	ctx context.Context, workspaceID, id uuid.UUID, version *int,
+	ctx context.Context, workspaceID, actorID, id uuid.UUID, version *int,
 	decide func(q *store.Queries, cur state) (state, error),
 ) (Conversation, error) {
 	var out Conversation
@@ -250,7 +263,7 @@ func (s *Service) change(
 			return err
 		}
 		if next.Status == cur.Status && sameID(next.AssigneeID, cur.AssigneeID) {
-			out, err = getConversation(ctx, q, workspaceID, id) // nothing to change
+			out, err = getConversation(ctx, q, workspaceID, actorID, id) // nothing to change
 			return err
 		}
 		n, err := q.UpdateConversationState(ctx, store.UpdateConversationStateParams{
@@ -266,7 +279,10 @@ func (s *Service) change(
 		if err := addStateEvents(ctx, tx, workspaceID, id, cur, next); err != nil {
 			return err
 		}
-		out, err = getConversation(ctx, q, workspaceID, id)
+		if err := addEventMessage(ctx, q, tx, row, actorID, cur, next, s.now()); err != nil {
+			return err
+		}
+		out, err = getConversation(ctx, q, workspaceID, actorID, id)
 		return err
 	})
 	if err != nil {
@@ -294,13 +310,16 @@ func addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, id uuid.UUID, c
 	return nil
 }
 
-func getConversation(ctx context.Context, q *store.Queries, workspaceID, id uuid.UUID) (Conversation, error) {
-	row, err := q.GetConversation(ctx, store.GetConversationParams{WorkspaceID: workspaceID, ID: id})
+// getConversation reads a conversation with viewerID's read mark; uuid.Nil
+// has none, so everything from the customer counts as unread.
+func getConversation(ctx context.Context, q *store.Queries, workspaceID, viewerID, id uuid.UUID) (Conversation, error) {
+	row, err := q.GetConversation(ctx, store.GetConversationParams{UserID: viewerID, WorkspaceID: workspaceID, ID: id})
 	if err != nil {
 		return Conversation{}, err
 	}
 	c := conversationFrom(row.Conversation, row.ContactName)
 	c.LastMessage = previewFrom(row.LastSenderType, row.LastKind, row.LastBody, row.LastAttachments, row.LastCreatedAt)
+	c.TagIDs, c.LastReadMessageID, c.UnreadCount = row.TagIds, row.LastReadMessageID, int(row.UnreadCount)
 	return c, nil
 }
 

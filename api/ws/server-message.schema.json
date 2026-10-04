@@ -13,6 +13,8 @@
     { "$ref": "#/$defs/conversationCreated" },
     { "$ref": "#/$defs/conversationStatusChanged" },
     { "$ref": "#/$defs/conversationAssigned" },
+    { "$ref": "#/$defs/conversationTagsChanged" },
+    { "$ref": "#/$defs/conversationRead" },
     { "$ref": "#/$defs/messageCreated" },
     { "$ref": "#/$defs/contactCreated" },
     { "$ref": "#/$defs/contactUpdated" }
@@ -30,6 +32,8 @@
         "conversation.created",
         "conversation.status_changed",
         "conversation.assigned",
+        "conversation.tags_changed",
+        "conversation.read",
         "message.created",
         "contact.created",
         "contact.updated"
@@ -209,6 +213,37 @@
             "conversation_id": { "$ref": "#/$defs/uuid" },
             "assignee_id": { "$ref": "#/$defs/nullableUuid" },
             "previous_assignee_id": { "$ref": "#/$defs/nullableUuid" }
+          }
+        }
+      }
+    },
+    "conversationTagsChanged": {
+      "description": "The tags of a conversation changed; clients fetch it over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.tags_changed" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "conversationRead": {
+      "description": "A read mark moved forward. Read marks are per member: only the reader's own clients act on it (their unread counters), others ignore it.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.read" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "reader_type", "reader_id", "up_to_message_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "reader_type": { "enum": ["operator"] },
+            "reader_id": { "$ref": "#/$defs/uuid" },
+            "up_to_message_id": { "$ref": "#/$defs/uuid" }
           }
         }
       }
