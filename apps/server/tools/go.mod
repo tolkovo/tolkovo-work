@@ -1,6 +1,6 @@
 module github.com/tolkovo/tolkovo/apps/server/tools
 
-go 1.26.4
+go 1.26.6
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
