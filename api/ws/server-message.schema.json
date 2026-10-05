@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tolkovo.dev/schemas/ws/server-message.schema.json",
   "title": "Tolkovo realtime: server → client message",
-  "description": "One JSON text frame from the realtime gateway (GET /api/v1/realtime, docs/02 §10, ADR-0005). Every message is {type, id, ts, data}. Domain events also carry seq, the publication order a client resumes from after a reconnect; seq may have gaps and events may arrive more than once, so clients deduplicate by id. Signals (conversation.typing, conversation.viewers) are ephemeral: no seq, never replayed, not deduplicated. A new field in data is not a breaking change; removing or renaming one is (docs/00 §8).",
+  "description": "One JSON text frame from the realtime gateway (GET /api/v1/realtime). Every message is {type, id, ts, data}. Domain events also carry seq, the publication order a client resumes from after a reconnect; seq may have gaps and events may arrive more than once, so clients deduplicate by id. Signals (conversation.typing, conversation.viewers) are ephemeral: no seq, never replayed, not deduplicated. A new field in data is not a breaking change; removing or renaming one is.",
   "oneOf": [
     { "$ref": "#/$defs/hello" },
     { "$ref": "#/$defs/heartbeat" },
@@ -241,7 +241,7 @@
       }
     },
     "conversationIssuesChanged": {
-      "description": "A GitHub issue of a conversation was created, linked, failed or removed (ADR-0012); clients fetch the issues and the conversation over REST.",
+      "description": "A GitHub issue of a conversation was created, linked, failed or removed; clients fetch the issues and the conversation over REST.",
       "allOf": [{ "$ref": "#/$defs/event" }],
       "properties": {
         "type": { "const": "conversation.issues_changed" },

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tolkovo.dev/schemas/ws/widget-message.schema.json",
   "title": "Tolkovo realtime: server → widget message",
-  "description": "One JSON text frame from the widget's realtime connection (GET /api/v1/widget/realtime, docs/02 §10.1, W-01). The widget opens it with the subprotocols [\"tolkovo.widget.v1\", <session token>] and sends nothing over it: messages, receipts and session changes go over REST. Every message is {type, id, ts, data}; there is no seq and no replay: after hello, resync_required or a reconnect the widget refetches its chat over REST (GET /widget/messages with its cursor). data holds ids only, never texts. A new field in data is not a breaking change; removing or renaming one is (docs/00 §8).",
+  "description": "One JSON text frame from the widget's realtime connection (GET /api/v1/widget/realtime). The widget opens it with the subprotocols [\"tolkovo.widget.v1\", <session token>] and sends nothing over it: messages, receipts and session changes go over REST. Every message is {type, id, ts, data}; there is no seq and no replay: after hello, resync_required or a reconnect the widget refetches its chat over REST (GET /widget/messages with its cursor). data holds ids only, never texts. A new field in data is not a breaking change; removing or renaming one is.",
   "oneOf": [
     { "$ref": "#/$defs/hello" },
     { "$ref": "#/$defs/heartbeat" },

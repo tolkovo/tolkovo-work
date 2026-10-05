@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tolkovo.dev/schemas/ws/client-message.schema.json",
   "title": "Tolkovo realtime: client → server message",
-  "description": "One JSON text frame from a panel client, at most 1024 bytes. Mutations go over REST (docs/02 §10.2); the socket resumes the event stream and carries ephemeral signals: typing and who has a conversation open. resume is accepted once per connection, right after hello. At most 20 messages in a burst, then 2 per second. Anything else closes the connection with 1008.",
+  "description": "One JSON text frame from a panel client, at most 1024 bytes. Mutations go over REST; the socket resumes the event stream and carries ephemeral signals: typing and who has a conversation open. resume is accepted once per connection, right after hello. At most 20 messages in a burst, then 2 per second. Anything else closes the connection with 1008.",
   "oneOf": [{ "$ref": "#/$defs/resume" }, { "$ref": "#/$defs/typing" }, { "$ref": "#/$defs/viewing" }],
   "$defs": {
     "resume": {

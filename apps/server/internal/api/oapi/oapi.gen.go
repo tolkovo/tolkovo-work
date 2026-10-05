@@ -767,7 +767,7 @@ type ChangePasswordRequest struct {
 
 // ChangeStatusRequest defines model for ChangeStatusRequest.
 type ChangeStatusRequest struct {
-	// Status State of a conversation (docs/02 §8).
+	// Status State of a conversation.
 	Status ConversationStatus `json:"status"`
 
 	// Version When set, must equal the current version, otherwise `409 version_conflict`.
@@ -795,7 +795,7 @@ type Channel struct {
 	// blocked the account). The admin disconnects the channel and connects it again.
 	Status ChannelStatus `json:"status"`
 
-	// Type `app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).
+	// Type `app` — reports from a company app; `widget` — a chat on a site or in an app.
 	Type ChannelType `json:"type"`
 }
 
@@ -842,7 +842,7 @@ type ChannelList struct {
 // blocked the account). The admin disconnects the channel and connects it again.
 type ChannelStatus string
 
-// ChannelType `app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).
+// ChannelType `app` — reports from a company app; `widget` — a chat on a site or in an app.
 type ChannelType string
 
 // CompleteGitHubAppRequest defines model for CompleteGitHubAppRequest.
@@ -924,7 +924,7 @@ type ContactRef struct {
 type Conversation struct {
 	AssigneeId *uuid.UUID `json:"assignee_id"`
 
-	// AwaitingFix An open GitHub issue is linked to the conversation (ADR-0012): it waits for the fix
+	// AwaitingFix An open GitHub issue is linked to the conversation: it waits for the fix
 	// and does not resolve itself by inactivity. The inbox marks it.
 	AwaitingFix bool `json:"awaiting_fix"`
 
@@ -950,7 +950,7 @@ type Conversation struct {
 	Priority   int        `json:"priority"`
 	ResolvedAt *time.Time `json:"resolved_at"`
 
-	// Status State of a conversation (docs/02 §8).
+	// Status State of a conversation.
 	Status  ConversationStatus `json:"status"`
 	Subject *string            `json:"subject"`
 
@@ -971,7 +971,7 @@ type ConversationIssues struct {
 
 	// ReplyDraft The reply about the fix the operator may send, once an issue of the conversation was
 	// closed as completed; `null` otherwise and after an operator replied to the customer
-	// since. Tolkovo never sends it itself (ADR-0012).
+	// since. Tolkovo never sends it itself.
 	ReplyDraft *IssueReplyDraft `json:"reply_draft"`
 
 	// Repository Where new issues go; `null` when GitHub is not connected or has no repository.
@@ -1004,7 +1004,7 @@ type ConversationPreviewKind string
 // ConversationPreviewSenderType defines model for ConversationPreview.SenderType.
 type ConversationPreviewSenderType string
 
-// ConversationStatus State of a conversation (docs/02 §8).
+// ConversationStatus State of a conversation.
 type ConversationStatus string
 
 // CreateConversationRequest defines model for CreateConversationRequest.
@@ -1060,7 +1060,7 @@ type CreateUploadRequest struct {
 	Size   int64   `json:"size"`
 }
 
-// DeviceSession One signed-in browser of the user (docs/02 §13.1). The `id` is a public random
+// DeviceSession One signed-in browser of the user. The `id` is a public random
 // identifier, not the session token.
 type DeviceSession struct {
 	// CreatedAt When the session started.
@@ -1362,7 +1362,7 @@ type Invitation struct {
 	// InvitedByName Empty when the inviter's account is gone.
 	InvitedByName string `json:"invited_by_name"`
 
-	// Role System role in phase 1 (docs/04 §4.2).
+	// Role System role in phase 1.
 	Role Role `json:"role"`
 }
 
@@ -1380,7 +1380,7 @@ type InvitationPreview struct {
 	Email         string    `json:"email"`
 	ExpiresAt     time.Time `json:"expires_at"`
 
-	// Role System role in phase 1 (docs/04 §4.2).
+	// Role System role in phase 1.
 	Role          Role   `json:"role"`
 	WorkspaceName string `json:"workspace_name"`
 }
@@ -1480,7 +1480,7 @@ type Member struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 
-	// Role System role in phase 1 (docs/04 §4.2).
+	// Role System role in phase 1.
 	Role   Role      `json:"role"`
 	UserId uuid.UUID `json:"user_id"`
 }
@@ -1525,7 +1525,7 @@ type Message struct {
 	IsPrivate bool        `json:"is_private"`
 	Kind      MessageKind `json:"kind"`
 
-	// Report Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+	// Report Set on a customer message that is a problem report from a company app;
 	// absent otherwise. What the app said about itself and how its files were checked.
 	Report     *MessageReport    `json:"report,omitempty"`
 	SenderId   *uuid.UUID        `json:"sender_id"`
@@ -1566,12 +1566,12 @@ type MessageUnsupported string
 type MessageEvent struct {
 	AssigneeId *uuid.UUID `json:"assignee_id"`
 
-	// From State of a conversation (docs/02 §8).
+	// From State of a conversation.
 	From               ConversationStatus `json:"from"`
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
 
-	// To State of a conversation (docs/02 §8).
+	// To State of a conversation.
 	To ConversationStatus `json:"to"`
 
 	// Type `assigned` covers taking, transferring and releasing. `issue_created` and
@@ -1615,7 +1615,7 @@ type MessagePage struct {
 	NextCursor *string   `json:"next_cursor"`
 }
 
-// MessageReport Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+// MessageReport Set on a customer message that is a problem report from a company app;
 // absent otherwise. What the app said about itself and how its files were checked.
 type MessageReport struct {
 	App IngestApp `json:"app"`
@@ -1707,7 +1707,7 @@ type ResetPasswordRequest struct {
 	Token    string `json:"token"`
 }
 
-// Role System role in phase 1 (docs/04 §4.2).
+// Role System role in phase 1.
 type Role string
 
 // Session defines model for Session.
@@ -1715,10 +1715,10 @@ type Session struct {
 	// CsrfToken Send it as `X-CSRF-Token` on unsafe requests.
 	CsrfToken string `json:"csrf_token"`
 
-	// Permissions Permissions of the role in this workspace, sorted (docs/04 §4.1).
+	// Permissions Permissions of the role in this workspace, sorted.
 	Permissions []string `json:"permissions"`
 
-	// Role System role in phase 1 (docs/04 §4.2).
+	// Role System role in phase 1.
 	Role      Role      `json:"role"`
 	User      User      `json:"user"`
 	Workspace Workspace `json:"workspace"`
@@ -1820,7 +1820,7 @@ type UpdateGitHubIntegrationRequest struct {
 
 // UpdateMeRequest defines model for UpdateMeRequest.
 type UpdateMeRequest struct {
-	// Locale Interface language of the panel (docs/04 §8.2).
+	// Locale Interface language of the panel.
 	Locale *Locale `json:"locale,omitempty"`
 
 	// Name Trimmed; 1–120 characters after trimming.
@@ -1960,7 +1960,7 @@ type WorkspaceSummary struct {
 	Id   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 
-	// Role System role in phase 1 (docs/04 §4.2).
+	// Role System role in phase 1.
 	Role Role   `json:"role"`
 	Slug string `json:"slug"`
 }
@@ -2106,14 +2106,14 @@ type ListMessagesParams struct {
 
 // PostMessageParams defines parameters for PostMessage.
 type PostMessageParams struct {
-	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// IdempotencyKey Makes a retry return the first result instead of acting twice. A
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // CreateIngestReportParams defines parameters for CreateIngestReport.
 type CreateIngestReportParams struct {
-	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// IdempotencyKey Makes a retry return the first result instead of acting twice. A
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
@@ -2126,7 +2126,7 @@ type CompleteIngestReportParams struct {
 
 // PostIngestReportMessageParams defines parameters for PostIngestReportMessage.
 type PostIngestReportMessageParams struct {
-	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// IdempotencyKey Makes a retry return the first result instead of acting twice. A
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 
@@ -2151,7 +2151,7 @@ type ListWidgetMessagesParams struct {
 
 // SendWidgetMessageParams defines parameters for SendWidgetMessage.
 type SendWidgetMessageParams struct {
-	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// IdempotencyKey Makes a retry return the first result instead of acting twice. A
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }

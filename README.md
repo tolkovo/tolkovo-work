@@ -14,6 +14,7 @@ apps/landing    landing page (Astro)
 api/            OpenAPI and WebSocket schemas: the source of truth
 deploy/compose  local development dependencies (Docker)
 deploy/production  production compose example; guide in deploy/README.md
+guides/         integration guides: app reports, GitHub Issues
 ```
 
 ## Develop
@@ -35,6 +36,12 @@ TOLKOVO_TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres?sslmode=di
 Without the variable integration tests are skipped locally and fail in CI.
 
 Configuration: `TOLKOVO_*` environment variables, all listed in [deploy/compose/.env.example](deploy/compose/.env.example).
+
+## Integrate
+
+- [Problem reports from your app](guides/app-reports.md): the REST API with curl, Node.js, Electron and C# examples.
+- [Live chat widget](apps/widget/README.md): `@tolkovo/widget` for sites and Electron apps.
+- [GitHub Issues](guides/github-issues.md): issues from conversations and replies when they are fixed.
 
 ## Deploy
 

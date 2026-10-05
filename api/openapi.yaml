@@ -3,7 +3,7 @@ info:
   title: Tolkovo API
   version: 0.1.0
   description: |
-    The single source of truth for the Tolkovo REST API (docs/00 §8, docs/02 §12).
+    The single source of truth for the Tolkovo REST API.
     Server code is generated from this file (`make gen`); never edit the generated code.
 
     ## Authentication
@@ -38,35 +38,35 @@ tags:
   - name: workspace
   - name: files
     description: |
-      Signed upload and download links of the `fs` storage driver
-      (docs/adr/0009-file-storage.md). Mounted only with `TOLKOVO_STORAGE_DRIVER=fs`;
+      Signed upload and download links of the `fs` storage driver.
+      Mounted only with `TOLKOVO_STORAGE_DRIVER=fs`;
       with `s3` the links point at the bucket. Authorised by the link signature, not
       by the session. Served by hand (`internal/api/files.go`), not generated.
   - name: conversations
     description: |
-      Conversations, their messages and attachments (docs/02 §7–8). Status changes
-      follow the state machine of docs/02 §8; a forbidden transition answers `409
+      Conversations, their messages and attachments. Status changes
+      follow the conversation state machine; a forbidden transition answers `409
       invalid_transition`. Operators reply in and change only conversations assigned to
       them; `conversations.manage` (owner, admin) lifts that limit.
   - name: contacts
     description: Customers. Email and phone are personal data.
   - name: channels
     description: |
-      Where customers write from (docs/02 §11, ADR-0014): a Telegram bot connected by its
+      Where customers write from: a Telegram bot connected by its
       token, a personal Telegram account signed in by phone over MTProto, a company app's
       reports, or a chat widget. Secrets (the token, the account session, identity secrets)
       are encrypted and never returned. Requires
       `channels.view` to read and `channels.manage` to change (owner, admin).
   - name: integrations
     description: |
-      Outside trackers (ADR-0012, docs/02 §12.3). Phase 1 has GitHub: the workspace creates
+      Outside trackers. Phase 1 has GitHub: the workspace creates
       its own GitHub App from a manifest (issues read and write, metadata read, no access to
       code), installs it on its repositories and picks the repository, labels and templates.
       The App's private key and webhook secret are encrypted and never returned. Requires
       `integrations.manage` (owner, admin).
   - name: ingest
     description: |
-      Problem reports from company apps (docs/02 §11.6). Authenticated by an ingest key of
+      Problem reports from company apps. Authenticated by an ingest key of
       an app channel in `Authorization: Bearer tk_ingest_…`, not by a session; call these
       from the app's main process or backend (no CORS yet). The key only creates
       reports. Create the report, upload every file with exactly the returned method, URL
@@ -75,7 +75,7 @@ tags:
       `429` carries `Retry-After`.
   - name: widget
     description: |
-      The visitor's side of the chat widget (docs/04 §6, W-01), called by `@tolkovo/widget`
+      The visitor's side of the chat widget, called by `@tolkovo/widget`
       from a site or an Electron app. Cross-origin: only pages whose `Origin` is on the
       widget's list are answered (CORS without credentials). A session token in
       `Authorization: Bearer tk_wsess_…` stands in for the cookie. Live events come over
@@ -485,7 +485,7 @@ paths:
       description: |
         What the server does for the user: the email about customer messages left unread in
         their conversations. Sounds and desktop notifications are settings of a browser and
-        are not stored here (docs/04 §5.5).
+        are not stored here.
       responses:
         '200':
           description: The settings; defaults until the user changes them.
@@ -724,8 +724,8 @@ paths:
         Telegram sends a login code to the account (`code_via`: usually the Telegram app,
         sometimes SMS or a call). The channel stays `pending` until the code — and the
         cloud password, if the account has one — is entered, at most 15 minutes. Only
-        one-to-one chats with people reach the inbox, only messages after the connection
-        (ADR-0014). Requires `channels.manage`.
+        one-to-one chats with people reach the inbox, only messages after the connection.
+        Requires `channels.manage`.
       security:
         - sessionCookie: []
           csrfHeader: []
@@ -867,7 +867,7 @@ paths:
       operationId: connectAppChannel
       summary: Connect a company app that sends problem reports
       description: |
-        Creates the «Приложение» channel (docs/02 §11.6) with its first ingest key and the
+        Creates the «Приложение» channel with its first ingest key and the
         secret that signs the app user's identity. Both are returned only here: the server
         keeps the key's hash and the secret sealed. Requires `channels.manage`.
       security:
@@ -1021,8 +1021,8 @@ paths:
       operationId: connectWidgetChannel
       summary: Connect a chat widget for a site or an app
       description: |
-        Creates the «Виджет» channel (docs/04 §6, W-01) with the pages that may embed it and
-        the secret that signs a visitor's identity (W-04). The widget key is public — it
+        Creates the «Виджет» channel with the pages that may embed it and
+        the secret that signs a visitor's identity. The widget key is public — it
         goes into the page or the app — and is shown in the channel's details; the secret is
         returned only here and lives on the company's backend. Without `allowed_origins` the
         widget works nowhere yet. Requires `channels.manage`.
@@ -1380,8 +1380,8 @@ paths:
       operationId: listIngestReportReplies
       summary: Replies to the app user, oldest first
       description: |
-        What operators and the bot wrote to the user of the app in the report's conversation
-        (docs/02 §11.6): no internal notes, no events of the conversation, no names of
+        What operators and the bot wrote to the user of the app in the report's conversation:
+        no internal notes, no events of the conversation, no names of
         staff. Each file comes with a signed download request that lives 15 minutes; ask
         again for a fresh one. A reply shows up here a few seconds after it is sent.
 
@@ -1421,7 +1421,7 @@ paths:
       summary: The app user writes into the report's conversation
       description: |
         Text only, up to 10 000 characters. The message lands in the same conversation as a
-        message of the customer; a resolved or closed conversation reopens (docs/02 §8). A
+        message of the customer; a resolved or closed conversation reopens. A
         retry with the same `Idempotency-Key` and text answers `200` with the first message.
 
         Before the report becomes a conversation the answer is `409 report_processing`: try
@@ -1488,7 +1488,7 @@ paths:
         `user` is who the site or the app says the visitor is. With `user_hash` = hex
         HMAC-SHA256 of `external_id` under the widget's identity secret, signed by the
         company's backend, the visitor is verified and continues with the contact of that
-        id — the same one their app reports land on (W-04). Without a valid hash it is a
+        id — the same one their app reports land on. Without a valid hash it is a
         claim: a new unverified contact, never merged with others. A missing or wrong hash
         is not an error: `identity` says which. An anonymous visitor gets a contact only
         with the first message. Rate: 20 a minute per IP.
@@ -2023,8 +2023,8 @@ paths:
       description: |
         Oldest first, with `repository`: where new issues go, `null` when GitHub is not
         connected or has no repository (the panel hides "Create issue" then), and
-        `reply_draft` once an issue was closed as fixed (GH-03: GitHub's `issues` webhook
-        closes and reopens the issues, outside this API). Requires `issues.create` (ADR-0012).
+        `reply_draft` once an issue was closed as fixed (GitHub's `issues` webhook
+        closes and reopens the issues, outside this API). Requires `issues.create`.
       responses:
         '200':
           description: The issues.
@@ -2208,7 +2208,7 @@ paths:
       summary: Register a file and get a signed upload request
       description: |
         Requires `conversations.reply` or `conversations.note`. The server picks an
-        unpredictable key `ws/{workspace_id}/conv/{uuid}` (docs/02 §5.4) and signs a PUT
+        unpredictable key `ws/{workspace_id}/conv/{uuid}` and signs a PUT
         that fixes the size, the content type and, when given, the SHA-256. Upload the
         file with exactly the returned method, URL and headers, then send the attachment
         id with a message. Up to 25 MB; images, PDF, text, CSV, JSON, ZIP, GZIP and
@@ -2437,7 +2437,7 @@ components:
       name: Idempotency-Key
       in: header
       description: |
-        Makes a retry return the first result instead of acting twice (docs/00 §8). A
+        Makes a retry return the first result instead of acting twice. A
         reused key with a different body answers `422`.
       schema: { type: string, minLength: 1, maxLength: 255 }
 
@@ -2449,7 +2449,7 @@ components:
     ingestKey:
       type: http
       scheme: bearer
-      description: An ingest key of an app channel, `tk_ingest_…` (docs/02 §11.6).
+      description: An ingest key of an app channel, `tk_ingest_…`.
     sessionCookie:
       type: apiKey
       in: cookie
@@ -2691,7 +2691,7 @@ components:
 
     Role:
       type: string
-      description: System role in phase 1 (docs/04 §4.2).
+      description: System role in phase 1.
       enum: [owner, admin, operator]
 
     RegisterRequest:
@@ -2745,7 +2745,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 120, description: Trimmed; 1–120 characters after trimming. }
         locale:
           $ref: '#/components/schemas/Locale'
-          description: Interface language of the panel (docs/04 §8.2).
+          description: Interface language of the panel.
 
     EmailDelayMinutes:
       type: integer
@@ -2785,7 +2785,7 @@ components:
     DeviceSession:
       type: object
       description: |
-        One signed-in browser of the user (docs/02 §13.1). The `id` is a public random
+        One signed-in browser of the user. The `id` is a public random
         identifier, not the session token.
       required: [id, created_at, last_seen_at, user_agent, current]
       properties:
@@ -2872,7 +2872,7 @@ components:
         role: { $ref: '#/components/schemas/Role' }
         permissions:
           type: array
-          description: Permissions of the role in this workspace, sorted (docs/04 §4.1).
+          description: Permissions of the role in this workspace, sorted.
           items: { type: string }
         csrf_token:
           type: string
@@ -3002,7 +3002,7 @@ components:
 
     ConversationStatus:
       type: string
-      description: State of a conversation (docs/02 §8).
+      description: State of a conversation.
       enum: [new, bot, queued, assigned, pending, resolved, closed]
 
     ContactRef:
@@ -3047,7 +3047,7 @@ components:
         awaiting_fix:
           type: boolean
           description: |
-            An open GitHub issue is linked to the conversation (ADR-0012): it waits for the fix
+            An open GitHub issue is linked to the conversation: it waits for the fix
             and does not resolve itself by inactivity. The inbox marks it.
         version:
           type: integer
@@ -3239,7 +3239,7 @@ components:
     MessageReport:
       type: object
       description: |
-        Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+        Set on a customer message that is a problem report from a company app;
         absent otherwise. What the app said about itself and how its files were checked.
       required: [report_id, app, contact_verified, files]
       properties:
@@ -3472,7 +3472,7 @@ components:
 
     ChannelType:
       type: string
-      description: '`app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).'
+      description: '`app` — reports from a company app; `widget` — a chat on a site or in an app.'
       enum: [telegram_bot, telegram_user, app, widget]
 
     ChannelStatus:
@@ -3725,7 +3725,7 @@ components:
           description: |
             The reply about the fix the operator may send, once an issue of the conversation was
             closed as completed; `null` otherwise and after an operator replied to the customer
-            since. Tolkovo never sends it itself (ADR-0012).
+            since. Tolkovo never sends it itself.
           oneOf:
             - $ref: '#/components/schemas/IssueReplyDraft'
             - type: 'null'

@@ -346,7 +346,7 @@ export interface paths {
          * The current user's notification settings in this workspace
          * @description What the server does for the user: the email about customer messages left unread in
          *     their conversations. Sounds and desktop notifications are settings of a browser and
-         *     are not stored here (docs/04 §5.5).
+         *     are not stored here.
          */
         get: operations["getMyNotificationSettings"];
         put?: never;
@@ -553,8 +553,8 @@ export interface paths {
          * @description Telegram sends a login code to the account (`code_via`: usually the Telegram app,
          *     sometimes SMS or a call). The channel stays `pending` until the code — and the
          *     cloud password, if the account has one — is entered, at most 15 minutes. Only
-         *     one-to-one chats with people reach the inbox, only messages after the connection
-         *     (ADR-0014). Requires `channels.manage`.
+         *     one-to-one chats with people reach the inbox, only messages after the connection.
+         *     Requires `channels.manage`.
          */
         post: operations["startTelegramUserLogin"];
         delete?: never;
@@ -649,7 +649,7 @@ export interface paths {
         put?: never;
         /**
          * Connect a company app that sends problem reports
-         * @description Creates the «Приложение» channel (docs/02 §11.6) with its first ingest key and the
+         * @description Creates the «Приложение» channel with its first ingest key and the
          *     secret that signs the app user's identity. Both are returned only here: the server
          *     keeps the key's hash and the secret sealed. Requires `channels.manage`.
          */
@@ -772,8 +772,8 @@ export interface paths {
         put?: never;
         /**
          * Connect a chat widget for a site or an app
-         * @description Creates the «Виджет» channel (docs/04 §6, W-01) with the pages that may embed it and
-         *     the secret that signs a visitor's identity (W-04). The widget key is public — it
+         * @description Creates the «Виджет» channel with the pages that may embed it and
+         *     the secret that signs a visitor's identity. The widget key is public — it
          *     goes into the page or the app — and is shown in the channel's details; the secret is
          *     returned only here and lives on the company's backend. Without `allowed_origins` the
          *     widget works nowhere yet. Requires `channels.manage`.
@@ -1033,8 +1033,8 @@ export interface paths {
         };
         /**
          * Replies to the app user, oldest first
-         * @description What operators and the bot wrote to the user of the app in the report's conversation
-         *     (docs/02 §11.6): no internal notes, no events of the conversation, no names of
+         * @description What operators and the bot wrote to the user of the app in the report's conversation:
+         *     no internal notes, no events of the conversation, no names of
          *     staff. Each file comes with a signed download request that lives 15 minutes; ask
          *     again for a fresh one. A reply shows up here a few seconds after it is sent.
          *
@@ -1069,7 +1069,7 @@ export interface paths {
         /**
          * The app user writes into the report's conversation
          * @description Text only, up to 10 000 characters. The message lands in the same conversation as a
-         *     message of the customer; a resolved or closed conversation reopens (docs/02 §8). A
+         *     message of the customer; a resolved or closed conversation reopens. A
          *     retry with the same `Idempotency-Key` and text answers `200` with the first message.
          *
          *     Before the report becomes a conversation the answer is `409 report_processing`: try
@@ -1102,7 +1102,7 @@ export interface paths {
          *     `user` is who the site or the app says the visitor is. With `user_hash` = hex
          *     HMAC-SHA256 of `external_id` under the widget's identity secret, signed by the
          *     company's backend, the visitor is verified and continues with the contact of that
-         *     id — the same one their app reports land on (W-04). Without a valid hash it is a
+         *     id — the same one their app reports land on. Without a valid hash it is a
          *     claim: a new unverified contact, never merged with others. A missing or wrong hash
          *     is not an error: `identity` says which. An anonymous visitor gets a contact only
          *     with the first message. Rate: 20 a minute per IP.
@@ -1418,8 +1418,8 @@ export interface paths {
          * GitHub issues of the conversation
          * @description Oldest first, with `repository`: where new issues go, `null` when GitHub is not
          *     connected or has no repository (the panel hides "Create issue" then), and
-         *     `reply_draft` once an issue was closed as fixed (GH-03: GitHub's `issues` webhook
-         *     closes and reopens the issues, outside this API). Requires `issues.create` (ADR-0012).
+         *     `reply_draft` once an issue was closed as fixed (GitHub's `issues` webhook
+         *     closes and reopens the issues, outside this API). Requires `issues.create`.
          */
         get: operations["listConversationIssues"];
         put?: never;
@@ -1579,7 +1579,7 @@ export interface paths {
         /**
          * Register a file and get a signed upload request
          * @description Requires `conversations.reply` or `conversations.note`. The server picks an
-         *     unpredictable key `ws/{workspace_id}/conv/{uuid}` (docs/02 §5.4) and signs a PUT
+         *     unpredictable key `ws/{workspace_id}/conv/{uuid}` and signs a PUT
          *     that fixes the size, the content type and, when given, the SHA-256. Upload the
          *     file with exactly the returned method, URL and headers, then send the attachment
          *     id with a message. Up to 25 MB; images, PDF, text, CSV, JSON, ZIP, GZIP and
@@ -1708,7 +1708,7 @@ export interface components {
         /** @enum {string} */
         Locale: "ru" | "en";
         /**
-         * @description System role in phase 1 (docs/04 §4.2).
+         * @description System role in phase 1.
          * @enum {string}
          */
         Role: "owner" | "admin" | "operator";
@@ -1737,7 +1737,7 @@ export interface components {
         UpdateMeRequest: {
             /** @description Trimmed; 1–120 characters after trimming. */
             name?: string;
-            /** @description Interface language of the panel (docs/04 §8.2). */
+            /** @description Interface language of the panel. */
             locale?: components["schemas"]["Locale"];
         };
         /**
@@ -1765,7 +1765,7 @@ export interface components {
             new_password: string;
         };
         /**
-         * @description One signed-in browser of the user (docs/02 §13.1). The `id` is a public random
+         * @description One signed-in browser of the user. The `id` is a public random
          *     identifier, not the session token.
          */
         DeviceSession: {
@@ -1820,7 +1820,7 @@ export interface components {
             user: components["schemas"]["User"];
             workspace: components["schemas"]["Workspace"];
             role: components["schemas"]["Role"];
-            /** @description Permissions of the role in this workspace, sorted (docs/04 §4.1). */
+            /** @description Permissions of the role in this workspace, sorted. */
             permissions: string[];
             /** @description Send it as `X-CSRF-Token` on unsafe requests. */
             csrf_token: string;
@@ -1895,7 +1895,7 @@ export interface components {
             items: components["schemas"]["Member"][];
         };
         /**
-         * @description State of a conversation (docs/02 §8).
+         * @description State of a conversation.
          * @enum {string}
          */
         ConversationStatus: "new" | "bot" | "queued" | "assigned" | "pending" | "resolved" | "closed";
@@ -1927,7 +1927,7 @@ export interface components {
             /** Format: date-time */
             closed_at: string | null;
             /**
-             * @description An open GitHub issue is linked to the conversation (ADR-0012): it waits for the fix
+             * @description An open GitHub issue is linked to the conversation: it waits for the fix
              *     and does not resolve itself by inactivity. The inbox marks it.
              */
             awaiting_fix: boolean;
@@ -2063,7 +2063,7 @@ export interface components {
             created_at: string;
         };
         /**
-         * @description Set on a customer message that is a problem report from a company app (docs/02 §11.6);
+         * @description Set on a customer message that is a problem report from a company app;
          *     absent otherwise. What the app said about itself and how its files were checked.
          */
         MessageReport: {
@@ -2198,7 +2198,7 @@ export interface components {
             locale?: string;
         };
         /**
-         * @description `app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).
+         * @description `app` — reports from a company app; `widget` — a chat on a site or in an app.
          * @enum {string}
          */
         ChannelType: "telegram_bot" | "telegram_user" | "app" | "widget";
@@ -2383,7 +2383,7 @@ export interface components {
             /**
              * @description The reply about the fix the operator may send, once an issue of the conversation was
              *     closed as completed; `null` otherwise and after an operator replied to the customer
-             *     since. Tolkovo never sends it itself (ADR-0012).
+             *     since. Tolkovo never sends it itself.
              */
             reply_draft: components["schemas"]["IssueReplyDraft"] | null;
         };
@@ -2993,7 +2993,7 @@ export interface components {
         /** @description Page size, 1–100; 50 when absent. */
         Limit: number;
         /**
-         * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+         * @description Makes a retry return the first result instead of acting twice. A
          *     reused key with a different body answers `422`.
          */
         IdempotencyKey: string;
@@ -4358,7 +4358,7 @@ export interface operations {
             query?: never;
             header?: {
                 /**
-                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 * @description Makes a retry return the first result instead of acting twice. A
                  *     reused key with a different body answers `422`.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
@@ -4507,7 +4507,7 @@ export interface operations {
                 /** @description `report_token` from the answer that created the report. */
                 "X-Report-Token": components["parameters"]["ReportToken"];
                 /**
-                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 * @description Makes a retry return the first result instead of acting twice. A
                  *     reused key with a different body answers `422`.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
@@ -4660,7 +4660,7 @@ export interface operations {
             query?: never;
             header?: {
                 /**
-                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 * @description Makes a retry return the first result instead of acting twice. A
                  *     reused key with a different body answers `422`.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
@@ -5076,7 +5076,7 @@ export interface operations {
             query?: never;
             header?: {
                 /**
-                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 * @description Makes a retry return the first result instead of acting twice. A
                  *     reused key with a different body answers `422`.
                  */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
