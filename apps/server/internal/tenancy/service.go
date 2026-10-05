@@ -27,6 +27,8 @@ var (
 	ErrEmailTaken    = errors.New("tenancy: email is taken")
 	ErrAlreadyMember = errors.New("tenancy: user is already a member")
 	ErrUnknownRole   = errors.New("tenancy: unknown role")
+	// ErrRegistrationClosed: the server takes no new accounts.
+	ErrRegistrationClosed = errors.New("tenancy: registration is closed")
 )
 
 // System role keys available in phase 1. They are the keys of the RBAC

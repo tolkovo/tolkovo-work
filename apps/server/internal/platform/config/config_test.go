@@ -74,6 +74,28 @@ func TestPanelBaseURLAndMail(t *testing.T) {
 	}
 }
 
+func TestRegistrationMode(t *testing.T) {
+	for _, tt := range []struct{ mode, set, want string }{
+		{"selfhost", "", "first"},
+		{"saas", "", "open"},
+		{"selfhost", "open", "open"},
+		{"saas", "closed", "closed"},
+	} {
+		vars := map[string]string{"TOLKOVO_DATABASE_URL": dsn, "TOLKOVO_MODE": tt.mode, "TOLKOVO_REGISTRATION": tt.set}
+		if tt.mode == "saas" {
+			vars["TOLKOVO_STORAGE_DRIVER"], vars["TOLKOVO_STORAGE_S3_REGION"], vars["TOLKOVO_STORAGE_S3_BUCKET"] = "s3", "eu", "b"
+			vars["TOLKOVO_STORAGE_S3_ACCESS_KEY_ID"], vars["TOLKOVO_STORAGE_S3_SECRET_ACCESS_KEY"] = "id", "secret"
+		}
+		cfg, err := LoadFrom(vars)
+		if err != nil {
+			t.Fatalf("%+v: %v", tt, err)
+		}
+		if got := cfg.RegistrationMode(); got != tt.want {
+			t.Errorf("%+v: got %q", tt, got)
+		}
+	}
+}
+
 func TestLoadFrom_RequiresDatabaseURL(t *testing.T) {
 	_, err := LoadFrom(map[string]string{})
 	if err == nil || !strings.Contains(err.Error(), "TOLKOVO_DATABASE_URL") {
@@ -97,6 +119,7 @@ func TestLoadFrom_RejectsInvalidValues(t *testing.T) {
 		{"origin without scheme", "TOLKOVO_TRUSTED_ORIGINS", "panel.example.com", "TOLKOVO_TRUSTED_ORIGINS"},
 		{"relative panel url", "TOLKOVO_PANEL_URL", "/app", "TOLKOVO_PANEL_URL"},
 		{"panel url with query", "TOLKOVO_PANEL_URL", "https://app.example.com/?x=1", "TOLKOVO_PANEL_URL"},
+		{"unknown registration", "TOLKOVO_REGISTRATION", "invite", "TOLKOVO_REGISTRATION"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

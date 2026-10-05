@@ -77,7 +77,15 @@ describe("login form", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Вход" })).toBeInTheDocument();
     expect(screen.getByLabelText("Эл. почта")).toHaveAttribute("autocomplete", "username");
     expect(screen.getByLabelText("Пароль")).toHaveAttribute("autocomplete", "current-password");
-    expect(screen.getByRole("link", { name: "Создать пространство" })).toHaveAttribute("href", "/register");
+    expect(await screen.findByRole("link", { name: "Создать пространство" })).toHaveAttribute("href", "/register");
+  });
+
+  it("offers no sign-up where the server takes no new accounts", async () => {
+    const api = fakeApi({ session: null, routes: { "GET /auth/registration": () => json(200, { open: false }) } });
+    renderApp("/login", { api });
+    await screen.findByRole("heading", { level: 1, name: "Вход" });
+    await waitFor(() => expect(api.calls.some((c) => c.path === "/auth/registration")).toBe(true));
+    expect(screen.queryByRole("link", { name: "Создать пространство" })).not.toBeInTheDocument();
   });
 
   it("checks the fields before sending and focuses the first mistake", async () => {
@@ -155,6 +163,24 @@ describe("registration", () => {
       password: "long-enough",
       locale: "ru",
     });
+  });
+
+  it("explains that people join by invitation when registration is closed", async () => {
+    const api = fakeApi({ session: null, routes: { "GET /auth/registration": () => json(200, { open: false }) } });
+    renderApp("/register", { api });
+    expect(await screen.findByText(/новые пространства не создаются/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Название компании")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Войти" })).toHaveAttribute("href", "/login");
+  });
+
+  it("shows the server's refusal when registration closed meanwhile", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ session: null, routes: { "POST /auth/register": () => problem(403, "registration_closed") } });
+    renderApp("/register", { api });
+    await screen.findByRole("heading", { level: 1, name: "Новое пространство" });
+    await fillRegistration(user);
+    await user.click(screen.getByRole("button", { name: "Создать пространство" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("не принимает новые аккаунты");
   });
 
   it("shows a taken address at its field", async () => {

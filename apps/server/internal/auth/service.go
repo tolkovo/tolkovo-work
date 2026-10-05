@@ -96,7 +96,18 @@ type Options struct {
 	// PanelURL is where the panel's link pages live (invitation links
 	// returned when email is off). Required.
 	PanelURL string
+	// Registration is who may create an account with a new workspace:
+	// RegistrationOpen (the default when empty), RegistrationFirst or
+	// RegistrationClosed. Invitations work in every mode.
+	Registration string
 }
+
+// Registration modes (TOLKOVO_REGISTRATION).
+const (
+	RegistrationOpen   = "open"   // anyone
+	RegistrationFirst  = "first"  // only the first account of the server
+	RegistrationClosed = "closed" // nobody; people join by invitation
+)
 
 // Service is the module facade.
 type Service struct {
@@ -107,6 +118,7 @@ type Service struct {
 	dummyHash    string
 	jobs         *jobs.Client
 	mailEnabled  bool
+	registration string
 	links        linkBuilder
 	resetTokens  userTokens
 	verifyTokens userTokens
@@ -148,6 +160,7 @@ func New(ctx context.Context, t *tenancy.Service, rdb *redis.Client, o Options) 
 		dummyHash:    dummy,
 		jobs:         o.Jobs,
 		mailEnabled:  o.MailEnabled,
+		registration: o.Registration,
 		links:        links,
 		resetTokens:  resetTokens(rdb, o.KeyPrefix),
 		verifyTokens: verifyTokens(rdb, o.KeyPrefix),
@@ -181,6 +194,11 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, c Client) (Sig
 	if err := s.allow(ctx, "register:ip:"+digest(c.IP), registerPerIP); err != nil {
 		return SignIn{}, err
 	}
+	// Refused before the costly hash; "first" is decided inside the
+	// transaction that creates the account.
+	if s.registration == RegistrationClosed {
+		return SignIn{}, tenancy.ErrRegistrationClosed
+	}
 	if err := validatePassword(in.Password); err != nil {
 		return SignIn{}, err
 	}
@@ -191,6 +209,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, c Client) (Sig
 	reg := tenancy.RegisterInput{
 		Email: in.Email, Name: in.Name, Locale: in.Locale, PasswordHash: hash,
 		WorkspaceName: in.WorkspaceName, WorkspaceSlug: in.WorkspaceSlug, Timezone: in.Timezone,
+		OnlyFirst: s.registration == RegistrationFirst,
 	}
 	if s.mailEnabled {
 		reg.AfterCreate = func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
@@ -203,6 +222,19 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, c Client) (Sig
 		return SignIn{}, err // tenancy errors are part of this contract
 	}
 	return s.start(ctx, m, c.UserAgent)
+}
+
+// RegistrationOpen reports whether Register would take a new account now.
+func (s *Service) RegistrationOpen(ctx context.Context) (bool, error) {
+	switch s.registration {
+	case RegistrationClosed:
+		return false, nil
+	case RegistrationFirst:
+		taken, err := s.tenancy.HasAccounts(ctx)
+		return !taken, err
+	default:
+		return true, nil
+	}
 }
 
 // Login checks the password and starts a session in the user's first

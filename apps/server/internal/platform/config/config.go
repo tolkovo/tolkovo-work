@@ -90,6 +90,10 @@ type Config struct {
 	// panel and the api share one host (docs/02 §16.2). In development the
 	// Vite server runs elsewhere, e.g. http://localhost:5173.
 	PanelURL string `env:"PANEL_URL"`
+	// Registration is who may create an account with a new workspace: open,
+	// first (only the server's first account) or closed. Empty: first in
+	// selfhost, open in saas. Invitations work in every mode.
+	Registration string `env:"REGISTRATION"`
 	// PanelDir is the built panel (apps/panel/dist) that the api serves on
 	// its own host; the Docker image sets it. Empty: the panel is not served.
 	PanelDir string  `env:"PANEL_DIR"`
@@ -172,6 +176,17 @@ func (c Config) PanelBaseURL() string {
 	return c.PublicURL
 }
 
+// RegistrationMode returns Registration with the default of the mode.
+func (c Config) RegistrationMode() string {
+	if c.Registration != "" {
+		return c.Registration
+	}
+	if c.Mode == ModeSaaS {
+		return "open"
+	}
+	return "first"
+}
+
 // MailEnabled reports whether outgoing email is configured.
 func (c Config) MailEnabled() bool { return strings.TrimSpace(c.SMTP.Host) != "" }
 
@@ -201,6 +216,9 @@ func (c Config) validate() error {
 	}
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("%sSHUTDOWN_TIMEOUT must be positive", Prefix))
+	}
+	if r := c.Registration; r != "" && r != "open" && r != "first" && r != "closed" {
+		errs = append(errs, fmt.Errorf("%sREGISTRATION must be open, first or closed, got %q", Prefix, r))
 	}
 	if c.Mode != ModeSelfHost && c.Mode != ModeSaaS {
 		errs = append(errs, fmt.Errorf("%sMODE must be %q or %q, got %q", Prefix, ModeSelfHost, ModeSaaS, c.Mode))

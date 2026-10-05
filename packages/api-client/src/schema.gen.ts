@@ -16,9 +16,35 @@ export interface paths {
         /**
          * Create an account and its first workspace
          * @description Creates the user, the workspace and the owner membership atomically, then
-         *     starts a session in that workspace. Rate limited per client IP.
+         *     starts a session in that workspace. Rate limited per client IP. Answers `403
+         *     registration_closed` when the server does not take new accounts (see
+         *     `GET /auth/registration`); people then join by invitation.
          */
         post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether this server takes new accounts
+         * @description Set by the server's `TOLKOVO_REGISTRATION`: `open` takes anyone; `first`, the
+         *     self-host default, takes only the first account, which becomes the owner of the
+         *     first workspace, and everyone else joins by invitation; `closed` takes nobody.
+         *     Invitations work in every mode. The panel hides "Create workspace" when `open`
+         *     is false.
+         */
+        get: operations["getRegistration"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1712,6 +1738,10 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "operator";
+        RegistrationState: {
+            /** @description `POST /auth/register` would be accepted now. */
+            open: boolean;
+        };
         RegisterRequest: {
             email: string;
             password: string;
@@ -3054,6 +3084,26 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The registration state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationState"];
+                };
+            };
         };
     };
     login: {

@@ -34,6 +34,16 @@ type server struct {
 var _ oapi.ServerInterface = (*server)(nil)
 
 // Register implements POST /auth/register.
+// GetRegistration tells the panel whether to offer "Create workspace".
+func (s *server) GetRegistration(w http.ResponseWriter, r *http.Request) {
+	open, err := s.auth.RegistrationOpen(r.Context())
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, oapi.RegistrationState{Open: open})
+}
+
 func (s *server) Register(w http.ResponseWriter, r *http.Request) {
 	var req oapi.RegisterRequest
 	if err := decodeJSON(w, r, &req); err != nil {

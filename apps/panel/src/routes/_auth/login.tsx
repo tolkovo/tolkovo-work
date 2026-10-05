@@ -1,4 +1,4 @@
-import { useLogin } from "@tolkovo/api-client/react";
+import { useLogin, useRegistrationOpen } from "@tolkovo/api-client/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +21,8 @@ function LoginPage() {
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
   const login = useLogin();
+  // "Create workspace" only where the server takes new accounts (self-host: the first one).
+  const registrationOpen = useRegistrationOpen().data === true;
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<Field>>({});
 
   const onSubmit = (form: HTMLFormElement) => {
@@ -51,9 +53,9 @@ function LoginPage() {
       pending={login.isPending}
       error={login.isError ? describeApiError(t, login.error).message : null}
       onSubmit={onSubmit}
-      switchPrompt={t("auth.login.switchPrompt")}
-      switchAction={t("auth.login.switchAction")}
-      switchTo="/register"
+      {...(registrationOpen
+        ? { switchPrompt: t("auth.login.switchPrompt"), switchAction: t("auth.login.switchAction"), switchTo: "/register" as const }
+        : {})}
     >
       <TextField
         id="login-email"

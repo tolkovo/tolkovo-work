@@ -33,6 +33,8 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.currentSession") };
     case "email_taken":
       return { message: t("errors.emailTaken"), ...(field ? { field } : {}) };
+    case "registration_closed":
+      return { message: t("errors.registrationClosed") };
     case "slug_taken":
       return { message: t("errors.slugTaken"), ...(field ? { field } : {}) };
     case "invalid_request":

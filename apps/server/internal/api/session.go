@@ -27,6 +27,7 @@ const (
 // TestEveryRouteRequiresSessionExceptPublic walks the router to prove it.
 var publicOperations = map[string]bool{
 	"POST /api/v1/auth/register":           true,
+	"GET /api/v1/auth/registration":        true,
 	"POST /api/v1/auth/login":              true,
 	"POST /api/v1/auth/invitation/preview": true,
 	"POST /api/v1/auth/invitation/accept":  true,

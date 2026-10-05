@@ -90,7 +90,9 @@ paths:
       summary: Create an account and its first workspace
       description: |
         Creates the user, the workspace and the owner membership atomically, then
-        starts a session in that workspace. Rate limited per client IP.
+        starts a session in that workspace. Rate limited per client IP. Answers `403
+        registration_closed` when the server does not take new accounts (see
+        `GET /auth/registration`); people then join by invitation.
       security: []
       requestBody:
         required: true
@@ -113,6 +115,25 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/registration:
+    get:
+      tags: [auth]
+      operationId: getRegistration
+      summary: Whether this server takes new accounts
+      description: |
+        Set by the server's `TOLKOVO_REGISTRATION`: `open` takes anyone; `first`, the
+        self-host default, takes only the first account, which becomes the owner of the
+        first workspace, and everyone else joins by invitation; `closed` takes nobody.
+        Invitations work in every mode. The panel hides "Create workspace" when `open`
+        is false.
+      security: []
+      responses:
+        '200':
+          description: The registration state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationState' }
 
   /auth/login:
     post:
@@ -2693,6 +2714,12 @@ components:
       type: string
       description: System role in phase 1.
       enum: [owner, admin, operator]
+
+    RegistrationState:
+      type: object
+      required: [open]
+      properties:
+        open: { type: boolean, description: '`POST /auth/register` would be accepted now.' }
 
     RegisterRequest:
       type: object

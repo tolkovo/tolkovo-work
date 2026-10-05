@@ -47,6 +47,9 @@ export const sessionSchema = z.object({
   csrf_token: z.string().min(1),
 }) satisfies z.ZodType<Schemas["Session"]>;
 
+/** GET /auth/registration: whether the server takes new accounts. */
+export const registrationStateSchema = z.object({ open: z.boolean() });
+
 export const workspaceListSchema = z.object({
   items: z.array(
     z.object({

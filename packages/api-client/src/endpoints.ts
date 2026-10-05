@@ -1,6 +1,7 @@
 import { parseAnswer, unwrap, type ApiClient } from "./client";
 import { isApiError } from "./errors";
 import {
+  registrationStateSchema,
   appChannelCreatedSchema,
   channelListSchema,
   channelSchema,
@@ -133,6 +134,11 @@ export async function login(client: ApiClient, body: LoginRequest): Promise<Sess
 
 export async function register(client: ApiClient, body: RegisterRequest): Promise<Session> {
   return parseAnswer(sessionSchema, await unwrap(client.POST("/auth/register", { body })), 201);
+}
+
+/** GET /auth/registration: `true` when "Create workspace" would be accepted. */
+export async function fetchRegistrationOpen(client: ApiClient): Promise<boolean> {
+  return parseAnswer(registrationStateSchema, await unwrap(client.GET("/auth/registration"))).open;
 }
 
 export async function logout(client: ApiClient): Promise<void> {

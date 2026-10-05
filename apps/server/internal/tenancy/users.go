@@ -60,6 +60,9 @@ type RegisterInput struct {
 	WorkspaceName string
 	WorkspaceSlug string
 	Timezone      string
+	// OnlyFirst refuses with ErrRegistrationClosed unless the server has no
+	// accounts yet: self-host registration makes the first owner only.
+	OnlyFirst bool
 	// AfterCreate runs in the same transaction once the account exists; the
 	// auth module queues the confirmation email here (ADR-0004).
 	AfterCreate func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
@@ -121,6 +124,18 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Membership, e
 	var m Membership
 	err = s.db.InTenantTx(ctx, wsID, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		if in.OnlyFirst {
+			if err := q.LockRegistration(ctx); err != nil {
+				return err
+			}
+			taken, err := q.AnyUser(ctx)
+			if err != nil {
+				return err
+			}
+			if taken {
+				return ErrRegistrationClosed
+			}
+		}
 		u, err := q.CreateUser(ctx, store.CreateUserParams{
 			ID: userID, Email: email, Name: in.Name, Locale: wsIn.Locale,
 			PasswordHash: pgtype.Text{String: in.PasswordHash, Valid: true},
@@ -144,6 +159,8 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Membership, e
 		return nil
 	})
 	switch {
+	case errors.Is(err, ErrRegistrationClosed):
+		return Membership{}, err
 	case isUnique(err, "users_email_key"):
 		return Membership{}, ErrEmailTaken
 	case isUnique(err, "workspaces_slug_key"):
@@ -152,6 +169,20 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Membership, e
 		return Membership{}, fmt.Errorf("register: %w", err)
 	}
 	return m, nil
+}
+
+// HasAccounts reports whether the server has any account, in any workspace.
+func (s *Service) HasAccounts(ctx context.Context) (bool, error) {
+	var found bool
+	err := s.db.InGlobalTx(ctx, func(tx pgx.Tx) error {
+		var err error
+		found, err = store.New(tx).AnyUser(ctx)
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("has accounts: %w", err)
+	}
+	return found, nil
 }
 
 // Credentials returns the password hash of the account with this email, or

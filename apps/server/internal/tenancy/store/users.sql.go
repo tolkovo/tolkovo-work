@@ -13,8 +13,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createUser = `-- name: CreateUser :one
+const anyUser = `-- name: AnyUser :one
+SELECT EXISTS (SELECT 1 FROM users)
+`
 
+func (q *Queries) AnyUser(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, anyUser)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, email, password_hash, name, locale, email_verified_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, email, name, locale, email_verified_at
@@ -37,7 +47,6 @@ type CreateUserRow struct {
 	EmailVerifiedAt *time.Time
 }
 
-// users is a global table without RLS (docs/adr/0003-multitenancy-rls.md).
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.ID,
@@ -121,6 +130,20 @@ func (q *Queries) GetUserPasswordHash(ctx context.Context, id uuid.UUID) (GetUse
 	var i GetUserPasswordHashRow
 	err := row.Scan(&i.ID, &i.PasswordHash, &i.DisabledAt)
 	return i, err
+}
+
+const lockRegistration = `-- name: LockRegistration :exec
+
+SELECT pg_advisory_xact_lock(7362183904102935911)
+`
+
+// users is a global table without RLS (docs/adr/0003-multitenancy-rls.md).
+// Serialises registrations that may only create the first account, so two
+// at once cannot both find the server empty. The key is arbitrary and
+// fixed: "tolkovo:first-account".
+func (q *Queries) LockRegistration(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockRegistration)
+	return err
 }
 
 const markEmailVerified = `-- name: MarkEmailVerified :execrows

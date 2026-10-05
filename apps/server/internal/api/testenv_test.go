@@ -79,6 +79,8 @@ type envOptions struct {
 	// mail runs the River worker with the auth email jobs and a recording
 	// sender, like a server with TOLKOVO_SMTP_HOST set.
 	mail bool
+	// registration is TOLKOVO_REGISTRATION; empty means open.
+	registration string
 }
 
 // panelURL is where test links point.
@@ -119,7 +121,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	a, err := auth.New(context.Background(), ten, rc, auth.Options{
 		KeyPrefix: prefix, SessionIdleTimeout: time.Hour, SessionMaxAge: 24 * time.Hour,
 		HashParams: auth.HashParams{MemoryKiB: 64, Time: 1, Threads: 1}, HashConcurrency: 4,
-		Jobs: jobsClient, MailEnabled: o.mail, PanelURL: panelURL,
+		Jobs: jobsClient, MailEnabled: o.mail, PanelURL: panelURL, Registration: o.registration,
 	})
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)

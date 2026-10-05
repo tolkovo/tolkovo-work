@@ -1,5 +1,14 @@
 -- users is a global table without RLS (docs/adr/0003-multitenancy-rls.md).
 
+-- name: LockRegistration :exec
+-- Serialises registrations that may only create the first account, so two
+-- at once cannot both find the server empty. The key is arbitrary and
+-- fixed: "tolkovo:first-account".
+SELECT pg_advisory_xact_lock(7362183904102935911);
+
+-- name: AnyUser :one
+SELECT EXISTS (SELECT 1 FROM users);
+
 -- name: CreateUser :one
 INSERT INTO users (id, email, password_hash, name, locale, email_verified_at)
 VALUES (@id, @email, @password_hash, @name, @locale, sqlc.narg(email_verified_at))

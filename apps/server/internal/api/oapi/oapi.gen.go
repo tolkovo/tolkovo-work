@@ -1696,6 +1696,12 @@ type RegisterRequest struct {
 	WorkspaceSlug string  `json:"workspace_slug"`
 }
 
+// RegistrationState defines model for RegistrationState.
+type RegistrationState struct {
+	// Open `POST /auth/register` would be accepted now.
+	Open bool `json:"open"`
+}
+
 // RenameChannelRequest defines model for RenameChannelRequest.
 type RenameChannelRequest struct {
 	Name string `json:"name"`
@@ -2317,6 +2323,9 @@ type ServerInterface interface {
 	// Register Create an account and its first workspace
 	// (POST /auth/register)
 	Register(w http.ResponseWriter, r *http.Request)
+	// GetRegistration Whether this server takes new accounts
+	// (GET /auth/registration)
+	GetRegistration(w http.ResponseWriter, r *http.Request)
 	// SwitchWorkspace Switch the session to another workspace of the user
 	// (POST /auth/workspace)
 	SwitchWorkspace(w http.ResponseWriter, r *http.Request)
@@ -2593,6 +2602,12 @@ func (_ Unimplemented) ResetPassword(w http.ResponseWriter, r *http.Request) {
 // Register Create an account and its first workspace
 // (POST /auth/register)
 func (_ Unimplemented) Register(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRegistration Whether this server takes new accounts
+// (GET /auth/registration)
+func (_ Unimplemented) GetRegistration(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3172,6 +3187,20 @@ func (siw *ServerInterfaceWrapper) Register(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Register(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRegistration operation middleware
+func (siw *ServerInterfaceWrapper) GetRegistration(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRegistration(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5095,6 +5124,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/register", wrapper.Register)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/registration", wrapper.GetRegistration)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/login", wrapper.Login)

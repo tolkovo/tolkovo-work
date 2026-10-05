@@ -529,6 +529,7 @@
     "rateLimitedLater": "Too many attempts. Wait a little and try again.",
     "invalidCredentials": "Wrong email or password.",
     "emailTaken": "This email is already registered. Sign in or use another one.",
+    "registrationClosed": "This server takes no new accounts. Ask an admin for an invitation.",
     "slugTaken": "This address is taken. Choose another one.",
     "invalidRequest": "The server didn't accept the data. Check the fields and try again.",
     "unauthenticated": "Your session has ended. Sign in again.",
@@ -598,6 +599,7 @@
     },
     "register": {
       "title": "New workspace",
+      "closed": "This server takes no new workspaces. To join your team, ask an admin for an invitation: it arrives by email or as a link.",
       "subtitle": "A workspace is your company in Tolkovo: channels, team and conversations.",
       "name": "Your name",
       "workspace": "Company name",

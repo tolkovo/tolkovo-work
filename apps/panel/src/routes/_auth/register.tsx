@@ -1,5 +1,5 @@
 import { isLanguage } from "@tolkovo/i18n";
-import { useRegister } from "@tolkovo/api-client/react";
+import { useRegister, useRegistrationOpen } from "@tolkovo/api-client/react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,6 +29,7 @@ function RegisterPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const register = useRegister();
+  const registrationOpen = useRegistrationOpen();
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<Field>>({});
   const [serverField, setServerField] = useState<{ field: Field; message: string } | null>(null);
   // The address follows the company name until the person edits it.
@@ -89,6 +90,11 @@ function RegisterPage() {
       switchPrompt={t("auth.register.switchPrompt")}
       switchAction={t("auth.register.switchAction")}
       switchTo="/login"
+      done={
+        registrationOpen.data === false ? (
+          <p className="m-0 text-[14px] text-ink-2">{t("auth.register.closed")}</p>
+        ) : undefined
+      }
     >
       <TextField
         id="register-name"

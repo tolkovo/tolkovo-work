@@ -99,6 +99,9 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound), errors.Is(err, channels.ErrNotFound),
 		errors.Is(err, integrations.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
+	case errors.Is(err, tenancy.ErrRegistrationClosed):
+		writeProblem(w, r, Problem{Status: http.StatusForbidden, Code: "registration_closed", Title: "Forbidden",
+			Detail: "this server takes no new accounts; ask an admin for an invitation"})
 	case errors.Is(err, tenancy.ErrEmailTaken):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "email_taken", Title: "Conflict"})
 	case errors.Is(err, tenancy.ErrSlugTaken):

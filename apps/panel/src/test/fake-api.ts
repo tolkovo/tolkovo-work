@@ -76,6 +76,7 @@ export function fakeApi(
   const defaults: Record<string, Handler> = {
     "GET /me": () => (session ? json(200, session) : problem(401, "unauthenticated")),
     "GET /me/workspaces": () => json(200, { items: workspaces }),
+    "GET /auth/registration": () => json(200, { open: true }),
     "GET /members": () => json(200, { items: members }),
     "GET /me/sessions": () => json(200, { items: deviceSessions }),
     "GET /invitations": () => json(200, { items: [], email_enabled: true }),

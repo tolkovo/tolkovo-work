@@ -348,6 +348,7 @@ func apiDeps(
 		Jobs:               inserter,
 		MailEnabled:        cfg.MailEnabled(),
 		PanelURL:           cfg.PanelBaseURL(),
+		Registration:       cfg.RegistrationMode(),
 	})
 	if err != nil {
 		return api.Deps{}, err

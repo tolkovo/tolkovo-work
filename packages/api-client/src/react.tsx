@@ -21,6 +21,7 @@ import {
   createTag,
   disconnectChannel,
   fetchAttachmentLink,
+  fetchRegistrationOpen,
   fetchChannels,
   fetchContact,
   fetchIngestKeys,
@@ -115,6 +116,7 @@ export function useApiClient(): ApiClient {
 
 export const queryKeys = {
   session: ["session"] as const,
+  registration: ["auth", "registration"] as const,
   myWorkspaces: ["me", "workspaces"] as const,
   members: ["members"] as const,
   invitations: ["invitations"] as const,
@@ -204,6 +206,12 @@ export function useLogin() {
     mutationFn: (body: LoginRequest) => login(client, body),
     onSuccess: (session) => startSession(queryClient, session),
   });
+}
+
+/** Whether the server takes new accounts: the panel offers "Create workspace" only then. */
+export function useRegistrationOpen() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.registration, queryFn: () => fetchRegistrationOpen(client), staleTime: 60_000 });
 }
 
 export function useRegister() {
