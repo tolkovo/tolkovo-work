@@ -66,6 +66,7 @@ type env struct {
 	// github is the fake GitHub behind the integrations module.
 	github       *githubtest.GitHub
 	integrations *integrations.Service
+	widget       *widget.Service
 }
 
 type envOptions struct {
@@ -81,6 +82,8 @@ type envOptions struct {
 	mail bool
 	// registration is TOLKOVO_REGISTRATION; empty means open.
 	registration string
+	// widgetScanner checks visitors' files, like TOLKOVO_CLAMAV_ADDR.
+	widgetScanner widget.Scanner
 }
 
 // panelURL is where test links point.
@@ -166,11 +169,16 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
 		Conversations: convs, Jobs: inserter,
 	})
+	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
+	if o.widgetScanner != nil {
+		widgetOpts.Scanner = o.widgetScanner
+	}
+	widgets := widget.New(app, widgetOpts)
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
 		Ingest: reports, Integrations: integ,
-		Widget:        widget.New(app, widget.Options{Channels: chans, Inbox: convs, Redis: rc, KeyPrefix: prefix, Log: quiet}),
+		Widget:        widgets,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
@@ -179,6 +187,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
 		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
+		widget: widgets,
 	}
 }
 

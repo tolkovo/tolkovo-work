@@ -126,6 +126,7 @@
 }
 
 .tk-window {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: min(368px, calc(100vw - 2 * var(--tk-offset-x)));
@@ -261,13 +262,72 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tk-file {
+/* Files of a message: previews of pictures, other files as a card with name and size. */
+.tk-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.tk-msg[data-from="contact"] .tk-files {
+  justify-content: flex-end;
+}
+
+.tk-thumb {
   display: block;
-  margin-top: 4px;
-  color: inherit;
+  overflow: hidden;
+  border: 1px solid var(--tk-line);
+  border-radius: calc(var(--tk-radius) - 2px);
+  background: var(--tk-surface);
+}
+
+.tk-thumb img {
+  display: block;
+  max-width: 220px;
+  max-height: 180px;
+  object-fit: cover;
+}
+
+.tk-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--tk-line);
+  border-radius: calc(var(--tk-radius) - 2px);
+  background: var(--tk-surface);
+  color: var(--tk-ink);
   font-size: 13px;
+  text-decoration: none;
+}
+
+a.tk-file:hover .tk-file-name {
   text-decoration: underline;
-  overflow-wrap: anywhere;
+}
+
+.tk-file svg,
+.tk-chip svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--tk-ink-2);
+}
+
+.tk-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-file-size {
+  flex: none;
+  color: var(--tk-ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .tk-failed {
@@ -307,16 +367,123 @@
 
 .tk-composer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px;
-  padding: 10px 10px 10px 14px;
+  padding: 10px 10px 10px 6px;
   border-top: 1px solid var(--tk-line);
   background: var(--tk-surface);
+}
+
+.tk-chips {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 8px;
+  list-style: none;
+}
+
+.tk-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 4px 4px 6px;
+  border: 1px solid var(--tk-line);
+  border-radius: 8px;
+  background: var(--tk-sunk);
+  font-size: 12.5px;
+}
+
+.tk-chip img {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.tk-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tk-ink-2);
+  cursor: pointer;
+}
+
+.tk-chip-remove:hover {
+  background: var(--tk-line);
+  color: var(--tk-ink);
+}
+
+.tk-chip-remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tk-file-error {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0 0 0 8px;
+  color: var(--tk-danger);
+  font-size: 12.5px;
+}
+
+.tk-attach {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tk-ink-2);
+  cursor: pointer;
+}
+
+.tk-attach:hover:not(:disabled) {
+  background: var(--tk-sunk);
+  color: var(--tk-ink);
+}
+
+.tk-attach:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.tk-attach svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Shown while files are dragged over the window. */
+.tk-drop {
+  position: absolute;
+  z-index: 1;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--tk-accent);
+  border-radius: calc(var(--tk-radius) - 4px);
+  background: color-mix(in srgb, var(--tk-surface) 88%, transparent);
+  color: var(--tk-ink);
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .tk-input {
   min-height: 36px;
   max-height: 120px;
+  min-width: 0;
   flex: 1;
   padding: 8px 0;
   resize: none;
@@ -357,7 +524,10 @@
 .tk-launcher:focus-visible,
 .tk-icon-button:focus-visible,
 .tk-send:focus-visible,
+.tk-attach:focus-visible,
+.tk-chip-remove:focus-visible,
 .tk-link-button:focus-visible,
+.tk-thumb:focus-visible,
 .tk-file:focus-visible {
   outline: 2px solid var(--tk-accent);
   outline-offset: 2px;

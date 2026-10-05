@@ -72,13 +72,24 @@ export interface Options {
   open?: boolean;
 }
 
+/** A file of a message. The link is signed and short-lived; the widget renews it while the chat is open. */
+export interface ChatFile {
+  name: string;
+  contentType: string;
+  size: number;
+  url: string;
+  expiresAt: string;
+}
+
 /** A message of the chat as the widget shows it. */
 export interface ChatMessage {
   id: string;
   /** contact — the visitor; operator or bot — a reply. */
   sender: "contact" | "operator" | "bot";
+  /** Empty for a message of files only. */
   body: string;
   createdAt: string;
+  files: ChatFile[];
 }
 
 export interface Events {

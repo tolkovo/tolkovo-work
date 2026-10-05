@@ -17,6 +17,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest/store"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/clamav"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/filetype"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 )
 
@@ -188,13 +189,13 @@ func (s *Service) check(ctx context.Context, f store.AppReportFile, last bool) (
 		return "", fmt.Errorf("ingest: open report file: %w", err)
 	}
 	defer func() { _ = rc.Close() }()
-	head := make([]byte, sniffLen)
+	head := make([]byte, filetype.SniffLen)
 	n, err := io.ReadFull(rc, head)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("ingest: read report file: %w", err)
 	}
 	head = head[:n]
-	if !matchesType(f.ContentType, head, int64(n) < f.Size) {
+	if !filetype.Matches(f.ContentType, head, int64(n) < f.Size) {
 		return CheckTypeMismatch, nil
 	}
 	if s.opts.Scanner == nil {

@@ -238,6 +238,8 @@ type VisitorMessage struct {
 	// Key names the message: a retry with the same key is not stored twice.
 	Key  string
 	Body string
+	// Files are in storage already, checked by internal/widget.
+	Files []conversations.ReceivedFile
 }
 
 // ReceiveVisitorMessage stores a visitor's message like any channel's
@@ -250,7 +252,7 @@ func (s *Service) ReceiveVisitorMessage(ctx context.Context, workspaceID uuid.UU
 	}
 	res, err := s.opts.Inbox.Receive(ctx, workspaceID, conversations.Inbound{
 		ChannelID: m.ChannelID, Thread: VisitorThread(m.ContactID), ExternalID: VisitorExternalID(m.Key),
-		ContactID: m.ContactID, Body: m.Body,
+		ContactID: m.ContactID, Body: m.Body, Files: m.Files,
 	})
 	if err != nil {
 		return conversations.Received{}, err

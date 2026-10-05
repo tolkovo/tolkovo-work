@@ -1,4 +1,5 @@
 import { WidgetApi, WidgetApiError, isSessionEnded, type WidgetMessage } from "./api";
+import { MAX_FILE_SIZE, MAX_FILES, fileType, isImage } from "./files";
 import { Realtime, type SocketFactory } from "./realtime";
 import type { ChatMessage, EventName, Events, Handler, TokenStorage, User } from "./types";
 
@@ -8,11 +9,28 @@ import type { ChatMessage, EventName, Events, Handler, TokenStorage, User } from
  * message (docs/02 §13.2).
  */
 
+/** A file of a message the server has not confirmed yet. */
+export interface OutFile {
+  file: File;
+  name: string;
+  /** The type declared to the server. */
+  type: string;
+  size: number;
+  /** An object URL of a picture, for its preview. */
+  preview?: string;
+  /** Set once uploaded in the current session, so a retry does not upload it again. */
+  uploadId?: string;
+}
+
 /** A message the visitor sent that the server has not confirmed yet. */
 export interface Pending {
   key: string;
   body: string;
+  files: OutFile[];
   failed: boolean;
+  /** rejected — the server refused the file `rejected` and deleted it; unavailable — files cannot be checked now. */
+  error?: "rejected" | "unavailable";
+  rejected?: string;
 }
 
 export interface State {
@@ -58,8 +76,21 @@ function newKey(): string {
 }
 
 function toChat(m: WidgetMessage): ChatMessage {
-  return { id: m.id, sender: m.sender, body: m.body, createdAt: m.created_at };
+  return {
+    id: m.id,
+    sender: m.sender,
+    body: m.body,
+    createdAt: m.created_at,
+    files: m.files.map((f) => ({ name: f.name, contentType: f.content_type, size: f.size, url: f.download.url, expiresAt: f.download.expires_at })),
+  };
 }
+
+function revoke(files: OutFile[]): void {
+  for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
+}
+
+/** Links of files are renewed this long before they run out. */
+const RENEW_BEFORE_MS = 60_000;
 
 export interface ControllerOptions {
   widgetKey: string;
@@ -90,6 +121,8 @@ export class Controller {
   private read = "";
   private destroyed = false;
   private started: Promise<void> | null = null;
+  private renewTimer: ReturnType<typeof setTimeout> | undefined;
+  private renewing: Promise<void> | null = null;
 
   constructor(private readonly o: ControllerOptions) {
     this.api = new WidgetApi(o.apiBase);
@@ -209,10 +242,12 @@ export class Controller {
     this.set({ channelName: session.channel_name });
   }
 
-  /** The session ended on the server: a new one, a fresh chat, a new connection. */
+  /** The session ended on the server: a new one, a fresh chat, a new connection. Unsent messages stay: they are the same visitor's. */
   private async restart(): Promise<void> {
     this.saveToken(null);
-    this.resetChat();
+    this.resetChat(true);
+    // Uploads belong to the session that made them.
+    for (const p of this.state.pending) for (const f of p.files) delete f.uploadId;
     try {
       await this.openSession();
     } catch {
@@ -223,10 +258,11 @@ export class Controller {
     this.realtime.connect(this.token!);
   }
 
-  private resetChat(): void {
+  private resetChat(keepPending = false): void {
     this.cursor = "";
     this.delivered = this.read = "";
-    this.set({ messages: [], pending: [], unread: 0, typing: false });
+    if (!keepPending) for (const p of this.state.pending) revoke(p.files);
+    this.set({ messages: [], unread: 0, typing: false, ...(keepPending ? {} : { pending: [] }) });
   }
 
   async identify(user: User): Promise<void> {
@@ -303,6 +339,7 @@ export class Controller {
     const messages = [...this.state.messages, ...fresh].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const replies = fresh.filter((m) => m.sender !== "contact");
     const patch: Partial<State> = { messages };
+    if (fresh.some((m) => m.files.length > 0)) queueMicrotask(() => this.scheduleRenew());
     if (replies.length > 0) {
       patch.typing = false;
       if (!this.state.open || document.visibilityState === "hidden") patch.unread = this.state.unread + replies.length;
@@ -329,16 +366,38 @@ export class Controller {
     });
   }
 
-  async send(text: string, key = newKey()): Promise<void> {
+  /** Sends text, files or both. Files the server would not accept are not sent at all: the UI checks them first (files.ts). */
+  async send(text: string, files: File[] = [], key = newKey()): Promise<void> {
     const body = text.trim();
-    if (!body || body.length > MAX_CHARS) return;
-    const firstMessage = this.state.messages.length === 0 && this.state.pending.length === 0;
-    this.set({ pending: [...this.state.pending.filter((p) => p.key !== key), { key, body, failed: false }] });
+    if ((!body && files.length === 0) || body.length > MAX_CHARS || files.length > MAX_FILES) return;
+    const out: OutFile[] = [];
+    for (const file of files) {
+      const type = fileType(file);
+      if (!type || file.size <= 0 || file.size > MAX_FILE_SIZE) return;
+      out.push({ file, name: file.name, type, size: file.size, ...(isImage(type) ? { preview: URL.createObjectURL(file) } : {}) });
+    }
+    this.set({ pending: [...this.state.pending.filter((p) => p.key !== key), { key, body, files: out, failed: false }] });
     await this.start();
+    await this.deliver(key);
+  }
+
+  /** Uploads what is not uploaded yet, then sends the message. A retry with the same key never sends it twice. */
+  private async deliver(key: string): Promise<void> {
+    const p = this.state.pending.find((x) => x.key === key);
+    if (!p) return;
     const attempt = async () => {
       const token = this.token;
       if (!token) throw new WidgetApiError(0, "no_session", null);
-      return this.api.send(token, key, body);
+      const ids: string[] = [];
+      for (const f of p.files) {
+        if (!f.uploadId) {
+          const up = await this.api.createUpload(token, { file_name: f.name, content_type: f.type, size: f.size });
+          await this.api.put(up.upload, f.file);
+          f.uploadId = up.id;
+        }
+        ids.push(f.uploadId);
+      }
+      return this.api.send(token, key, p.body, ids);
     };
     let sent: WidgetMessage;
     try {
@@ -349,11 +408,13 @@ export class Controller {
         await this.restart();
         sent = await attempt();
       }
-    } catch {
-      this.set({ pending: this.state.pending.map((p) => (p.key === key ? { ...p, failed: true } : p)) });
+    } catch (e) {
+      this.fail(p, e);
       return;
     }
-    this.set({ pending: this.state.pending.filter((p) => p.key !== key) });
+    revoke(p.files);
+    const firstMessage = !this.state.messages.some((m) => m.sender === "contact");
+    this.set({ pending: this.state.pending.filter((x) => x.key !== key) });
     this.merge([toChat(sent)]);
     if (firstMessage) {
       this.emit("chatStarted", undefined);
@@ -362,9 +423,88 @@ export class Controller {
     }
   }
 
+  /** Marks a message as not sent, with what the visitor can do about it. */
+  private fail(p: Pending, e: unknown): void {
+    const patch: Partial<Pending> = { failed: true };
+    if (e instanceof WidgetApiError) {
+      const file = e.uploadId ? p.files.find((f) => f.uploadId === e.uploadId) : undefined;
+      if (file && (e.code === "file_type_mismatch" || e.code === "file_infected")) {
+        // The server deleted the file: the message can go on without it.
+        revoke([file]);
+        patch.files = p.files.filter((f) => f !== file);
+        patch.error = "rejected";
+        patch.rejected = file.name;
+      } else if (file && e.code === "attachment_not_uploaded") {
+        delete file.uploadId;
+      } else if (e.code === "scan_unavailable") {
+        patch.error = "unavailable";
+      }
+    }
+    this.set({ pending: this.state.pending.map((x) => (x.key === p.key ? { ...x, ...patch } : x)) });
+  }
+
   retry(key: string): Promise<void> {
     const p = this.state.pending.find((x) => x.key === key);
-    return p ? this.send(p.body, key) : Promise.resolve();
+    if (!p) return Promise.resolve();
+    if (!p.body && p.files.length === 0) {
+      this.dismiss(key);
+      return Promise.resolve();
+    }
+    const { error: _error, rejected: _rejected, ...rest } = p;
+    this.set({ pending: this.state.pending.map((x) => (x.key === key ? { ...rest, failed: false } : x)) });
+    return this.deliver(key);
+  }
+
+  /** Drops a message that was not sent. */
+  dismiss(key: string): void {
+    const p = this.state.pending.find((x) => x.key === key);
+    if (!p) return;
+    revoke(p.files);
+    this.set({ pending: this.state.pending.filter((x) => x.key !== key) });
+  }
+
+  // --- links of files ---
+
+  /** The earliest expiry of a file link, ms; Infinity without files. */
+  private soonestExpiry(): number {
+    let soonest = Infinity;
+    for (const m of this.state.messages) for (const f of m.files) soonest = Math.min(soonest, Date.parse(f.expiresAt));
+    return soonest;
+  }
+
+  /** Renews the links of files of the newest messages; a picture that failed to load asks for it too. */
+  renewFiles(): Promise<void> {
+    const token = this.token;
+    if (!token) return Promise.resolve();
+    this.renewing ??= (async () => {
+      try {
+        const page = await this.api.messages(token, "");
+        const fresh = new Map(page.items.map((m) => [m.id, toChat(m).files]));
+        this.set({ messages: this.state.messages.map((m) => (fresh.has(m.id) ? { ...m, files: fresh.get(m.id)! } : m)) });
+      } catch {
+        // The next timer tries again.
+      }
+    })().finally(() => {
+      this.renewing = null;
+    });
+    return this.renewing;
+  }
+
+  /** While the window is open, links are renewed a minute before they run out. */
+  private scheduleRenew(): void {
+    clearTimeout(this.renewTimer);
+    if (!this.state.open || this.destroyed) return;
+    const soonest = this.soonestExpiry();
+    if (soonest === Infinity) return;
+    // At most 10 minutes: a timer longer than 2^31 ms fires at once.
+    const delay = Math.min(10 * 60_000, Math.max(30_000, soonest - Date.now() - RENEW_BEFORE_MS));
+    this.renewTimer = setTimeout(() => void this.renewFiles().then(() => this.scheduleRenew()), delay);
+  }
+
+  /** On opening: links that ran out meanwhile are renewed at once. */
+  private renewIfStale(): void {
+    if (this.soonestExpiry() - Date.now() < RENEW_BEFORE_MS) void this.renewFiles().then(() => this.scheduleRenew());
+    else this.scheduleRenew();
   }
 
   private showTyping(): void {
@@ -381,6 +521,9 @@ export class Controller {
     if (open) {
       this.emit("unread", 0);
       this.sendReceipts();
+      this.renewIfStale();
+    } else {
+      clearTimeout(this.renewTimer);
     }
     this.emit(open ? "open" : "close", undefined);
   }
@@ -397,12 +540,15 @@ export class Controller {
       this.emit("unread", 0);
     }
     void this.refetch();
+    if (this.state.open) this.renewIfStale();
   }
 
   destroy(): void {
     this.destroyed = true;
     this.realtime.stop();
     clearTimeout(this.typingTimer);
+    clearTimeout(this.renewTimer);
+    for (const p of this.state.pending) revoke(p.files);
     this.listeners.clear();
     this.handlers.clear();
   }

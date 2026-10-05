@@ -2,6 +2,14 @@ import { vi } from "vitest";
 
 import type { SocketFactory } from "../realtime";
 
+/** A file of a message, as the API returns it. */
+export interface FakeFile {
+  name: string;
+  content_type: string;
+  size: number;
+  download: { method: string; url: string; headers: Record<string, string>; expires_at: string };
+}
+
 /** A message of the fake chat, as the API returns it. */
 export interface FakeMessage {
   id: string;
@@ -9,7 +17,21 @@ export interface FakeMessage {
   sender: "contact" | "operator" | "bot";
   body: string;
   created_at: string;
-  files: never[];
+  files: FakeFile[];
+}
+
+interface FakeUpload {
+  name: string;
+  type: string;
+  size: number;
+  uploaded: boolean;
+}
+
+/** Where the fake's upload and download links point. */
+const FILES = "https://files.example.com";
+
+export function fakeFile(name: string, type: string, size: number, expiresAt = "2099-01-01T00:00:00Z", version = 1): FakeFile {
+  return { name, content_type: type, size, download: { method: "GET", url: `${FILES}/d/${encodeURIComponent(name)}?v=${version}`, headers: {}, expires_at: expiresAt } };
 }
 
 export interface Call {
@@ -37,10 +59,18 @@ export class FakeServer {
   identity: "verified" | "unverified" | "none" = "none";
   /** The next answers of a route, before the normal behaviour. */
   failNext: { route: string; status: number; code: string }[] = [];
+  uploads = new Map<string, FakeUpload>();
+  /** Names of files the server finds not to be what their type says. */
+  reject = new Set<string>();
+  /** Bumped by tests to hand out new links of files. */
+  linkVersion = 1;
   private issued = 0;
 
   install(): void {
     vi.stubGlobal("fetch", (input: string, init: RequestInit = {}) => Promise.resolve(this.handle(input, init)));
+    // jsdom has no object URLs.
+    URL.createObjectURL = (b: Blob) => `blob:fake/${(b as File).name ?? "blob"}`;
+    URL.revokeObjectURL = () => undefined;
   }
 
   reply(body: string, sender: "operator" | "bot" = "operator"): FakeMessage {
@@ -54,6 +84,13 @@ export class FakeServer {
     const method = init.method ?? "GET";
     const headers = (init.headers ?? {}) as Record<string, string>;
     const body = typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
+    if (u.origin === FILES) {
+      this.calls.push({ method, path: u.pathname, headers, body: undefined });
+      const up = this.uploads.get(u.pathname.replace("/u/", ""));
+      if (method !== "PUT" || !up || up.uploaded || headers["Content-Type"] !== up.type) return json(403, { code: "link_rejected" });
+      up.uploaded = true;
+      return new Response(null, { status: 200 });
+    }
     const path = u.pathname.replace("/api/v1/widget", "");
     this.calls.push({ method, path: path + u.search, headers, body });
     const route = `${method} ${path}`;
@@ -83,18 +120,37 @@ export class FakeServer {
         return new Response(null, { status: 204 });
       case "GET /messages": {
         const since = u.searchParams.get("since") ?? "";
-        const items = since ? this.messages.filter((m) => m.id > since) : this.messages.slice(-100);
+        const fresh = (m: FakeMessage) => ({ ...m, files: m.files.map((f) => ({ ...f, download: { ...f.download, url: f.download.url.replace(/v=\d+/, `v=${this.linkVersion}`), expires_at: this.linkVersion > 1 ? "2099-01-01T00:00:00Z" : f.download.expires_at } })) });
+        const items = (since ? this.messages.filter((m) => m.id > since) : this.messages.slice(-100)).map(fresh);
         const last = items.at(-1)?.id ?? since;
         return json(200, { items, cursor: last, more: false });
       }
+      case "POST /uploads": {
+        const req = body as { file_name: string; content_type: string; size: number };
+        const id = nextId();
+        this.uploads.set(id, { name: req.file_name, type: req.content_type, size: req.size, uploaded: false });
+        return json(201, { id, upload: { method: "PUT", url: `${FILES}/u/${id}`, headers: { "Content-Type": req.content_type }, expires_at: "2099-01-01T00:00:00Z" } });
+      }
       case "POST /messages": {
+        const req = body as { message?: string; attachment_ids?: string[] };
+        const files: FakeFile[] = [];
+        for (const id of req.attachment_ids ?? []) {
+          const up = this.uploads.get(id);
+          if (!up) return json(400, { code: "invalid_request" });
+          if (!up.uploaded) return json(409, { code: "attachment_not_uploaded", upload_id: id });
+          if (this.reject.has(up.name)) {
+            this.uploads.delete(id);
+            return json(422, { code: "file_type_mismatch", upload_id: id });
+          }
+          files.push(fakeFile(up.name, up.type, up.size));
+        }
         const m: FakeMessage = {
           id: nextId(),
           conversation_id: "conv-1",
           sender: "contact",
-          body: (body as { message: string }).message,
+          body: req.message ?? "",
           created_at: "2026-10-05T10:00:00Z",
-          files: [],
+          files,
         };
         this.messages.push(m);
         return json(201, m);

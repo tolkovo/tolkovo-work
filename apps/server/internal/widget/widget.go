@@ -33,6 +33,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/ratelimit"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget/store"
 )
 
@@ -99,6 +100,7 @@ type Inbox interface {
 	VisitorMessages(ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, since string) (conversations.VisitorMessages, error)
 	VisitorMessageByKey(ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, externalID string) (conversations.VisitorMessage, error)
 	MarkVisitorReceipt(ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, r conversations.VisitorReceipt) error
+	AttachedKeys(ctx context.Context, workspaceID uuid.UUID, storageKeys []string) ([]string, error)
 }
 
 // Options configure the service.
@@ -106,6 +108,10 @@ type Options struct {
 	Channels Channels
 	Inbox    Inbox
 	Redis    *redis.Client
+	// Files stores visitors' files (W-02); Scanner, nil without ClamAV,
+	// checks them before a message takes them.
+	Files   storage.Storage
+	Scanner Scanner
 	// KeyPrefix separates Redis keys of tests.
 	KeyPrefix string
 	Log       *slog.Logger
@@ -397,19 +403,30 @@ type Sent struct {
 	Created bool
 }
 
+// Message is what the visitor sends: text, files they uploaded
+// (CreateUpload) or both, and the Idempotency-Key.
+type Message struct {
+	Key   string
+	Body  string
+	Files []uuid.UUID
+}
+
 // Send stores what the visitor wrote. The first message of an anonymous
 // session creates its contact, with what the visitor claimed before. A
 // retry with the same key and text returns the first message.
-func (s *Service) Send(ctx context.Context, c Caller, token, key, body string) (Sent, error) {
+func (s *Service) Send(ctx context.Context, c Caller, token string, m Message) (Sent, error) {
 	if err := s.allow(ctx, "widget:ip:"+c.IP, requestsPerIP); err != nil {
 		return Sent{}, err
 	}
-	body = strings.TrimSpace(body)
+	body, key := strings.TrimSpace(m.Body), m.Key
 	switch {
-	case body == "" || utf8.RuneCountInString(body) > MaxMessageChars || !utf8.ValidString(body):
-		return Sent{}, fmt.Errorf("%w: message must be 1 to %d characters", ErrInvalid, MaxMessageChars)
+	case (body == "" && len(m.Files) == 0) || utf8.RuneCountInString(body) > MaxMessageChars || !utf8.ValidString(body):
+		return Sent{}, fmt.Errorf("%w: message must be 1 to %d characters, or files", ErrInvalid, MaxMessageChars)
 	case len(key) > maxKeyBytes:
 		return Sent{}, fmt.Errorf("%w: Idempotency-Key must be at most %d characters", ErrInvalid, maxKeyBytes)
+	}
+	if err := validUploads(m.Files); err != nil {
+		return Sent{}, err
 	}
 	v, err := s.Authenticate(ctx, c, token)
 	if err != nil {
@@ -418,16 +435,20 @@ func (s *Service) Send(ctx context.Context, c Caller, token, key, body string) (
 	if err := s.allow(ctx, "widget:messages:"+v.SessionID.String(), messagesPerVisit); err != nil {
 		return Sent{}, err
 	}
+	if key == "" {
+		key = uuid.NewString()
+	}
+	files, err := s.takeUploads(ctx, v, key, m.Files)
+	if err != nil {
+		return Sent{}, err
+	}
 	if v.ContactID == uuid.Nil {
 		if v.ContactID, err = s.firstContact(ctx, v); err != nil {
 			return Sent{}, err
 		}
 	}
-	if key == "" {
-		key = uuid.NewString()
-	}
 	res, err := s.opts.Channels.ReceiveVisitorMessage(ctx, v.WorkspaceID, channels.VisitorMessage{
-		ChannelID: v.ChannelID, ContactID: v.ContactID, Key: key, Body: body,
+		ChannelID: v.ChannelID, ContactID: v.ContactID, Key: key, Body: body, Files: files,
 	})
 	if err != nil {
 		return Sent{}, s.inboxError(err)
@@ -616,6 +637,13 @@ func parseToken(token string) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return ws, true
+}
+
+func (s *Service) log() *slog.Logger {
+	if s.opts.Log != nil {
+		return s.opts.Log
+	}
+	return slog.Default()
 }
 
 func deref(p *string) string {

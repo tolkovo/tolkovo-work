@@ -12,6 +12,37 @@ import (
 	"github.com/google/uuid"
 )
 
+const attachedKeys = `-- name: AttachedKeys :many
+SELECT storage_key FROM attachments
+WHERE workspace_id = $1 AND storage_key = ANY($2::text[])
+`
+
+type AttachedKeysParams struct {
+	WorkspaceID uuid.UUID
+	StorageKeys []string
+}
+
+// Which of these objects are files of messages.
+func (q *Queries) AttachedKeys(ctx context.Context, arg AttachedKeysParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, attachedKeys, arg.WorkspaceID, arg.StorageKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var storage_key string
+		if err := rows.Scan(&storage_key); err != nil {
+			return nil, err
+		}
+		items = append(items, storage_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const contactByExternalID = `-- name: ContactByExternalID :one
 SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
 WHERE workspace_id = $1 AND external_id = $2 AND deleted_at IS NULL

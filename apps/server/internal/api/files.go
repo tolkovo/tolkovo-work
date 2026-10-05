@@ -35,8 +35,31 @@ type LocalFiles interface {
 }
 
 func mountFiles(r chi.Router, files LocalFiles, log *slog.Logger) {
-	r.Put(FilesPath+"/*", uploadFile(files, log))
+	r.Options(FilesPath+"/*", uploadPreflight)
+	r.Put(FilesPath+"/*", anyOrigin(uploadFile(files, log)))
 	r.Get(FilesPath+"/*", downloadFile(files, log))
+}
+
+// Uploads come from pages of any origin: the widget runs on a company's
+// site (W-02). The signature in the link is the permission and no cookie
+// goes along, so CORS is open without credentials.
+
+// uploadPreflight answers a browser's preflight of a signed PUT.
+func uploadPreflight(w http.ResponseWriter, r *http.Request) {
+	h := w.Header()
+	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Allow-Methods", "PUT")
+	h.Set("Access-Control-Allow-Headers", "Content-Type")
+	h.Set("Access-Control-Max-Age", "600")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// anyOrigin lets a page of any origin read the answer to its upload.
+func anyOrigin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		next(w, r)
+	}
 }
 
 // uploadFile accepts the body of a signed PUT link. The link decides the

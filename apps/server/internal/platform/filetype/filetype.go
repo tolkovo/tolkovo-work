@@ -1,17 +1,27 @@
-package ingest
+// Package filetype checks that the first bytes of an uploaded file fit the
+// content type the client declared, so a file someone else sent cannot pass
+// for another kind: an executable for a log, a page for a screenshot. App
+// reports (internal/ingest) and widget visitors' files (internal/widget)
+// are checked this way before anyone opens them.
+package filetype
 
 import (
 	"bytes"
 	"unicode/utf8"
 )
 
-// sniffLen is how much of a file the type check reads.
-const sniffLen = 8 << 10
+// SniffLen is how much of a file the check reads.
+const SniffLen = 8 << 10
 
-// Signatures of the binary types an app may send.
+// Signatures of the binary types the check knows.
 var (
 	sigPNG      = []byte("\x89PNG\r\n\x1a\n")
 	sigJPEG     = []byte{0xFF, 0xD8, 0xFF}
+	sigGIF87    = []byte("GIF87a")
+	sigGIF89    = []byte("GIF89a")
+	sigRIFF     = []byte("RIFF")
+	sigWebP     = []byte("WEBP")
+	sigPDF      = []byte("%PDF-")
 	sigZIP      = []byte("PK\x03\x04")
 	sigZIPEmpty = []byte("PK\x05\x06")
 	sigGzip     = []byte{0x1F, 0x8B}
@@ -20,19 +30,27 @@ var (
 	bomUTF16BE  = []byte{0xFE, 0xFF}
 )
 
-// matchesType reports whether the first bytes of a file fit its declared
-// type; full means head is a full sample, not the whole file. Binary types
-// are checked by signature. Text types must look like text: UTF-8 without
-// NUL bytes, or UTF-16 with a byte order mark, as Windows apps write logs;
-// JSON must start with { or [, XML with <. So an executable cannot pass for
-// a log, nor a page for a screenshot.
-func matchesType(contentType string, head []byte, full bool) bool {
+// Matches reports whether the first bytes of a file fit its declared type;
+// full means head is a full sample, not the whole file. Binary types are
+// checked by signature. Text types must look like text: UTF-8 without NUL
+// bytes, or UTF-16 with a byte order mark, as Windows apps write logs;
+// JSON must start with { or [, XML with <. An unknown type never matches.
+func Matches(contentType string, head []byte, full bool) bool {
 	switch contentType {
 	case "image/png":
 		return bytes.HasPrefix(head, sigPNG)
 	case "image/jpeg":
 		return bytes.HasPrefix(head, sigJPEG)
-	case "application/zip":
+	case "image/gif":
+		return bytes.HasPrefix(head, sigGIF87) || bytes.HasPrefix(head, sigGIF89)
+	case "image/webp":
+		return len(head) >= 12 && bytes.HasPrefix(head, sigRIFF) && bytes.Equal(head[8:12], sigWebP)
+	case "application/pdf":
+		return bytes.HasPrefix(head, sigPDF)
+	case "application/zip",
+		// Office documents are ZIP archives.
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
 		return bytes.HasPrefix(head, sigZIP) || bytes.HasPrefix(head, sigZIPEmpty)
 	case "application/gzip":
 		return bytes.HasPrefix(head, sigGzip)

@@ -264,11 +264,14 @@ func startWorker(
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
 	river.AddWorker(workers, widget.NewPruneSessionsWorker(sys.Pool()))
+	// Visitors' files no message took are deleted (W-02).
+	widget.New(pool, widget.Options{Inbox: convs, Files: store, Log: log}).AddWorkers(workers, sys.Pool())
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
 	integ.AddWorkers(workers)
 	periodic := []*river.PeriodicJob{
 		outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic(), widget.PruneSessionsPeriodic(),
+		widget.CleanupUploadsPeriodic(),
 	}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
@@ -373,6 +376,11 @@ func apiDeps(
 	// Replies are queued here and sent by the worker (T-03).
 	chans.SetJobs(inserter)
 	convs.SetDeliverer(chans)
+	// Visitors' files are checked when a message takes them (W-02).
+	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Redis: redisClient, Files: store, Log: log}
+	if cfg.ClamAVAddr != "" {
+		widgetOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
+	}
 	deps := api.Deps{
 		Log: log, DB: pool, Version: version,
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
@@ -389,7 +397,7 @@ func apiDeps(
 		Integrations: integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter)),
 		// Visitors of chat widgets write through the channels module and
 		// read their chat from convs (W-01).
-		Widget:        widget.New(pool, widget.Options{Channels: chans, Inbox: convs, Redis: redisClient, Log: log}),
+		Widget:        widget.New(pool, widgetOpts),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

@@ -23,3 +23,16 @@ type WidgetSession struct {
 	LastSeenAt  time.Time
 	ExpiresAt   time.Time
 }
+
+type WidgetUpload struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	ChannelID   uuid.UUID
+	SessionID   uuid.UUID
+	StorageKey  string
+	FileName    string
+	ContentType string
+	Size        int64
+	MessageKey  *string
+	CreatedAt   time.Time
+}

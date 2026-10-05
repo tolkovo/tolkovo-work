@@ -155,7 +155,9 @@ func (s *server) SendWidgetMessage(w http.ResponseWriter, r *http.Request, param
 		s.writeWidgetError(w, r, err)
 		return
 	}
-	sent, err := s.widget.Send(r.Context(), s.widgetCaller(r), widgetToken(r), deref(params.IdempotencyKey), req.Message)
+	sent, err := s.widget.Send(r.Context(), s.widgetCaller(r), widgetToken(r), widget.Message{
+		Key: deref(params.IdempotencyKey), Body: deref(req.Message), Files: deref(req.AttachmentIds),
+	})
 	if err != nil {
 		s.writeWidgetError(w, r, err)
 		return
@@ -165,6 +167,26 @@ func (s *server) SendWidgetMessage(w http.ResponseWriter, r *http.Request, param
 		status = http.StatusOK
 	}
 	writeJSON(w, status, widgetMessageBody(sent.VisitorMessage))
+}
+
+// CreateWidgetUpload implements POST /widget/uploads.
+func (s *server) CreateWidgetUpload(w http.ResponseWriter, r *http.Request) {
+	if s.widgetOff(w, r) {
+		return
+	}
+	var req oapi.WidgetUploadRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	up, err := s.widget.CreateUpload(r.Context(), s.widgetCaller(r), widgetToken(r), widget.UploadInput{
+		FileName: req.FileName, ContentType: req.ContentType, Size: req.Size,
+	})
+	if err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, oapi.WidgetUpload{Id: up.ID, Upload: signedBody(up.Request)})
 }
 
 // MarkWidgetReceipt implements POST /widget/receipts.
@@ -240,7 +262,10 @@ func (s *server) widgetRealtimeHandler(gw WidgetRealtime) http.HandlerFunc {
 // writeWidgetError answers the widget module's errors; anything else goes
 // to writeError. Bodies never repeat what the visitor sent.
 func (s *server) writeWidgetError(w http.ResponseWriter, r *http.Request, err error) {
-	var limited *widget.RateLimitedError
+	var (
+		limited *widget.RateLimitedError
+		file    *widget.FileError
+	)
 	switch {
 	case errors.Is(err, widget.ErrInvalidKey):
 		writeProblem(w, r, Problem{
@@ -265,6 +290,25 @@ func (s *server) writeWidgetError(w http.ResponseWriter, r *http.Request, err er
 		writeProblem(w, r, Problem{
 			Status: http.StatusUnprocessableEntity, Code: "idempotency_key_reused", Title: "Unprocessable Content",
 			Detail: "the Idempotency-Key was used with a different message",
+		})
+	case errors.As(err, &file):
+		p := Problem{
+			Status: http.StatusUnprocessableEntity, Title: "Unprocessable Content", UploadID: file.UploadID.String(),
+			Code: "file_type_mismatch", Detail: "the file is not what its type says; it was deleted",
+		}
+		switch file.Reason {
+		case widget.FileNotUploaded:
+			p.Status, p.Title, p.Code = http.StatusConflict, "Conflict", "attachment_not_uploaded"
+			p.Detail = "the file is not uploaded whole; upload it again"
+		case widget.FileInfected:
+			p.Code, p.Detail = "file_infected", "the antivirus found a threat in the file; it was deleted"
+		}
+		writeProblem(w, r, p)
+	case errors.Is(err, widget.ErrScanUnavailable):
+		w.Header().Set("Retry-After", "30")
+		writeProblem(w, r, Problem{
+			Status: http.StatusServiceUnavailable, Code: "scan_unavailable", Title: "Service Unavailable",
+			Detail: "files cannot be checked right now, retry later",
 		})
 	case errors.Is(err, widget.ErrInvalid):
 		writeProblem(w, r, Problem{

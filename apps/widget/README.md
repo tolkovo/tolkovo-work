@@ -93,11 +93,14 @@ protocol.registerSchemesAsPrivileged([
 
 An app that loads `file://` pages can list `file://` and `null` instead.
 
-**Content Security Policy.** Allow the server for HTTP and WebSocket:
+**Content Security Policy.** Allow the server for HTTP and WebSocket, and for the pictures in the chat:
 
 ```
 connect-src 'self' https://support.example.com wss://support.example.com
+img-src 'self' https://support.example.com
 ```
+
+With the `s3` storage driver, files are uploaded to the bucket and shown from it: add the bucket's address to `connect-src` and `img-src` too. The same applies to a site with a CSP.
 
 The widget's styles live in a shadow root (`adoptedStyleSheets`), so no `'unsafe-inline'` is needed for them.
 
@@ -120,5 +123,6 @@ The widget's styles live in a shadow root (`adoptedStyleSheets`), so no `'unsafe
 - **Live updates.** A WebSocket to `/api/v1/widget/realtime` carries only signals: "a reply is here", "an operator is typing". Texts always come over HTTPS. After a reconnect the widget refetches what it missed.
 - **Contacts.** An anonymous visitor appears in the inbox only after their first message.
 - **Receipts.** The operator sees "delivered" when the widget has a reply and "read" when it was shown in an open window.
+- **Files.** The visitor attaches up to 5 files per message with the paperclip button, by pasting a screenshot or by dragging files onto the window. Each file can be up to 10 MB: a picture, PDF, text, CSV, JSON, ZIP, DOCX or XLSX. Before the message is stored, the server checks that a file is what its type says and, if your server runs an antivirus, scans it. A file that fails is deleted, and the visitor sees which one did not go. Pictures in the chat show as previews. Other files open from a link.
 
 License: [MIT](LICENSE).

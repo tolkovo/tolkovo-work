@@ -1681,6 +1681,9 @@ type Problem struct {
 	Status    int     `json:"status"`
 	Title     string  `json:"title"`
 	Type      string  `json:"type"`
+
+	// UploadId The widget's file a message was refused for.
+	UploadId *string `json:"upload_id,omitempty"`
 }
 
 // RegisterRequest defines model for RegisterRequest.
@@ -1883,9 +1886,11 @@ type WidgetMessage struct {
 // WidgetMessageSender `contact` — the visitor; `operator` or `bot` — a reply.
 type WidgetMessageSender string
 
-// WidgetMessageRequest defines model for WidgetMessageRequest.
+// WidgetMessageRequest Text, files or both.
 type WidgetMessageRequest struct {
-	Message string `json:"message"`
+	// AttachmentIds Ids of `POST /widget/uploads`, in the order to show.
+	AttachmentIds *[]uuid.UUID `json:"attachment_ids,omitempty"`
+	Message       *string      `json:"message,omitempty"`
 }
 
 // WidgetMessages defines model for WidgetMessages.
@@ -1935,6 +1940,19 @@ type WidgetSessionRequest struct {
 	SessionToken *string     `json:"session_token,omitempty"`
 	User         *WidgetUser `json:"user,omitempty"`
 	WidgetKey    string      `json:"widget_key"`
+}
+
+// WidgetUpload defines model for WidgetUpload.
+type WidgetUpload struct {
+	Id     uuid.UUID     `json:"id"`
+	Upload SignedRequest `json:"upload"`
+}
+
+// WidgetUploadRequest defines model for WidgetUploadRequest.
+type WidgetUploadRequest struct {
+	ContentType string `json:"content_type"`
+	FileName    string `json:"file_name"`
+	Size        int64  `json:"size"`
 }
 
 // WidgetUser defines model for WidgetUser.
@@ -2291,6 +2309,9 @@ type MarkWidgetReceiptJSONRequestBody = WidgetReceiptRequest
 // StartWidgetSessionJSONRequestBody defines body for StartWidgetSession for application/json ContentType.
 type StartWidgetSessionJSONRequestBody = WidgetSessionRequest
 
+// CreateWidgetUploadJSONRequestBody defines body for CreateWidgetUpload for application/json ContentType.
+type CreateWidgetUploadJSONRequestBody = WidgetUploadRequest
+
 // UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
 type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
@@ -2542,6 +2563,9 @@ type ServerInterface interface {
 	// StartWidgetSession Start or continue a visitor's session in the widget
 	// (POST /widget/session)
 	StartWidgetSession(w http.ResponseWriter, r *http.Request)
+	// CreateWidgetUpload Register a visitor's file and get a signed upload request
+	// (POST /widget/uploads)
+	CreateWidgetUpload(w http.ResponseWriter, r *http.Request)
 	// UpdateWorkspace Change settings of the current workspace
 	// (PATCH /workspace)
 	UpdateWorkspace(w http.ResponseWriter, r *http.Request)
@@ -3040,6 +3064,12 @@ func (_ Unimplemented) EndWidgetSession(w http.ResponseWriter, r *http.Request) 
 // StartWidgetSession Start or continue a visitor's session in the widget
 // (POST /widget/session)
 func (_ Unimplemented) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateWidgetUpload Register a visitor's file and get a signed upload request
+// (POST /widget/uploads)
+func (_ Unimplemented) CreateWidgetUpload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4995,6 +5025,20 @@ func (siw *ServerInterfaceWrapper) StartWidgetSession(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// CreateWidgetUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateWidgetUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWidgetUpload(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateWorkspace operation middleware
 func (siw *ServerInterfaceWrapper) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 
@@ -5292,6 +5336,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/messages", wrapper.SendWidgetMessage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/uploads", wrapper.CreateWidgetUpload)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/receipts", wrapper.MarkWidgetReceipt)

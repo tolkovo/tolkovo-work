@@ -198,7 +198,7 @@ CREATE ROLE tolkovo_system_login LOGIN PASSWORD '...' IN ROLE tolkovo_system;
 При разделении ролей:
 
 - Прокси направляет `/api/v1/realtime` и `/api/v1/widget/realtime` на `realtime`, всё остальное — на `api`.
-- Несколько копий `api` требуют `TOLKOVO_STORAGE_DRIVER=s3`: файлы `fs` лежат на диске одной копии.
+- Несколько копий `api` требуют `TOLKOVO_STORAGE_DRIVER=s3`: файлы `fs` лежат на диске одной копии. Посетители виджета загружают файлы прямо в бакет со страниц сайта. Поэтому в CORS бакета разрешите `PUT` с адресов из списка виджета и заголовок `Content-Type`.
 - У `worker` нет HTTP. В compose для него отключите healthcheck (`healthcheck: { disable: true }`).
 
 Остановка: по SIGTERM сервер дорабатывает запросы и закрывает WebSocket кодом 1012, клиенты переподключаются сами. Срок задаёт `TOLKOVO_SHUTDOWN_TIMEOUT` (20 с). Давайте контейнеру чуть больше: `stop_grace_period: 30s`.

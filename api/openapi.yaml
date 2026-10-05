@@ -1580,9 +1580,14 @@ paths:
       operationId: sendWidgetMessage
       summary: The visitor writes
       description: |
-        Text only, up to 10 000 characters. The first message opens a conversation in the
-        queue; a resolved one reopens. A retry with the same `Idempotency-Key` and text
-        answers `200` with the first message. Rate: 30 a minute per session.
+        Text up to 10 000 characters, files uploaded with `POST /widget/uploads`, or both.
+        Before the message is stored each file is checked: it must be uploaded whole, its
+        first bytes must fit its type and, when the server has an antivirus, it must be
+        clean. A file that fails is deleted and the message is refused with its
+        `upload_id`; send the message again without it. The first message opens a
+        conversation in the queue; a resolved one reopens. A retry with the same
+        `Idempotency-Key` and text answers `200` with the first message. Rate: 30 a minute
+        per session.
       security:
         - widgetSession: []
       parameters:
@@ -1606,11 +1611,60 @@ paths:
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/WidgetSessionEnded' }
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
-        '422':
-          description: '`idempotency_key_reused`: the key was used with a different text.'
+        '409':
+          description: |
+            `attachment_not_uploaded`: a file is not in storage or not whole; `upload_id`
+            names it. Upload it again with a new `POST /widget/uploads`.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            `idempotency_key_reused`: the key was used with a different text.
+            `file_type_mismatch`: a file is not what its type says; `file_infected`: the
+            antivirus found a threat. `upload_id` names the file, which is deleted.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+        '503':
+          description: '`scan_unavailable`: the antivirus does not answer; try again after `Retry-After`.'
+          headers:
+            Retry-After:
+              description: Seconds until the next attempt.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /widget/uploads:
+    post:
+      tags: [widget]
+      operationId: createWidgetUpload
+      summary: Register a visitor's file and get a signed upload request
+      description: |
+        Up to 10 MB: PNG, JPEG, GIF, WebP, PDF, text, CSV, JSON, ZIP, DOCX and XLSX. Upload
+        the file with exactly the returned method, URL and headers, then send its `id`
+        in `attachment_ids` of `POST /widget/messages`, at most 5 per message. The upload
+        request works once and lives 15 minutes; a file no message took is deleted after
+        an hour. With the `s3` driver the request goes to the bucket, which must allow
+        `PUT` from the widget's origins (CORS). Rate: 20 an hour per session, 60 per IP.
+      security:
+        - widgetSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetUploadRequest' }
+      responses:
+        '201':
+          description: Registered; upload the file next.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetUpload' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
   /widget/receipts:
@@ -1689,7 +1743,9 @@ paths:
       summary: Upload a file by a signed link
       description: |
         The link decides the key, the size limits, the digest and the content type; the
-        request only supplies the bytes. Each upload link works once.
+        request only supplies the bytes. Each upload link works once. Pages of any origin
+        may send it (CORS without credentials): the signature is the permission, so the
+        widget uploads from a company's site.
       security: []
       parameters:
         - name: max
@@ -2705,6 +2761,9 @@ components:
         detail: { type: string }
         instance: { type: string }
         request_id: { type: string }
+        upload_id:
+          type: string
+          description: The widget's file a message was refused for.
 
     Locale:
       type: string
@@ -4193,9 +4252,36 @@ components:
     WidgetMessageRequest:
       type: object
       additionalProperties: false
-      required: [message]
+      description: Text, files or both.
       properties:
-        message: { type: string, minLength: 1, maxLength: 10000 }
+        message: { type: string, maxLength: 10000 }
+        attachment_ids:
+          type: array
+          description: Ids of `POST /widget/uploads`, in the order to show.
+          maxItems: 5
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    WidgetUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [file_name, content_type, size]
+      properties:
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        content_type: { type: string, maxLength: 255 }
+        size: { type: integer, format: int64, minimum: 1, maximum: 10485760 }
+
+    WidgetUpload:
+      type: object
+      required: [id, upload]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        upload: { $ref: '#/components/schemas/SignedRequest' }
 
     WidgetReceiptRequest:
       type: object

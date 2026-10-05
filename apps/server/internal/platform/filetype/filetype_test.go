@@ -1,13 +1,13 @@
-package ingest
+package filetype
 
 import (
 	"bytes"
 	"testing"
 )
 
-func TestMatchesType(t *testing.T) {
+func TestMatches(t *testing.T) {
 	// "журнал" cut after the first byte of "л": a full sample may end mid-rune.
-	cut := append(bytes.Repeat([]byte("a"), sniffLen-3), "жл"[:3]...)
+	cut := append(bytes.Repeat([]byte("a"), SniffLen-3), "жл"[:3]...)
 	for _, c := range []struct {
 		name, ct string
 		head     []byte
@@ -18,9 +18,18 @@ func TestMatchesType(t *testing.T) {
 		{"page as png", "image/png", []byte("<html>"), false, false},
 		{"jpeg", "image/jpeg", []byte{0xFF, 0xD8, 0xFF, 0xE0}, false, true},
 		{"png as jpeg", "image/jpeg", []byte("\x89PNG\r\n\x1a\n"), false, false},
+		{"gif87", "image/gif", []byte("GIF87a\x01\x00"), false, true},
+		{"gif89", "image/gif", []byte("GIF89a\x01\x00"), false, true},
+		{"svg as gif", "image/gif", []byte("<svg xmlns="), false, false},
+		{"webp", "image/webp", []byte("RIFF\x24\x00\x00\x00WEBPVP8 "), false, true},
+		{"wav as webp", "image/webp", []byte("RIFF\x24\x00\x00\x00WAVEfmt "), false, false},
+		{"pdf", "application/pdf", []byte("%PDF-1.7\n"), false, true},
+		{"page as pdf", "application/pdf", []byte("<html>%PDF-"), false, false},
 		{"zip", "application/zip", []byte("PK\x03\x04rest"), false, true},
 		{"empty zip", "application/zip", []byte("PK\x05\x06"), false, true},
 		{"exe as zip", "application/zip", []byte("MZ\x90\x00"), false, false},
+		{"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", []byte("PK\x03\x04"), false, true},
+		{"exe as xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", []byte("MZ\x90\x00"), false, false},
 		{"gzip", "application/gzip", []byte{0x1F, 0x8B, 0x08}, false, true},
 		{"log", "text/plain", []byte("2026-10-05 ERROR журнал\n"), false, true},
 		{"utf-8 bom", "text/plain", []byte("\xEF\xBB\xBFline"), false, true},
@@ -36,30 +45,10 @@ func TestMatchesType(t *testing.T) {
 		{"xml", "application/xml", []byte("\xEF\xBB\xBF<?xml version=\"1.0\"?>"), false, true},
 		{"text as xml", "text/xml", []byte("plain"), false, false},
 		{"empty json", "application/json", nil, false, false},
-		{"unknown type", "application/pdf", []byte("%PDF"), false, false},
+		{"unknown type", "image/svg+xml", []byte("<svg"), false, false},
 	} {
-		if got := matchesType(c.ct, c.head, c.full); got != c.want {
-			t.Errorf("%s: matchesType(%s) = %v, want %v", c.name, c.ct, got, c.want)
+		if got := Matches(c.ct, c.head, c.full); got != c.want {
+			t.Errorf("%s: Matches(%s) = %v, want %v", c.name, c.ct, got, c.want)
 		}
-	}
-}
-
-func TestFileType(t *testing.T) {
-	for _, c := range []struct{ name, declared, want string }{
-		{"app.log", "text/plain; charset=utf-8", "text/plain"},
-		{"app.log", "application/octet-stream", "text/plain"},
-		{"Main.LOG", "text/x-log", "text/plain"},
-		{"notes.txt", "application/octet-stream", "text/plain"},
-		{"dump.bin", "application/octet-stream", "application/octet-stream"},
-		{"screen.png", "image/png", "image/png"},
-		{"run.log.exe", "application/octet-stream", "application/octet-stream"},
-	} {
-		got, err := fileType(c.name, c.declared)
-		if err != nil || got != c.want {
-			t.Errorf("fileType(%s, %s) = %q, %v; want %q", c.name, c.declared, got, err, c.want)
-		}
-	}
-	if _, err := fileType("app.log", "not a type"); err == nil {
-		t.Error("a broken type is accepted")
 	}
 }

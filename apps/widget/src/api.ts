@@ -9,15 +9,19 @@ type Schemas = components["schemas"];
 export type WidgetSession = Schemas["WidgetSession"];
 export type WidgetMessage = Schemas["WidgetMessage"];
 export type WidgetMessages = Schemas["WidgetMessages"];
+export type WidgetUpload = Schemas["WidgetUpload"];
+type SignedRequest = Schemas["SignedRequest"];
 type WidgetSessionRequest = Schemas["WidgetSessionRequest"];
 type WidgetReceiptRequest = Schemas["WidgetReceiptRequest"];
+type WidgetUploadRequest = Schemas["WidgetUploadRequest"];
 
-/** An answer that is not 2xx: the problem's code, and Retry-After for 429. */
+/** An answer that is not 2xx: the problem's code, Retry-After for 429 and 503, the file a message was refused for. */
 export class WidgetApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     readonly retryAfter: number | null,
+    readonly uploadId: string | null = null,
   ) {
     super(`tolkovo widget: ${status} ${code}`);
   }
@@ -49,14 +53,16 @@ export class WidgetApi {
     const res = await fetch(this.base + path, init);
     if (!res.ok) {
       let code = "http_" + res.status;
+      let upload: string | null = null;
       try {
-        const problem = (await res.json()) as { code?: unknown };
+        const problem = (await res.json()) as { code?: unknown; upload_id?: unknown };
         if (typeof problem.code === "string") code = problem.code;
+        if (typeof problem.upload_id === "string") upload = problem.upload_id;
       } catch {
         // Not a problem document (a proxy's error page): keep the status.
       }
       const retry = Number(res.headers.get("Retry-After"));
-      throw new WidgetApiError(res.status, code, Number.isFinite(retry) && retry > 0 ? retry : null);
+      throw new WidgetApiError(res.status, code, Number.isFinite(retry) && retry > 0 ? retry : null, upload);
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
@@ -74,8 +80,19 @@ export class WidgetApi {
     return this.call("GET", "/messages" + (since ? "?since=" + encodeURIComponent(since) : ""), token);
   }
 
-  send(token: string, key: string, message: string): Promise<WidgetMessage> {
-    return this.call("POST", "/messages", token, { message }, { "Idempotency-Key": key });
+  send(token: string, key: string, message: string, attachmentIds: string[] = []): Promise<WidgetMessage> {
+    const body = { ...(message ? { message } : {}), ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}) };
+    return this.call("POST", "/messages", token, body, { "Idempotency-Key": key });
+  }
+
+  createUpload(token: string, req: WidgetUploadRequest): Promise<WidgetUpload> {
+    return this.call("POST", "/uploads", token, req);
+  }
+
+  /** Sends the bytes by the signed request, to the server or straight to the bucket. */
+  async put(req: SignedRequest, file: Blob): Promise<void> {
+    const res = await fetch(req.url, { method: req.method, headers: req.headers, body: file, credentials: "omit" });
+    if (!res.ok) throw new WidgetApiError(res.status, "upload_failed", null);
   }
 
   receipt(token: string, req: WidgetReceiptRequest): Promise<void> {

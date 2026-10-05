@@ -1164,11 +1164,41 @@ export interface paths {
         put?: never;
         /**
          * The visitor writes
-         * @description Text only, up to 10 000 characters. The first message opens a conversation in the
-         *     queue; a resolved one reopens. A retry with the same `Idempotency-Key` and text
-         *     answers `200` with the first message. Rate: 30 a minute per session.
+         * @description Text up to 10 000 characters, files uploaded with `POST /widget/uploads`, or both.
+         *     Before the message is stored each file is checked: it must be uploaded whole, its
+         *     first bytes must fit its type and, when the server has an antivirus, it must be
+         *     clean. A file that fails is deleted and the message is refused with its
+         *     `upload_id`; send the message again without it. The first message opens a
+         *     conversation in the queue; a resolved one reopens. A retry with the same
+         *     `Idempotency-Key` and text answers `200` with the first message. Rate: 30 a minute
+         *     per session.
          */
         post: operations["sendWidgetMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/widget/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a visitor's file and get a signed upload request
+         * @description Up to 10 MB: PNG, JPEG, GIF, WebP, PDF, text, CSV, JSON, ZIP, DOCX and XLSX. Upload
+         *     the file with exactly the returned method, URL and headers, then send its `id`
+         *     in `attachment_ids` of `POST /widget/messages`, at most 5 per message. The upload
+         *     request works once and lives 15 minutes; a file no message took is deleted after
+         *     an hour. With the `s3` driver the request goes to the bucket, which must allow
+         *     `PUT` from the widget's origins (CORS). Rate: 20 an hour per session, 60 per IP.
+         */
+        post: operations["createWidgetUpload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1221,7 +1251,9 @@ export interface paths {
         /**
          * Upload a file by a signed link
          * @description The link decides the key, the size limits, the digest and the content type; the
-         *     request only supplies the bytes. Each upload link works once.
+         *     request only supplies the bytes. Each upload link works once. Pages of any origin
+         *     may send it (CORS without credentials): the signature is the permission, so the
+         *     widget uploads from a company's site.
          */
         put: operations["uploadFile"];
         post?: never;
@@ -1730,6 +1762,8 @@ export interface components {
             detail?: string;
             instance?: string;
             request_id?: string;
+            /** @description The widget's file a message was refused for. */
+            upload_id?: string;
         };
         /** @enum {string} */
         Locale: "ru" | "en";
@@ -2704,8 +2738,21 @@ export interface components {
             created_at: string;
             files: components["schemas"]["IngestReplyFile"][];
         };
+        /** @description Text, files or both. */
         WidgetMessageRequest: {
-            message: string;
+            message?: string;
+            /** @description Ids of `POST /widget/uploads`, in the order to show. */
+            attachment_ids?: string[];
+        };
+        WidgetUploadRequest: {
+            file_name: string;
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+        };
+        WidgetUpload: {
+            id: string;
+            upload: components["schemas"]["SignedRequest"];
         };
         WidgetReceiptRequest: {
             delivered_up_to?: string;
@@ -4745,7 +4792,23 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["WidgetSessionEnded"];
             403: components["responses"]["WidgetOriginNotAllowed"];
-            /** @description `idempotency_key_reused`: the key was used with a different text. */
+            /**
+             * @description `attachment_not_uploaded`: a file is not in storage or not whole; `upload_id`
+             *     names it. Upload it again with a new `POST /widget/uploads`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `idempotency_key_reused`: the key was used with a different text.
+             *     `file_type_mismatch`: a file is not what its type says; `file_infected`: the
+             *     antivirus found a threat. `upload_id` names the file, which is deleted.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -4754,6 +4817,45 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            429: components["responses"]["WidgetLimited"];
+            /** @description `scan_unavailable`: the antivirus does not answer; try again after `Retry-After`. */
+            503: {
+                headers: {
+                    /** @description Seconds until the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createWidgetUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; upload the file next. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetUpload"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
             429: components["responses"]["WidgetLimited"];
         };
     };

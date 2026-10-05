@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
-import type { Controller, State } from "../controller";
+import type { Controller, OutFile, State } from "../controller";
+import { ACCEPT, MAX_FILE_SIZE, MAX_FILES, fileType, formatSize, isImage } from "../files";
 import type { Translate } from "../i18n";
-import type { ChatMessage, Locale } from "../types";
+import type { ChatFile, ChatMessage, Locale } from "../types";
 
 /** What the UI shows besides the state: texts and looks from Tolkovo.init(). */
 export interface View {
@@ -40,6 +41,19 @@ const CloseIcon = () => (
 const SendIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M12 19V5M5 12l7-7 7 7" />
+  </svg>
+);
+
+const ClipIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="m21 11-8.6 8.6a5 5 0 0 1-7-7l8.5-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.3-2.3l7.9-8" />
+  </svg>
+);
+
+const FileIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+    <path d="M14 3v5h5" />
   </svg>
 );
 
@@ -85,10 +99,46 @@ export function App({ c, view }: { c: Controller; view: View }) {
   );
 }
 
+/** Files chosen for the next message, checked as the server would; the first refusal is explained. */
+function useDraftFiles(t: Translate) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [error, setError] = useState("");
+  const add = (list: File[]) => {
+    const next = [...files];
+    let why = "";
+    for (const f of list) {
+      if (next.length >= MAX_FILES) {
+        why = t("tooManyFiles");
+        break;
+      }
+      if (!fileType(f) || f.size === 0) why = t("fileType", { name: f.name });
+      else if (f.size > MAX_FILE_SIZE) why = t("fileTooBig", { name: f.name });
+      else next.push(f);
+    }
+    setFiles(next);
+    setError(why);
+  };
+  const remove = (f: File) => {
+    setFiles(files.filter((x) => x !== f));
+    setError("");
+  };
+  const clear = () => {
+    setFiles([]);
+    setError("");
+  };
+  return { files, error, add, remove, clear };
+}
+
+type Draft = ReturnType<typeof useDraftFiles>;
+
 function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
   const { t } = view;
   const title = view.title ?? (s.channelName || t("title"));
   const logo = safeImage(view.logo);
+  const draft = useDraftFiles(t);
+  const [dragging, setDragging] = useState(false);
+  const canAttach = s.status !== "unavailable";
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
   return (
     <section
       class="tk-window"
@@ -97,7 +147,26 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
       onKeyDown={(e) => {
         if (e.key === "Escape") c.setOpen(false);
       }}
+      onDragOver={(e) => {
+        if (!canAttach || !hasFiles(e)) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!canAttach || !hasFiles(e)) return;
+        e.preventDefault();
+        setDragging(false);
+        draft.add(Array.from(e.dataTransfer?.files ?? []));
+      }}
     >
+      {dragging ? (
+        <div class="tk-drop" aria-hidden="true">
+          {t("drop")}
+        </div>
+      ) : null}
       <header class="tk-header">
         {logo ? <img class="tk-logo" src={logo} alt="" /> : null}
         <div class="tk-heading">
@@ -118,7 +187,7 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
           {t("offline")}
         </p>
       ) : null}
-      <Composer c={c} view={view} disabled={s.status === "unavailable"} />
+      <Composer c={c} view={view} draft={draft} disabled={!canAttach} />
     </section>
   );
 }
@@ -148,17 +217,23 @@ function Log({ c, s, view }: { c: Controller; s: State; view: View }) {
         </li>
       ) : null}
       {s.messages.map((m) => (
-        <Message key={m.id} m={m} time={time(m.createdAt)} t={t} />
+        <Message key={m.id} m={m} time={time(m.createdAt)} view={view} onBroken={() => void c.renewFiles()} />
       ))}
       {s.pending.map((p) => (
         <li key={p.key} class="tk-msg" data-from="contact" data-pending="">
           <span class="tk-sr">{t("you")}:</span>
-          <div class="tk-bubble">{p.body}</div>
+          {p.files.length > 0 ? <PendingFiles files={p.files} view={view} /> : null}
+          {p.body ? <div class="tk-bubble">{p.body}</div> : null}
           {p.failed ? (
             <span class="tk-failed" role="alert">
-              {t("failed")}
-              <button type="button" class="tk-link-button" onClick={() => void c.retry(p.key)}>
-                {t("retry")}
+              {p.error === "rejected" ? t("fileRejected", { name: p.rejected ?? "" }) : p.error === "unavailable" ? t("scanUnavailable") : t("failed")}
+              {p.body || p.files.length > 0 ? (
+                <button type="button" class="tk-link-button" onClick={() => void c.retry(p.key)}>
+                  {t("retry")}
+                </button>
+              ) : null}
+              <button type="button" class="tk-link-button" onClick={() => c.dismiss(p.key)}>
+                {t("dismiss")}
               </button>
             </span>
           ) : (
@@ -171,20 +246,85 @@ function Log({ c, s, view }: { c: Controller; s: State; view: View }) {
   );
 }
 
-function Message({ m, time, t }: { m: ChatMessage; time: string; t: Translate }) {
+function Message({ m, time, view, onBroken }: { m: ChatMessage; time: string; view: View; onBroken: () => void }) {
+  const { t } = view;
   return (
     <li class="tk-msg" data-from={m.sender}>
       <span class="tk-sr">{m.sender === "contact" ? t("you") : t("support")}:</span>
-      <div class="tk-bubble">{m.body}</div>
+      {m.files.length > 0 ? <Files files={m.files} view={view} onBroken={onBroken} /> : null}
+      {m.body ? <div class="tk-bubble">{m.body}</div> : null}
       <span class="tk-meta">{time}</span>
     </li>
   );
 }
 
-function Composer({ c, view, disabled }: { c: Controller; view: View; disabled: boolean }) {
+/** Pictures as previews, other files as a name and a size. Links open in a new tab; the server sends files as downloads. */
+function Files({ files, view, onBroken }: { files: ChatFile[]; view: View; onBroken: () => void }) {
+  return (
+    <div class="tk-files">
+      {files.map((f, i) =>
+        isImage(f.contentType) ? (
+          <a key={i} class="tk-thumb" href={f.url} target="_blank" rel="noopener noreferrer" title={f.name}>
+            <img src={f.url} alt={view.t("image", { name: f.name })} loading="lazy" onError={onBroken} />
+          </a>
+        ) : (
+          <a key={i} class="tk-file" href={f.url} target="_blank" rel="noopener noreferrer">
+            <FileIcon />
+            <span class="tk-file-name">{f.name}</span>
+            <span class="tk-file-size">{formatSize(f.size, view.locale)}</span>
+          </a>
+        ),
+      )}
+    </div>
+  );
+}
+
+function PendingFiles({ files, view }: { files: OutFile[]; view: View }) {
+  return (
+    <div class="tk-files">
+      {files.map((f, i) =>
+        f.preview ? (
+          <span key={i} class="tk-thumb">
+            <img src={f.preview} alt={view.t("image", { name: f.name })} />
+          </span>
+        ) : (
+          <span key={i} class="tk-file">
+            <FileIcon />
+            <span class="tk-file-name">{f.name}</span>
+            <span class="tk-file-size">{formatSize(f.size, view.locale)}</span>
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
+/** A chosen file above the field; a picture shows its preview. */
+function Chip({ file, view, onRemove }: { file: File; view: View; onRemove: () => void }) {
+  const [preview, setPreview] = useState<string>();
+  useEffect(() => {
+    if (!isImage(fileType(file) ?? "")) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return (
+    <li class="tk-chip">
+      {preview ? <img src={preview} alt="" /> : <FileIcon />}
+      <span class="tk-file-name">{file.name}</span>
+      <span class="tk-file-size">{formatSize(file.size, view.locale)}</span>
+      <button type="button" class="tk-chip-remove" aria-label={view.t("remove", { name: file.name })} onClick={onRemove}>
+        <CloseIcon />
+      </button>
+    </li>
+  );
+}
+
+function Composer({ c, view, draft, disabled }: { c: Controller; view: View; draft: Draft; disabled: boolean }) {
   const { t } = view;
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const pickerRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -199,10 +339,12 @@ function Composer({ c, view, disabled }: { c: Controller; view: View; disabled: 
   }, [text]);
 
   const tooLong = text.length > 10_000;
+  const empty = !text.trim() && draft.files.length === 0;
   const send = () => {
-    if (!text.trim() || tooLong || disabled) return;
-    void c.send(text);
+    if (empty || tooLong || disabled) return;
+    void c.send(text, draft.files);
     setText("");
+    draft.clear();
   };
 
   return (
@@ -213,6 +355,34 @@ function Composer({ c, view, disabled }: { c: Controller; view: View; disabled: 
         send();
       }}
     >
+      {draft.files.length > 0 ? (
+        <ul class="tk-chips">
+          {draft.files.map((f, i) => (
+            <Chip key={i} file={f} view={view} onRemove={() => draft.remove(f)} />
+          ))}
+        </ul>
+      ) : null}
+      {draft.error ? (
+        <p class="tk-file-error" role="alert">
+          {draft.error}
+        </p>
+      ) : null}
+      <input
+        ref={pickerRef}
+        type="file"
+        class="tk-sr"
+        tabIndex={-1}
+        aria-hidden="true"
+        multiple
+        accept={ACCEPT}
+        onChange={(e) => {
+          draft.add(Array.from(e.currentTarget.files ?? []));
+          e.currentTarget.value = "";
+        }}
+      />
+      <button type="button" class="tk-attach" aria-label={t("attach")} title={t("attach")} disabled={disabled} onClick={() => pickerRef.current?.click()}>
+        <ClipIcon />
+      </button>
       <label class="tk-sr" for="tk-input">
         {view.placeholder ?? t("placeholder")}
       </label>
@@ -227,6 +397,12 @@ function Composer({ c, view, disabled }: { c: Controller; view: View; disabled: 
         aria-invalid={tooLong || undefined}
         aria-describedby={tooLong ? "tk-too-long" : undefined}
         onInput={(e) => setText(e.currentTarget.value)}
+        onPaste={(e) => {
+          const pasted = Array.from(e.clipboardData?.files ?? []);
+          if (pasted.length === 0) return;
+          e.preventDefault();
+          draft.add(pasted);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
@@ -239,7 +415,7 @@ function Composer({ c, view, disabled }: { c: Controller; view: View; disabled: 
           {t("tooLong")}
         </span>
       ) : null}
-      <button type="submit" class="tk-send" aria-label={t("send")} disabled={disabled || !text.trim() || tooLong}>
+      <button type="submit" class="tk-send" aria-label={t("send")} disabled={disabled || empty || tooLong}>
         <SendIcon />
       </button>
     </form>

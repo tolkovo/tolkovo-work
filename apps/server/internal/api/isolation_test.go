@@ -26,6 +26,14 @@ func TestEveryRouteRequiresSessionExceptPublic(t *testing.T) {
 		routes++
 		rec := e.client().do(method, route, map[string]any{})
 		if strings.HasPrefix(route, FilesPath+"/") {
+			// The browser's preflight of an upload carries no body and reads
+			// nothing: the PUT that follows is checked.
+			if method == http.MethodOptions {
+				if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+					t.Errorf("upload preflight: %d %s", rec.Code, rec.Body)
+				}
+				return nil
+			}
 			// Signed file links authenticate by signature, not by session.
 			if rec.Code != http.StatusForbidden || decode[Problem](t, rec).Code != "link_invalid" {
 				t.Errorf("%s %s without a signature: want 403 link_invalid, got %d", method, route, rec.Code)

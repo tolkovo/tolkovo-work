@@ -172,6 +172,21 @@ func (s *Service) ExpireAttachments(ctx context.Context, workspaceID uuid.UUID, 
 	return wrap(err, "expire attachments")
 }
 
+// AttachedKeys returns which of the storage keys are files of messages: a
+// channel that stored objects ahead of a message deletes only the others.
+func (s *Service) AttachedKeys(ctx context.Context, workspaceID uuid.UUID, storageKeys []string) ([]string, error) {
+	if len(storageKeys) == 0 {
+		return nil, nil
+	}
+	var keys []string
+	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
+		var err error
+		keys, err = q.AttachedKeys(ctx, store.AttachedKeysParams{WorkspaceID: workspaceID, StorageKeys: storageKeys})
+		return err
+	})
+	return keys, wrap(err, "attached keys")
+}
+
 func (r *AppReport) validate() error {
 	r.Body = truncate(strings.TrimSpace(r.Body), MaxBodyLength)
 	switch {

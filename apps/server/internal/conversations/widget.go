@@ -101,14 +101,9 @@ func (s *Service) VisitorMessages(ctx context.Context, workspaceID uuid.UUID, ch
 	for _, m := range rows {
 		v := VisitorMessage{
 			ID: m.ID, ConversationID: m.ConversationID, SenderType: m.SenderType, Body: m.Body, CreatedAt: m.CreatedAt,
-			Files: []ReplyFile{},
 		}
-		for _, a := range byMessage[m.ID] {
-			req, err := s.files.PresignGet(ctx, a.StorageKey, storage.PresignGetOptions{Filename: a.FileName, ContentType: a.Mime})
-			if err != nil {
-				return VisitorMessages{}, fmt.Errorf("presign visitor file: %w", err)
-			}
-			v.Files = append(v.Files, ReplyFile{FileName: a.FileName, ContentType: a.Mime, Size: a.Size, Download: req})
+		if v.Files, err = s.visitorFiles(ctx, byMessage[m.ID]); err != nil {
+			return VisitorMessages{}, err
 		}
 		out.Items = append(out.Items, v)
 		// With More the next page starts right after this one, settled or
@@ -161,18 +156,48 @@ func (s *Service) MarkVisitorReceipt(ctx context.Context, workspaceID uuid.UUID,
 // VisitorMessageByKey returns the visitor's own message stored with the
 // channel's external id (a retried send); ErrNotFound if there is none.
 func (s *Service) VisitorMessageByKey(ctx context.Context, workspaceID uuid.UUID, chat VisitorChat, externalID string) (VisitorMessage, error) {
-	var m store.Message
+	var (
+		m    store.Message
+		atts []store.Attachment
+	)
 	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
 		var err error
 		m, err = q.VisitorMessageByExternalID(ctx, store.VisitorMessageByExternalIDParams{
 			WorkspaceID: workspaceID, ChannelID: &chat.ChannelID, Thread: &chat.Thread, ExternalID: &externalID,
 		})
+		if err != nil {
+			return err
+		}
+		atts, err = q.MessageAttachments(ctx, store.MessageAttachmentsParams{WorkspaceID: workspaceID, MessageIds: []uuid.UUID{m.ID}})
 		return err
 	})
 	if err != nil {
 		return VisitorMessage{}, wrap(err, "visitor message by key")
 	}
+	ready := atts[:0]
+	for _, a := range atts {
+		if a.Status == AttachmentReady {
+			ready = append(ready, a)
+		}
+	}
+	files, err := s.visitorFiles(ctx, ready)
+	if err != nil {
+		return VisitorMessage{}, err
+	}
 	return VisitorMessage{
-		ID: m.ID, ConversationID: m.ConversationID, SenderType: m.SenderType, Body: m.Body, CreatedAt: m.CreatedAt, Files: []ReplyFile{},
+		ID: m.ID, ConversationID: m.ConversationID, SenderType: m.SenderType, Body: m.Body, CreatedAt: m.CreatedAt, Files: files,
 	}, nil
+}
+
+// visitorFiles signs downloads of a message's ready files.
+func (s *Service) visitorFiles(ctx context.Context, atts []store.Attachment) ([]ReplyFile, error) {
+	files := make([]ReplyFile, 0, len(atts))
+	for _, a := range atts {
+		req, err := s.files.PresignGet(ctx, a.StorageKey, storage.PresignGetOptions{Filename: a.FileName, ContentType: a.Mime})
+		if err != nil {
+			return nil, fmt.Errorf("presign visitor file: %w", err)
+		}
+		files = append(files, ReplyFile{FileName: a.FileName, ContentType: a.Mime, Size: a.Size, Download: req})
+	}
+	return files, nil
 }

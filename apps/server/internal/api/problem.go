@@ -17,6 +17,8 @@ type Problem struct {
 	Detail    string `json:"detail,omitempty"`
 	Instance  string `json:"instance,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
+	// UploadID names the widget's file a message was refused for.
+	UploadID string `json:"upload_id,omitempty"`
 }
 
 func writeProblem(w http.ResponseWriter, r *http.Request, p Problem) {

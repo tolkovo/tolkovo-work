@@ -109,6 +109,11 @@ UPDATE attachments
 SET status = 'expired', updated_at = now()
 WHERE workspace_id = @workspace_id AND storage_key = ANY(@storage_keys::text[]) AND status <> 'expired';
 
+-- name: AttachedKeys :many
+-- Which of these objects are files of messages.
+SELECT storage_key FROM attachments
+WHERE workspace_id = @workspace_id AND storage_key = ANY(@storage_keys::text[]);
+
 -- name: ReportReplies :many
 -- What the user of an app sees of a report conversation (docs/02 §11.6):
 -- replies of operators and the bot, oldest first after the cursor. Notes and
