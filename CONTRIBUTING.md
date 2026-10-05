@@ -1,11 +1,11 @@
 # Contributing to Tolkovo
 
-Thank you for helping. This page is the short version; the full standard is [docs/00-engineering-rules.md](docs/00-engineering-rules.md) and applies to people and AI agents alike.
+Thank you for helping. These rules apply to people and AI agents alike.
 
 ## Before you start
 
 - For anything bigger than a small fix, open an issue or a Discussion first so we agree on the approach.
-- Decisions that are hard to undo (technology, data format, protocol, module boundary, security model) need an ADR in `docs/adr/` before code. Template: [docs/00 appendix A](docs/00-engineering-rules.md).
+- Decisions that are hard to undo (technology, data format, protocol, module boundary, security model) are agreed with the maintainers in an issue before code.
 
 ## Workflow
 

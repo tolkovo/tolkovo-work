@@ -2,20 +2,18 @@
 
 Open-source live chat for support and sales: Telegram (a bot or a personal account) and a website widget in one inbox, an AI agent on the first line that hands over to a human, support lines L1/L2/L3, shifts and roles. Runs as multi-tenant SaaS or self-hosted with `docker compose`.
 
-> **Status:** early development, Phase 0 (Foundation). Nothing is usable yet. The plan lives in [docs/](docs/README.md).
+> **Status:** early development, not released yet.
 
 ## Repository
 
 ```
 apps/server     Go modular monolith: one binary, roles api | realtime | worker | all
-apps/panel      operator, supervisor and admin panel (React)          — not started
+apps/panel      operator, supervisor and admin panel (React)
 apps/widget     chat widget for sites and Electron apps, npm @tolkovo/widget (Preact, MIT)
-apps/landing    landing page and docs (Astro)                        — not started
-api/            OpenAPI and WebSocket schemas: the source of truth   — not started
+apps/landing    landing page (Astro)
+api/            OpenAPI and WebSocket schemas: the source of truth
 deploy/compose  local development dependencies (Docker)
 deploy/production  production compose example; guide in deploy/README.md
-design/         local HTML prototypes (never published)
-docs/           plan, ADRs, research
 ```
 
 ## Develop
@@ -44,8 +42,8 @@ One image for every role, with the panel inside: `docker build -t tolkovo .` fro
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and the engineering standard [docs/00-engineering-rules.md](docs/00-engineering-rules.md). Security issues: [SECURITY.md](SECURITY.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md).
 
 ## License
 
-The server and panel are licensed under [AGPL-3.0-or-later](LICENSE). The widget ([apps/widget](apps/widget/LICENSE)) and SDKs are MIT-licensed so they can be embedded in any site or app ([ADR-0006](docs/adr/0006-licensing.md)). Documentation: CC BY 4.0.
+The server and panel are licensed under [AGPL-3.0-or-later](LICENSE). The widget ([apps/widget](apps/widget/LICENSE)) and SDKs are MIT-licensed so they can be embedded in any site or app.
