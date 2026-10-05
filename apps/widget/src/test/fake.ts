@@ -57,6 +57,8 @@ export class FakeServer {
   messages: FakeMessage[] = [];
   tokens = new Set<string>();
   identity: "verified" | "unverified" | "none" = "none";
+  /** Someone on the team takes conversations. */
+  operatorsOnline = true;
   /** The next answers of a route, before the normal behaviour. */
   failNext: { route: string; status: number; code: string }[] = [];
   uploads = new Map<string, FakeUpload>();
@@ -113,7 +115,7 @@ export class FakeServer {
           this.tokens.add(t);
         }
         if (req.user) this.identity = "verified";
-        return json(200, { session_token: t, expires_at: "2026-11-04T10:00:00Z", identity: this.identity, channel_name: "Поддержка Зерна" });
+        return json(200, { session_token: t, expires_at: "2026-11-04T10:00:00Z", identity: this.identity, channel_name: "Поддержка Зерна", operators_online: this.operatorsOnline });
       }
       case "DELETE /session":
         this.tokens.delete(token);
@@ -162,6 +164,8 @@ export class FakeServer {
       }
       case "POST /receipts":
         return new Response(null, { status: 204 });
+      case "GET /availability":
+        return json(200, { operators_online: this.operatorsOnline });
     }
     return json(404, { code: "not_found" });
   }

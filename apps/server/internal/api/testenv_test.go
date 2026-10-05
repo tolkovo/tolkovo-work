@@ -174,7 +174,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
 		Conversations: convs, Jobs: inserter,
 	})
-	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
+	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
 	if o.widgetScanner != nil {
 		widgetOpts.Scanner = o.widgetScanner
 	}

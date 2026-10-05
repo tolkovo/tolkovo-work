@@ -57,3 +57,11 @@ FOR UPDATE OF os;
 UPDATE operator_states
 SET last_assigned_at = @assigned_at::timestamptz
 WHERE workspace_id = @workspace_id AND user_id = @user_id;
+
+-- name: AnyAvailable :one
+SELECT EXISTS (
+    SELECT 1 FROM operator_states os
+    JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    WHERE os.workspace_id = @workspace_id AND m.is_active
+      AND os.status = 'online' AND os.seen_at > @seen_after::timestamptz
+);

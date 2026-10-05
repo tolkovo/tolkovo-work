@@ -55,6 +55,19 @@ export interface Prechat {
   };
 }
 
+/**
+ * The form shown instead of the chat while nobody takes conversations (docs/04 §6.3): the visitor
+ * leaves a message and a way to reach them. It is skipped once the visitor has written.
+ */
+export interface Offline {
+  /** Fields, in this order; the email or the phone is always among them. Default ["name", "email"]. */
+  fields?: PrechatField[];
+  /** A line above the form. */
+  intro?: Localized;
+  /** As in the pre-chat form; the pre-chat form's consent by default. */
+  consent?: Prechat["consent"];
+}
+
 /** A key-value store for the session token; localStorage by default. */
 export interface TokenStorage {
   getItem(key: string): string | null;
@@ -92,6 +105,8 @@ export interface Options {
   open?: boolean;
   /** Ask who the visitor is before the first message. No form by default. */
   prechat?: Prechat;
+  /** The offline form while nobody takes conversations; false turns it off. On by default. */
+  offline?: Offline | false;
 }
 
 /** A file of a message. The link is signed and short-lived; the widget renews it while the chat is open. */
@@ -126,7 +141,7 @@ export interface Events {
   /** The visitor sent their first message in this session. */
   chatStarted: void;
   /** The visitor left their contact. No names or emails here: only where it came from. */
-  contactCollected: { source: "prechat" };
+  contactCollected: { source: "prechat" | "offline" };
 }
 
 export type EventName = keyof Events;

@@ -704,6 +704,24 @@ func (e TelegramLoginNext) Valid() bool {
 	}
 }
 
+// Defines values for WidgetContactRequestForm.
+const (
+	WidgetContactRequestFormOffline WidgetContactRequestForm = "offline"
+	WidgetContactRequestFormPrechat WidgetContactRequestForm = "prechat"
+)
+
+// Valid indicates whether the value is a known member of the WidgetContactRequestForm enum.
+func (e WidgetContactRequestForm) Valid() bool {
+	switch e {
+	case WidgetContactRequestFormOffline:
+		return true
+	case WidgetContactRequestFormPrechat:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WidgetMessageSender.
 const (
 	WidgetMessageSenderBot      WidgetMessageSender = "bot"
@@ -1952,6 +1970,14 @@ type User struct {
 	Name          string    `json:"name"`
 }
 
+// WidgetAvailability defines model for WidgetAvailability.
+type WidgetAvailability struct {
+	// OperatorsOnline Someone on the team takes conversations now: the status «online» and the panel
+	// open. Without them the widget offers the offline form to a visitor who has not
+	// written yet.
+	OperatorsOnline bool `json:"operators_online"`
+}
+
 // WidgetChannelCreated defines model for WidgetChannelCreated.
 type WidgetChannelCreated struct {
 	Channel Channel `json:"channel"`
@@ -1969,11 +1995,17 @@ type WidgetContactRequest struct {
 		PolicyUrl string `json:"policy_url"`
 	} `json:"consent,omitempty"`
 	Email *string `json:"email,omitempty"`
-	Name  *string `json:"name,omitempty"`
+
+	// Form Which form it was; the consent is stored with it.
+	Form *WidgetContactRequestForm `json:"form,omitempty"`
+	Name *string                   `json:"name,omitempty"`
 
 	// Phone 3–32 digits, spaces, brackets or hyphens, an optional leading `+`.
 	Phone *string `json:"phone,omitempty"`
 }
+
+// WidgetContactRequestForm Which form it was; the consent is stored with it.
+type WidgetContactRequestForm string
 
 // WidgetMessage defines model for WidgetMessage.
 type WidgetMessage struct {
@@ -2030,6 +2062,9 @@ type WidgetSession struct {
 	// ExpiresAt Moves 30 days ahead with activity.
 	ExpiresAt time.Time             `json:"expires_at"`
 	Identity  WidgetSessionIdentity `json:"identity"`
+
+	// OperatorsOnline As in `WidgetAvailability`.
+	OperatorsOnline bool `json:"operators_online"`
 
 	// SessionToken `tk_wsess_…`; keep it and send it as `Authorization: Bearer`.
 	SessionToken string `json:"session_token"`
@@ -2673,7 +2708,10 @@ type ServerInterface interface {
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
-	// SubmitWidgetContact The visitor fills in the pre-chat form
+	// GetWidgetAvailability Whether someone takes conversations now
+	// (GET /widget/availability)
+	GetWidgetAvailability(w http.ResponseWriter, r *http.Request)
+	// SubmitWidgetContact The visitor fills in the pre-chat or the offline form
 	// (POST /widget/contact)
 	SubmitWidgetContact(w http.ResponseWriter, r *http.Request)
 	// ListWidgetMessages The visitor's chat
@@ -3189,7 +3227,13 @@ func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// SubmitWidgetContact The visitor fills in the pre-chat form
+// GetWidgetAvailability Whether someone takes conversations now
+// (GET /widget/availability)
+func (_ Unimplemented) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SubmitWidgetContact The visitor fills in the pre-chat or the offline form
 // (POST /widget/contact)
 func (_ Unimplemented) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -5123,6 +5167,20 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetWidgetAvailability operation middleware
+func (siw *ServerInterfaceWrapper) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWidgetAvailability(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SubmitWidgetContact operation middleware
 func (siw *ServerInterfaceWrapper) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
 
@@ -5579,6 +5637,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/uploads", wrapper.CreateWidgetUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/widget/availability", wrapper.GetWidgetAvailability)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/contact", wrapper.SubmitWidgetContact)

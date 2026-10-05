@@ -365,6 +365,11 @@ a.tk-file:hover .tk-file-name {
   font-size: 12.5px;
 }
 
+.tk-notice[data-kind="away"] {
+  background: var(--tk-sunk);
+  color: var(--tk-ink-2);
+}
+
 .tk-composer {
   display: flex;
   flex-wrap: wrap;
@@ -571,6 +576,14 @@ a.tk-file:hover .tk-file-name {
   color: var(--tk-ink);
   font: inherit;
   font-size: 14px;
+}
+
+.tk-textarea {
+  height: auto;
+  min-height: 72px;
+  max-height: 160px;
+  padding: 8px 10px;
+  resize: vertical;
 }
 
 .tk-text:focus {

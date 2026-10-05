@@ -282,6 +282,14 @@ func TestDispatch_ReleasedGoesToAnother(t *testing.T) {
 
 // Presence: online while seen, away by choice, offline once the panel is
 // closed for SeenTimeout. Coming back queues a dispatch.
+// wantOnline checks what the widget is told (W-02).
+func (f *fixture) wantOnline(want bool) {
+	f.t.Helper()
+	if got, err := f.router.AnyOnline(f.ctx, f.ws); err != nil || got != want {
+		f.t.Fatalf("any online = %v, %v; want %v", got, err, want)
+	}
+}
+
 func TestPresence(t *testing.T) {
 	f := setup(t)
 	a := f.operator("anna")
@@ -297,6 +305,7 @@ func TestPresence(t *testing.T) {
 	if _, ok := p[a]; ok {
 		t.Fatalf("never seen but present: %v", p)
 	}
+	f.wantOnline(false)
 
 	f.forgetJobs()
 	f.seen(a)
@@ -311,6 +320,7 @@ func TestPresence(t *testing.T) {
 	if p, _ := f.router.Presences(f.ctx, f.ws); p[a] != routing.PresenceOnline {
 		t.Fatalf("presence %q", p[a])
 	}
+	f.wantOnline(true)
 
 	if _, err := f.router.SetStatus(f.ctx, f.ws, a, routing.StatusAway); err != nil {
 		t.Fatalf("away: %v", err)
@@ -318,6 +328,7 @@ func TestPresence(t *testing.T) {
 	if p, _ := f.router.Presences(f.ctx, f.ws); p[a] != routing.PresenceAway {
 		t.Fatalf("presence %q", p[a])
 	}
+	f.wantOnline(false)
 	id := f.conversation(0)
 	if n := f.dispatch(); n != 0 {
 		t.Fatalf("assigned %d to someone away", n)
@@ -335,6 +346,7 @@ func TestPresence(t *testing.T) {
 	if p, _ := f.router.Presences(f.ctx, f.ws); p[a] != routing.PresenceOffline {
 		t.Fatalf("presence %q", p[a])
 	}
+	f.wantOnline(false)
 	if n := f.dispatch(); n != 0 {
 		t.Fatalf("assigned %d to someone offline", n)
 	}

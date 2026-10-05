@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,8 +113,21 @@ func (s *server) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, oapi.WidgetSession{
 		SessionToken: sess.Token, ExpiresAt: sess.ExpiresAt, Identity: oapi.WidgetSessionIdentity(sess.Identity),
-		ChannelName: sess.ChannelName,
+		ChannelName: sess.ChannelName, OperatorsOnline: sess.OperatorsOnline,
 	})
+}
+
+// GetWidgetAvailability implements GET /widget/availability.
+func (s *server) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
+	if s.widgetOff(w, r) {
+		return
+	}
+	online, err := s.widget.OperatorsOnline(r.Context(), s.widgetCaller(r), widgetToken(r))
+	if err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, oapi.WidgetAvailability{OperatorsOnline: online})
 }
 
 // EndWidgetSession implements DELETE /widget/session.
@@ -219,6 +233,11 @@ func (s *server) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := widget.Intro{Name: deref(req.Name), Email: deref(req.Email), Phone: deref(req.Phone)}
+	if req.Form != nil && !req.Form.Valid() {
+		s.writeWidgetError(w, r, fmt.Errorf("%w: form is prechat or offline", widget.ErrInvalid))
+		return
+	}
+	in.Offline = req.Form != nil && *req.Form == oapi.WidgetContactRequestFormOffline
 	if req.Consent != nil {
 		in.PolicyURL = req.Consent.PolicyUrl
 	}

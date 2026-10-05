@@ -1747,13 +1747,34 @@ paths:
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
+  /widget/availability:
+    get:
+      tags: [widget]
+      operationId: getWidgetAvailability
+      summary: Whether someone takes conversations now
+      description: |
+        The same `operators_online` as `POST /widget/session` gives, asked again when the
+        visitor opens the window a while later. Rate: 60 a minute per session.
+      security:
+        - widgetSession: []
+      responses:
+        '200':
+          description: Now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetAvailability' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
   /widget/contact:
     post:
       tags: [widget]
       operationId: submitWidgetContact
-      summary: The visitor fills in the pre-chat form
+      summary: The visitor fills in the pre-chat or the offline form
       description: |
-        What the visitor typed about themselves (the widget's `prechat` option) and their
+        What the visitor typed about themselves (the widget's `prechat` option, or the
+        offline form shown while nobody takes conversations) and their
         consent to the processing of personal data. Which fields the form asks for and which
         are required is set in the widget's code; send only what was filled in. Before the
         first message the values wait in the session and go onto the contact with that
@@ -4370,10 +4391,26 @@ components:
           description: The visitor ticked the consent shown with a link to this policy.
           properties:
             policy_url: { type: string, format: uri, maxLength: 2048, description: An http(s) URL. }
+        form:
+          type: string
+          enum: [prechat, offline]
+          default: prechat
+          description: Which form it was; the consent is stored with it.
+
+    WidgetAvailability:
+      type: object
+      required: [operators_online]
+      properties:
+        operators_online:
+          type: boolean
+          description: |
+            Someone on the team takes conversations now: the status «online» and the panel
+            open. Without them the widget offers the offline form to a visitor who has not
+            written yet.
 
     WidgetSession:
       type: object
-      required: [session_token, expires_at, identity, channel_name]
+      required: [session_token, expires_at, identity, channel_name, operators_online]
       properties:
         session_token: { type: string, description: '`tk_wsess_…`; keep it and send it as `Authorization: Bearer`.' }
         expires_at: { type: string, format: date-time, description: 'Moves 30 days ahead with activity.' }
@@ -4381,6 +4418,7 @@ components:
           type: string
           enum: [verified, unverified, none]
         channel_name: { type: string }
+        operators_online: { type: boolean, description: As in `WidgetAvailability`. }
 
     WidgetMessages:
       type: object

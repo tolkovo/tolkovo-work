@@ -12,6 +12,27 @@ import (
 	"github.com/google/uuid"
 )
 
+const anyAvailable = `-- name: AnyAvailable :one
+SELECT EXISTS (
+    SELECT 1 FROM operator_states os
+    JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    WHERE os.workspace_id = $1 AND m.is_active
+      AND os.status = 'online' AND os.seen_at > $2::timestamptz
+)
+`
+
+type AnyAvailableParams struct {
+	WorkspaceID uuid.UUID
+	SeenAfter   time.Time
+}
+
+func (q *Queries) AnyAvailable(ctx context.Context, arg AnyAvailableParams) (bool, error) {
+	row := q.db.QueryRow(ctx, anyAvailable, arg.WorkspaceID, arg.SeenAfter)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getMode = `-- name: GetMode :one
 SELECT COALESCE((SELECT mode FROM routing_settings WHERE workspace_id = $1), 'manual')::text
 `

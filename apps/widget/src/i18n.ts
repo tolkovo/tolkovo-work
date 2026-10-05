@@ -43,6 +43,12 @@ const dictionaries = {
     badPhone: "Цифры, пробелы, скобки и дефис, можно с + в начале.",
     needConsent: "Без согласия начать чат нельзя.",
     prechatFailed: "Не удалось отправить. Повторите.",
+    offlineIntro: "Сейчас никого нет на месте. Оставьте сообщение и контакт — ответим, как только вернёмся.",
+    message: "Сообщение",
+    needReach: "Оставьте почту или телефон, чтобы мы могли ответить.",
+    needConsentToSend: "Без согласия сообщение не отправить.",
+    leave: "Отправить",
+    away: "Сейчас никого нет на месте. Ответим, как только вернёмся.",
   },
   en: {
     open: "Open chat",
@@ -85,6 +91,12 @@ const dictionaries = {
     badPhone: "Digits, spaces, brackets and hyphens, a + at the start is fine.",
     needConsent: "The chat cannot start without your consent.",
     prechatFailed: "Could not send. Try again.",
+    offlineIntro: "Nobody is here right now. Leave a message and a way to reach you, and we will reply once we are back.",
+    message: "Message",
+    needReach: "Leave an email or a phone, so we can reply.",
+    needConsentToSend: "The message cannot be sent without your consent.",
+    leave: "Send",
+    away: "Nobody is here right now. We will reply once we are back.",
   },
 } as const;
 

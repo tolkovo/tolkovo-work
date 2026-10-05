@@ -48,9 +48,13 @@ export interface State {
   unread: number;
   /** The pre-chat form is shown instead of the message field. */
   intro: boolean;
+  /** Someone on the team takes conversations now; without them the UI offers the offline form. */
+  operatorsOnline: boolean;
 }
 
 const TYPING_MS = 6_000;
+/** Whether someone is there is asked again on opening, at most this often. */
+const AVAILABILITY_MS = 30_000;
 const MAX_CHARS = 10_000;
 
 /** Memory storage when localStorage is not available (private mode, blocked storage). */
@@ -130,6 +134,7 @@ export class Controller {
   private started: Promise<void> | null = null;
   private renewTimer: ReturnType<typeof setTimeout> | undefined;
   private renewing: Promise<void> | null = null;
+  private checkedAt = 0;
 
   constructor(private readonly o: ControllerOptions) {
     this.api = new WidgetApi(o.apiBase);
@@ -149,6 +154,7 @@ export class Controller {
       unread: 0,
       // Until the session says otherwise, a site with the form shows it.
       intro: o.prechat ?? false,
+      operatorsOnline: true,
     };
     this.realtime = new Realtime(
       this.api.realtimeUrl(),
@@ -246,7 +252,21 @@ export class Controller {
     this.saveToken(session.session_token);
     // A visitor the site identified, or who filled in the form, is not asked again.
     const intro = !!this.o.prechat && session.identity === "none" && this.storageGet(this.introKey) !== mark(session.session_token);
-    this.set({ channelName: session.channel_name, intro });
+    this.checkedAt = Date.now();
+    this.set({ channelName: session.channel_name, intro, operatorsOnline: session.operators_online });
+  }
+
+  /** On opening the window a while after the start: is someone there now? */
+  private checkAvailability(): void {
+    const token = this.token;
+    if (!token || this.state.status !== "ready" || Date.now() - this.checkedAt < AVAILABILITY_MS) return;
+    this.checkedAt = Date.now();
+    this.api.availability(token).then(
+      (a) => this.set({ operatorsOnline: a.operators_online }),
+      () => {
+        // The last answer stands; an ended session is noticed by the next call.
+      },
+    );
   }
 
   private get introKey(): string {
@@ -286,6 +306,35 @@ export class Controller {
     }
     this.set({ intro: false });
     if (filled) this.emit("contactCollected", { source: "prechat" });
+  }
+
+  /**
+   * Sends the offline form: the contact first, then the message, as the visitor's first one. Throws
+   * when the server did not take the contact; a message that fails stays in the chat to retry.
+   */
+  async leaveMessage(form: WidgetContactRequest, text: string): Promise<void> {
+    await this.start();
+    if (this.state.status !== "ready") throw new WidgetApiError(0, "unavailable", null);
+    const attempt = () => {
+      if (!this.token) throw new WidgetApiError(0, "no_session", null);
+      return this.api.contact(this.token, { ...form, form: "offline" });
+    };
+    try {
+      await attempt();
+    } catch (e) {
+      if (!isSessionEnded(e)) throw e;
+      await this.restart();
+      await attempt();
+    }
+    try {
+      // The pre-chat form does not ask again: the visitor just said who they are.
+      if (this.token) this.storage.setItem(this.introKey, mark(this.token));
+    } catch {
+      // Not kept: the server knows, the next session start says so.
+    }
+    this.set({ intro: false });
+    this.emit("contactCollected", { source: "offline" });
+    await this.send(text);
   }
 
   /** The session ended on the server: a new one, a fresh chat, a new connection. Unsent messages stay: they are the same visitor's. */
@@ -568,6 +617,7 @@ export class Controller {
       this.emit("unread", 0);
       this.sendReceipts();
       this.renewIfStale();
+      this.checkAvailability();
     } else {
       clearTimeout(this.renewTimer);
     }

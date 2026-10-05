@@ -253,6 +253,22 @@ func (s *Service) Available(ctx context.Context, tx pgx.Tx, workspaceID, userID 
 	return q.IsAvailable(ctx, store.IsAvailableParams{WorkspaceID: workspaceID, UserID: userID, SeenAfter: s.seenAfter()})
 }
 
+// AnyOnline reports whether someone in the workspace takes conversations
+// now: online and with the panel open, in either mode. The widget offers
+// its offline form without them (W-02).
+func (s *Service) AnyOnline(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
+	var online bool
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		var err error
+		online, err = store.New(tx).AnyAvailable(ctx, store.AnyAvailableParams{WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("routing: any online: %w", err)
+	}
+	return online, nil
+}
+
 func (s *Service) seenAfter() time.Time { return s.now().Add(-SeenTimeout) }
 
 func (s *Service) dispatchIfRoundRobin(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) error {

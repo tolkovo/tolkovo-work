@@ -385,7 +385,7 @@ func apiDeps(
 	chans.SetJobs(inserter)
 	convs.SetDeliverer(chans)
 	// Visitors' files are checked when a message takes them (W-02).
-	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Redis: redisClient, Files: store, Log: log}
+	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: redisClient, Files: store, Log: log}
 	if cfg.ClamAVAddr != "" {
 		widgetOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
 	}

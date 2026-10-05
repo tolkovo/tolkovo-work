@@ -1257,6 +1257,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/widget/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether someone takes conversations now
+         * @description The same `operators_online` as `POST /widget/session` gives, asked again when the
+         *     visitor opens the window a while later. Rate: 60 a minute per session.
+         */
+        get: operations["getWidgetAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/widget/contact": {
         parameters: {
             query?: never;
@@ -1267,8 +1288,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * The visitor fills in the pre-chat form
-         * @description What the visitor typed about themselves (the widget's `prechat` option) and their
+         * The visitor fills in the pre-chat or the offline form
+         * @description What the visitor typed about themselves (the widget's `prechat` option, or the
+         *     offline form shown while nobody takes conversations) and their
          *     consent to the processing of personal data. Which fields the form asks for and which
          *     are required is set in the widget's code; send only what was filled in. Before the
          *     first message the values wait in the session and go onto the contact with that
@@ -2825,6 +2847,20 @@ export interface components {
                  */
                 policy_url: string;
             };
+            /**
+             * @description Which form it was; the consent is stored with it.
+             * @default prechat
+             * @enum {string}
+             */
+            form: "prechat" | "offline";
+        };
+        WidgetAvailability: {
+            /**
+             * @description Someone on the team takes conversations now: the status «online» and the panel
+             *     open. Without them the widget offers the offline form to a visitor who has not
+             *     written yet.
+             */
+            operators_online: boolean;
         };
         WidgetSession: {
             /** @description `tk_wsess_…`; keep it and send it as `Authorization: Bearer`. */
@@ -2837,6 +2873,8 @@ export interface components {
             /** @enum {string} */
             identity: "verified" | "unverified" | "none";
             channel_name: string;
+            /** @description As in `WidgetAvailability`. */
+            operators_online: boolean;
         };
         WidgetMessages: {
             items: components["schemas"]["WidgetMessage"][];
@@ -5071,6 +5109,29 @@ export interface operations {
                 };
             };
             400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    getWidgetAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetAvailability"];
+                };
+            };
             401: components["responses"]["WidgetSessionEnded"];
             403: components["responses"]["WidgetOriginNotAllowed"];
             429: components["responses"]["WidgetLimited"];

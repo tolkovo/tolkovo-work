@@ -66,6 +66,7 @@ var (
 	requestsPerIP     = ratelimit.Rule{Limit: 300, Window: time.Minute}
 	connectsPerTarget = ratelimit.Rule{Limit: 30, Window: time.Minute}
 	introsPerSession  = ratelimit.Rule{Limit: 10, Window: time.Minute}
+	checksPerSession  = ratelimit.Rule{Limit: 60, Window: time.Minute}
 )
 
 // Errors of the module.
@@ -106,10 +107,18 @@ type Inbox interface {
 	AttachedKeys(ctx context.Context, workspaceID uuid.UUID, storageKeys []string) ([]string, error)
 }
 
+// Presence tells whether someone takes conversations now (internal/routing).
+type Presence interface {
+	AnyOnline(ctx context.Context, workspaceID uuid.UUID) (bool, error)
+}
+
 // Options configure the service.
 type Options struct {
 	Channels Channels
 	Inbox    Inbox
+	// Presence tells whether the team is there; without it (tests) the
+	// team counts as online.
+	Presence Presence
 	Redis    *redis.Client
 	// Files stores visitors' files (W-02); Scanner, nil without ClamAV,
 	// checks them before a message takes them.
@@ -174,6 +183,9 @@ type Session struct {
 	// IdentityNone.
 	Identity    string
 	ChannelName string
+	// OperatorsOnline: someone takes conversations now; without them the
+	// widget offers the offline form (W-02).
+	OperatorsOnline bool
 }
 
 // Visitor is an authenticated session.
@@ -299,7 +311,33 @@ func (s *Service) Start(ctx context.Context, c Caller, in Start) (Session, error
 		return Session{}, fmt.Errorf("widget: save session: %w", err)
 	}
 	out.Token = token
+	if out.OperatorsOnline, err = s.anyOnline(ctx, w.WorkspaceID); err != nil {
+		return Session{}, err
+	}
 	return out, nil
+}
+
+// OperatorsOnline tells the widget of a session whether someone takes
+// conversations now, asked again when the visitor opens the window.
+func (s *Service) OperatorsOnline(ctx context.Context, c Caller, token string) (bool, error) {
+	if err := s.allow(ctx, "widget:ip:"+c.IP, requestsPerIP); err != nil {
+		return false, err
+	}
+	v, err := s.Authenticate(ctx, c, token)
+	if err != nil {
+		return false, err
+	}
+	if err := s.allow(ctx, "widget:checks:"+v.SessionID.String(), checksPerSession); err != nil {
+		return false, err
+	}
+	return s.anyOnline(ctx, v.WorkspaceID)
+}
+
+func (s *Service) anyOnline(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
+	if s.opts.Presence == nil {
+		return true, nil
+	}
+	return s.opts.Presence.AnyOnline(ctx, workspaceID)
 }
 
 // continued returns the session of a token the widget kept, if it belongs
@@ -530,6 +568,8 @@ type Intro struct {
 	// PolicyURL: the visitor ticked the consent to the processing of
 	// personal data, shown with a link to this policy.
 	PolicyURL string
+	// Offline: the offline form, not the pre-chat one; the consent says so.
+	Offline bool
 }
 
 // Introduce keeps what the visitor said about themselves. A session
@@ -554,7 +594,11 @@ func (s *Service) Introduce(ctx context.Context, c Caller, token string, in Intr
 	}
 	var consent *conversations.Consent
 	if in.PolicyURL != "" {
-		consent = &conversations.Consent{PolicyURL: in.PolicyURL, GivenAt: s.now(), Source: "widget_prechat"}
+		source := "widget_prechat"
+		if in.Offline {
+			source = "widget_offline"
+		}
+		consent = &conversations.Consent{PolicyURL: in.PolicyURL, GivenAt: s.now(), Source: source}
 	}
 	if v.ContactID == uuid.Nil {
 		kept, contact, err := s.keepIntro(ctx, v, in, consent)
@@ -629,10 +673,10 @@ func (s *Service) keepIntro(ctx context.Context, v Visitor, in Intro, consent *c
 func (in Intro) validate() (Intro, error) {
 	in = Intro{
 		Name: strings.TrimSpace(in.Name), Email: strings.TrimSpace(in.Email),
-		Phone: strings.TrimSpace(in.Phone), PolicyURL: strings.TrimSpace(in.PolicyURL),
+		Phone: strings.TrimSpace(in.Phone), PolicyURL: strings.TrimSpace(in.PolicyURL), Offline: in.Offline,
 	}
 	switch {
-	case in == Intro{}:
+	case in.Name == "" && in.Email == "" && in.Phone == "" && in.PolicyURL == "":
 		return in, fmt.Errorf("%w: give a name, an email, a phone or the consent", ErrInvalid)
 	case utf8.RuneCountInString(in.Name) > maxNameChars || !utf8.ValidString(in.Name):
 		return in, fmt.Errorf("%w: name must be at most %d characters", ErrInvalid, maxNameChars)

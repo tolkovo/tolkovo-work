@@ -77,6 +77,24 @@ Tolkovo.init({
 
 The form replaces the message field until the visitor sends it. A visitor you identified (`user` or `identify`) is not asked. Neither is a visitor who has already filled the form in for this session. What they type fills the customer card. The name replaces the guest name ("Гость 4821"), but values an operator entered are never overwritten. The customer shows as "identity not confirmed", because the values are only what the visitor typed. The consent is stored with the policy link and the time. After the form is sent, the `contactCollected` event fires with `{ source: "prechat" }` only, never the values.
 
+### Offline form
+
+When nobody on your team takes conversations (no one has the panel open with the status "Online"), a visitor who has not written yet sees a form instead of the chat. It asks for a message and an email or a phone. Once the visitor sends it, the message goes to the queue as their first one, with the contact on the customer card. The chat then says the team will reply once it is back. A visitor already in a conversation keeps chatting and sees the same line. The form is on by default:
+
+```ts
+Tolkovo.init({
+  // …
+  offline: {
+    fields: ["name", "phone"], // default ["name", "email"]; the email or the phone is always asked
+    intro: { ru: "Мы на связи с 9 до 18. Оставьте сообщение", en: "We are here 9 to 6. Leave a message" }, // optional
+    consent: { policyUrl: "https://example.com/privacy" }, // default: the pre-chat form's consent
+  },
+  // offline: false — keep the chat open even when nobody is there
+});
+```
+
+The pre-chat form is not shown on top of it. After the form is sent, `contactCollected` fires with `{ source: "offline" }`.
+
 ## 3. Signed-in users (recommended)
 
 When the app knows who is signed in, pass the user with a signature computed **on your backend**:
