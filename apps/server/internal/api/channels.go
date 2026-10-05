@@ -166,6 +166,13 @@ func channelBody(ch channels.Channel) oapi.Channel {
 			RetentionDays: l.RetentionDays, DailyReports: l.DailyReports, DailyMb: l.DailyMB,
 		}
 	}
+	if ch.Type == channels.TypeWidget {
+		origins := d.AllowedOrigins
+		if origins == nil {
+			origins = []string{}
+		}
+		body.Details.WidgetKey, body.Details.AllowedOrigins = &d.WidgetKey, &origins
+	}
 	return body
 }
 
@@ -306,4 +313,48 @@ func keyBody(k channels.IngestKey) oapi.IngestKey {
 
 func newKeyBody(k channels.NewIngestKey) oapi.IngestKeyCreated {
 	return oapi.IngestKeyCreated{Key: keyBody(k.Key), Secret: k.Secret.Reveal()}
+}
+
+// Widget channel (W-01, docs/04 §6): a chat on a site or in an app.
+
+// ConnectWidgetChannel implements POST /channels/widget.
+func (s *server) ConnectWidgetChannel(w http.ResponseWriter, r *http.Request) {
+	p, err := authz.Require(r.Context(), authz.ChannelsManage)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req oapi.ConnectWidgetChannelRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	created, err := s.channels.ConnectWidget(r.Context(), p.WorkspaceID, p.UserID, req.Name, deref(req.AllowedOrigins))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, oapi.WidgetChannelCreated{
+		Channel: channelBody(created.Channel), IdentitySecret: created.IdentitySecret.Reveal(),
+	})
+}
+
+// SetWidgetOrigins implements PUT /channels/{id}/widget-origins.
+func (s *server) SetWidgetOrigins(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, err := authz.Require(r.Context(), authz.ChannelsManage)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req oapi.WidgetOriginsRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	ch, err := s.channels.SetWidgetOrigins(r.Context(), p.WorkspaceID, id, req.AllowedOrigins)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, channelBody(ch))
 }

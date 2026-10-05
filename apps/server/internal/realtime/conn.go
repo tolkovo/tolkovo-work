@@ -71,6 +71,10 @@ func newConn(g *Gateway, ws *websocket.Conn, cl Client, cancel context.CancelFun
 
 func (c *conn) currentRole() string { return *c.role.Load() }
 
+func (c *conn) workspace() uuid.UUID { return c.workspaceID }
+func (c *conn) owner() uuid.UUID     { return c.userID }
+func (c *conn) cancelNow()           { c.cancel() }
+
 // fail asks the writer to close the connection with code. The first call
 // wins; it never blocks, so the hub may call it.
 func (c *conn) fail(code websocket.StatusCode, reason string) {

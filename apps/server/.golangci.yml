@@ -39,6 +39,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/integrations
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/widget
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -65,9 +67,11 @@ linters:
               desc: realtime relays outbox events, it does not call business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/integrations
               desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/widget
+              desc: realtime gets the visitor from api as realtime.Visitor
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**", "**/internal/widget/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
@@ -124,6 +128,18 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest/store
               desc: use the ingest facade, not its store
+        no-foreign-widget-store:
+          files: ["!**/internal/widget/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/widget/store
+              desc: use the widget facade, not its store
+        # The widget's visitors write through channels and conversations;
+        # neither knows the widget module.
+        widget-is-a-leaf:
+          files: ["**/internal/channels/**", "**/internal/conversations/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/widget
+              desc: widget calls channels and conversations, not the other way round
         # Reports flow from ingest into channels (keys) and, in AP-03,
         # conversations; neither knows ingest.
         ingest-is-a-leaf:

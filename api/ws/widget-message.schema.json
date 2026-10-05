@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tolkovo.dev/schemas/ws/widget-message.schema.json",
+  "title": "Tolkovo realtime: server → widget message",
+  "description": "One JSON text frame from the widget's realtime connection (GET /api/v1/widget/realtime, docs/02 §10.1, W-01). The widget opens it with the subprotocols [\"tolkovo.widget.v1\", <session token>] and sends nothing over it: messages, receipts and session changes go over REST. Every message is {type, id, ts, data}; there is no seq and no replay: after hello, resync_required or a reconnect the widget refetches its chat over REST (GET /widget/messages with its cursor). data holds ids only, never texts. A new field in data is not a breaking change; removing or renaming one is (docs/00 §8).",
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/heartbeat" },
+    { "$ref": "#/$defs/resyncRequired" },
+    { "$ref": "#/$defs/widgetMessage" },
+    { "$ref": "#/$defs/widgetTyping" }
+  ],
+  "$defs": {
+    "messageType": {
+      "description": "Every message type of the widget connection.",
+      "enum": ["hello", "heartbeat", "resync_required", "widget.message", "widget.typing"]
+    },
+    "closeCode": {
+      "description": "WebSocket close codes. 1008: the widget sent a frame, do not retry without a fix. 1011: internal error, reconnect with backoff. 1012: server restart, reconnect with jitter. 4401: the session ended (expired, ended, the widget was disconnected or no longer allows this page), start a new session over REST. 4408: slow consumer, reconnect and refetch. 4429: too many connections of this session, reconnect only after a long backoff.",
+      "enum": [1008, 1011, 1012, 4401, 4408, 4429]
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "ts": {
+      "description": "RFC 3339 time: when the event happened, or when a control message was sent.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "id": {
+      "description": "Unique message id. For widget.message it is the outbox event id, the same on every redelivery.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "envelope": {
+      "type": "object",
+      "required": ["type", "id", "ts", "data"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "ts": { "$ref": "#/$defs/ts" }
+      }
+    },
+    "hello": {
+      "description": "First message after the handshake: refetch the chat over REST.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "properties": {
+        "type": { "const": "hello" },
+        "data": {
+          "type": "object",
+          "required": ["heartbeat_interval_ms"],
+          "properties": {
+            "heartbeat_interval_ms": {
+              "description": "The server sends heartbeat this often; a widget that hears nothing for twice as long reconnects.",
+              "type": "integer",
+              "minimum": 1000
+            }
+          }
+        }
+      }
+    },
+    "heartbeat": {
+      "description": "Sent every heartbeat_interval_ms so the widget notices a dead connection.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "properties": { "type": { "const": "heartbeat" }, "data": { "type": "object" } }
+    },
+    "resyncRequired": {
+      "description": "Events may have been missed (the server lost its fan-out link, or the session's contact changed): refetch the chat over REST.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "properties": { "type": { "const": "resync_required" }, "data": { "type": "object" } }
+    },
+    "widgetMessage": {
+      "description": "An operator or the bot replied in the visitor's chat: fetch it over REST (GET /widget/messages since the cursor).",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "properties": {
+        "type": { "const": "widget.message" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "conversation_id", "message_id"],
+          "properties": {
+            "contact_id": { "$ref": "#/$defs/uuid" },
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "message_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "widgetTyping": {
+      "description": "Signal: an operator is typing a reply. Show it for at most 6 s; a new message ends it earlier. Ephemeral, never replayed.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "properties": {
+        "type": { "const": "widget.typing" },
+        "data": {
+          "type": "object",
+          "required": ["state"],
+          "properties": { "state": { "enum": ["start"] } }
+        }
+      }
+    }
+  }
+}

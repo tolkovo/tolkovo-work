@@ -77,7 +77,7 @@
     },
     "channels": {
       "title": "Channels",
-      "lead": "Where customer requests come from: a Telegram bot, a personal Telegram account, or your app with a “Report a problem” button. The conversations show up in the Inbox.",
+      "lead": "Where customer requests come from: a Telegram bot, a personal Telegram account, a chat widget on your site or in your app, and a “Report a problem” button in your app. The conversations show up in the Inbox.",
       "noKey": "The server has no encryption key (TOLKOVO_MASTER_KEY), so channels cannot be connected: tokens and sessions are stored encrypted only. Ask your server administrator.",
       "empty": "No channels yet.",
       "listLabel": "Connected channels",
@@ -85,7 +85,8 @@
       "type": {
         "telegram_bot": "Telegram bot",
         "telegram_user": "Personal account",
-        "app": "App"
+        "app": "App",
+        "widget": "Widget"
       },
       "status": {
         "active": "Working",
@@ -108,7 +109,8 @@
       "disconnectConfirm": {
         "telegram_bot": "Disconnect “{name}”? The bot stops sending messages to Tolkovo. The chats stay in the Inbox.",
         "telegram_user": "Disconnect “{name}”? The Tolkovo session ends in Telegram and disappears from Devices. The chats stay in the Inbox.",
-        "app": "Disconnect “{name}”? All ingest keys are revoked and the app can no longer send reports. The conversations stay in the Inbox."
+        "app": "Disconnect “{name}”? All ingest keys are revoked and the app can no longer send reports. The conversations stay in the Inbox.",
+        "widget": "Disconnect “{name}”? The widget stops working on the site and in the app, and visitors’ sessions end. The conversations stay in the Inbox."
       },
       "disconnected": "Channel “{name}” is disconnected.",
       "wizard": {
@@ -120,7 +122,9 @@
           "password": "Cloud password",
           "check": "Connection check",
           "app": "Connect an app",
-          "appKeys": "App keys"
+          "appKeys": "App keys",
+          "widget": "Connect a widget",
+          "widgetKeys": "Widget keys"
         },
         "close": "Close",
         "next": "Next",
@@ -179,7 +183,8 @@
         "done": {
           "telegram_bot": "Bot “{name}” is connected. New messages will appear in the Inbox.",
           "telegram_user": "Account “{name}” is connected. Telegram lists it under Devices as Tolkovo.",
-          "app": "Channel “{name}” is created. Hand the key to the app’s developer."
+          "app": "Channel “{name}” is created. Hand the key to the app’s developer.",
+          "widget": "Widget “{name}” is created. Hand the key and the code to the developer."
         },
         "check": {
           "bot": "Let's check the connection: open @{username} in Telegram and send any message.",
@@ -201,6 +206,18 @@
           "label": "Name in the panel",
           "hint": "For example, “Zerno for Windows”.",
           "submit": "Create channel",
+          "pending": "Creating…"
+        },
+        "widget": {
+          "title": "Widget",
+          "text": "A live chat on your site or inside your app, Electron included.",
+          "needs": "You’ll need a developer to add the npm package @tolkovo/widget."
+        },
+        "widgetStep": {
+          "text": "Say where the widget will work. The server issues an identity signing secret for your server — it is shown once.",
+          "label": "Name in the panel",
+          "hint": "For example, “In-app chat”.",
+          "submit": "Create widget",
           "pending": "Creating…"
         }
       },
@@ -253,6 +270,24 @@
         "limitMax": "At most {max}.",
         "saveLimits": "Save limits",
         "limitsSaved": "Limits saved."
+      },
+      "widget": {
+        "settings": "Key and addresses",
+        "install": "Installation",
+        "keyLabel": "Widget key",
+        "keyHint": "Public: it goes into the page or the app. The widget works only on the addresses listed below.",
+        "snippet": "Code for the app",
+        "snippetHint": "Colors, title and greeting go into the same call — see the package docs.",
+        "origins": "Where the widget works",
+        "originsLabel": "Page addresses",
+        "originsHint": "One per line: https://shop.example.com, https://*.example.com (every subdomain), app://name (an Electron app’s scheme). file:// and null are for an app loaded from files, but any page in a sandboxed iframe sends null too, so a custom scheme is better.",
+        "saveOrigins": "Save addresses",
+        "originsSaved": "Addresses saved. Removed addresses lose access within 30 seconds.",
+        "noOrigins": "No addresses yet: the widget works nowhere until you add them.",
+        "once": "The identity signing secret is shown only now. Save it in a password manager or hand it to your server’s developer right away.",
+        "identityHint": "For your server only, never the page or the app: your server signs with it who is signed in. Without a signature the visitor comes in marked “identity not confirmed”.",
+        "identityLead": "Kept only on your server. If it leaked, replace it and update your server.",
+        "rotateConfirm": "The old secret stops working at once: until your server gets the new one, visitors come in marked “identity not confirmed”."
       }
     },
     "integrations": {

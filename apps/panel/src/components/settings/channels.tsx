@@ -1,4 +1,4 @@
-import type { AppChannelCreated, Channel, ChannelList, TelegramLogin } from "@tolkovo/api-client";
+import type { AppChannelCreated, Channel, ChannelList, TelegramLogin, WidgetChannelCreated } from "@tolkovo/api-client";
 import {
   useCan,
   useChannels,
@@ -11,7 +11,7 @@ import {
 } from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { Link } from "@tanstack/react-router";
-import { AppWindow, Bot, CircleCheck, LoaderCircle, Plus, UserRound } from "lucide-react";
+import { AppWindow, Bot, CircleCheck, LoaderCircle, MessageSquare, Plus, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -21,6 +21,7 @@ import { channelError } from "../../lib/channels/errors";
 import { formValues } from "../../lib/forms";
 import { FormMessage, TextField } from "../form/fields";
 import { AppChannelSettings, AppSecretsStep, AppStep } from "./app-channel";
+import { WidgetChannelSettings, WidgetSecretsStep, WidgetStep } from "./widget-channel";
 
 /**
  * «Настройки → Каналы» (docs/06 T-01, AP-01, docs/07 §7, ADR-0014): the workspace's channels and
@@ -119,7 +120,7 @@ function ChannelList({
 }
 
 function ChannelIcon({ type }: { type: Channel["type"] }) {
-  const Icon = type === "telegram_bot" ? Bot : type === "app" ? AppWindow : UserRound;
+  const Icon = type === "telegram_bot" ? Bot : type === "app" ? AppWindow : type === "widget" ? MessageSquare : UserRound;
   return (
     <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg bg-teal-soft text-teal">
       <Icon className="size-[18px]" strokeWidth={1.75} />
@@ -172,6 +173,8 @@ function ChannelRow({
   const [mode, setMode] = useState<"view" | "rename" | "confirm">("view");
   const [settings, setSettings] = useState(false);
   const isApp = channel.type === "app";
+  const isWidget = channel.type === "widget";
+  const hasSettings = isApp || isWidget;
   const [error, setError] = useState<string | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const pending = channel.status === "pending";
@@ -245,9 +248,9 @@ function ChannelRow({
         </div>
         {canManage && mode === "view" ? (
           <div className="flex shrink-0 gap-1 max-nav:flex-col">
-            {isApp ? (
+            {hasSettings ? (
               <Button variant="ghost" size="sm" aria-expanded={settings} onClick={() => setSettings((v) => !v)}>
-                {t("settings.channels.app.settings")}
+                {t(isWidget ? "settings.channels.widget.settings" : "settings.channels.app.settings")}
               </Button>
             ) : null}
             {!pending ? (
@@ -283,6 +286,7 @@ function ChannelRow({
         </div>
       ) : null}
       {isApp && settings ? <AppChannelSettings channel={channel} canManage={canManage} /> : null}
+      {isWidget && settings ? <WidgetChannelSettings channel={channel} canManage={canManage} /> : null}
       <FormMessage tone="error" message={error} />
     </li>
   );
@@ -310,7 +314,9 @@ type Step =
   | { kind: "password"; channel: Channel }
   | { kind: "check"; channel: Channel }
   | { kind: "app" }
-  | { kind: "appKeys"; created: AppChannelCreated };
+  | { kind: "appKeys"; created: AppChannelCreated }
+  | { kind: "widget" }
+  | { kind: "widgetKeys"; created: WidgetChannelCreated };
 
 /**
  * The wizard (docs/07 §7): what is needed is said before it starts, every step is checked by
@@ -339,7 +345,13 @@ function ConnectChannel({
   const close = () => {
     // A login left half-way is cancelled, so its phone does not wait 15 minutes on the server.
     if (pendingId) cancelLogin.mutate(pendingId);
-    onClose(step.kind === "check" ? step.channel : step.kind === "appKeys" ? step.created.channel : undefined);
+    onClose(
+      step.kind === "check"
+        ? step.channel
+        : step.kind === "appKeys" || step.kind === "widgetKeys"
+          ? step.created.channel
+          : undefined,
+    );
   };
   const check = (channel: Channel) => setStep({ kind: "check", channel });
 
@@ -382,6 +394,10 @@ function ConnectChannel({
         <AppStep onBack={() => setStep({ kind: "choose" })} onDone={(created) => setStep({ kind: "appKeys", created })} />
       ) : step.kind === "appKeys" ? (
         <AppSecretsStep created={step.created} onDone={() => onClose(step.created.channel)} />
+      ) : step.kind === "widget" ? (
+        <WidgetStep onBack={() => setStep({ kind: "choose" })} onDone={(created) => setStep({ kind: "widgetKeys", created })} />
+      ) : step.kind === "widgetKeys" ? (
+        <WidgetSecretsStep created={step.created} onDone={() => onClose(step.created.channel)} />
       ) : (
         <CheckStep channel={step.channel} onDone={() => onClose(step.channel)} />
       )}
@@ -389,12 +405,12 @@ function ConnectChannel({
   );
 }
 
-type Kind = "bot" | "phone" | "app";
+type Kind = "bot" | "phone" | "app" | "widget";
 
 function ChooseKind({ userAvailable, onChoose }: { userAvailable: boolean; onChoose: (kind: Kind) => void }) {
   const { t } = useTranslation();
   const [kind, setKind] = useState<Kind>("bot");
-  const option = (value: Kind, icon: ReactNode, key: "bot" | "user" | "app", disabled = false) => (
+  const option = (value: Kind, icon: ReactNode, key: "bot" | "user" | "app" | "widget", disabled = false) => (
     <label
       className={cn(
         "flex cursor-pointer items-start gap-3 rounded-lg border p-3",
@@ -437,6 +453,7 @@ function ChooseKind({ userAvailable, onChoose }: { userAvailable: boolean; onCho
         {option("bot", <Bot className="size-5" strokeWidth={1.75} />, "bot")}
         {option("phone", <UserRound className="size-5" strokeWidth={1.75} />, "user", !userAvailable)}
         {option("app", <AppWindow className="size-5" strokeWidth={1.75} />, "app")}
+        {option("widget", <MessageSquare className="size-5" strokeWidth={1.75} />, "widget")}
       </fieldset>
       <div>
         <Button type="submit" variant="primary">

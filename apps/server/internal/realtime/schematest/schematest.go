@@ -26,6 +26,8 @@ import (
 const (
 	ServerMessage = "server-message.schema.json"
 	ClientMessage = "client-message.schema.json"
+	// WidgetMessage is what the widget's connection sends (W-01).
+	WidgetMessage = "widget-message.schema.json"
 )
 
 // Schema is a loaded schema document.

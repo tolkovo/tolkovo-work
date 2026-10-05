@@ -1,4 +1,4 @@
-import type { AppChannelCreated, Channel, ChannelList, IngestKey, TelegramLogin } from "@tolkovo/api-client";
+import type { AppChannelCreated, Channel, ChannelList, IngestKey, TelegramLogin, WidgetChannelCreated } from "@tolkovo/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -344,5 +344,86 @@ describe("channels settings", () => {
     await user.click(within(row).getByRole("button", { name: "Сохранить лимиты" }));
     expect(await within(row).findByText("Лимиты сохранены.")).toBeInTheDocument();
     expect(api.calls.find((c) => c.path === "/channels/ch-app/app-limits")?.body).toEqual({ ...limits, retention_days: 90 });
+  });
+
+  it("connects a widget: the pages, the key with the install code, the identity secret once", async () => {
+    const user = userEvent.setup();
+    const widget: Channel = {
+      id: "ch-widget",
+      type: "widget",
+      name: "Чат в приложении",
+      status: "active",
+      error_code: null,
+      details: {
+        username: null,
+        display_name: null,
+        phone_masked: null,
+        widget_key: "tk_widget_public-key",
+        allowed_origins: ["app://zerno", "https://shop.example.com"],
+      },
+      last_inbound_at: null,
+      created_at: "2026-10-05T09:00:00Z",
+    };
+    const created: WidgetChannelCreated = { channel: widget, identity_secret: "tk_identity_widget-secret" };
+    let channels: Channel[] = [];
+    const api = fakeApi({
+      routes: {
+        "GET /channels": () => list(channels),
+        "POST /channels/widget": () => {
+          channels = [widget];
+          return json(201, created);
+        },
+        "PUT /channels/ch-widget/widget-origins": async (request) => {
+          const body = (await request.json()) as { allowed_origins: string[] };
+          if (body.allowed_origins.includes("*")) {
+            return problem(400, "invalid_request");
+          }
+          channels = [{ ...widget, details: { ...widget.details, allowed_origins: body.allowed_origins } }];
+          return json(200, channels[0]);
+        },
+      },
+    });
+    renderApp("/settings/channels", { api });
+    await user.click(await screen.findByRole("button", { name: "Подключить канал" }));
+    await user.click(screen.getByRole("radio", { name: /Виджет/ }));
+    await user.click(screen.getByRole("button", { name: "Дальше" }));
+    expect(screen.getByRole("heading", { name: "Подключение виджета" })).toHaveFocus();
+    await user.type(screen.getByLabelText("Название в панели"), "Чат в приложении");
+    await user.type(screen.getByLabelText("Адреса страниц"), "app://zerno\n\nhttps://shop.example.com, ");
+    await user.click(screen.getByRole("button", { name: "Создать виджет" }));
+
+    expect(await screen.findByRole("heading", { name: "Ключи виджета" })).toHaveFocus();
+    expect(api.calls.find((c) => c.path === "/channels/widget")?.body).toEqual({
+      name: "Чат в приложении",
+      allowed_origins: ["app://zerno", "https://shop.example.com"],
+    });
+    expect(screen.getByLabelText("Ключ виджета")).toHaveValue("tk_widget_public-key");
+    expect(screen.getByLabelText("Код для приложения")).toHaveTextContent('widgetKey: "tk_widget_public-key"');
+    expect(screen.getByLabelText("Секрет подписи личности")).toHaveValue("tk_identity_widget-secret");
+    await user.click(screen.getByRole("button", { name: "Готово, ключи сохранены" }));
+    expect(await screen.findByText("Виджет «Чат в приложении» создан. Передайте ключ и код разработчику.")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("tk_identity_widget-secret")).not.toBeInTheDocument();
+
+    const row = within(await screen.findByRole("list", { name: "Подключённые каналы" })).getAllByRole("listitem")[0]!;
+    expect(row).toHaveTextContent("Виджет");
+    await user.click(within(row).getByRole("button", { name: "Ключ и адреса" }));
+    // The key is public: it stays in the settings, the secret does not.
+    expect(within(row).getByLabelText("Ключ виджета")).toHaveValue("tk_widget_public-key");
+    expect(within(row).queryByDisplayValue("tk_identity_widget-secret")).not.toBeInTheDocument();
+    const origins = within(row).getByLabelText("Адреса страниц");
+    expect(origins).toHaveValue("app://zerno\nhttps://shop.example.com");
+
+    await user.clear(origins);
+    await user.type(origins, "*");
+    await user.click(within(row).getByRole("button", { name: "Сохранить адреса" }));
+    await waitFor(() => expect(within(row).getAllByRole("alert").some((a) => a.textContent)).toBe(true));
+    expect(within(row).queryByText(/Адреса сохранены/)).not.toBeInTheDocument();
+    await user.clear(origins);
+    await user.type(origins, "app://zerno");
+    await user.click(within(row).getByRole("button", { name: "Сохранить адреса" }));
+    expect(await within(row).findByText(/Адреса сохранены/)).toBeInTheDocument();
+    expect(api.calls.filter((c) => c.path === "/channels/ch-widget/widget-origins").at(-1)?.body).toEqual({
+      allowed_origins: ["app://zerno"],
+    });
   });
 });

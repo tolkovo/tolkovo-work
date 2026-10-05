@@ -85,6 +85,7 @@ const (
 	ChannelTypeApp          ChannelType = "app"
 	ChannelTypeTelegramBot  ChannelType = "telegram_bot"
 	ChannelTypeTelegramUser ChannelType = "telegram_user"
+	ChannelTypeWidget       ChannelType = "widget"
 )
 
 // Valid indicates whether the value is a known member of the ChannelType enum.
@@ -96,6 +97,8 @@ func (e ChannelType) Valid() bool {
 		return true
 	case ChannelTypeTelegramUser:
 		return true
+	case ChannelTypeWidget:
+		return true
 	default:
 		return false
 	}
@@ -103,19 +106,19 @@ func (e ChannelType) Valid() bool {
 
 // Defines values for ContactIdentity.
 const (
-	None       ContactIdentity = "none"
-	Unverified ContactIdentity = "unverified"
-	Verified   ContactIdentity = "verified"
+	ContactIdentityNone       ContactIdentity = "none"
+	ContactIdentityUnverified ContactIdentity = "unverified"
+	ContactIdentityVerified   ContactIdentity = "verified"
 )
 
 // Valid indicates whether the value is a known member of the ContactIdentity enum.
 func (e ContactIdentity) Valid() bool {
 	switch e {
-	case None:
+	case ContactIdentityNone:
 		return true
-	case Unverified:
+	case ContactIdentityUnverified:
 		return true
-	case Verified:
+	case ContactIdentityVerified:
 		return true
 	default:
 		return false
@@ -644,6 +647,48 @@ func (e TelegramLoginNext) Valid() bool {
 	}
 }
 
+// Defines values for WidgetMessageSender.
+const (
+	WidgetMessageSenderBot      WidgetMessageSender = "bot"
+	WidgetMessageSenderContact  WidgetMessageSender = "contact"
+	WidgetMessageSenderOperator WidgetMessageSender = "operator"
+)
+
+// Valid indicates whether the value is a known member of the WidgetMessageSender enum.
+func (e WidgetMessageSender) Valid() bool {
+	switch e {
+	case WidgetMessageSenderBot:
+		return true
+	case WidgetMessageSenderContact:
+		return true
+	case WidgetMessageSenderOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WidgetSessionIdentity.
+const (
+	WidgetSessionIdentityNone       WidgetSessionIdentity = "none"
+	WidgetSessionIdentityUnverified WidgetSessionIdentity = "unverified"
+	WidgetSessionIdentityVerified   WidgetSessionIdentity = "verified"
+)
+
+// Valid indicates whether the value is a known member of the WidgetSessionIdentity enum.
+func (e WidgetSessionIdentity) Valid() bool {
+	switch e {
+	case WidgetSessionIdentityNone:
+		return true
+	case WidgetSessionIdentityUnverified:
+		return true
+	case WidgetSessionIdentityVerified:
+		return true
+	default:
+		return false
+	}
+}
+
 // AcceptInvitationRequest defines model for AcceptInvitationRequest.
 type AcceptInvitationRequest struct {
 	// Locale Interface language of a new account; the workspace's when absent.
@@ -750,12 +795,15 @@ type Channel struct {
 	// blocked the account). The admin disconnects the channel and connects it again.
 	Status ChannelStatus `json:"status"`
 
-	// Type `app` — reports from a company app (docs/02 §11.6).
+	// Type `app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).
 	Type ChannelType `json:"type"`
 }
 
 // ChannelDetails What may be shown about the channel. Never secrets.
 type ChannelDetails struct {
+	// AllowedOrigins Widgets only: the pages that may embed it (see `WidgetOriginsRequest`).
+	AllowedOrigins *[]string `json:"allowed_origins,omitempty"`
+
 	// AppLimits Limits of an app channel (`details.app_limits`).
 	AppLimits *AppLimits `json:"app_limits,omitempty"`
 
@@ -770,6 +818,9 @@ type ChannelDetails struct {
 
 	// Username Without "@".
 	Username *string `json:"username"`
+
+	// WidgetKey Widgets only: the public key, `tk_widget_…`, that goes into the page or the app.
+	WidgetKey *string `json:"widget_key,omitempty"`
 }
 
 // ChannelDetailsDelivery Bots only: Telegram pushes updates to a webhook, or the worker polls.
@@ -791,7 +842,7 @@ type ChannelList struct {
 // blocked the account). The admin disconnects the channel and connects it again.
 type ChannelStatus string
 
-// ChannelType `app` — reports from a company app (docs/02 §11.6).
+// ChannelType `app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).
 type ChannelType string
 
 // CompleteGitHubAppRequest defines model for CompleteGitHubAppRequest.
@@ -817,6 +868,15 @@ type ConnectTelegramBotRequest struct {
 
 	// Token The token from @BotFather.
 	Token string `json:"token"`
+}
+
+// ConnectWidgetChannelRequest defines model for ConnectWidgetChannelRequest.
+type ConnectWidgetChannelRequest struct {
+	// AllowedOrigins See `WidgetOriginsRequest`.
+	AllowedOrigins *[]string `json:"allowed_origins,omitempty"`
+
+	// Name E.g. "Чат в приложении".
+	Name string `json:"name"`
 }
 
 // Contact defines model for Contact.
@@ -1793,6 +1853,94 @@ type User struct {
 	Name          string    `json:"name"`
 }
 
+// WidgetChannelCreated defines model for WidgetChannelCreated.
+type WidgetChannelCreated struct {
+	Channel Channel `json:"channel"`
+
+	// IdentitySecret `tk_identity_…`. Lives only on the company's backend, never in the page or the app:
+	// the backend signs `user_hash` = HMAC-SHA256(`external_id`, secret), hex.
+	IdentitySecret string `json:"identity_secret"`
+}
+
+// WidgetMessage defines model for WidgetMessage.
+type WidgetMessage struct {
+	Body           string            `json:"body"`
+	ConversationId uuid.UUID         `json:"conversation_id"`
+	CreatedAt      time.Time         `json:"created_at"`
+	Files          []IngestReplyFile `json:"files"`
+	Id             uuid.UUID         `json:"id"`
+
+	// Sender `contact` — the visitor; `operator` or `bot` — a reply.
+	Sender WidgetMessageSender `json:"sender"`
+}
+
+// WidgetMessageSender `contact` — the visitor; `operator` or `bot` — a reply.
+type WidgetMessageSender string
+
+// WidgetMessageRequest defines model for WidgetMessageRequest.
+type WidgetMessageRequest struct {
+	Message string `json:"message"`
+}
+
+// WidgetMessages defines model for WidgetMessages.
+type WidgetMessages struct {
+	// Cursor Pass as `since` next time.
+	Cursor string          `json:"cursor"`
+	Items  []WidgetMessage `json:"items"`
+
+	// More More messages follow; ask again at once.
+	More bool `json:"more"`
+}
+
+// WidgetOriginsRequest defines model for WidgetOriginsRequest.
+type WidgetOriginsRequest struct {
+	// AllowedOrigins Up to 20: `https://shop.example.com` (one site; default ports dropped),
+	// `https://*.example.com` (every subdomain, not the apex), `app://name` (an Electron
+	// app's custom scheme, registered as standard), `file://` and `null` (an Electron app
+	// loaded from files — `null` is also what a sandboxed iframe on any site sends, so
+	// prefer a custom scheme). `*` is refused.
+	AllowedOrigins []string `json:"allowed_origins"`
+}
+
+// WidgetReceiptRequest defines model for WidgetReceiptRequest.
+type WidgetReceiptRequest struct {
+	DeliveredUpTo *uuid.UUID `json:"delivered_up_to,omitempty"`
+	ReadUpTo      *uuid.UUID `json:"read_up_to,omitempty"`
+}
+
+// WidgetSession defines model for WidgetSession.
+type WidgetSession struct {
+	ChannelName string `json:"channel_name"`
+
+	// ExpiresAt Moves 30 days ahead with activity.
+	ExpiresAt time.Time             `json:"expires_at"`
+	Identity  WidgetSessionIdentity `json:"identity"`
+
+	// SessionToken `tk_wsess_…`; keep it and send it as `Authorization: Bearer`.
+	SessionToken string `json:"session_token"`
+}
+
+// WidgetSessionIdentity defines model for WidgetSession.Identity.
+type WidgetSessionIdentity string
+
+// WidgetSessionRequest defines model for WidgetSessionRequest.
+type WidgetSessionRequest struct {
+	// SessionToken The token the widget kept
+	SessionToken *string     `json:"session_token,omitempty"`
+	User         *WidgetUser `json:"user,omitempty"`
+	WidgetKey    string      `json:"widget_key"`
+}
+
+// WidgetUser defines model for WidgetUser.
+type WidgetUser struct {
+	Email *string `json:"email,omitempty"`
+
+	// ExternalId The user's id in the company's system.
+	ExternalId *string `json:"external_id,omitempty"`
+	Name       *string `json:"name,omitempty"`
+	UserHash   *string `json:"user_hash,omitempty"`
+}
+
 // Workspace defines model for Workspace.
 type Workspace struct {
 	Id       uuid.UUID `json:"id"`
@@ -1910,6 +2058,15 @@ type TooManyRequests = Problem
 // Unauthenticated RFC 9457 problem details.
 type Unauthenticated = Problem
 
+// WidgetLimited RFC 9457 problem details.
+type WidgetLimited = Problem
+
+// WidgetOriginNotAllowed RFC 9457 problem details.
+type WidgetOriginNotAllowed = Problem
+
+// WidgetSessionEnded RFC 9457 problem details.
+type WidgetSessionEnded = Problem
+
 // ListContactsParams defines parameters for ListContacts.
 type ListContactsParams struct {
 	// Cursor Opaque `next_cursor` of the previous page.
@@ -1986,6 +2143,19 @@ type ListIngestReportRepliesParams struct {
 	XReportToken ReportToken `json:"X-Report-Token"`
 }
 
+// ListWidgetMessagesParams defines parameters for ListWidgetMessages.
+type ListWidgetMessagesParams struct {
+	// Since `cursor` of the previous answer.
+	Since *string `form:"since,omitempty" json:"since,omitempty"`
+}
+
+// SendWidgetMessageParams defines parameters for SendWidgetMessage.
+type SendWidgetMessageParams struct {
+	// IdempotencyKey Makes a retry return the first result instead of acting twice (docs/00 §8). A
+	// reused key with a different body answers `422`.
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
 // VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
 type VerifyEmailJSONRequestBody = TokenRequest
 
@@ -2019,6 +2189,9 @@ type ConnectTelegramBotJSONRequestBody = ConnectTelegramBotRequest
 // StartTelegramUserLoginJSONRequestBody defines body for StartTelegramUserLogin for application/json ContentType.
 type StartTelegramUserLoginJSONRequestBody = StartTelegramUserLoginRequest
 
+// ConnectWidgetChannelJSONRequestBody defines body for ConnectWidgetChannel for application/json ContentType.
+type ConnectWidgetChannelJSONRequestBody = ConnectWidgetChannelRequest
+
 // RenameChannelJSONRequestBody defines body for RenameChannel for application/json ContentType.
 type RenameChannelJSONRequestBody = RenameChannelRequest
 
@@ -2033,6 +2206,9 @@ type SubmitTelegramUserCodeJSONRequestBody = TelegramCodeRequest
 
 // SubmitTelegramUserPasswordJSONRequestBody defines body for SubmitTelegramUserPassword for application/json ContentType.
 type SubmitTelegramUserPasswordJSONRequestBody = TelegramPasswordRequest
+
+// SetWidgetOriginsJSONRequestBody defines body for SetWidgetOrigins for application/json ContentType.
+type SetWidgetOriginsJSONRequestBody = WidgetOriginsRequest
 
 // CreateContactJSONRequestBody defines body for CreateContact for application/json ContentType.
 type CreateContactJSONRequestBody = ContactInput
@@ -2100,6 +2276,15 @@ type ChangePasswordJSONRequestBody = ChangePasswordRequest
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
+// SendWidgetMessageJSONRequestBody defines body for SendWidgetMessage for application/json ContentType.
+type SendWidgetMessageJSONRequestBody = WidgetMessageRequest
+
+// MarkWidgetReceiptJSONRequestBody defines body for MarkWidgetReceipt for application/json ContentType.
+type MarkWidgetReceiptJSONRequestBody = WidgetReceiptRequest
+
+// StartWidgetSessionJSONRequestBody defines body for StartWidgetSession for application/json ContentType.
+type StartWidgetSessionJSONRequestBody = WidgetSessionRequest
+
 // UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
 type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
@@ -2147,6 +2332,9 @@ type ServerInterface interface {
 	// StartTelegramUserLogin Start connecting a personal Telegram account
 	// (POST /channels/telegram-user)
 	StartTelegramUserLogin(w http.ResponseWriter, r *http.Request)
+	// ConnectWidgetChannel Connect a chat widget for a site or an app
+	// (POST /channels/widget)
+	ConnectWidgetChannel(w http.ResponseWriter, r *http.Request)
 	// DisconnectChannel Disconnect a channel
 	// (DELETE /channels/{id})
 	DisconnectChannel(w http.ResponseWriter, r *http.Request, id Id)
@@ -2156,7 +2344,7 @@ type ServerInterface interface {
 	// SetAppLimits Change the limits of an app channel
 	// (PUT /channels/{id}/app-limits)
 	SetAppLimits(w http.ResponseWriter, r *http.Request, id Id)
-	// RotateIdentitySecret Replace the secret that signs the app user's identity
+	// RotateIdentitySecret Replace the secret that signs an app user's or a widget visitor's identity
 	// (POST /channels/{id}/identity-secret)
 	RotateIdentitySecret(w http.ResponseWriter, r *http.Request, id Id)
 	// ListIngestKeys Ingest keys of an app channel
@@ -2174,6 +2362,9 @@ type ServerInterface interface {
 	// SubmitTelegramUserPassword Enter the cloud password of a personal account
 	// (POST /channels/{id}/telegram-user/password)
 	SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id)
+	// SetWidgetOrigins Change the pages that may embed a widget
+	// (PUT /channels/{id}/widget-origins)
+	SetWidgetOrigins(w http.ResponseWriter, r *http.Request, id Id)
 	// ListContacts Contacts, newest first
 	// (GET /contacts)
 	ListContacts(w http.ResponseWriter, r *http.Request, params ListContactsParams)
@@ -2327,6 +2518,21 @@ type ServerInterface interface {
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	// ListWidgetMessages The visitor's chat
+	// (GET /widget/messages)
+	ListWidgetMessages(w http.ResponseWriter, r *http.Request, params ListWidgetMessagesParams)
+	// SendWidgetMessage The visitor writes
+	// (POST /widget/messages)
+	SendWidgetMessage(w http.ResponseWriter, r *http.Request, params SendWidgetMessageParams)
+	// MarkWidgetReceipt The widget received or showed replies
+	// (POST /widget/receipts)
+	MarkWidgetReceipt(w http.ResponseWriter, r *http.Request)
+	// EndWidgetSession End the visitor's session
+	// (DELETE /widget/session)
+	EndWidgetSession(w http.ResponseWriter, r *http.Request)
+	// StartWidgetSession Start or continue a visitor's session in the widget
+	// (POST /widget/session)
+	StartWidgetSession(w http.ResponseWriter, r *http.Request)
 	// UpdateWorkspace Change settings of the current workspace
 	// (PATCH /workspace)
 	UpdateWorkspace(w http.ResponseWriter, r *http.Request)
@@ -2420,6 +2626,12 @@ func (_ Unimplemented) StartTelegramUserLogin(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ConnectWidgetChannel Connect a chat widget for a site or an app
+// (POST /channels/widget)
+func (_ Unimplemented) ConnectWidgetChannel(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // DisconnectChannel Disconnect a channel
 // (DELETE /channels/{id})
 func (_ Unimplemented) DisconnectChannel(w http.ResponseWriter, r *http.Request, id Id) {
@@ -2438,7 +2650,7 @@ func (_ Unimplemented) SetAppLimits(w http.ResponseWriter, r *http.Request, id I
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// RotateIdentitySecret Replace the secret that signs the app user's identity
+// RotateIdentitySecret Replace the secret that signs an app user's or a widget visitor's identity
 // (POST /channels/{id}/identity-secret)
 func (_ Unimplemented) RotateIdentitySecret(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2471,6 +2683,12 @@ func (_ Unimplemented) SubmitTelegramUserCode(w http.ResponseWriter, r *http.Req
 // SubmitTelegramUserPassword Enter the cloud password of a personal account
 // (POST /channels/{id}/telegram-user/password)
 func (_ Unimplemented) SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetWidgetOrigins Change the pages that may embed a widget
+// (PUT /channels/{id}/widget-origins)
+func (_ Unimplemented) SetWidgetOrigins(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2780,6 +2998,36 @@ func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListWidgetMessages The visitor's chat
+// (GET /widget/messages)
+func (_ Unimplemented) ListWidgetMessages(w http.ResponseWriter, r *http.Request, params ListWidgetMessagesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SendWidgetMessage The visitor writes
+// (POST /widget/messages)
+func (_ Unimplemented) SendWidgetMessage(w http.ResponseWriter, r *http.Request, params SendWidgetMessageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MarkWidgetReceipt The widget received or showed replies
+// (POST /widget/receipts)
+func (_ Unimplemented) MarkWidgetReceipt(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// EndWidgetSession End the visitor's session
+// (DELETE /widget/session)
+func (_ Unimplemented) EndWidgetSession(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartWidgetSession Start or continue a visitor's session in the widget
+// (POST /widget/session)
+func (_ Unimplemented) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // UpdateWorkspace Change settings of the current workspace
 // (PATCH /workspace)
 func (_ Unimplemented) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -2994,6 +3242,20 @@ func (siw *ServerInterfaceWrapper) StartTelegramUserLogin(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartTelegramUserLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConnectWidgetChannel operation middleware
+func (siw *ServerInterfaceWrapper) ConnectWidgetChannel(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConnectWidgetChannel(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3237,6 +3499,32 @@ func (siw *ServerInterfaceWrapper) SubmitTelegramUserPassword(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SubmitTelegramUserPassword(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetWidgetOrigins operation middleware
+func (siw *ServerInterfaceWrapper) SetWidgetOrigins(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWidgetOrigins(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4562,6 +4850,122 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListWidgetMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListWidgetMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWidgetMessagesParams
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWidgetMessages(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendWidgetMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendWidgetMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendWidgetMessageParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendWidgetMessage(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkWidgetReceipt operation middleware
+func (siw *ServerInterfaceWrapper) MarkWidgetReceipt(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkWidgetReceipt(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EndWidgetSession operation middleware
+func (siw *ServerInterfaceWrapper) EndWidgetSession(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EndWidgetSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartWidgetSession operation middleware
+func (siw *ServerInterfaceWrapper) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartWidgetSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateWorkspace operation middleware
 func (siw *ServerInterfaceWrapper) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 
@@ -4804,6 +5208,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/channels/{id}/app-limits", wrapper.SetAppLimits)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/channels/widget", wrapper.ConnectWidgetChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/channels/{id}/widget-origins", wrapper.SetWidgetOrigins)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)
 	})
 	r.Group(func(r chi.Router) {
@@ -4838,6 +5248,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ingest/reports/{id}/messages", wrapper.PostIngestReportMessage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/widget/session", wrapper.EndWidgetSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/session", wrapper.StartWidgetSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/widget/messages", wrapper.ListWidgetMessages)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/messages", wrapper.SendWidgetMessage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/receipts", wrapper.MarkWidgetReceipt)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

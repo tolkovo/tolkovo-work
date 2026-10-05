@@ -32,6 +32,7 @@ import {
   tagListSchema,
   tagSchema,
   telegramLoginSchema,
+  widgetChannelCreatedSchema,
   workspaceListSchema,
   workspaceSchema,
 } from "./schemas";
@@ -75,6 +76,7 @@ export type TelegramLogin = Schemas["TelegramLogin"];
 export type ConnectTelegramBotRequest = Schemas["ConnectTelegramBotRequest"];
 export type AppLimits = Schemas["AppLimits"];
 export type AppChannelCreated = Schemas["AppChannelCreated"];
+export type WidgetChannelCreated = Schemas["WidgetChannelCreated"];
 export type IngestKey = Schemas["IngestKey"];
 export type GitHubIntegration = Schemas["GitHubIntegration"];
 export type GitHubIntegrationState = Schemas["GitHubIntegrationState"];
@@ -470,6 +472,22 @@ export async function setAppLimits(client: ApiClient, id: string, limits: AppLim
   return parseAnswer(
     channelSchema,
     await unwrap(client.PUT("/channels/{id}/app-limits", { params: { path: { id } }, body: limits })),
+  );
+}
+
+/** Creates a chat widget (docs/04 §6): the identity secret comes only here; the key is public. */
+export async function connectWidgetChannel(
+  client: ApiClient,
+  body: { name: string; allowed_origins: string[] },
+): Promise<WidgetChannelCreated> {
+  return parseAnswer(widgetChannelCreatedSchema, await unwrap(client.POST("/channels/widget", { body })), 201);
+}
+
+/** Replaces the pages that may embed a widget. */
+export async function setWidgetOrigins(client: ApiClient, id: string, origins: string[]): Promise<Channel> {
+  return parseAnswer(
+    channelSchema,
+    await unwrap(client.PUT("/channels/{id}/widget-origins", { params: { path: { id } }, body: { allowed_origins: origins } })),
   );
 }
 

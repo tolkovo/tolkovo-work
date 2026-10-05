@@ -83,12 +83,25 @@ func (SendArgs) InsertOpts() river.InsertOpts {
 func (s *Service) SetJobs(c *jobs.Client) { s.opts.Jobs = c }
 
 // QueueDelivery implements conversations.Deliverer: it queues the reply in
-// the transaction that stores it.
-func (s *Service) QueueDelivery(ctx context.Context, tx pgx.Tx, workspaceID, messageID uuid.UUID) error {
+// the transaction that stores it. A reply to a widget visitor is also
+// pushed to their widget in the same transaction (W-01): the widget is our
+// own transport, so the push is the delivery, and the job only marks it sent.
+func (s *Service) QueueDelivery(ctx context.Context, tx pgx.Tx, r conversations.QueuedReply) error {
 	if s.opts.Jobs == nil {
 		return errors.New("channels: no job queue to deliver replies")
 	}
-	_, err := s.opts.Jobs.InsertTx(ctx, tx, SendArgs{WorkspaceID: workspaceID, MessageID: messageID}, nil)
+	if r.ChannelID != nil && r.Thread != "" {
+		ch, err := store.New(tx).GetChannel(ctx, store.GetChannelParams{WorkspaceID: r.WorkspaceID, ID: *r.ChannelID})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if err == nil && ch.Type == TypeWidget {
+			if err := queueWidgetPush(ctx, tx, r); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := s.opts.Jobs.InsertTx(ctx, tx, SendArgs{WorkspaceID: r.WorkspaceID, MessageID: r.MessageID}, nil)
 	return err
 }
 
@@ -160,9 +173,9 @@ func (s *Service) send(ctx context.Context, a SendArgs, last bool) error {
 	if err != nil {
 		return err
 	}
-	if ch.Type == TypeApp {
-		// The app fetches its replies itself (docs/02 §11.6, AP-06): a stored
-		// reply is out.
+	if ch.Type == TypeApp || ch.Type == TypeWidget {
+		// The app fetches its replies itself (docs/02 §11.6, AP-06), the widget
+		// got its push with the reply (W-01): a stored reply is out.
 		return s.opts.Inbox.SetDelivery(ctx, a.WorkspaceID, a.MessageID, conversations.Delivery{Status: conversations.DeliverySent})
 	}
 	chatID, err := strconv.ParseInt(out.Thread, 10, 64)
@@ -597,13 +610,19 @@ func (s *Service) act(ctx context.Context, a action) error {
 	if err != nil {
 		return nil //nolint:nilerr // a conversation without a channel has nothing to show
 	}
-	chatID, err := strconv.ParseInt(th.Thread, 10, 64)
-	if err != nil {
-		return nil //nolint:nilerr // not a Telegram chat
-	}
 	ch, raw, err := s.loadActive(ctx, a.WorkspaceID, th.ChannelID)
 	if err != nil {
 		return err
+	}
+	if ch.Type == TypeWidget {
+		if a.Kind != actionTyping {
+			return nil // the widget reports reading itself (internal/widget)
+		}
+		return s.widgetTyping(ctx, a, th.Thread)
+	}
+	chatID, err := strconv.ParseInt(th.Thread, 10, 64)
+	if err != nil {
+		return nil //nolint:nilerr // not a Telegram chat
 	}
 	switch {
 	case ch.Type == TypeTelegramBot && a.Kind == actionTyping:

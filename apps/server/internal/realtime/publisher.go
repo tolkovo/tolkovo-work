@@ -28,16 +28,21 @@ func NewPublisher(rdb *redis.Client, prefix string) *Publisher {
 var _ outbox.Publisher = (*Publisher)(nil)
 
 // Publish implements outbox.Publisher. Events without a route (see routes)
-// are not sent to clients. One pipeline keeps the batch in seq order.
+// are not sent to clients; widget.* events go to their visitor (visitor.go). One pipeline keeps the batch in seq order.
 func (p *Publisher) Publish(ctx context.Context, events []outbox.Event) error {
 	pipe := p.rdb.Pipeline()
 	queued := 0
 	for _, e := range events {
 		channel, ok := channelFor(e.Topic)
+		encode := encodeEvent
+		if !ok {
+			channel, ok = widgetRoute(e)
+			encode = encodeWidgetEvent
+		}
 		if !ok {
 			continue
 		}
-		msg, err := encodeEvent(e)
+		msg, err := encode(e)
 		if err != nil {
 			return err
 		}

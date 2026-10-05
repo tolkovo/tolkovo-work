@@ -38,6 +38,13 @@ var publicOperations = map[string]bool{
 	"POST /api/v1/ingest/reports/{id}/complete": true,
 	"GET /api/v1/ingest/reports/{id}/replies":   true,
 	"POST /api/v1/ingest/reports/{id}/messages": true,
+	// The widget authenticates with its session token, checked by the
+	// handler (widget.go).
+	"POST /api/v1/widget/session":   true,
+	"DELETE /api/v1/widget/session": true,
+	"GET /api/v1/widget/messages":   true,
+	"POST /api/v1/widget/messages":  true,
+	"POST /api/v1/widget/receipts":  true,
 }
 
 // sessionCookies writes and reads the session cookie.
@@ -142,7 +149,9 @@ func sameOrigin(trusted []string) func(http.Handler) http.Handler {
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isUnsafe(r.Method) && !originAllowed(r, allowed) {
+			// The widget API is cross-origin by design and carries no
+			// cookie; it checks the Origin against the widget's list.
+			if isUnsafe(r.Method) && !isWidgetRoute(r) && !originAllowed(r, allowed) {
 				writeProblem(w, r, Problem{
 					Status: http.StatusForbidden, Code: "cross_origin", Title: "Forbidden",
 					Detail: "cross-origin requests are not allowed",

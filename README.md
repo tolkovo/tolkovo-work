@@ -9,7 +9,7 @@ Open-source live chat for support and sales: Telegram (a bot or a personal accou
 ```
 apps/server     Go modular monolith: one binary, roles api | realtime | worker | all
 apps/panel      operator, supervisor and admin panel (React)          — not started
-apps/widget     website widget (Preact, MIT)                         — not started
+apps/widget     chat widget for sites and Electron apps, npm @tolkovo/widget (Preact, MIT)
 apps/landing    landing page and docs (Astro)                        — not started
 api/            OpenAPI and WebSocket schemas: the source of truth   — not started
 deploy/compose  local dependencies and self-host compose files
@@ -43,4 +43,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the engineering standard [docs/00-en
 
 ## License
 
-The server and panel are licensed under [AGPL-3.0-or-later](LICENSE). The widget and SDKs will be MIT-licensed so they can be embedded in any site ([ADR-0006](docs/adr/0006-licensing.md)). Documentation: CC BY 4.0.
+The server and panel are licensed under [AGPL-3.0-or-later](LICENSE). The widget ([apps/widget](apps/widget/LICENSE)) and SDKs are MIT-licensed so they can be embedded in any site or app ([ADR-0006](docs/adr/0006-licensing.md)). Documentation: CC BY 4.0.

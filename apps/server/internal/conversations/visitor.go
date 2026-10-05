@@ -34,6 +34,10 @@ type Visitor struct {
 	// and is not stored.
 	Verified   bool
 	ExternalID string
+	// Claimed: the visitor claimed an id earlier that was not kept (the
+	// widget session remembers only that there was a claim). It counts as
+	// a claim like a non-empty unverified ExternalID.
+	Claimed bool
 	// Email and Name are what the site passed; they fill what a contact
 	// lacks and never overwrite what an operator entered.
 	Email string
@@ -72,7 +76,7 @@ func (s *Service) ResolveVisitor(ctx context.Context, workspaceID uuid.UUID, v V
 			out = VisitorContact{ContactID: id, Identity: IdentityVerified, Created: created}
 			return err
 		}
-		claimed := v.ExternalID != "" || name != "" || email != nil
+		claimed := v.Claimed || v.ExternalID != "" || name != "" || email != nil
 		if v.Current != uuid.Nil {
 			cur, err := q.GetContact(ctx, store.GetContactParams{WorkspaceID: workspaceID, ID: v.Current})
 			switch {

@@ -8,12 +8,30 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
 // errTooManyConnections is returned by register over the per-user limit.
 var errTooManyConnections = errors.New("realtime: too many connections for this user")
+
+// subscriber is a local connection the hub fans events out to: an
+// operator's panel (conn) or a widget visitor (visitorConn).
+type subscriber interface {
+	// workspace is the tenant whose events the connection gets.
+	workspace() uuid.UUID
+	// owner is whose connections the per-owner limit counts: the user, or
+	// the visitor's session.
+	owner() uuid.UUID
+	// deliverLive queues an event; it must not block.
+	deliverLive(channel string, msg []byte, seq int64)
+	// requestResync tells the connection events may have been missed.
+	requestResync()
+	fail(code websocket.StatusCode, reason string)
+	// cancelNow cuts the connection off without a close handshake.
+	cancelNow()
+}
 
 // hub is the local index of one replica: which connections belong to which
 // workspace. It subscribes once to every ws:* channel and hands each event
@@ -31,7 +49,7 @@ type hub struct {
 	maxPerUser int
 
 	mu      sync.RWMutex
-	conns   map[uuid.UUID]map[*conn]struct{} // by workspace
+	conns   map[uuid.UUID]map[subscriber]struct{} // by workspace
 	perUser map[uuid.UUID]int
 
 	ready     chan struct{}
@@ -41,7 +59,7 @@ type hub struct {
 func newHub(rdb *redis.Client, prefix string, maxPerUser int, log *slog.Logger) *hub {
 	return &hub{
 		rdb: rdb, prefix: prefix, log: log, maxPerUser: maxPerUser,
-		conns: map[uuid.UUID]map[*conn]struct{}{}, perUser: map[uuid.UUID]int{},
+		conns: map[uuid.UUID]map[subscriber]struct{}{}, perUser: map[uuid.UUID]int{},
 		ready: make(chan struct{}),
 	}
 }
@@ -142,43 +160,43 @@ func (h *hub) resyncAll() {
 	}
 }
 
-func (h *hub) register(c *conn) error {
+func (h *hub) register(c subscriber) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.perUser[c.userID] >= h.maxPerUser {
+	if h.perUser[c.owner()] >= h.maxPerUser {
 		return errTooManyConnections
 	}
-	h.perUser[c.userID]++
-	set := h.conns[c.workspaceID]
+	h.perUser[c.owner()]++
+	set := h.conns[c.workspace()]
 	if set == nil {
-		set = map[*conn]struct{}{}
-		h.conns[c.workspaceID] = set
+		set = map[subscriber]struct{}{}
+		h.conns[c.workspace()] = set
 	}
 	set[c] = struct{}{}
 	return nil
 }
 
-func (h *hub) unregister(c *conn) {
+func (h *hub) unregister(c subscriber) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	set := h.conns[c.workspaceID]
+	set := h.conns[c.workspace()]
 	if _, ok := set[c]; !ok {
 		return
 	}
 	delete(set, c)
 	if len(set) == 0 {
-		delete(h.conns, c.workspaceID)
+		delete(h.conns, c.workspace())
 	}
-	if h.perUser[c.userID]--; h.perUser[c.userID] <= 0 {
-		delete(h.perUser, c.userID)
+	if h.perUser[c.owner()]--; h.perUser[c.owner()] <= 0 {
+		delete(h.perUser, c.owner())
 	}
 }
 
 // all returns a snapshot of local connections, for shutdown.
-func (h *hub) all() []*conn {
+func (h *hub) all() []subscriber {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	var out []*conn
+	var out []subscriber
 	for _, set := range h.conns {
 		for c := range set {
 			out = append(out, c)

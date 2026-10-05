@@ -250,8 +250,8 @@ func (s *Service) RevokeIngestKey(ctx context.Context, workspaceID, channelID, k
 	return nil
 }
 
-// RotateIdentitySecret replaces the secret that signs the app user's
-// identity; the old one stops working at once.
+// RotateIdentitySecret replaces the secret that signs the identity of an
+// app user or a widget visitor; the old one stops working at once.
 func (s *Service) RotateIdentitySecret(ctx context.Context, workspaceID, channelID uuid.UUID) (crypto.Secret, error) {
 	if s.opts.Sealer == nil {
 		return crypto.Secret{}, ErrNoEncryption
@@ -266,7 +266,11 @@ func (s *Service) RotateIdentitySecret(ctx context.Context, workspaceID, channel
 	}
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		if _, err := appChannel(ctx, q, workspaceID, channelID); err != nil {
+		row, err := q.GetChannel(ctx, store.GetChannelParams{WorkspaceID: workspaceID, ID: channelID})
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !signsIdentity(row.Type)) {
+			return ErrNotFound
+		}
+		if err != nil {
 			return err
 		}
 		return q.PutSecret(ctx, store.PutSecretParams{WorkspaceID: workspaceID, ChannelID: channelID, Sealed: sealed, UpdatedAt: s.now()})

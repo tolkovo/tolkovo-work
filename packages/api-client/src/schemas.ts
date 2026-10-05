@@ -272,7 +272,7 @@ export const appLimitsSchema = z.object({
 
 export const channelSchema = z.object({
   id: z.string(),
-  type: z.enum(["telegram_bot", "telegram_user", "app"]),
+  type: z.enum(["telegram_bot", "telegram_user", "app", "widget"]),
   name: z.string(),
   status: z.enum(["pending", "active", "error"]),
   error_code: z.string().nullable(),
@@ -282,6 +282,8 @@ export const channelSchema = z.object({
     phone_masked: z.string().nullable(),
     delivery: z.enum(["webhook", "polling"]).optional(),
     app_limits: appLimitsSchema.optional(),
+    widget_key: z.string().optional(),
+    allowed_origins: z.array(z.string()).optional(),
   }),
   last_inbound_at: z.string().nullable(),
   created_at: z.string(),
@@ -320,6 +322,11 @@ export const appChannelCreatedSchema = z.object({
   ingest_key: ingestKeyCreatedSchema,
   identity_secret: z.string(),
 }) satisfies z.ZodType<Schemas["AppChannelCreated"]>;
+
+export const widgetChannelCreatedSchema = z.object({
+  channel: channelSchema,
+  identity_secret: z.string(),
+}) satisfies z.ZodType<Schemas["WidgetChannelCreated"]>;
 
 export const gitHubTemplatesSchema = z.object({
   issue_title: z.string(),

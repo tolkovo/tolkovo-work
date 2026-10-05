@@ -17,8 +17,10 @@ import (
 const (
 	DeliveryPending = "pending"
 	DeliverySent    = "sent"
-	DeliveryRead    = "read"
-	DeliveryFailed  = "failed"
+	// DeliveryDelivered: the customer's widget received the reply (W-01).
+	DeliveryDelivered = "delivered"
+	DeliveryRead      = "read"
+	DeliveryFailed    = "failed"
 )
 
 // Why a reply was not delivered (Message.DeliveryError), docs/02 §11.4.
@@ -45,7 +47,18 @@ var ErrNotFailed = errors.New("conversations: the message has not failed")
 // transaction that stores the reply, so a stored reply is always queued
 // (docs/02 §11.4); it must not call the network.
 type Deliverer interface {
-	QueueDelivery(ctx context.Context, tx pgx.Tx, workspaceID, messageID uuid.UUID) error
+	QueueDelivery(ctx context.Context, tx pgx.Tx, r QueuedReply) error
+}
+
+// QueuedReply is a reply handed to its channel: where it goes, so the
+// channel can act in the same transaction (a widget push, W-01).
+type QueuedReply struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	MessageID      uuid.UUID
+	// ChannelID and Thread of the conversation; nil and empty without a channel.
+	ChannelID *uuid.UUID
+	Thread    string
 }
 
 // SetDeliverer connects the channels module; call it before serving.
@@ -236,7 +249,7 @@ func (s *Service) RetryDelivery(ctx context.Context, workspaceID uuid.UUID, acto
 		if err != nil {
 			return err
 		}
-		if err := s.queueDelivery(ctx, tx, workspaceID, messageID); err != nil {
+		if err := s.queueDelivery(ctx, tx, conv, messageID); err != nil {
 			return err
 		}
 		if err := deliveryEvent(ctx, tx, workspaceID, conversationID, messageID, DeliveryPending, ""); err != nil {
@@ -256,11 +269,15 @@ func (s *Service) RetryDelivery(ctx context.Context, workspaceID uuid.UUID, acto
 }
 
 // queueDelivery hands a reply to the channels module in tx.
-func (s *Service) queueDelivery(ctx context.Context, tx pgx.Tx, workspaceID, messageID uuid.UUID) error {
+func (s *Service) queueDelivery(ctx context.Context, tx pgx.Tx, conv store.Conversation, messageID uuid.UUID) error {
 	if s.deliverer == nil {
 		return nil // no channels wired (tests of other modules): stays pending
 	}
-	if err := s.deliverer.QueueDelivery(ctx, tx, workspaceID, messageID); err != nil {
+	r := QueuedReply{WorkspaceID: conv.WorkspaceID, ConversationID: conv.ID, MessageID: messageID, ChannelID: conv.ChannelID}
+	if conv.ExternalThreadID != nil {
+		r.Thread = *conv.ExternalThreadID
+	}
+	if err := s.deliverer.QueueDelivery(ctx, tx, r); err != nil {
 		return fmt.Errorf("queue delivery: %w", err)
 	}
 	return nil

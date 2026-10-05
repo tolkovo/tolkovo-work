@@ -40,6 +40,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
+	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
 
 // env is the whole HTTP stack on a fresh database (application role, so
@@ -167,6 +168,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
 		Ingest: reports, Integrations: integ,
+		Widget:        widget.New(app, widget.Options{Channels: chans, Inbox: convs, Redis: rc, KeyPrefix: prefix, Log: quiet}),
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {

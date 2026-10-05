@@ -1,0 +1,409 @@
+/*
+ * The widget's styles, inside its shadow root: the page cannot reach them and they cannot reach
+ * the page. Colors default to the Tolkovo tokens (packages/ui/tokens.css); the host app overrides
+ * the accent, the radius, the position and the font from code (Tolkovo.init({ theme })), which
+ * sets the --tk-* custom properties on the host element.
+ */
+
+:host {
+  all: initial;
+  --tk-accent: #0d7a69;
+  --tk-on-accent: #ffffff;
+  --tk-radius: 14px;
+  --tk-offset-x: 20px;
+  --tk-offset-y: 20px;
+  --tk-z: 2147483000;
+  --tk-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --tk-surface: #ffffff;
+  --tk-sunk: #f1f4f2;
+  --tk-ink: #14212a;
+  --tk-ink-2: #4b5a64;
+  --tk-line: #d6ddd9;
+  --tk-reply: #e8edea;
+  --tk-danger: #c23e2c;
+  --tk-danger-soft: #fbe3df;
+  --tk-on-light: #14212a;
+  --tk-on-dark: #ffffff;
+  --tk-shadow: 0 12px 32px rgb(13 30 38 / 0.18), 0 2px 6px rgb(13 30 38 / 0.1);
+  color-scheme: light;
+}
+
+:host([data-mode="dark"]) {
+  --tk-surface: #141f27;
+  --tk-sunk: #0e161b;
+  --tk-ink: #e4ebe8;
+  --tk-ink-2: #9dadb5;
+  --tk-line: #25343d;
+  --tk-reply: #1d2b34;
+  --tk-danger: #f07a66;
+  --tk-danger-soft: #3d1a15;
+  --tk-shadow: 0 12px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host([data-mode="auto"]) {
+    --tk-surface: #141f27;
+    --tk-sunk: #0e161b;
+    --tk-ink: #e4ebe8;
+    --tk-ink-2: #9dadb5;
+    --tk-line: #25343d;
+    --tk-reply: #1d2b34;
+    --tk-danger: #f07a66;
+    --tk-danger-soft: #3d1a15;
+    --tk-shadow: 0 12px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.4);
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.tk-root {
+  position: fixed;
+  z-index: var(--tk-z);
+  bottom: var(--tk-offset-y);
+  right: var(--tk-offset-x);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  font: 14px/1.45 var(--tk-font);
+  color: var(--tk-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tk-root[data-position="bottom-left"] {
+  right: auto;
+  left: var(--tk-offset-x);
+  align-items: flex-start;
+}
+
+.tk-launcher {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tk-accent);
+  color: var(--tk-on-accent);
+  box-shadow: var(--tk-shadow);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.tk-launcher:hover {
+  transform: scale(1.05);
+}
+
+.tk-launcher svg {
+  width: 26px;
+  height: 26px;
+}
+
+.tk-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border: 2px solid var(--tk-surface);
+  border-radius: 10px;
+  background: var(--tk-danger);
+  color: var(--tk-on-dark);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-window {
+  display: flex;
+  flex-direction: column;
+  width: min(368px, calc(100vw - 2 * var(--tk-offset-x)));
+  height: min(600px, calc(100vh - var(--tk-offset-y) - 96px));
+  overflow: hidden;
+  border: 1px solid var(--tk-line);
+  border-radius: var(--tk-radius);
+  background: var(--tk-surface);
+  box-shadow: var(--tk-shadow);
+  animation: tk-in 160ms ease-out;
+}
+
+@keyframes tk-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.tk-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px 14px 16px;
+  background: var(--tk-accent);
+  color: var(--tk-on-accent);
+}
+
+.tk-logo {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--tk-surface);
+}
+
+.tk-heading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.tk-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-subtitle {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tk-icon-button:hover {
+  background: rgb(255 255 255 / 0.16);
+}
+
+.tk-icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tk-log {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 16px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  background: var(--tk-sunk);
+}
+
+.tk-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+  gap: 2px;
+}
+
+.tk-msg[data-from="contact"] {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.tk-bubble {
+  padding: 8px 12px;
+  border-radius: calc(var(--tk-radius) - 2px);
+  background: var(--tk-reply);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tk-msg[data-from="contact"] .tk-bubble {
+  background: var(--tk-accent);
+  color: var(--tk-on-accent);
+}
+
+.tk-msg[data-pending] .tk-bubble {
+  opacity: 0.7;
+}
+
+.tk-meta {
+  padding: 0 4px;
+  color: var(--tk-ink-2);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-file {
+  display: block;
+  margin-top: 4px;
+  color: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.tk-failed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--tk-danger);
+  font-size: 12px;
+}
+
+.tk-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tk-typing {
+  align-self: flex-start;
+  padding: 2px 4px;
+  color: var(--tk-ink-2);
+  font-size: 12.5px;
+}
+
+.tk-notice {
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--tk-line);
+  background: var(--tk-danger-soft);
+  color: var(--tk-ink);
+  font-size: 12.5px;
+}
+
+.tk-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  border-top: 1px solid var(--tk-line);
+  background: var(--tk-surface);
+}
+
+.tk-input {
+  min-height: 36px;
+  max-height: 120px;
+  flex: 1;
+  padding: 8px 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--tk-ink);
+  font: inherit;
+}
+
+.tk-input::placeholder {
+  color: var(--tk-ink-2);
+}
+
+.tk-send {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tk-accent);
+  color: var(--tk-on-accent);
+  cursor: pointer;
+}
+
+.tk-send:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.tk-send svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tk-launcher:focus-visible,
+.tk-icon-button:focus-visible,
+.tk-send:focus-visible,
+.tk-link-button:focus-visible,
+.tk-file:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+
+.tk-header .tk-icon-button:focus-visible {
+  outline-color: var(--tk-on-accent);
+}
+
+.tk-composer:focus-within {
+  box-shadow: inset 0 2px 0 var(--tk-accent);
+}
+
+.tk-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .tk-root[data-open] {
+    inset: 0;
+    gap: 0;
+  }
+
+  .tk-root[data-open] .tk-window {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .tk-root[data-open] .tk-launcher {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tk-window {
+    animation: none;
+  }
+
+  .tk-launcher {
+    transition: none;
+  }
+}

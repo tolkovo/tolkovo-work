@@ -53,8 +53,9 @@ tags:
   - name: channels
     description: |
       Where customers write from (docs/02 §11, ADR-0014): a Telegram bot connected by its
-      token, or a personal Telegram account signed in by phone over MTProto. Secrets (the
-      token, the account session) are encrypted and never returned. Requires
+      token, a personal Telegram account signed in by phone over MTProto, a company app's
+      reports, or a chat widget. Secrets (the token, the account session, identity secrets)
+      are encrypted and never returned. Requires
       `channels.view` to read and `channels.manage` to change (owner, admin).
   - name: integrations
     description: |
@@ -72,6 +73,14 @@ tags:
       and headers, then complete it. Rates: 10 reports a minute per IP and 60 an hour per
       key; the channel's daily quota of reports and megabytes. Errors carry a `code`;
       `429` carries `Retry-After`.
+  - name: widget
+    description: |
+      The visitor's side of the chat widget (docs/04 §6, W-01), called by `@tolkovo/widget`
+      from a site or an Electron app. Cross-origin: only pages whose `Origin` is on the
+      widget's list are answered (CORS without credentials). A session token in
+      `Authorization: Bearer tk_wsess_…` stands in for the cookie. Live events come over
+      `GET /api/v1/widget/realtime` (WebSocket, subprotocols `tolkovo.widget.v1` and the
+      token; api/ws/widget-message.schema.json).
 
 paths:
   /auth/register:
@@ -956,10 +965,11 @@ paths:
     post:
       tags: [channels]
       operationId: rotateIdentitySecret
-      summary: Replace the secret that signs the app user's identity
+      summary: Replace the secret that signs an app user's or a widget visitor's identity
       description: |
-        The old secret stops working at once: identity tokens the company's backend signed
-        with it are no longer accepted, and their reports come in as unconfirmed. The new
+        App and widget channels. The old secret stops working at once: identity tokens and
+        user hashes the company's backend signed with it are no longer accepted, and their
+        reports and visitors come in as unconfirmed. The new
         secret is returned only here. Requires `channels.manage`.
       security:
         - sessionCookie: []
@@ -997,6 +1007,65 @@ paths:
       responses:
         '200':
           description: The channel with the new limits.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Channel' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /channels/widget:
+    post:
+      tags: [channels]
+      operationId: connectWidgetChannel
+      summary: Connect a chat widget for a site or an app
+      description: |
+        Creates the «Виджет» channel (docs/04 §6, W-01) with the pages that may embed it and
+        the secret that signs a visitor's identity (W-04). The widget key is public — it
+        goes into the page or the app — and is shown in the channel's details; the secret is
+        returned only here and lives on the company's backend. Without `allowed_origins` the
+        widget works nowhere yet. Requires `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConnectWidgetChannelRequest' }
+      responses:
+        '201':
+          description: The active channel and the identity secret, shown once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetChannelCreated' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ChannelsUnavailable' }
+
+  /channels/{id}/widget-origins:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [channels]
+      operationId: setWidgetOrigins
+      summary: Change the pages that may embed a widget
+      description: |
+        Replaces the list. Pages of a removed origin lose their sessions within 30 seconds.
+        Requires `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetOriginsRequest' }
+      responses:
+        '200':
+          description: The channel with the new list.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Channel' }
@@ -1404,6 +1473,149 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/ReportLimited' }
+
+  /widget/session:
+    post:
+      tags: [widget]
+      operationId: startWidgetSession
+      summary: Start or continue a visitor's session in the widget
+      description: |
+        Called by the widget (`@tolkovo/widget`) on start and after `identify`. The page's
+        `Origin` must be on the widget's list (`403 origin_not_allowed`); an Electron app
+        loaded from a custom scheme sends `app://name`. Send the `session_token` the widget
+        kept: if it still works it is returned again, otherwise a new one is.
+
+        `user` is who the site or the app says the visitor is. With `user_hash` = hex
+        HMAC-SHA256 of `external_id` under the widget's identity secret, signed by the
+        company's backend, the visitor is verified and continues with the contact of that
+        id — the same one their app reports land on (W-04). Without a valid hash it is a
+        claim: a new unverified contact, never merged with others. A missing or wrong hash
+        is not an error: `identity` says which. An anonymous visitor gets a contact only
+        with the first message. Rate: 20 a minute per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetSessionRequest' }
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetSession' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401':
+          description: '`invalid_widget_key`: the key is malformed or names no connected widget.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+    delete:
+      tags: [widget]
+      operationId: endWidgetSession
+      summary: End the visitor's session
+      description: |
+        The widget calls it when the visitor signs out of the site or the app, so the next
+        person on the device starts afresh. Ending an ended session answers `204` too.
+      security:
+        - widgetSession: []
+      responses:
+        '204':
+          description: Ended.
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+
+  /widget/messages:
+    get:
+      tags: [widget]
+      operationId: listWidgetMessages
+      summary: The visitor's chat
+      description: |
+        The visitor's own messages and the replies of operators and the bot, oldest first:
+        no internal notes, no events, no names of staff. Without `since`, the newest 100;
+        with it, what came after. Messages of the last few seconds may come again with the
+        next call — drop repeats by `id`. Fetch after `hello`, `widget.message` and
+        `resync_required` of the realtime connection. Rate: 60 a minute per session.
+      security:
+        - widgetSession: []
+      parameters:
+        - name: since
+          in: query
+          description: '`cursor` of the previous answer.'
+          schema: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Up to 100 messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetMessages' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+    post:
+      tags: [widget]
+      operationId: sendWidgetMessage
+      summary: The visitor writes
+      description: |
+        Text only, up to 10 000 characters. The first message opens a conversation in the
+        queue; a resolved one reopens. A retry with the same `Idempotency-Key` and text
+        answers `200` with the first message. Rate: 30 a minute per session.
+      security:
+        - widgetSession: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetMessageRequest' }
+      responses:
+        '200':
+          description: A retry with the same `Idempotency-Key` and text.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetMessage' }
+        '201':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetMessage' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '422':
+          description: '`idempotency_key_reused`: the key was used with a different text.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
+  /widget/receipts:
+    post:
+      tags: [widget]
+      operationId: markWidgetReceipt
+      summary: The widget received or showed replies
+      description: |
+        `delivered_up_to`: the widget has the replies up to this message; `read_up_to`: it
+        showed them in an open, visible chat. The operator sees «delivered» and «read» on
+        each reply (`message.delivery`). A status never moves back. Rate: 60 a minute per
+        session.
+      security:
+        - widgetSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetReceiptRequest' }
+      responses:
+        '204':
+          description: Recorded.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
 
   /files/{key}:
     parameters:
@@ -2230,6 +2442,10 @@ components:
       schema: { type: string, minLength: 1, maxLength: 255 }
 
   securitySchemes:
+    widgetSession:
+      type: http
+      scheme: bearer
+      description: A widget session token, `tk_wsess_…`, from `POST /widget/session`.
     ingestKey:
       type: http
       scheme: bearer
@@ -2338,6 +2554,27 @@ components:
       description: |
         `too_many_requests` (a rate per IP or key) or `daily_quota_exceeded` (the channel's
         reports or megabytes for the UTC day).
+      headers:
+        Retry-After:
+          description: Seconds until the next attempt is allowed.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    WidgetSessionEnded:
+      description: |
+        `widget_session_ended`: the token is unknown, expired or ended, or the widget was
+        disconnected. Start a new session.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    WidgetOriginNotAllowed:
+      description: '`origin_not_allowed`: the page''s `Origin` is not on the widget''s list.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    WidgetLimited:
+      description: '`too_many_requests`: a rate per IP or session.'
       headers:
         Retry-After:
           description: Seconds until the next attempt is allowed.
@@ -3235,8 +3472,8 @@ components:
 
     ChannelType:
       type: string
-      description: '`app` — reports from a company app (docs/02 §11.6).'
-      enum: [telegram_bot, telegram_user, app]
+      description: '`app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).'
+      enum: [telegram_bot, telegram_user, app, widget]
 
     ChannelStatus:
       type: string
@@ -3260,6 +3497,13 @@ components:
           description: 'Bots only: Telegram pushes updates to a webhook, or the worker polls.'
           enum: [webhook, polling]
         app_limits: { $ref: '#/components/schemas/AppLimits' }
+        widget_key:
+          type: string
+          description: 'Widgets only: the public key, `tk_widget_…`, that goes into the page or the app.'
+        allowed_origins:
+          type: array
+          description: 'Widgets only: the pages that may embed it (see `WidgetOriginsRequest`).'
+          items: { type: string }
 
     Channel:
       type: object
@@ -3818,6 +4062,126 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         created_at: { type: string, format: date-time }
+
+    ConnectWidgetChannelRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120, description: 'E.g. "Чат в приложении".' }
+        allowed_origins:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 255 }
+          description: See `WidgetOriginsRequest`.
+
+    WidgetOriginsRequest:
+      type: object
+      additionalProperties: false
+      required: [allowed_origins]
+      properties:
+        allowed_origins:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 255 }
+          description: |
+            Up to 20: `https://shop.example.com` (one site; default ports dropped),
+            `https://*.example.com` (every subdomain, not the apex), `app://name` (an Electron
+            app's custom scheme, registered as standard), `file://` and `null` (an Electron app
+            loaded from files — `null` is also what a sandboxed iframe on any site sends, so
+            prefer a custom scheme). `*` is refused.
+
+    WidgetChannelCreated:
+      type: object
+      required: [channel, identity_secret]
+      properties:
+        channel: { $ref: '#/components/schemas/Channel' }
+        identity_secret:
+          type: string
+          description: |
+            `tk_identity_…`. Lives only on the company's backend, never in the page or the app:
+            the backend signs `user_hash` = HMAC-SHA256(`external_id`, secret), hex.
+
+    WidgetSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [widget_key]
+      properties:
+        widget_key: { type: string, maxLength: 200 }
+        session_token: { type: string, maxLength: 200, description: The token the widget kept, if any. }
+        user: { $ref: '#/components/schemas/WidgetUser' }
+
+    WidgetUser:
+      type: object
+      additionalProperties: false
+      properties:
+        external_id: { type: string, maxLength: 255, description: The user's id in the company's system. }
+        user_hash: { type: string, maxLength: 128 }
+        name: { type: string, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+
+    WidgetSession:
+      type: object
+      required: [session_token, expires_at, identity, channel_name]
+      properties:
+        session_token: { type: string, description: '`tk_wsess_…`; keep it and send it as `Authorization: Bearer`.' }
+        expires_at: { type: string, format: date-time, description: 'Moves 30 days ahead with activity.' }
+        identity:
+          type: string
+          enum: [verified, unverified, none]
+        channel_name: { type: string }
+
+    WidgetMessages:
+      type: object
+      required: [items, cursor, more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/WidgetMessage' }
+        cursor: { type: string, description: Pass as `since` next time. }
+        more: { type: boolean, description: More messages follow; ask again at once. }
+
+    WidgetMessage:
+      type: object
+      required: [id, conversation_id, sender, body, created_at, files]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        sender:
+          type: string
+          description: '`contact` — the visitor; `operator` or `bot` — a reply.'
+          enum: [contact, operator, bot]
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/IngestReplyFile' }
+
+    WidgetMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 10000 }
+
+    WidgetReceiptRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        delivered_up_to:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        read_up_to:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
 
     RenameChannelRequest:
       type: object

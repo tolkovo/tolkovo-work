@@ -141,7 +141,7 @@ func (s *Service) PostMessage(
 		}
 		created = true
 		if msg.DeliveryStatus != nil && *msg.DeliveryStatus == DeliveryPending {
-			return s.queueDelivery(ctx, tx, workspaceID, msg.ID)
+			return s.queueDelivery(ctx, tx, conv, msg.ID)
 		}
 		return nil
 	})

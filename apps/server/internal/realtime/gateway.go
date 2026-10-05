@@ -277,7 +277,7 @@ func (g *Gateway) Shutdown(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		for _, c := range g.hub.all() {
-			c.cancel()
+			c.cancelNow()
 		}
 		<-done
 		return ctx.Err()

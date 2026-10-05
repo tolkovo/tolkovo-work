@@ -41,6 +41,9 @@ type Inbound struct {
 	// before is not stored again.
 	ExternalID string
 	Sender     InboundSender
+	// ContactID: the channel knows the contact already (a widget session,
+	// W-01), so the sender is not looked up by Sender; Sender is ignored.
+	ContactID uuid.UUID
 	// FromOwner: the owner of a personal account wrote it in their own
 	// Telegram app. It is stored as an operator reply, and only into an
 	// open conversation: the panel is not a mirror of every private chat
@@ -150,9 +153,11 @@ func (s *Service) receive(ctx context.Context, q *store.Queries, tx pgx.Tx, work
 
 	out := Received{Stored: true}
 	// Also for an open conversation: the username follows Telegram.
-	contactID, err := s.identify(ctx, q, tx, workspaceID, in)
-	if err != nil {
-		return Received{}, err
+	contactID := in.ContactID
+	if contactID == uuid.Nil {
+		if contactID, err = s.identify(ctx, q, tx, workspaceID, in); err != nil {
+			return Received{}, err
+		}
 	}
 	if !hasOpen {
 		if conv, err = s.openThread(ctx, q, tx, workspaceID, contactID, in); err != nil {
@@ -415,7 +420,9 @@ func (in *Inbound) validate() error {
 		return fmt.Errorf("%w: inbound message without a channel", ErrInvalid)
 	case in.Thread == "" || len(in.Thread) > 255 || in.ExternalID == "" || len(in.ExternalID) > 255:
 		return fmt.Errorf("%w: inbound message needs a thread and an external id", ErrInvalid)
-	case !in.FromOwner && (in.Sender.ExternalUserID == "" || len(in.Sender.ExternalUserID) > 64):
+	case in.FromOwner && in.ContactID != uuid.Nil:
+		return fmt.Errorf("%w: an owner's message has no contact", ErrInvalid)
+	case !in.FromOwner && in.ContactID == uuid.Nil && (in.Sender.ExternalUserID == "" || len(in.Sender.ExternalUserID) > 64):
 		return fmt.Errorf("%w: inbound message needs the sender's id", ErrInvalid)
 	case in.Body == "" && len(in.Files) == 0 && in.Unsupported == "":
 		return fmt.Errorf("%w: inbound message is empty", ErrInvalid)

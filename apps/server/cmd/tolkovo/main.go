@@ -49,6 +49,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
+	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
 
 // version is set at build time: -ldflags "-X main.version=v0.1.0".
@@ -228,10 +229,13 @@ func startWorker(
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
+	river.AddWorker(workers, widget.NewPruneSessionsWorker(sys.Pool()))
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
 	integ.AddWorkers(workers)
-	periodic := []*river.PeriodicJob{outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic()}
+	periodic := []*river.PeriodicJob{
+		outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic(), widget.PruneSessionsPeriodic(),
+	}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
 	}
@@ -346,8 +350,11 @@ func apiDeps(
 		// module; complete queues ingest.process for the worker (AP-03); the
 		// app user reads replies and writes back through convs (AP-06).
 		// Issues are recorded here and created on GitHub by the worker (GH-02).
-		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
-		Integrations:  integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter)),
+		Ingest:       ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
+		Integrations: integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter)),
+		// Visitors of chat widgets write through the channels module and
+		// read their chat from convs (W-01).
+		Widget:        widget.New(pool, widget.Options{Channels: chans, Inbox: convs, Redis: redisClient, Log: log}),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -393,6 +400,9 @@ func channelsService(
 		Files:       files,
 		Log:         log,
 		Redis:       redisClient,
+		// An operator's typing reaches a widget visitor through the
+		// realtime fan-out (W-01).
+		Visitors: realtime.NewPublisher(redisClient, ""),
 	}
 	sealer, err := newSealer(cfg)
 	if err != nil {

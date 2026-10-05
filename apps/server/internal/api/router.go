@@ -23,6 +23,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
+	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
 
 // Pinger reports whether a dependency is reachable.
@@ -48,6 +49,9 @@ type Deps struct {
 	Ingest *ingest.Service
 	// Integrations connects GitHub (GH-01).
 	Integrations *integrations.Service
+	// Widget serves the visitors of chat widgets (W-01); nil leaves its
+	// routes answering 404.
+	Widget *widget.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -72,6 +76,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(requestLogger(d.Log))
 	r.Use(recoverer(d.Log))
 	r.Use(requestTimeout(30 * time.Second))
+	r.Use(widgetCORS)
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": d.Version})
@@ -83,12 +88,15 @@ func NewRouter(d Deps) http.Handler {
 
 	srv := &server{
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations, notifications: d.Notifications, channels: d.Channels,
-		ingest: d.Ingest, integrations: d.Integrations,
+		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
 	}
 	if d.Realtime != nil {
 		r.Get(RealtimePath, srv.realtimeHandler(d.Realtime))
+		if wr, ok := d.Realtime.(WidgetRealtime); ok {
+			r.Get(WidgetRealtimePath, srv.widgetRealtimeHandler(wr))
+		}
 	}
 	if d.RealtimeOnly {
 		mountFallbacks(r)

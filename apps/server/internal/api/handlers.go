@@ -13,6 +13,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
+	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
 
 // server implements the generated oapi.ServerInterface.
@@ -25,6 +26,7 @@ type server struct {
 	channels      *channels.Service
 	ingest        *ingest.Service
 	integrations  *integrations.Service
+	widget        *widget.Service
 	cookies       sessionCookies
 	clients       clientIPs
 }

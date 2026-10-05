@@ -1,7 +1,8 @@
 // Package channels connects the places customers write from (docs/02 §11,
 // docs/06 T-01, AP-01): a Telegram bot by its token, a personal Telegram
-// account signed in by phone over MTProto (ADR-0014), or a company app that
-// sends problem reports by an ingest key. Secrets — the bot
+// account signed in by phone over MTProto (ADR-0014), a company app that
+// sends problem reports by an ingest key, or a chat widget on a site or in
+// an app (W-01). Secrets — the bot
 // token, the account session — are sealed with internal/platform/crypto
 // and never leave the module; the API sees only names, usernames and a
 // masked phone.
@@ -116,6 +117,10 @@ type Details struct {
 	Delivery string `json:"delivery,omitempty"`
 	// AppLimits of an app channel (AP-01).
 	AppLimits *AppLimits `json:"app_limits,omitempty"`
+	// AllowedOrigins of a widget channel (W-01): pages that may embed it.
+	AllowedOrigins []string `json:"allowed_origins,omitempty"`
+	// WidgetKey of a widget channel, derived from its ids, never stored.
+	WidgetKey string `json:"-"`
 }
 
 // Login is the state of a personal-account login after a step.
@@ -177,6 +182,9 @@ type Options struct {
 	// Redis holds the send limits, the marks against echoes of a personal
 	// account and the operators' actions (typing, read) for the worker.
 	Redis *redis.Client
+	// Visitors shows widget visitors that an operator is typing (W-01);
+	// nil leaves them without the indicator.
+	Visitors VisitorSignals
 }
 
 // Service is the module facade.
@@ -372,6 +380,9 @@ func channelFrom(r store.Channel) Channel {
 		ch.ErrorCode = *r.ErrorCode
 	}
 	_ = json.Unmarshal(r.Config, &ch.Details) // written only by this module
+	if r.Type == TypeWidget {
+		ch.Details.WidgetKey = WidgetKey(r.WorkspaceID, r.ID)
+	}
 	return ch
 }
 

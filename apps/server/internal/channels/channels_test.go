@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -150,7 +151,7 @@ func TestConnectBot_Webhook(t *testing.T) {
 	if ch.Type != TypeTelegramBot || ch.Status != StatusActive || ch.Name != "Зерно · поддержка" {
 		t.Fatalf("channel: %+v", ch)
 	}
-	if ch.Details != (Details{Username: "shop_support_bot", DisplayName: "Зерно · поддержка", Delivery: DeliveryWebhook}) {
+	if !reflect.DeepEqual(ch.Details, Details{Username: "shop_support_bot", DisplayName: "Зерно · поддержка", Delivery: DeliveryWebhook}) {
 		t.Fatalf("details: %+v", ch.Details)
 	}
 	if len(f.bots.Hooks) != 1 {
@@ -289,7 +290,7 @@ func TestUserLogin_Code(t *testing.T) {
 	}
 	ch := done.Channel
 	if done.Next != StepDone || ch.Status != StatusActive || ch.Name != "Марина Ковалёва" ||
-		ch.Details != (Details{Username: "marina_zerno", DisplayName: "Марина Ковалёва", PhoneMasked: "+79•••••••67"}) {
+		!reflect.DeepEqual(ch.Details, Details{Username: "marina_zerno", DisplayName: "Марина Ковалёва", PhoneMasked: "+79•••••••67"}) {
 		t.Fatalf("done: %+v", done)
 	}
 	// After the login only the session is kept, no phone or code hash.

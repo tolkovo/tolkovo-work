@@ -14,6 +14,7 @@ import {
   acceptInvitation,
   changePassword,
   connectAppChannel,
+  connectWidgetChannel,
   connectTelegramBot,
   createIngestKey,
   createInvitation,
@@ -60,6 +61,7 @@ import {
   resetPassword,
   rotateIdentitySecret,
   setAppLimits,
+  setWidgetOrigins,
   revokeIngestKey,
   revokeInvitation,
   revokeOtherSessions,
@@ -427,6 +429,15 @@ export function useRotateIdentitySecret() {
 
 export function useSetAppLimits() {
   return useChannelMutation((client, { id, limits }: { id: string; limits: AppLimits }) => setAppLimits(client, id, limits));
+}
+
+/** Chat widgets (docs/04 §6, W-01). */
+export function useConnectWidgetChannel() {
+  return useChannelMutation((client, body: { name: string; allowed_origins: string[] }) => connectWidgetChannel(client, body));
+}
+
+export function useSetWidgetOrigins() {
+  return useChannelMutation((client, { id, origins }: { id: string; origins: string[] }) => setWidgetOrigins(client, id, origins));
 }
 
 /** The GitHub integration (GH-01). Every mutation refreshes it and its repositories. */

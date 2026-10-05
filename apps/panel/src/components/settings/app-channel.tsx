@@ -23,7 +23,7 @@ import { FormMessage, TextField } from "../form/fields";
  */
 
 /** A secret shown once, with a copy button; selecting the text works when the clipboard does not. */
-function SecretBox({ label, value, hint }: { label: string; value: string; hint: string }) {
+export function SecretBox({ label, value, hint }: { label: string; value: string; hint: string }) {
   const { t } = useTranslation();
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -292,8 +292,10 @@ function KeyRow({ channelId, ingestKey, canManage }: { channelId: string; ingest
   );
 }
 
-function IdentitySecret({ channel }: { channel: Channel }) {
+/** The identity secret of an app or a widget channel: replaced, never shown again. */
+export function IdentitySecret({ channel }: { channel: Channel }) {
   const { t } = useTranslation();
+  const texts = channel.type === "widget" ? "widget" : "app";
   const rotate = useRotateIdentitySecret();
   const [confirm, setConfirm] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
@@ -320,10 +322,10 @@ function IdentitySecret({ channel }: { channel: Channel }) {
       <h4 id={`identity-${channel.id}`} className="m-0 text-[13px] font-semibold text-ink">
         {t("settings.channels.app.identity")}
       </h4>
-      <p className="m-0 text-[12.5px] text-ink-2">{t("settings.channels.app.identityLead")}</p>
+      <p className="m-0 text-[12.5px] text-ink-2">{t(`settings.channels.${texts}.identityLead`)}</p>
       {confirm ? (
         <div role="group" aria-label={t("settings.channels.app.rotate")} className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
-          <p className="m-0 text-[13px] text-ink">{t("settings.channels.app.rotateConfirm")}</p>
+          <p className="m-0 text-[13px] text-ink">{t(`settings.channels.${texts}.rotateConfirm`)}</p>
           <div className="flex flex-wrap gap-2">
             <Button ref={confirmRef} variant="destructive" disabled={rotate.isPending} onClick={onRotate}>
               {t("settings.channels.app.rotate")}

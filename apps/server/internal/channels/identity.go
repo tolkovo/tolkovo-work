@@ -98,10 +98,9 @@ func signatureMatches(secret, externalID, sig string) bool {
 }
 
 // signsIdentity reports whether channels of this type have an identity
-// secret: its sealed secret is an appSecret. The widget type (W-01) joins
-// here and stores its secret the same way.
+// secret: its sealed secret is an appSecret.
 func signsIdentity(channelType string) bool {
-	return channelType == TypeApp
+	return channelType == TypeApp || channelType == TypeWidget
 }
 
 // VerifyClaim checks a claim against the identity secret of the channel

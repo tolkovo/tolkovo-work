@@ -724,9 +724,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Replace the secret that signs the app user's identity
-         * @description The old secret stops working at once: identity tokens the company's backend signed
-         *     with it are no longer accepted, and their reports come in as unconfirmed. The new
+         * Replace the secret that signs an app user's or a widget visitor's identity
+         * @description App and widget channels. The old secret stops working at once: identity tokens and
+         *     user hashes the company's backend signed with it are no longer accepted, and their
+         *     reports and visitors come in as unconfirmed. The new
          *     secret is returned only here. Requires `channels.manage`.
          */
         post: operations["rotateIdentitySecret"];
@@ -753,6 +754,53 @@ export interface paths {
          *     `channels.manage`.
          */
         put: operations["setAppLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/widget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect a chat widget for a site or an app
+         * @description Creates the «Виджет» channel (docs/04 §6, W-01) with the pages that may embed it and
+         *     the secret that signs a visitor's identity (W-04). The widget key is public — it
+         *     goes into the page or the app — and is shown in the channel's details; the secret is
+         *     returned only here and lives on the company's backend. Without `allowed_origins` the
+         *     widget works nowhere yet. Requires `channels.manage`.
+         */
+        post: operations["connectWidgetChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{id}/widget-origins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the pages that may embed a widget
+         * @description Replaces the list. Pages of a removed origin lose their sessions within 30 seconds.
+         *     Requires `channels.manage`.
+         */
+        put: operations["setWidgetOrigins"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1029,6 +1077,95 @@ export interface paths {
          *     Rate: 10 an hour per report, 120 a minute per IP.
          */
         post: operations["postIngestReportMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/widget/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start or continue a visitor's session in the widget
+         * @description Called by the widget (`@tolkovo/widget`) on start and after `identify`. The page's
+         *     `Origin` must be on the widget's list (`403 origin_not_allowed`); an Electron app
+         *     loaded from a custom scheme sends `app://name`. Send the `session_token` the widget
+         *     kept: if it still works it is returned again, otherwise a new one is.
+         *
+         *     `user` is who the site or the app says the visitor is. With `user_hash` = hex
+         *     HMAC-SHA256 of `external_id` under the widget's identity secret, signed by the
+         *     company's backend, the visitor is verified and continues with the contact of that
+         *     id — the same one their app reports land on (W-04). Without a valid hash it is a
+         *     claim: a new unverified contact, never merged with others. A missing or wrong hash
+         *     is not an error: `identity` says which. An anonymous visitor gets a contact only
+         *     with the first message. Rate: 20 a minute per IP.
+         */
+        post: operations["startWidgetSession"];
+        /**
+         * End the visitor's session
+         * @description The widget calls it when the visitor signs out of the site or the app, so the next
+         *     person on the device starts afresh. Ending an ended session answers `204` too.
+         */
+        delete: operations["endWidgetSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/widget/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The visitor's chat
+         * @description The visitor's own messages and the replies of operators and the bot, oldest first:
+         *     no internal notes, no events, no names of staff. Without `since`, the newest 100;
+         *     with it, what came after. Messages of the last few seconds may come again with the
+         *     next call — drop repeats by `id`. Fetch after `hello`, `widget.message` and
+         *     `resync_required` of the realtime connection. Rate: 60 a minute per session.
+         */
+        get: operations["listWidgetMessages"];
+        put?: never;
+        /**
+         * The visitor writes
+         * @description Text only, up to 10 000 characters. The first message opens a conversation in the
+         *     queue; a resolved one reopens. A retry with the same `Idempotency-Key` and text
+         *     answers `200` with the first message. Rate: 30 a minute per session.
+         */
+        post: operations["sendWidgetMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/widget/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The widget received or showed replies
+         * @description `delivered_up_to`: the widget has the replies up to this message; `read_up_to`: it
+         *     showed them in an open, visible chat. The operator sees «delivered» and «read» on
+         *     each reply (`message.delivery`). A status never moves back. Rate: 60 a minute per
+         *     session.
+         */
+        post: operations["markWidgetReceipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2061,10 +2198,10 @@ export interface components {
             locale?: string;
         };
         /**
-         * @description `app` — reports from a company app (docs/02 §11.6).
+         * @description `app` — reports from a company app (docs/02 §11.6); `widget` — a chat on a site or in an app (docs/04 §6).
          * @enum {string}
          */
-        ChannelType: "telegram_bot" | "telegram_user" | "app";
+        ChannelType: "telegram_bot" | "telegram_user" | "app" | "widget";
         /**
          * @description `pending` — a personal-account login in progress; `active` — works; `error` — needs
          *     the admin, `error_code` says why: `token_revoked` (the bot's token was revoked in
@@ -2087,6 +2224,10 @@ export interface components {
              */
             delivery?: "webhook" | "polling";
             app_limits?: components["schemas"]["AppLimits"];
+            /** @description Widgets only: the public key, `tk_widget_…`, that goes into the page or the app. */
+            widget_key?: string;
+            /** @description Widgets only: the pages that may embed it (see `WidgetOriginsRequest`). */
+            allowed_origins?: string[];
         };
         Channel: {
             id: string;
@@ -2464,6 +2605,82 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        ConnectWidgetChannelRequest: {
+            /** @description E.g. "Чат в приложении". */
+            name: string;
+            /** @description See `WidgetOriginsRequest`. */
+            allowed_origins?: string[];
+        };
+        WidgetOriginsRequest: {
+            /**
+             * @description Up to 20: `https://shop.example.com` (one site; default ports dropped),
+             *     `https://*.example.com` (every subdomain, not the apex), `app://name` (an Electron
+             *     app's custom scheme, registered as standard), `file://` and `null` (an Electron app
+             *     loaded from files — `null` is also what a sandboxed iframe on any site sends, so
+             *     prefer a custom scheme). `*` is refused.
+             */
+            allowed_origins: string[];
+        };
+        WidgetChannelCreated: {
+            channel: components["schemas"]["Channel"];
+            /**
+             * @description `tk_identity_…`. Lives only on the company's backend, never in the page or the app:
+             *     the backend signs `user_hash` = HMAC-SHA256(`external_id`, secret), hex.
+             */
+            identity_secret: string;
+        };
+        WidgetSessionRequest: {
+            widget_key: string;
+            /** @description The token the widget kept */
+            session_token?: string;
+            user?: components["schemas"]["WidgetUser"];
+        };
+        WidgetUser: {
+            /** @description The user's id in the company's system. */
+            external_id?: string;
+            user_hash?: string;
+            name?: string;
+            email?: string;
+        };
+        WidgetSession: {
+            /** @description `tk_wsess_…`; keep it and send it as `Authorization: Bearer`. */
+            session_token: string;
+            /**
+             * Format: date-time
+             * @description Moves 30 days ahead with activity.
+             */
+            expires_at: string;
+            /** @enum {string} */
+            identity: "verified" | "unverified" | "none";
+            channel_name: string;
+        };
+        WidgetMessages: {
+            items: components["schemas"]["WidgetMessage"][];
+            /** @description Pass as `since` next time. */
+            cursor: string;
+            /** @description More messages follow; ask again at once. */
+            more: boolean;
+        };
+        WidgetMessage: {
+            id: string;
+            conversation_id: string;
+            /**
+             * @description `contact` — the visitor; `operator` or `bot` — a reply.
+             * @enum {string}
+             */
+            sender: "contact" | "operator" | "bot";
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            files: components["schemas"]["IngestReplyFile"][];
+        };
+        WidgetMessageRequest: {
+            message: string;
+        };
+        WidgetReceiptRequest: {
+            delivered_up_to?: string;
+            read_up_to?: string;
+        };
         RenameChannelRequest: {
             name: string;
         };
@@ -2582,6 +2799,38 @@ export interface components {
          *     reports or megabytes for the UTC day).
          */
         IngestLimited: {
+            headers: {
+                /** @description Seconds until the next attempt is allowed. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `widget_session_ended`: the token is unknown, expired or ended, or the widget was
+         *     disconnected. Start a new session.
+         */
+        WidgetSessionEnded: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `origin_not_allowed`: the page's `Origin` is not on the widget's list. */
+        WidgetOriginNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `too_many_requests`: a rate per IP or session. */
+        WidgetLimited: {
             headers: {
                 /** @description Seconds until the next attempt is allowed. */
                 "Retry-After"?: number;
@@ -3832,6 +4081,64 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    connectWidgetChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectWidgetChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description The active channel and the identity secret, shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetChannelCreated"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ChannelsUnavailable"];
+        };
+    };
+    setWidgetOrigins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetOriginsRequest"];
+            };
+        };
+        responses: {
+            /** @description The channel with the new list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getGitHubIntegration: {
         parameters: {
             query?: never;
@@ -4264,6 +4571,166 @@ export interface operations {
                 };
             };
             429: components["responses"]["ReportLimited"];
+        };
+    };
+    startWidgetSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description The session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetSession"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            /** @description `invalid_widget_key`: the key is malformed or names no connected widget. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    endWidgetSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["WidgetOriginNotAllowed"];
+        };
+    };
+    listWidgetMessages: {
+        parameters: {
+            query?: {
+                /** @description `cursor` of the previous answer. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 100 messages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetMessages"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    sendWidgetMessage: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Makes a retry return the first result instead of acting twice (docs/00 §8). A
+                 *     reused key with a different body answers `422`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description A retry with the same `Idempotency-Key` and text. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetMessage"];
+                };
+            };
+            /** @description Stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetMessage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            /** @description `idempotency_key_reused`: the key was used with a different text. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    markWidgetReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetReceiptRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
         };
     };
     downloadFile: {
