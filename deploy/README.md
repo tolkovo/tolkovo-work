@@ -215,6 +215,14 @@ docker compose up -d     # migrate применит новые миграции,
 - Откат: верните прежний образ. Схему назад не откатывайте: `migrate down` нужен только для разработки и может удалить данные.
 - Перед обновлением сделайте бэкап базы (§8).
 
+### Автодеплой через GitHub Actions
+
+Workflow [`deploy.yml`](../.github/workflows/deploy.yml) собирает образ, кладёт его в приватный GHCR (`ghcr.io/<owner>/<repo>:sha-<12 символов>`) и выкатывает на хост. Запуск: Actions → deploy → Run workflow, или тег `v*`.
+
+- На хосте отдельный пользователь `deploy` (группа `docker`). Его SSH-ключ в `authorized_keys` ограничен: `restrict,command="/opt/tolkovo/deploy.sh"`, то есть он умеет только запускать [`production/ci-deploy.sh`](production/ci-deploy.sh) с тегом образа. Скрипт копируется на сервер вручную при изменении.
+- Скрипт делает `pg_dump` в `/opt/tolkovo/backups` (хранятся 7 последних), подтягивает образ, меняет `TOLKOVO_IMAGE` в `.env`, делает `docker compose up -d` и ждёт `/readyz`. Если не поднялось, возвращает прежний образ и завершается с ошибкой. Схему базы он назад не откатывает (§7).
+- Секреты репозитория: `DEPLOY_SSH_KEY` (приватный ключ), `DEPLOY_KNOWN_HOSTS` (ключ хоста, `ssh-keyscan -t ed25519`), `DEPLOY_HOST`. Токен для `docker pull` берётся из `GITHUB_TOKEN` запуска и живёт только на время деплоя.
+
 ## 8. Бэкапы
 
 | Что | Как | Без этого |
