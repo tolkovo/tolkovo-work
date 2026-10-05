@@ -2,8 +2,16 @@
 -- though RLS enforces it too (docs/00-engineering-rules.md §6.5).
 
 -- name: CreateContact :one
-INSERT INTO contacts (id, workspace_id, name, email, phone, locale, external_id, identity_unverified)
-VALUES (@id, @workspace_id, @name, sqlc.narg(email), sqlc.narg(phone), sqlc.narg(locale), sqlc.narg(external_id), @identity_unverified)
+-- A contact without a name gets a guest name in the workspace's language.
+INSERT INTO contacts (id, workspace_id, name, name_placeholder, email, phone, locale, external_id, identity_unverified)
+VALUES (
+    @id, @workspace_id,
+    CASE WHEN @name::text = ''
+        THEN contact_guest_name((SELECT w.locale FROM workspaces w WHERE w.id = @workspace_id), @id)
+        ELSE @name::text END,
+    @name::text = '',
+    sqlc.narg(email), sqlc.narg(phone), sqlc.narg(locale), sqlc.narg(external_id), @identity_unverified
+)
 RETURNING *;
 
 -- name: GetContact :one
@@ -20,7 +28,13 @@ ORDER BY id DESC
 LIMIT @lim;
 
 -- name: UpdateContact :one
+-- A cleared name becomes the guest name again; the guest name saved as it
+-- was stays a guest name.
 UPDATE contacts
-SET name = @name, email = sqlc.narg(email), phone = sqlc.narg(phone), locale = sqlc.narg(locale), updated_at = now()
+SET name = CASE WHEN @name::text = ''
+        THEN contact_guest_name((SELECT w.locale FROM workspaces w WHERE w.id = @workspace_id), @id)
+        ELSE @name::text END,
+    name_placeholder = CASE WHEN @name::text = '' THEN true ELSE name_placeholder AND name = @name::text END,
+    email = sqlc.narg(email), phone = sqlc.narg(phone), locale = sqlc.narg(locale), updated_at = now()
 WHERE workspace_id = @workspace_id AND id = @id AND deleted_at IS NULL
 RETURNING *;

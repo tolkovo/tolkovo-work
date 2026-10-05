@@ -2235,7 +2235,10 @@ export interface components {
         };
         Contact: {
             id: string;
+            /** @description Never empty. */
             name: string;
+            /** @description `name` is the guest name the server gave a contact that came without one («Гость 4821» / «Guest 4821», in the workspace's language). A name the visitor types later or an operator enters replaces it; saving an empty name brings it back. */
+            name_placeholder: boolean;
             email: string | null;
             phone: string | null;
             /** @description `ru`, `en` or `null`. */

@@ -83,20 +83,22 @@ LIMIT 1;
 
 -- name: FillContact :exec
 -- A verified report fills what the contact lacks; it never overwrites
--- what an operator entered.
+-- what an operator entered. A name replaces the guest name.
 UPDATE contacts
-SET name = CASE WHEN name = '' THEN @name::text ELSE name END,
+SET name = CASE WHEN name_placeholder AND @name::text <> '' THEN @name::text ELSE name END,
+    name_placeholder = name_placeholder AND @name::text = '',
     email = COALESCE(email, sqlc.narg(email)::citext),
     updated_at = now()
 WHERE workspace_id = @workspace_id AND id = @id
-  AND (name = '' AND @name::text <> '' OR email IS NULL AND sqlc.narg(email)::citext IS NOT NULL);
+  AND (name_placeholder AND @name::text <> '' OR email IS NULL AND sqlc.narg(email)::citext IS NOT NULL);
 
 -- name: MarkContactUnverified :exec
 -- A visitor without a verified identity said who they are: the contact
 -- keeps what it already has, gets what it lacks, and is marked so that
 -- nobody takes the values for verified ones. Never a verified contact.
 UPDATE contacts
-SET name = CASE WHEN name = '' THEN @name::text ELSE name END,
+SET name = CASE WHEN name_placeholder AND @name::text <> '' THEN @name::text ELSE name END,
+    name_placeholder = name_placeholder AND @name::text = '',
     email = COALESCE(email, sqlc.narg(email)::citext),
     identity_unverified = true,
     updated_at = now()

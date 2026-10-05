@@ -13,9 +13,16 @@ import (
 
 const createContact = `-- name: CreateContact :one
 
-INSERT INTO contacts (id, workspace_id, name, email, phone, locale, external_id, identity_unverified)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified
+INSERT INTO contacts (id, workspace_id, name, name_placeholder, email, phone, locale, external_id, identity_unverified)
+VALUES (
+    $1, $2,
+    CASE WHEN $3::text = ''
+        THEN contact_guest_name((SELECT w.locale FROM workspaces w WHERE w.id = $2), $1)
+        ELSE $3::text END,
+    $3::text = '',
+    $4, $5, $6, $7, $8
+)
+RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified, name_placeholder
 `
 
 type CreateContactParams struct {
@@ -31,6 +38,7 @@ type CreateContactParams struct {
 
 // Every query on a tenant table filters by workspace_id explicitly, even
 // though RLS enforces it too (docs/00-engineering-rules.md §6.5).
+// A contact without a name gets a guest name in the workspace's language.
 func (q *Queries) CreateContact(ctx context.Context, arg CreateContactParams) (Contact, error) {
 	row := q.db.QueryRow(ctx, createContact,
 		arg.ID,
@@ -57,12 +65,13 @@ func (q *Queries) CreateContact(ctx context.Context, arg CreateContactParams) (C
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IdentityUnverified,
+		&i.NamePlaceholder,
 	)
 	return i, err
 }
 
 const getContact = `-- name: GetContact :one
-SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified, name_placeholder FROM contacts
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -88,12 +97,13 @@ func (q *Queries) GetContact(ctx context.Context, arg GetContactParams) (Contact
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IdentityUnverified,
+		&i.NamePlaceholder,
 	)
 	return i, err
 }
 
 const listContacts = `-- name: ListContacts :many
-SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified, name_placeholder FROM contacts
 WHERE workspace_id = $1
   AND deleted_at IS NULL
   AND ($2::uuid IS NULL OR id < $2::uuid)
@@ -131,6 +141,7 @@ func (q *Queries) ListContacts(ctx context.Context, arg ListContactsParams) ([]C
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.IdentityUnverified,
+			&i.NamePlaceholder,
 		); err != nil {
 			return nil, err
 		}
@@ -144,28 +155,34 @@ func (q *Queries) ListContacts(ctx context.Context, arg ListContactsParams) ([]C
 
 const updateContact = `-- name: UpdateContact :one
 UPDATE contacts
-SET name = $1, email = $2, phone = $3, locale = $4, updated_at = now()
-WHERE workspace_id = $5 AND id = $6 AND deleted_at IS NULL
-RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified
+SET name = CASE WHEN $1::text = ''
+        THEN contact_guest_name((SELECT w.locale FROM workspaces w WHERE w.id = $2), $3)
+        ELSE $1::text END,
+    name_placeholder = CASE WHEN $1::text = '' THEN true ELSE name_placeholder AND name = $1::text END,
+    email = $4, phone = $5, locale = $6, updated_at = now()
+WHERE workspace_id = $2 AND id = $3 AND deleted_at IS NULL
+RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified, name_placeholder
 `
 
 type UpdateContactParams struct {
 	Name        string
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
 	Email       *string
 	Phone       *string
 	Locale      *string
-	WorkspaceID uuid.UUID
-	ID          uuid.UUID
 }
 
+// A cleared name becomes the guest name again; the guest name saved as it
+// was stays a guest name.
 func (q *Queries) UpdateContact(ctx context.Context, arg UpdateContactParams) (Contact, error) {
 	row := q.db.QueryRow(ctx, updateContact,
 		arg.Name,
+		arg.WorkspaceID,
+		arg.ID,
 		arg.Email,
 		arg.Phone,
 		arg.Locale,
-		arg.WorkspaceID,
-		arg.ID,
 	)
 	var i Contact
 	err := row.Scan(
@@ -182,6 +199,7 @@ func (q *Queries) UpdateContact(ctx context.Context, arg UpdateContactParams) (C
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IdentityUnverified,
+		&i.NamePlaceholder,
 	)
 	return i, err
 }

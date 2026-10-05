@@ -889,10 +889,15 @@ type Contact struct {
 	Identity ContactIdentity `json:"identity"`
 
 	// Locale `ru`, `en` or `null`.
-	Locale    *string   `json:"locale"`
-	Name      string    `json:"name"`
-	Phone     *string   `json:"phone"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Locale *string `json:"locale"`
+
+	// Name Never empty.
+	Name string `json:"name"`
+
+	// NamePlaceholder `name` is the guest name the server gave a contact that came without one («Гость 4821» / «Guest 4821», in the workspace's language). A name the visitor types later or an operator enters replaces it; saving an empty name brings it back.
+	NamePlaceholder bool      `json:"name_placeholder"`
+	Phone           *string   `json:"phone"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // ContactIdentity `verified` — the company's backend signed the user's id (site widget or app report), conversations of that user from every channel land on this contact. `unverified` — the visitor or app user said who they are without a valid signature: name and email are only what they typed, and the contact is never merged with others. `none` — no claim (Telegram, created by an operator, an anonymous visitor). The id itself is not returned.

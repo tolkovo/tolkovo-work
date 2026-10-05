@@ -160,6 +160,7 @@ export const conversationSchema = z.object({
 export const contactSchema = z.object({
   id: z.string(),
   name: z.string(),
+  name_placeholder: z.boolean(),
   email: z.string().nullable(),
   phone: z.string().nullable(),
   locale: z.string().nullable(),

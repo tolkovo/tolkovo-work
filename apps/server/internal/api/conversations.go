@@ -598,7 +598,7 @@ func signedBody(req storage.SignedRequest) oapi.SignedRequest {
 
 func contactBody(c conversations.Contact) oapi.Contact {
 	return oapi.Contact{
-		Id: c.ID, Name: c.Name, Email: c.Email, Phone: c.Phone, Locale: c.Locale,
+		Id: c.ID, Name: c.Name, NamePlaceholder: c.NamePlaceholder, Email: c.Email, Phone: c.Phone, Locale: c.Locale,
 		Identity: oapi.ContactIdentity(c.Identity), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 }

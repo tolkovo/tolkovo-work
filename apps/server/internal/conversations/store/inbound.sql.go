@@ -44,7 +44,7 @@ func (q *Queries) AttachedKeys(ctx context.Context, arg AttachedKeysParams) ([]s
 }
 
 const contactByExternalID = `-- name: ContactByExternalID :one
-SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified, name_placeholder FROM contacts
 WHERE workspace_id = $1 AND external_id = $2 AND deleted_at IS NULL
 ORDER BY id
 LIMIT 1
@@ -74,6 +74,7 @@ func (q *Queries) ContactByExternalID(ctx context.Context, arg ContactByExternal
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IdentityUnverified,
+		&i.NamePlaceholder,
 	)
 	return i, err
 }
@@ -312,11 +313,12 @@ func (q *Queries) ExpireAttachments(ctx context.Context, arg ExpireAttachmentsPa
 
 const fillContact = `-- name: FillContact :exec
 UPDATE contacts
-SET name = CASE WHEN name = '' THEN $1::text ELSE name END,
+SET name = CASE WHEN name_placeholder AND $1::text <> '' THEN $1::text ELSE name END,
+    name_placeholder = name_placeholder AND $1::text = '',
     email = COALESCE(email, $2::citext),
     updated_at = now()
 WHERE workspace_id = $3 AND id = $4
-  AND (name = '' AND $1::text <> '' OR email IS NULL AND $2::citext IS NOT NULL)
+  AND (name_placeholder AND $1::text <> '' OR email IS NULL AND $2::citext IS NOT NULL)
 `
 
 type FillContactParams struct {
@@ -327,7 +329,7 @@ type FillContactParams struct {
 }
 
 // A verified report fills what the contact lacks; it never overwrites
-// what an operator entered.
+// what an operator entered. A name replaces the guest name.
 func (q *Queries) FillContact(ctx context.Context, arg FillContactParams) error {
 	_, err := q.db.Exec(ctx, fillContact,
 		arg.Name,
@@ -427,7 +429,8 @@ func (q *Queries) LockOpenThread(ctx context.Context, arg LockOpenThreadParams) 
 
 const markContactUnverified = `-- name: MarkContactUnverified :exec
 UPDATE contacts
-SET name = CASE WHEN name = '' THEN $1::text ELSE name END,
+SET name = CASE WHEN name_placeholder AND $1::text <> '' THEN $1::text ELSE name END,
+    name_placeholder = name_placeholder AND $1::text = '',
     email = COALESCE(email, $2::citext),
     identity_unverified = true,
     updated_at = now()

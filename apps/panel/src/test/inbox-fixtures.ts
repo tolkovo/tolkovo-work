@@ -72,6 +72,7 @@ export const contact = (id: string, patch: Partial<Contact> = {}): Contact => ({
   email: "marina@example.com",
   phone: null,
   locale: "ru",
+  name_placeholder: false,
   identity: "none",
   created_at: "2025-03-12T09:00:00Z",
   updated_at: "2025-03-12T09:00:00Z",

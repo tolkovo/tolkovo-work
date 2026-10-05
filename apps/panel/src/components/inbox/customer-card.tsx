@@ -3,7 +3,7 @@ import { useCan, useContact, useConversationList, useUpdateContact } from "@tolk
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { ChevronRight, Copy, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { ChevronRight, Copy, Pencil, ShieldAlert, ShieldCheck, UserRound, X } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -67,7 +67,11 @@ export function CustomerCard({ conversation: c, tab, open, onClose, headingRef }
             aria-hidden="true"
             className="grid size-10 shrink-0 place-items-center rounded-full bg-teal-soft text-sm font-semibold text-teal"
           >
-            {initials(contact.data?.name ?? c.contact.name)}
+            {contact.data?.name_placeholder ? (
+              <UserRound className="size-5" />
+            ) : (
+              initials(contact.data?.name ?? c.contact.name)
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <h2
@@ -226,6 +230,9 @@ function ContactForm({ contact, onDone }: { contact: Contact; onDone: () => void
   const update = useUpdateContact(contact.id);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<Field>>({});
   const id = useId();
+  // The guest name the server gave is a hint, not a value to edit: an
+  // empty field keeps it.
+  const ownName = contact.name_placeholder ? "" : contact.name;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -237,7 +244,7 @@ function ContactForm({ contact, onDone }: { contact: Contact; onDone: () => void
       return;
     }
     setFieldErrors({});
-    const was = { name: contact.name, email: contact.email ?? "", phone: contact.phone ?? "", locale: contact.locale ?? "" };
+    const was = { name: ownName, email: contact.email ?? "", phone: contact.phone ?? "", locale: contact.locale ?? "" };
     const body: ContactInput = {};
     for (const field of ["name", "email", "phone", "locale"] as const) {
       if (result.data[field] !== was[field]) body[field] = result.data[field];
@@ -272,7 +279,8 @@ function ContactForm({ contact, onDone }: { contact: Contact; onDone: () => void
           id={`${id}-name`}
           name="name"
           label={t("inbox.card.name")}
-          defaultValue={contact.name}
+          defaultValue={ownName}
+          placeholder={contact.name_placeholder ? contact.name : undefined}
           maxLength={200}
           autoComplete="off"
           error={fieldError("name")}

@@ -19,12 +19,15 @@ import (
 // Contact is a customer. Email and phone are personal data: they go to API
 // responses for authorised members only and never to logs or events.
 type Contact struct {
-	ID         uuid.UUID
-	Name       string
-	Email      *string
-	Phone      *string
-	Locale     *string
-	ExternalID *string
+	ID   uuid.UUID
+	Name string
+	// NamePlaceholder: Name is the guest name the server gave a contact
+	// that came without one («Гость 4821»).
+	NamePlaceholder bool
+	Email           *string
+	Phone           *string
+	Locale          *string
+	ExternalID      *string
 	// Identity is IdentityVerified, IdentityUnverified or IdentityNone.
 	Identity  string
 	CreatedAt time.Time
@@ -214,7 +217,7 @@ func contactFrom(c store.Contact) Contact {
 		identity = IdentityUnverified
 	}
 	return Contact{
-		ID: c.ID, Name: c.Name, Email: c.Email, Phone: c.Phone, Locale: c.Locale,
+		ID: c.ID, Name: c.Name, NamePlaceholder: c.NamePlaceholder, Email: c.Email, Phone: c.Phone, Locale: c.Locale,
 		ExternalID: c.ExternalID, Identity: identity, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 }

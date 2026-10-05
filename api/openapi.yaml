@@ -3513,13 +3513,19 @@ components:
 
     Contact:
       type: object
-      required: [id, name, email, phone, locale, identity, created_at, updated_at]
+      required: [id, name, name_placeholder, email, phone, locale, identity, created_at, updated_at]
       properties:
         id:
           type: string
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
-        name: { type: string }
+        name: { type: string, description: Never empty. }
+        name_placeholder:
+          type: boolean
+          description: >-
+            `name` is the guest name the server gave a contact that came without one
+            («Гость 4821» / «Guest 4821», in the workspace's language). A name the visitor types later
+            or an operator enters replaces it; saving an empty name brings it back.
         email: { type: [string, 'null'] }
         phone: { type: [string, 'null'] }
         locale: { type: [string, 'null'], description: '`ru`, `en` or `null`.' }

@@ -455,6 +455,22 @@ describe("customer card", () => {
     expect(within(aside).queryByRole("textbox", { name: "Телефон" })).not.toBeInTheDocument();
   });
 
+  it("offers the guest name as a hint and keeps it when the field stays empty", async () => {
+    const user = userEvent.setup();
+    const { api } = server({ contact: contact("k-c1", { name: "Гость 4821", name_placeholder: true, email: null }) });
+    renderApp("/inbox/c1", { api });
+    const aside = await card();
+    expect(await within(aside).findByRole("heading", { name: "Гость 4821" })).toBeInTheDocument();
+    await user.click(await within(aside).findByRole("button", { name: "Изменить" }));
+
+    const name = within(aside).getByRole("textbox", { name: "Имя" });
+    expect(name).toHaveDisplayValue("");
+    expect(name).toHaveAttribute("placeholder", "Гость 4821");
+    await user.type(within(aside).getByRole("textbox", { name: "Почта" }), "anna@example.com");
+    await user.click(within(aside).getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(calls(api, "PATCH", "/contacts/k-c1")[0]?.body).toEqual({ email: "anna@example.com" }));
+  });
+
   it("hides editing from members without contacts.edit", async () => {
     const session = { ...inboxOperator, permissions: inboxOperator.permissions.filter((p) => p !== "contacts.edit") };
     renderApp("/inbox/c1", { api: server({}, {}, session).api });

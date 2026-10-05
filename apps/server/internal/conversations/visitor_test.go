@@ -2,12 +2,14 @@ package conversations_test
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
 // appChannel inserts an app channel of ws behind the channels module's back.
@@ -189,5 +191,59 @@ func TestResolveVisitor_Rejects(t *testing.T) {
 	got := f.resolve(f.wsA, conversations.Visitor{Email: "not an address"})
 	if c := f.identity(f.wsA, got.ContactID); c.Email != nil {
 		t.Fatalf("kept a malformed email: %+v", c)
+	}
+}
+
+// A visitor who came without a name gets a guest name in the workspace's
+// language; a name typed later or entered by an operator replaces it.
+func TestResolveVisitor_GuestName(t *testing.T) {
+	f := setup(t)
+	guest := regexp.MustCompile(`^Гость [1-9][0-9]{3}$`)
+	anon := f.identity(f.wsA, f.resolve(f.wsA, conversations.Visitor{}).ContactID)
+	if !guest.MatchString(anon.Name) || !anon.NamePlaceholder {
+		t.Fatalf("anonymous visitor: %q %v", anon.Name, anon.NamePlaceholder)
+	}
+	// The number comes from the id: the same contact keeps it.
+	if again := f.identity(f.wsA, anon.ID); again.Name != anon.Name {
+		t.Fatalf("guest name changed: %q -> %q", anon.Name, again.Name)
+	}
+
+	// The visitor types a name: it replaces the guest name.
+	f.resolve(f.wsA, conversations.Visitor{Current: anon.ID, Name: "Анна"})
+	if c := f.identity(f.wsA, anon.ID); c.Name != "Анна" || c.NamePlaceholder {
+		t.Fatalf("typed name: %q %v", c.Name, c.NamePlaceholder)
+	}
+	// A later claim does not overwrite a real name.
+	f.resolve(f.wsA, conversations.Visitor{Current: anon.ID, Name: "Борис"})
+	if c := f.identity(f.wsA, anon.ID); c.Name != "Анна" {
+		t.Fatalf("real name overwritten: %q", c.Name)
+	}
+
+	// An operator: saving the guest name as it was keeps it a guest name,
+	// clearing a name brings the guest name back.
+	other := f.identity(f.wsA, f.resolve(f.wsA, conversations.Visitor{}).ContactID)
+	email := "guest@example.test"
+	c, err := f.svc.UpdateContact(f.ctx, f.wsA, other.ID, conversations.ContactPatch{Name: &other.Name, Email: &email})
+	if err != nil || c.Name != other.Name || !c.NamePlaceholder {
+		t.Fatalf("saved as is: %+v %v", c, err)
+	}
+	empty := ""
+	c, err = f.svc.UpdateContact(f.ctx, f.wsA, anon.ID, conversations.ContactPatch{Name: &empty})
+	if err != nil || c.Name != anon.Name || !c.NamePlaceholder {
+		t.Fatalf("cleared: %+v %v", c, err)
+	}
+	name := "Анна Петрова"
+	if c, err = f.svc.UpdateContact(f.ctx, f.wsA, anon.ID, conversations.ContactPatch{Name: &name}); err != nil || c.NamePlaceholder {
+		t.Fatalf("renamed: %+v %v", c, err)
+	}
+
+	// An English workspace says Guest; an operator's contact without a name
+	// gets one too.
+	en := "en"
+	if _, err := f.tenants.UpdateWorkspace(f.ctx, f.wsB, tenancy.UpdateWorkspaceInput{Locale: &en}); err != nil {
+		t.Fatalf("locale: %v", err)
+	}
+	if c := f.contact(f.wsB, " "); !regexp.MustCompile(`^Guest [1-9][0-9]{3}$`).MatchString(c.Name) || !c.NamePlaceholder {
+		t.Fatalf("English guest: %q %v", c.Name, c.NamePlaceholder)
 	}
 }

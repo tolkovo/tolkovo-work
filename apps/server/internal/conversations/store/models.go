@@ -44,6 +44,7 @@ type Contact struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	IdentityUnverified bool
+	NamePlaceholder    bool
 }
 
 type ContactIdentity struct {
