@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -39,6 +40,9 @@ type Deps struct {
 	Version string
 	// Files serves signed links of the fs storage driver; nil with s3.
 	Files LocalFiles
+	// Panel is the built panel (apps/panel/dist), served on unmatched page
+	// paths; nil leaves them 404 (development runs the Vite server).
+	Panel fs.FS
 
 	Tenancy       *tenancy.Service
 	Auth          *auth.Service
@@ -99,7 +103,7 @@ func NewRouter(d Deps) http.Handler {
 		}
 	}
 	if d.RealtimeOnly {
-		mountFallbacks(r)
+		mountFallbacks(r, nil)
 		return r
 	}
 	if d.Channels != nil {
@@ -119,15 +123,18 @@ func NewRouter(d Deps) http.Handler {
 		})
 	})
 
-	mountFallbacks(r)
+	mountFallbacks(r, d.Panel)
 	return r
 }
 
-// mountFallbacks answers unknown routes and methods with problem+json.
-func mountFallbacks(r chi.Router) {
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
-	})
+// mountFallbacks answers unknown routes and methods with problem+json, and
+// page paths with the panel when it is served.
+func mountFallbacks(r chi.Router, panel fs.FS) {
+	if panel != nil {
+		r.NotFound(panelHandler(panel))
+	} else {
+		r.NotFound(notFound)
+	}
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, Problem{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Title: "Method Not Allowed"})
 	})

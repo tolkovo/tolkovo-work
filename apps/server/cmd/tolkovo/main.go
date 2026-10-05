@@ -3,6 +3,7 @@
 //	tolkovo serve [--role=all|api|realtime|worker]
 //	tolkovo migrate up|down|reset|version
 //	tolkovo keygen
+//	tolkovo healthcheck
 //	tolkovo version
 package main
 
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -59,6 +61,7 @@ const usage = `usage:
   tolkovo serve [--role=all|api|realtime|worker]
   tolkovo migrate up|down|reset|version
   tolkovo keygen
+  tolkovo healthcheck
   tolkovo version`
 
 func main() {
@@ -82,6 +85,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return serve(ctx, args[1:], stderr)
 	case "migrate":
 		return runMigrate(ctx, args[1:], stdout)
+	case "healthcheck":
+		return healthcheck(ctx, os.Getenv(config.Prefix+"HTTP_ADDR"))
 	case "keygen":
 		// A new TOLKOVO_MASTER_KEY (docs/02 §13.3). Printed only to stdout,
 		// never logged.
@@ -94,6 +99,35 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 	}
+}
+
+// healthcheck asks the server in this container for /healthz: the image has
+// no shell or curl, so Docker's HEALTHCHECK runs the binary itself. addr is
+// TOLKOVO_HTTP_ADDR; only its port is used.
+func healthcheck(ctx context.Context, addr string) error {
+	if addr == "" {
+		addr = ":8080"
+	}
+	i := strings.LastIndex(addr, ":")
+	port, err := strconv.Atoi(addr[i+1:])
+	if i < 0 || err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("%sHTTP_ADDR has no port: %q", config.Prefix, addr)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/healthz", port), nil) //nolint:gosec // G704: fixed loopback host, numeric port
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G704: see above
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthz: %s", resp.Status)
+	}
+	return nil
 }
 
 func serve(ctx context.Context, args []string, stderr io.Writer) error {
@@ -366,6 +400,13 @@ func apiDeps(
 	// straight to the bucket.
 	if fsStore, ok := store.(*storage.FS); ok {
 		deps.Files = fsStore
+	}
+	if cfg.PanelDir != "" {
+		panel := os.DirFS(cfg.PanelDir)
+		if err := api.CheckPanel(panel); err != nil {
+			return api.Deps{}, fmt.Errorf("%sPANEL_DIR has no built panel: %w", config.Prefix, err)
+		}
+		deps.Panel = panel
 	}
 	return deps, nil
 }

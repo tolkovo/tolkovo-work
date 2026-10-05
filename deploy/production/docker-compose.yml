@@ -1,0 +1,96 @@
+# Production example: Tolkovo, PostgreSQL and Valkey on one host, behind your
+# own reverse proxy with TLS. A starting point to adapt, not a fixed layout:
+# deploy/README.md explains every piece and how to use managed services.
+#
+#   cp .env.example .env                 # database passwords, image
+#   cp tolkovo.env.example tolkovo.env   # the app's settings and secrets
+#   docker compose up -d
+#
+# The app listens on 127.0.0.1:8080; the proxy terminates TLS and forwards
+# the panel, the API and both WebSockets to it on one host.
+name: tolkovo
+
+x-app: &app
+  image: ${TOLKOVO_IMAGE:-tolkovo:latest}
+  # The app's settings. Database URLs are composed below from .env, which
+  # compose reads for ${...}; the owner's password reaches only migrate.
+  env_file: tolkovo.env
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  # Applies migrations as the table owner, then exits. The app starts only
+  # after it succeeds, so a release never runs on an old schema.
+  migrate:
+    <<: *app
+    command: ["migrate", "up"]
+    restart: "no"
+    healthcheck: { disable: true }
+    environment:
+      TOLKOVO_DATABASE_URL: postgres://${APP_DB_USER}:${APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      TOLKOVO_MIGRATE_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      TOLKOVO_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # API, both WebSockets, channel webhooks, the panel and background jobs in
+  # one process (--role=all). Splitting roles and replicas: deploy/README.md.
+  app:
+    <<: *app
+    command: ["serve", "--role=all"]
+    environment:
+      TOLKOVO_DATABASE_URL: postgres://${APP_DB_USER}:${APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      TOLKOVO_SYSTEM_DATABASE_URL: postgres://${SYSTEM_DB_USER}:${SYSTEM_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      TOLKOVO_REDIS_URL: redis://redis:6379/0
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - files:/var/lib/tolkovo/files
+    # Lets SIGTERM drain requests and close WebSockets (TOLKOVO_SHUTDOWN_TIMEOUT).
+    stop_grace_period: 30s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Read by initdb/01-app-role.sh on the first start only.
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      SYSTEM_DB_USER: ${SYSTEM_DB_USER}
+      SYSTEM_DB_PASSWORD: ${SYSTEM_DB_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ../compose/initdb:/docker-entrypoint-initdb.d:ro
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Sessions, rate limits and the realtime fan-out. Append-only file, so a
+  # restart does not sign everyone out.
+  redis:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pg-data:
+  redis-data:
+  # Files of conversations and app reports (TOLKOVO_STORAGE_DRIVER=fs).
+  files:

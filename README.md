@@ -12,7 +12,8 @@ apps/panel      operator, supervisor and admin panel (React)          — not st
 apps/widget     chat widget for sites and Electron apps, npm @tolkovo/widget (Preact, MIT)
 apps/landing    landing page and docs (Astro)                        — not started
 api/            OpenAPI and WebSocket schemas: the source of truth   — not started
-deploy/compose  local dependencies and self-host compose files
+deploy/compose  local development dependencies (Docker)
+deploy/production  production compose example; guide in deploy/README.md
 design/         local HTML prototypes (never published)
 docs/           plan, ADRs, research
 ```
@@ -36,6 +37,10 @@ TOLKOVO_TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres?sslmode=di
 Without the variable integration tests are skipped locally and fail in CI.
 
 Configuration: `TOLKOVO_*` environment variables, all listed in [deploy/compose/.env.example](deploy/compose/.env.example).
+
+## Deploy
+
+One image for every role, with the panel inside: `docker build -t tolkovo .` from the repository root. Running it in production (reverse proxy, database roles, updates, backups): [deploy/README.md](deploy/README.md), in Russian.
 
 ## Contributing
 

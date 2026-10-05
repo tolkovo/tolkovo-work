@@ -89,7 +89,10 @@ type Config struct {
 	// password reset) point here. Defaults to PublicURL: in production the
 	// panel and the api share one host (docs/02 §16.2). In development the
 	// Vite server runs elsewhere, e.g. http://localhost:5173.
-	PanelURL string  `env:"PANEL_URL"`
+	PanelURL string `env:"PANEL_URL"`
+	// PanelDir is the built panel (apps/panel/dist) that the api serves on
+	// its own host; the Docker image sets it. Empty: the panel is not served.
+	PanelDir string  `env:"PANEL_DIR"`
 	Storage  Storage `envPrefix:"STORAGE_"`
 
 	SMTP SMTP `envPrefix:"SMTP_"`

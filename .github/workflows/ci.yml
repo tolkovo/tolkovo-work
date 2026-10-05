@@ -63,6 +63,17 @@ jobs:
       - name: pnpm audit
         run: pnpm audit --audit-level high
 
+  # Builds the production image (Dockerfile) and checks that it answers
+  # `version`. Nothing is pushed: publishing images is a separate decision.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build --build-arg VERSION=ci-${{ github.sha }} -t tolkovo:ci .
+      - name: smoke
+        run: docker run --rm tolkovo:ci version
+
   secrets:
     runs-on: ubuntu-latest
     steps:

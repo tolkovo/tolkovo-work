@@ -1,0 +1,22 @@
+# The Dockerfile copies only what it names; this keeps the build context small
+# and keeps local secrets and build output out of it.
+**/node_modules
+**/dist
+**/.turbo
+**/.astro
+**/coverage.*
+.git
+.github
+.claude
+.vscode
+.idea
+bin
+design
+docs
+deploy
+apps/server/data
+**/.env
+**/.env.*
+**/*.test
+**/*.out
+**/.DS_Store
