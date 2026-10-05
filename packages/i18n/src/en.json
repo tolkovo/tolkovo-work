@@ -794,6 +794,11 @@
         "empty": "No other conversations.",
         "more": "Show more",
         "error": "Could not load the conversation history."
+      },
+      "identity": {
+        "verified": "Identity verified",
+        "unverified": "Identity not verified",
+        "unverifiedHint": "The site or app did not sign the user's id: the name and email are what the customer typed. The contact is not merged with other conversations."
       }
     },
     "noText": "Message without text",

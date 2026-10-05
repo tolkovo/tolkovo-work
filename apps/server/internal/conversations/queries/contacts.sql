@@ -2,8 +2,8 @@
 -- though RLS enforces it too (docs/00-engineering-rules.md §6.5).
 
 -- name: CreateContact :one
-INSERT INTO contacts (id, workspace_id, name, email, phone, locale, external_id)
-VALUES (@id, @workspace_id, @name, sqlc.narg(email), sqlc.narg(phone), sqlc.narg(locale), sqlc.narg(external_id))
+INSERT INTO contacts (id, workspace_id, name, email, phone, locale, external_id, identity_unverified)
+VALUES (@id, @workspace_id, @name, sqlc.narg(email), sqlc.narg(phone), sqlc.narg(locale), sqlc.narg(external_id), @identity_unverified)
 RETURNING *;
 
 -- name: GetContact :one

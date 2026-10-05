@@ -2,11 +2,9 @@ package channels
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -353,34 +351,6 @@ func (s *Service) AuthenticateIngestKey(ctx context.Context, key string) (Ingest
 		return IngestApp{}, fmt.Errorf("authenticate ingest key: %w", err)
 	}
 	return out, nil
-}
-
-// VerifyIdentity reports whether token is HMAC-SHA256(externalID) under the
-// channel's identity secret, in hex, as the company's backend signs it.
-// Without encryption the secret cannot be read and nothing is verified.
-func (s *Service) VerifyIdentity(ctx context.Context, workspaceID, channelID uuid.UUID, externalID, token string) (bool, error) {
-	// A malformed token is just not a signature: the contact stays unverified.
-	got, decodeErr := hex.DecodeString(token)
-	if decodeErr != nil || len(got) != sha256.Size || externalID == "" || s.opts.Sealer == nil {
-		return false, nil //nolint:nilerr // see above
-	}
-	ch, raw, err := s.load(ctx, workspaceID, channelID)
-	if err != nil {
-		return false, err
-	}
-	var sec appSecret
-	if ch.Type != TypeApp || raw == nil {
-		return false, nil
-	}
-	if err := json.Unmarshal(raw, &sec); err != nil {
-		return false, fmt.Errorf("decode app secret: %w", err)
-	}
-	if sec.IdentitySecret == "" {
-		return false, nil
-	}
-	mac := hmac.New(sha256.New, []byte(sec.IdentitySecret))
-	mac.Write([]byte(externalID))
-	return hmac.Equal(mac.Sum(nil), got), nil
 }
 
 // parseIngestKey checks the format and returns the workspace the key names.

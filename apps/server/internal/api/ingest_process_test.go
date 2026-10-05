@@ -178,6 +178,15 @@ func TestIngest_ProcessReport(t *testing.T) {
 		WHERE r.id = $1 AND m.meta->'report'->>'contact_verified' = 'false'`, forged); n != 1 {
 		t.Fatal("unverified report is not marked")
 	}
+	// The customer card says whose identity is confirmed (W-04).
+	for r, want := range map[uuid.UUID]oapi.ContactIdentity{first: "verified", forged: "unverified"} {
+		var contactID uuid.UUID
+		e.ownerScan(&contactID, "SELECT c.contact_id FROM conversations c JOIN app_reports r ON r.conversation_id = c.id WHERE r.id = $1", r)
+		rec := a.owner.do(http.MethodGet, "/api/v1/contacts/"+contactID.String(), nil)
+		if got := decode[oapi.Contact](t, rec); got.Identity != want {
+			t.Fatalf("contact identity: %s, want %s", got.Identity, want)
+		}
+	}
 	if rec := a.owner.do(http.MethodGet, "/api/v1/conversations?status=queued", nil); rec.Code != http.StatusOK ||
 		len(decode[oapi.ConversationPage](t, rec).Items) != 3 {
 		t.Fatalf("inbox: %d %s", rec.Code, rec.Body)

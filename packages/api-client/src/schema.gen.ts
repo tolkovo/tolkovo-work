@@ -2029,6 +2029,11 @@ export interface components {
             phone: string | null;
             /** @description `ru`, `en` or `null`. */
             locale: string | null;
+            /**
+             * @description `verified` — the company's backend signed the user's id (site widget or app report), conversations of that user from every channel land on this contact. `unverified` — the visitor or app user said who they are without a valid signature: name and email are only what they typed, and the contact is never merged with others. `none` — no claim (Telegram, created by an operator, an anonymous visitor). The id itself is not returned.
+             * @enum {string}
+             */
+            identity: "verified" | "unverified" | "none";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */

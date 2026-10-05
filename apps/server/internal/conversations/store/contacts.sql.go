@@ -13,19 +13,20 @@ import (
 
 const createContact = `-- name: CreateContact :one
 
-INSERT INTO contacts (id, workspace_id, name, email, phone, locale, external_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at
+INSERT INTO contacts (id, workspace_id, name, email, phone, locale, external_id, identity_unverified)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified
 `
 
 type CreateContactParams struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Name        string
-	Email       *string
-	Phone       *string
-	Locale      *string
-	ExternalID  *string
+	ID                 uuid.UUID
+	WorkspaceID        uuid.UUID
+	Name               string
+	Email              *string
+	Phone              *string
+	Locale             *string
+	ExternalID         *string
+	IdentityUnverified bool
 }
 
 // Every query on a tenant table filters by workspace_id explicitly, even
@@ -39,6 +40,7 @@ func (q *Queries) CreateContact(ctx context.Context, arg CreateContactParams) (C
 		arg.Phone,
 		arg.Locale,
 		arg.ExternalID,
+		arg.IdentityUnverified,
 	)
 	var i Contact
 	err := row.Scan(
@@ -54,12 +56,13 @@ func (q *Queries) CreateContact(ctx context.Context, arg CreateContactParams) (C
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IdentityUnverified,
 	)
 	return i, err
 }
 
 const getContact = `-- name: GetContact :one
-SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at FROM contacts
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -84,12 +87,13 @@ func (q *Queries) GetContact(ctx context.Context, arg GetContactParams) (Contact
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IdentityUnverified,
 	)
 	return i, err
 }
 
 const listContacts = `-- name: ListContacts :many
-SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at FROM contacts
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
 WHERE workspace_id = $1
   AND deleted_at IS NULL
   AND ($2::uuid IS NULL OR id < $2::uuid)
@@ -126,6 +130,7 @@ func (q *Queries) ListContacts(ctx context.Context, arg ListContactsParams) ([]C
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IdentityUnverified,
 		); err != nil {
 			return nil, err
 		}
@@ -141,7 +146,7 @@ const updateContact = `-- name: UpdateContact :one
 UPDATE contacts
 SET name = $1, email = $2, phone = $3, locale = $4, updated_at = now()
 WHERE workspace_id = $5 AND id = $6 AND deleted_at IS NULL
-RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at
+RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified
 `
 
 type UpdateContactParams struct {
@@ -176,6 +181,7 @@ func (q *Queries) UpdateContact(ctx context.Context, arg UpdateContactParams) (C
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IdentityUnverified,
 	)
 	return i, err
 }

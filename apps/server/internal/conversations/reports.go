@@ -144,36 +144,20 @@ func (s *Service) receiveReport(
 }
 
 // reportContact finds the verified contact by its external id or creates
-// a contact. An unverified external id is not stored on the contact.
+// a contact. An unverified external id is not stored on the contact; the
+// new contact is marked unverified when the app user claimed anything.
 func (s *Service) reportContact(ctx context.Context, q *store.Queries, tx pgx.Tx, workspaceID uuid.UUID, c ReportContact) (uuid.UUID, error) {
 	name, email := truncate(strings.TrimSpace(c.Name), 200), optional(strings.TrimSpace(c.Email))
 	if email != nil && len(*email) < 3 {
 		email = nil // below the column's minimum: not an address anyway
 	}
-	var externalID *string
 	if c.Verified {
-		externalID = &c.ExternalID
-		if err := q.LockExternalID(ctx, store.LockExternalIDParams{WorkspaceID: workspaceID.String(), ExternalID: c.ExternalID}); err != nil {
-			return uuid.Nil, err
-		}
-		found, err := q.ContactByExternalID(ctx, store.ContactByExternalIDParams{WorkspaceID: workspaceID, ExternalID: externalID})
-		if err == nil {
-			return found.ID, q.FillContact(ctx, store.FillContactParams{WorkspaceID: workspaceID, ID: found.ID, Name: name, Email: email})
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, err
-		}
+		id, _, err := s.verifiedContact(ctx, q, tx, workspaceID, c.ExternalID, name, email)
+		return id, err
 	}
-	id, err := newID()
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if _, err := q.CreateContact(ctx, store.CreateContactParams{
-		ID: id, WorkspaceID: workspaceID, Name: name, Email: email, ExternalID: externalID,
-	}); err != nil {
-		return uuid.Nil, err
-	}
-	return id, outbox.Add(ctx, tx, workspaceID, "contact.created", map[string]any{"contact_id": id})
+	return s.newContact(ctx, q, tx, workspaceID, store.CreateContactParams{
+		Name: name, Email: email, IdentityUnverified: c.ExternalID != "" || name != "" || email != nil,
+	})
 }
 
 // ExpireAttachments marks the attachments of deleted objects expired.

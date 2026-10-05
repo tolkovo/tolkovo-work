@@ -3180,7 +3180,7 @@ components:
 
     Contact:
       type: object
-      required: [id, name, email, phone, locale, created_at, updated_at]
+      required: [id, name, email, phone, locale, identity, created_at, updated_at]
       properties:
         id:
           type: string
@@ -3190,6 +3190,15 @@ components:
         email: { type: [string, 'null'] }
         phone: { type: [string, 'null'] }
         locale: { type: [string, 'null'], description: '`ru`, `en` or `null`.' }
+        identity:
+          type: string
+          enum: [verified, unverified, none]
+          description: >-
+            `verified` — the company's backend signed the user's id (site widget or app report),
+            conversations of that user from every channel land on this contact. `unverified` — the
+            visitor or app user said who they are without a valid signature: name and email are
+            only what they typed, and the contact is never merged with others. `none` — no claim
+            (Telegram, created by an operator, an anonymous visitor). The id itself is not returned.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 

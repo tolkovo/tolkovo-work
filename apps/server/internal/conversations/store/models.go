@@ -31,18 +31,19 @@ type Attachment struct {
 }
 
 type Contact struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Name        string
-	Email       *string
-	Phone       *string
-	Locale      *string
-	ExternalID  *string
-	Attributes  []byte
-	BlockedAt   *time.Time
-	DeletedAt   *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                 uuid.UUID
+	WorkspaceID        uuid.UUID
+	Name               string
+	Email              *string
+	Phone              *string
+	Locale             *string
+	ExternalID         *string
+	Attributes         []byte
+	BlockedAt          *time.Time
+	DeletedAt          *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	IdentityUnverified bool
 }
 
 type ContactIdentity struct {

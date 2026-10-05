@@ -101,6 +101,27 @@ func (e ChannelType) Valid() bool {
 	}
 }
 
+// Defines values for ContactIdentity.
+const (
+	None       ContactIdentity = "none"
+	Unverified ContactIdentity = "unverified"
+	Verified   ContactIdentity = "verified"
+)
+
+// Valid indicates whether the value is a known member of the ContactIdentity enum.
+func (e ContactIdentity) Valid() bool {
+	switch e {
+	case None:
+		return true
+	case Unverified:
+		return true
+	case Verified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationPreviewKind.
 const (
 	ConversationPreviewKindMedia ConversationPreviewKind = "media"
@@ -780,12 +801,18 @@ type Contact struct {
 	Email     *string   `json:"email"`
 	Id        uuid.UUID `json:"id"`
 
+	// Identity `verified` — the company's backend signed the user's id (site widget or app report), conversations of that user from every channel land on this contact. `unverified` — the visitor or app user said who they are without a valid signature: name and email are only what they typed, and the contact is never merged with others. `none` — no claim (Telegram, created by an operator, an anonymous visitor). The id itself is not returned.
+	Identity ContactIdentity `json:"identity"`
+
 	// Locale `ru`, `en` or `null`.
 	Locale    *string   `json:"locale"`
 	Name      string    `json:"name"`
 	Phone     *string   `json:"phone"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// ContactIdentity `verified` — the company's backend signed the user's id (site widget or app report), conversations of that user from every channel land on this contact. `unverified` — the visitor or app user said who they are without a valid signature: name and email are only what they typed, and the contact is never merged with others. `none` — no claim (Telegram, created by an operator, an anonymous visitor). The id itself is not returned.
+type ContactIdentity string
 
 // ContactInput defines model for ContactInput.
 type ContactInput struct {

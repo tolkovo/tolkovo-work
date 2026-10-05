@@ -463,6 +463,12 @@ describe("customer card", () => {
     expect(within(aside).queryByRole("button", { name: "Изменить" })).not.toBeInTheDocument();
   });
 
+  it("says whether the company signed who the customer is", async () => {
+    renderApp("/inbox/c1", { api: server({ contact: contact("k-c1", { identity: "unverified" }) }).api });
+    const aside = await card();
+    expect(await within(aside).findByText("Личность не подтверждена")).toBeInTheDocument();
+  });
+
   it("opens as a drawer with Ctrl+. and closes with Escape, returning focus", async () => {
     const user = userEvent.setup();
     renderApp("/inbox/c1", { api: server().api });

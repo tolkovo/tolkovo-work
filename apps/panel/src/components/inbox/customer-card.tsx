@@ -3,7 +3,7 @@ import { useCan, useContact, useConversationList, useUpdateContact } from "@tolk
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { ChevronRight, Copy, Pencil, X } from "lucide-react";
+import { ChevronRight, Copy, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -178,6 +178,7 @@ function Who({ contact }: { contact: Contact }) {
         <dt className="text-ink-3">{t("inbox.card.language")}</dt>
         <dd className="m-0">{contact.locale ? t(contact.locale === "en" ? "inbox.card.languages.en" : "inbox.card.languages.ru") : empty}</dd>
       </dl>
+      <IdentityLine identity={contact.identity} />
       {canEdit && (
         <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => setEditing(true)}>
           <Pencil aria-hidden="true" />
@@ -186,6 +187,34 @@ function Who({ contact }: { contact: Contact }) {
       )}
     </div>
   );
+}
+
+/**
+ * Whether the company's backend signed who this is (W-04): only a verified contact gathers the
+ * person's chats and reports; an unverified one is what they typed. Nothing for no claim.
+ */
+function IdentityLine({ identity }: { identity: Contact["identity"] }) {
+  const { t } = useTranslation();
+  if (identity === "verified") {
+    return (
+      <p className="m-0 flex items-center gap-1 text-[13px] text-teal">
+        <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0" />
+        {t("inbox.card.identity.verified")}
+      </p>
+    );
+  }
+  if (identity === "unverified") {
+    return (
+      <p className="m-0 flex items-start gap-1 text-[13px] text-lamp-ink" title={t("inbox.card.identity.unverifiedHint")}>
+        <ShieldAlert aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+        <span>
+          {t("inbox.card.identity.unverified")}
+          <span className="sr-only">. {t("inbox.card.identity.unverifiedHint")}</span>
+        </span>
+      </p>
+    );
+  }
+  return null;
 }
 
 type Field = "name" | "email" | "phone" | "locale";

@@ -25,9 +25,22 @@ type Contact struct {
 	Phone      *string
 	Locale     *string
 	ExternalID *string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Identity is IdentityVerified, IdentityUnverified or IdentityNone.
+	Identity  string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
+
+// Identity of a contact (docs/02 §13.2).
+const (
+	// IdentityVerified: the company's backend signed the external id.
+	IdentityVerified = "verified"
+	// IdentityUnverified: the visitor or app user claimed an id, a name or
+	// an email without a valid signature; the values are only typed ones.
+	IdentityUnverified = "unverified"
+	// IdentityNone: nothing was claimed.
+	IdentityNone = "none"
+)
 
 // ContactInput describes a new contact. Empty optional fields stay unset.
 type ContactInput struct {
@@ -193,8 +206,15 @@ func optional(s string) *string {
 }
 
 func contactFrom(c store.Contact) Contact {
+	identity := IdentityNone
+	switch {
+	case c.ExternalID != nil:
+		identity = IdentityVerified
+	case c.IdentityUnverified:
+		identity = IdentityUnverified
+	}
 	return Contact{
 		ID: c.ID, Name: c.Name, Email: c.Email, Phone: c.Phone, Locale: c.Locale,
-		ExternalID: c.ExternalID, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		ExternalID: c.ExternalID, Identity: identity, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 }

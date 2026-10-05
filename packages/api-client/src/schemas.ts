@@ -160,6 +160,7 @@ export const contactSchema = z.object({
   email: z.string().nullable(),
   phone: z.string().nullable(),
   locale: z.string().nullable(),
+  identity: z.enum(["verified", "unverified", "none"]),
   created_at: z.string(),
   updated_at: z.string(),
 }) satisfies z.ZodType<Schemas["Contact"]>;

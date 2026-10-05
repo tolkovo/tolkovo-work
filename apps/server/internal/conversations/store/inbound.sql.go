@@ -13,7 +13,7 @@ import (
 )
 
 const contactByExternalID = `-- name: ContactByExternalID :one
-SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at FROM contacts
+SELECT id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified FROM contacts
 WHERE workspace_id = $1 AND external_id = $2 AND deleted_at IS NULL
 ORDER BY id
 LIMIT 1
@@ -42,6 +42,7 @@ func (q *Queries) ContactByExternalID(ctx context.Context, arg ContactByExternal
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IdentityUnverified,
 	)
 	return i, err
 }
@@ -391,6 +392,35 @@ func (q *Queries) LockOpenThread(ctx context.Context, arg LockOpenThreadParams) 
 		&i.AwaitingFix,
 	)
 	return i, err
+}
+
+const markContactUnverified = `-- name: MarkContactUnverified :exec
+UPDATE contacts
+SET name = CASE WHEN name = '' THEN $1::text ELSE name END,
+    email = COALESCE(email, $2::citext),
+    identity_unverified = true,
+    updated_at = now()
+WHERE workspace_id = $3 AND id = $4 AND external_id IS NULL AND deleted_at IS NULL
+`
+
+type MarkContactUnverifiedParams struct {
+	Name        string
+	Email       *string
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// A visitor without a verified identity said who they are: the contact
+// keeps what it already has, gets what it lacks, and is marked so that
+// nobody takes the values for verified ones. Never a verified contact.
+func (q *Queries) MarkContactUnverified(ctx context.Context, arg MarkContactUnverifiedParams) error {
+	_, err := q.db.Exec(ctx, markContactUnverified,
+		arg.Name,
+		arg.Email,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	return err
 }
 
 const messageByExternalID = `-- name: MessageByExternalID :one
