@@ -20,6 +20,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -134,7 +135,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid),
 		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid), errors.Is(err, channels.ErrInvalid),
-		errors.Is(err, integrations.ErrInvalid):
+		errors.Is(err, integrations.ErrInvalid), errors.Is(err, routing.ErrInvalid):
 		writeProblem(w, r, Problem{
 			Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err),
 		})
@@ -152,7 +153,7 @@ func detail(err error) string {
 	msg := err.Error()
 	for _, sentinel := range []error{
 		errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition,
-		notifications.ErrInvalid, channels.ErrInvalid, integrations.ErrInvalid,
+		notifications.ErrInvalid, channels.ErrInvalid, integrations.ErrInvalid, routing.ErrInvalid,
 	} {
 		if after, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
 			return after

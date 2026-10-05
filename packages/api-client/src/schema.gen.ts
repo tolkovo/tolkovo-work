@@ -387,6 +387,32 @@ export interface paths {
         patch: operations["updateMyNotificationSettings"];
         trace?: never;
     };
+    "/me/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the current user accepts conversations in this workspace
+         * @description `online` until the user changes it. With automatic distribution the router gives
+         *     conversations only to members who are `online` and have the panel open.
+         */
+        get: operations["getMyPresence"];
+        /**
+         * Accept conversations or step away
+         * @description `away` stops new conversations from the router; those already assigned stay with
+         *     the user. Needs a session only, no permission.
+         */
+        put: operations["setMyPresence"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/workspaces": {
         parameters: {
             query?: never;
@@ -437,6 +463,32 @@ export interface paths {
          */
         get: operations["listMembers"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How the workspace distributes its queue
+         * @description Requires `members.view` (owner, admin, operator).
+         */
+        get: operations["getRouting"];
+        /**
+         * Change how the workspace distributes its queue
+         * @description With `round_robin` the server assigns queued conversations at once and then each
+         *     new one, in turn, to the members who are `online` with the panel open. Requires
+         *     `routing.manage` (owner, admin).
+         */
+        put: operations["setRouting"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1982,6 +2034,28 @@ export interface components {
             name: string;
             role: components["schemas"]["Role"];
             active: boolean;
+            presence: components["schemas"]["Presence"];
+        };
+        /**
+         * @description `online` accepts conversations, `away` does not; both with the panel open.
+         *     `offline`: the panel has not been open for about 90 seconds.
+         * @enum {string}
+         */
+        Presence: "online" | "away" | "offline";
+        MyPresence: {
+            /**
+             * @description What the user chose; `offline` follows from a closed panel.
+             * @enum {string}
+             */
+            status: "online" | "away";
+        };
+        RoutingSettings: {
+            /**
+             * @description `manual`: operators take conversations from the queue. `round_robin`: the server
+             *     assigns them in turn to members who are `online`.
+             * @enum {string}
+             */
+            mode: "manual" | "round_robin";
         };
         MemberList: {
             items: components["schemas"]["Member"][];
@@ -3660,6 +3734,54 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getMyPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyPresence"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    setMyPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyPresence"];
+            };
+        };
+        responses: {
+            /** @description The status now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyPresence"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listMyWorkspaces: {
         parameters: {
             query?: never;
@@ -3726,6 +3848,55 @@ export interface operations {
                     "application/json": components["schemas"]["MemberList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings; `manual` until changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingSettings"];
+            };
+        };
+        responses: {
+            /** @description The settings now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingSettings"];
+                };
+            };
+            400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
         };

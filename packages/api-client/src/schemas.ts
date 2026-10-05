@@ -61,6 +61,8 @@ export const workspaceListSchema = z.object({
   ),
 }) satisfies z.ZodType<Schemas["WorkspaceList"]>;
 
+export const presenceSchema = z.enum(["online", "away", "offline"]) satisfies z.ZodType<Schemas["Presence"]>;
+
 export const memberListSchema = z.object({
   items: z.array(
     z.object({
@@ -69,9 +71,18 @@ export const memberListSchema = z.object({
       name: z.string(),
       role: roleSchema,
       active: z.boolean(),
+      presence: presenceSchema,
     }) satisfies z.ZodType<Schemas["Member"]>,
   ),
 }) satisfies z.ZodType<Schemas["MemberList"]>;
+
+export const myPresenceSchema = z.object({
+  status: z.enum(["online", "away"]),
+}) satisfies z.ZodType<Schemas["MyPresence"]>;
+
+export const routingSettingsSchema = z.object({
+  mode: z.enum(["manual", "round_robin"]),
+}) satisfies z.ZodType<Schemas["RoutingSettings"]>;
 
 export const deviceSessionListSchema = z.object({
   items: z.array(

@@ -71,6 +71,16 @@ sql:
         overrides: *overrides
   - engine: postgresql
     schema: migrations
+    queries: internal/routing/queries
+    gen:
+      go:
+        package: store
+        out: internal/routing/store
+        sql_package: pgx/v5
+        omit_unused_structs: true
+        overrides: *overrides
+  - engine: postgresql
+    schema: migrations
     queries: internal/channels/queries
     gen:
       go:

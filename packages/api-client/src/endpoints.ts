@@ -25,6 +25,8 @@ import {
   invitationPreviewSchema,
   invitationSentSchema,
   memberListSchema,
+  myPresenceSchema,
+  routingSettingsSchema,
   messagePageSchema,
   messageSchema,
   openGitHubIssueListSchema,
@@ -71,6 +73,11 @@ export type InboxCounts = Schemas["InboxCounts"];
 export type NotificationSettings = Schemas["NotificationSettings"];
 export type NotificationSettingsInput = Schemas["UpdateNotificationSettingsRequest"];
 export type EmailDelayMinutes = Schemas["EmailDelayMinutes"];
+export type Presence = Schemas["Presence"];
+export type MyPresence = Schemas["MyPresence"];
+export type OperatorStatus = MyPresence["status"];
+export type RoutingSettings = Schemas["RoutingSettings"];
+export type RoutingMode = RoutingSettings["mode"];
 export type Channel = Schemas["Channel"];
 export type ChannelList = Schemas["ChannelList"];
 export type TelegramLogin = Schemas["TelegramLogin"];
@@ -403,6 +410,24 @@ export async function updateNotificationSettings(
   body: NotificationSettingsInput,
 ): Promise<NotificationSettings> {
   return parseAnswer(notificationSettingsSchema, await unwrap(client.PATCH("/me/notifications", { body })));
+}
+
+/** Whether the caller accepts conversations in this workspace (Q-02). */
+export async function fetchMyPresence(client: ApiClient): Promise<MyPresence> {
+  return parseAnswer(myPresenceSchema, await unwrap(client.GET("/me/presence")));
+}
+
+export async function setMyPresence(client: ApiClient, status: OperatorStatus): Promise<MyPresence> {
+  return parseAnswer(myPresenceSchema, await unwrap(client.PUT("/me/presence", { body: { status } })));
+}
+
+/** How the workspace distributes its queue (Q-01). */
+export async function fetchRouting(client: ApiClient): Promise<RoutingSettings> {
+  return parseAnswer(routingSettingsSchema, await unwrap(client.GET("/routing")));
+}
+
+export async function setRouting(client: ApiClient, mode: RoutingMode): Promise<RoutingSettings> {
+  return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: { mode } })));
 }
 
 /** Channels of the workspace and what this server can connect (docs/02 §11, ADR-0014). */

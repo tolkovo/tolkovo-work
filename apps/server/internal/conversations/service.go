@@ -79,11 +79,25 @@ type Notifier interface {
 	NeedsAttention(ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID) error
 }
 
+// Router distributes the queue (docs/02 §9). Both methods run inside the
+// transaction of the change: they may write rows and queue jobs there,
+// never call the network.
+type Router interface {
+	// Queued hears that a conversation entered the queue. releasedBy is the
+	// member who gave it back, or nil.
+	Queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, releasedBy *uuid.UUID) error
+	// Available reports whether a conversation the customer reopens may go
+	// back to userID rather than to the queue.
+	Available(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) (bool, error)
+}
+
 // Service is the module facade.
 type Service struct {
 	db       *db.DB
 	files    Files
 	notifier Notifier
+	// router hears about the queue (Q-01); nil leaves the queue to operators.
+	router Router
 	// deliverer queues replies for channels (T-03); nil leaves them pending.
 	deliverer Deliverer
 	now       func() time.Time
@@ -96,6 +110,9 @@ func New(d *db.DB, files Files) *Service {
 
 // SetNotifier connects the notifications module; call it before serving.
 func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
+
+// SetRouter connects the routing module; call it before serving.
+func (s *Service) SetRouter(r Router) { s.router = r }
 
 // Page is one page of a cursor-paginated list. NextCursor is empty on the
 // last page.

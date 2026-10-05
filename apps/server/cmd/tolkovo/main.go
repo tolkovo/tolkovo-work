@@ -50,6 +50,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdb"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -201,6 +202,8 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 			gw = realtime.New(pool, redisClient, log, realtime.Options{
 				TrustedOrigins: deps.TrustedOrigins,
 				OnReplyTyping:  deps.Channels.ReplyTyping,
+				// Open panels are operator presence for the router (Q-02).
+				OnPresence: deps.Routing.Seen,
 			})
 			g.Go(func() error { return gw.Run(gctx) })
 			deps.Realtime = gw
@@ -235,7 +238,7 @@ func startWorker(
 
 	// Personal Telegram accounts and bots without a webhook (T-02), replies
 	// to every channel (T-03).
-	convs, err := conversationsService(cfg, log, pool, store)
+	convs, router, err := conversationsService(cfg, log, pool, store)
 	if err != nil {
 		return err
 	}
@@ -269,6 +272,8 @@ func startWorker(
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
 	integ.AddWorkers(workers)
+	// The queue is distributed among operators (Q-01).
+	router.AddWorkers(workers, convs)
 	periodic := []*river.PeriodicJob{
 		outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic(), widget.PruneSessionsPeriodic(),
 		widget.CleanupUploadsPeriodic(),
@@ -365,6 +370,9 @@ func apiDeps(
 	notifs := notifications.New(pool, mailJobs)
 	convs := conversations.New(pool, store)
 	convs.SetNotifier(notifs)
+	// The router's job runs in the worker (Q-01).
+	router := routing.New(pool, inserter)
+	convs.SetRouter(router)
 	sealer, err := newSealer(cfg)
 	if err != nil {
 		return api.Deps{}, err
@@ -398,6 +406,7 @@ func apiDeps(
 		// Visitors of chat widgets write through the channels module and
 		// read their chat from convs (W-01).
 		Widget:        widget.New(pool, widgetOpts),
+		Routing:       router,
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -421,20 +430,25 @@ func apiDeps(
 }
 
 // conversationsService is the conversations module of the worker: it
-// stores received messages and the delivery of replies and, when email is
-// configured, queues the reminders about them (I-05).
-func conversationsService(cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage) (*conversations.Service, error) {
+// stores received messages and the delivery of replies, queues the router
+// for new conversations (Q-01) and, when email is configured, the
+// reminders about them (I-05).
+func conversationsService(
+	cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage,
+) (*conversations.Service, *routing.Service, error) {
 	convs := conversations.New(pool, store)
+	inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
+	if err != nil {
+		return nil, nil, fmt.Errorf("jobs: %w", err)
+	}
 	var mailJobs *jobs.Client
 	if cfg.MailEnabled() {
-		inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
-		if err != nil {
-			return nil, fmt.Errorf("jobs: %w", err)
-		}
 		mailJobs = inserter
 	}
 	convs.SetNotifier(notifications.New(pool, mailJobs))
-	return convs, nil
+	router := routing.New(pool, inserter)
+	convs.SetRouter(router)
+	return convs, router, nil
 }
 
 // channelsService wires Telegram into the channels module (T-01–T-03,

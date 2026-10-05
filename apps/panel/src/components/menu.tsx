@@ -25,6 +25,8 @@ export type MenuItem = {
   disabled?: boolean;
   /** Shown after the label, e.g. a hotkey. */
   hint?: string;
+  /** A quieter line under the label. */
+  detail?: string;
 };
 
 type MenuProps = {
@@ -116,7 +118,16 @@ export function Menu({ trigger, label, items, align = "end", triggerClassName, d
               }}
               className="flex items-center justify-between gap-4 px-3 py-1.5 text-left text-[13px] text-ink outline-none hover:bg-hover focus-visible:bg-hover disabled:text-ink-3"
             >
-              {item.label}
+              {item.detail ? (
+                <span className="flex flex-col">
+                  {item.label}
+                  <span className="text-[12px] text-ink-3">
+                    <span className="sr-only">,</span> {item.detail}
+                  </span>
+                </span>
+              ) : (
+                item.label
+              )}
               {item.hint && <kbd className="font-mono text-[11px] text-ink-3">{item.hint}</kbd>}
             </button>
           ))}

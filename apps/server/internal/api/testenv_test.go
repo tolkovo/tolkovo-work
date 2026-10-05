@@ -39,6 +39,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -67,6 +68,7 @@ type env struct {
 	github       *githubtest.GitHub
 	integrations *integrations.Service
 	widget       *widget.Service
+	routing      *routing.Service
 }
 
 type envOptions struct {
@@ -163,6 +165,9 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Inbox: convs, Files: files, Jobs: inserter, Redis: rc,
 	})
 	convs.SetDeliverer(chans)
+	// The router's jobs are queued as in the api role; tests run Dispatch.
+	router := routing.New(app, inserter)
+	convs.SetRouter(router)
 	reports := ingest.New(app, ingest.Options{Files: files, Keys: chans, Redis: rc, KeyPrefix: prefix, Jobs: inserter, Inbox: convs})
 	gh := &githubtest.GitHub{}
 	integ := integrations.New(app, integrations.Options{
@@ -179,15 +184,19 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
 		Ingest: reports, Integrations: integ,
 		Widget:        widgets,
+		Routing:       router,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
+		if o.realtime.OnPresence == nil {
+			o.realtime.OnPresence = router.Seen
+		}
 		deps.Realtime = startRealtime(t, d, app, rc, prefix, o)
 	}
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
 		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
-		widget: widgets,
+		widget: widgets, routing: router,
 	}
 }
 

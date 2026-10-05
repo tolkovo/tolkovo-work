@@ -57,6 +57,8 @@ const (
 	ChannelsView   Permission = "channels.view"   // see connected channels and their status
 	ChannelsManage Permission = "channels.manage" // connect, rename and disconnect channels (tokens, sessions)
 
+	RoutingManage Permission = "routing.manage" // choose how the queue is distributed
+
 	IntegrationsManage Permission = "integrations.manage" // connect GitHub, pick the repository, labels and templates
 	IssuesCreate       Permission = "issues.create"       // create a GitHub issue from a visible conversation or link it to one
 )
@@ -68,14 +70,14 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, IntegrationsManage, IssuesCreate,
+		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, IntegrationsManage, IssuesCreate,
+		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate,
 	},
 	RoleOperator: {
 		MembersView,

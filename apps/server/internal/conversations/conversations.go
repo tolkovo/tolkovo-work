@@ -130,6 +130,9 @@ func (s *Service) CreateConversation(ctx context.Context, workspaceID uuid.UUID,
 		if err != nil {
 			return err
 		}
+		if err := s.queued(ctx, tx, workspaceID, nil); err != nil {
+			return err
+		}
 		out, err = getConversation(ctx, q, workspaceID, uuid.Nil, id)
 		return err
 	})
@@ -282,17 +285,8 @@ func (s *Service) change(
 		if n == 0 {
 			return ErrConflict
 		}
-		if err := addStateEvents(ctx, tx, workspaceID, actorID, id, cur, next); err != nil {
+		if err := s.recordChange(ctx, q, tx, row, actorID, cur, next); err != nil {
 			return err
-		}
-		if err := addEventMessage(ctx, q, tx, row, actorID, cur, next, s.now()); err != nil {
-			return err
-		}
-		// Given to someone by someone else: they may miss it (docs/04 §5.5).
-		if s.notifier != nil && next.AssigneeID != nil && !sameID(next.AssigneeID, cur.AssigneeID) && *next.AssigneeID != actorID {
-			if err := s.notifier.NeedsAttention(ctx, tx, workspaceID, id, *next.AssigneeID); err != nil {
-				return err
-			}
 		}
 		out, err = getConversation(ctx, q, workspaceID, actorID, id)
 		return err
@@ -303,10 +297,55 @@ func (s *Service) change(
 	return out, nil
 }
 
+// recordChange writes what follows a state change already applied to the
+// row: the events, the system line of the feed, and the reminder of a
+// member given the conversation by someone else (docs/04 §5.5).
+func (s *Service) recordChange(
+	ctx context.Context, q *store.Queries, tx pgx.Tx, row store.Conversation, actorID uuid.UUID, cur, next state,
+) error {
+	if err := s.addStateEvents(ctx, tx, row.WorkspaceID, actorID, row.ID, cur, next); err != nil {
+		return err
+	}
+	if err := addEventMessage(ctx, q, tx, row, actorID, cur, next, s.now()); err != nil {
+		return err
+	}
+	if s.notifier != nil && next.AssigneeID != nil && !sameID(next.AssigneeID, cur.AssigneeID) && *next.AssigneeID != actorID {
+		return s.notifier.NeedsAttention(ctx, tx, row.WorkspaceID, row.ID, *next.AssigneeID)
+	}
+	return nil
+}
+
+// queued tells the router that a conversation entered the queue.
+func (s *Service) queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, releasedBy *uuid.UUID) error {
+	if s.router == nil {
+		return nil
+	}
+	if err := s.router.Queued(ctx, tx, workspaceID, releasedBy); err != nil {
+		return fmt.Errorf("router: %w", err)
+	}
+	return nil
+}
+
+// canReturnTo reports whether a conversation the customer reopens goes back
+// to its former assignee: an active member whom the router finds available
+// (with automatic distribution, accepting and with the panel open).
+func (s *Service) canReturnTo(ctx context.Context, q *store.Queries, tx pgx.Tx, workspaceID, userID uuid.UUID) (bool, error) {
+	ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: workspaceID, UserID: userID})
+	if err != nil || !ok || s.router == nil {
+		return ok, err
+	}
+	ok, err = s.router.Available(ctx, tx, workspaceID, userID)
+	if err != nil {
+		return false, fmt.Errorf("router: %w", err)
+	}
+	return ok, nil
+}
+
 // addStateEvents writes conversation.status_changed and
 // conversation.assigned. Payloads carry ids only; actor_id is null for a
-// change made by the system.
-func addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, actorID, id uuid.UUID, cur, next state) error {
+// change made by the system. A conversation entering the queue is told to
+// the router, with whoever held it, so it does not go straight back.
+func (s *Service) addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, actorID, id uuid.UUID, cur, next state) error {
 	var actor *uuid.UUID
 	if actorID != uuid.Nil {
 		actor = &actorID
@@ -317,6 +356,11 @@ func addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, actorID, id uui
 		})
 		if err != nil {
 			return err
+		}
+		if next.Status == StatusQueued {
+			if err := s.queued(ctx, tx, workspaceID, cur.AssigneeID); err != nil {
+				return err
+			}
 		}
 	}
 	if !sameID(next.AssigneeID, cur.AssigneeID) {

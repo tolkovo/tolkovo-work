@@ -31,6 +31,8 @@ import {
   fetchNotificationSettings,
   fetchInvitations,
   fetchMembers,
+  fetchMyPresence,
+  fetchRouting,
   fetchMessages,
   fetchMySessions,
   fetchGitHubIntegration,
@@ -73,6 +75,8 @@ import {
   switchWorkspace,
   updateContact,
   updateNotificationSettings,
+  setMyPresence,
+  setRouting,
   updateMe,
   updateWorkspace,
   verifyEmail,
@@ -84,6 +88,8 @@ import {
   type ConnectTelegramBotRequest,
   type Contact,
   type NotificationSettingsInput,
+  type OperatorStatus,
+  type RoutingMode,
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
@@ -122,6 +128,8 @@ export const queryKeys = {
   invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
   myNotifications: ["me", "notifications"] as const,
+  myPresence: ["me", "presence"] as const,
+  routing: ["routing"] as const,
   channels: ["channels"] as const,
   ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
   githubIntegration: ["integrations", "github"] as const,
@@ -681,6 +689,40 @@ export function useUpdateContact(id: string) {
 export function useNotificationSettings() {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.myNotifications, queryFn: () => fetchNotificationSettings(client) });
+}
+
+/** Whether the signed-in user accepts conversations in this workspace (Q-02). */
+export function useMyPresence() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.myPresence, queryFn: () => fetchMyPresence(client) });
+}
+
+/** Accept conversations or step away; colleagues see it in the member list. */
+export function useSetMyPresence() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (status: OperatorStatus) => setMyPresence(client, status),
+    onSuccess: (presence) => {
+      queryClient.setQueryData(queryKeys.myPresence, presence);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.members });
+    },
+  });
+}
+
+/** How the workspace distributes its queue (Q-01). */
+export function useRouting() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.routing, queryFn: () => fetchRouting(client) });
+}
+
+export function useSetRouting() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: RoutingMode) => setRouting(client, mode),
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.routing, settings),
+  });
 }
 
 /** Saves the given fields; the answer replaces the cached settings. */

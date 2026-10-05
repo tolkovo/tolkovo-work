@@ -27,8 +27,8 @@ export const operatorSession: Session = {
 };
 
 export const members: Member[] = [
-  { user_id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", role: "owner", active: true },
-  { user_id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", role: "operator", active: false },
+  { user_id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", role: "owner", active: true, presence: "online" },
+  { user_id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", role: "operator", active: false, presence: "offline" },
 ];
 
 export const workspaces: WorkspaceSummary[] = [{ id: "w-zerno", slug: "zerno", name: "Зерно", role: "owner" }];
@@ -83,6 +83,8 @@ export function fakeApi(
     "GET /conversations": () => json(200, { items: [], next_cursor: null }),
     "GET /conversations/counts": () => json(200, { mine: 0, mine_unread: 0, unassigned: 0, open: 0 }),
     "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true }),
+    "GET /me/presence": () => json(200, { status: "online" }),
+    "GET /routing": () => json(200, { mode: "manual" }),
     "GET /tags": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.

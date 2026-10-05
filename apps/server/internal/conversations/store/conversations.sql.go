@@ -419,6 +419,62 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 	return i, err
 }
 
+const lockQueue = `-- name: LockQueue :many
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix FROM conversations
+WHERE workspace_id = $1 AND status = 'queued'
+ORDER BY priority DESC, created_at, id
+LIMIT $2
+FOR UPDATE SKIP LOCKED
+`
+
+type LockQueueParams struct {
+	WorkspaceID uuid.UUID
+	Lim         int32
+}
+
+// The head of the queue for the router (docs/02 §9.2): higher priority
+// first, then the oldest. Rows another transaction holds are skipped, so
+// an operator taking one by hand never waits for the router.
+func (q *Queries) LockQueue(ctx context.Context, arg LockQueueParams) ([]Conversation, error) {
+	rows, err := q.db.Query(ctx, lockQueue, arg.WorkspaceID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Conversation
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Number,
+			&i.ContactID,
+			&i.ChannelID,
+			&i.ExternalThreadID,
+			&i.Status,
+			&i.Priority,
+			&i.LineLevel,
+			&i.AssigneeID,
+			&i.Subject,
+			&i.FirstResponseAt,
+			&i.LastMessageAt,
+			&i.ResolvedAt,
+			&i.ClosedAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AwaitingFix,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextConversationNumber = `-- name: NextConversationNumber :one
 INSERT INTO conversation_counters (workspace_id, last_number)
 VALUES ($1, 1)

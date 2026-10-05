@@ -537,6 +537,46 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /me/presence:
+    get:
+      tags: [auth]
+      operationId: getMyPresence
+      summary: Whether the current user accepts conversations in this workspace
+      description: |
+        `online` until the user changes it. With automatic distribution the router gives
+        conversations only to members who are `online` and have the panel open.
+      responses:
+        '200':
+          description: The user's status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyPresence' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    put:
+      tags: [auth]
+      operationId: setMyPresence
+      summary: Accept conversations or step away
+      description: |
+        `away` stops new conversations from the router; those already assigned stay with
+        the user. Needs a session only, no permission.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MyPresence' }
+      responses:
+        '200':
+          description: The status now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyPresence' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /me/workspaces:
     get:
       tags: [auth]
@@ -586,6 +626,46 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MemberList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /routing:
+    get:
+      tags: [workspace]
+      operationId: getRouting
+      summary: How the workspace distributes its queue
+      description: Requires `members.view` (owner, admin, operator).
+      responses:
+        '200':
+          description: The settings; `manual` until changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutingSettings' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [workspace]
+      operationId: setRouting
+      summary: Change how the workspace distributes its queue
+      description: |
+        With `round_robin` the server assigns queued conversations at once and then each
+        new one, in turn, to the members who are `online` with the panel open. Requires
+        `routing.manage` (owner, admin).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoutingSettings' }
+      responses:
+        '200':
+          description: The settings now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutingSettings' }
+        '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -3097,7 +3177,7 @@ components:
 
     Member:
       type: object
-      required: [user_id, email, name, role, active]
+      required: [user_id, email, name, role, active, presence]
       properties:
         user_id:
           type: string
@@ -3107,6 +3187,36 @@ components:
         name: { type: string }
         role: { $ref: '#/components/schemas/Role' }
         active: { type: boolean }
+        presence: { $ref: '#/components/schemas/Presence' }
+
+    Presence:
+      type: string
+      description: |
+        `online` accepts conversations, `away` does not; both with the panel open.
+        `offline`: the panel has not been open for about 90 seconds.
+      enum: [online, away, offline]
+
+    MyPresence:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: What the user chose; `offline` follows from a closed panel.
+          enum: [online, away]
+
+    RoutingSettings:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          description: |
+            `manual`: operators take conversations from the queue. `round_robin`: the server
+            assigns them in turn to members who are `online`.
+          enum: [manual, round_robin]
 
     MemberList:
       type: object

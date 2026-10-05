@@ -23,6 +23,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/ingest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -56,6 +57,8 @@ type Deps struct {
 	// Widget serves the visitors of chat widgets (W-01); nil leaves its
 	// routes answering 404.
 	Widget *widget.Service
+	// Routing keeps the distribution mode and operator presence (Q-01, Q-02).
+	Routing *routing.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -92,7 +95,7 @@ func NewRouter(d Deps) http.Handler {
 
 	srv := &server{
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations, notifications: d.Notifications, channels: d.Channels,
-		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget,
+		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget, routing: d.Routing,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
 	}

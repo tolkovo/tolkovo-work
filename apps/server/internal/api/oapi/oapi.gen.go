@@ -548,6 +548,45 @@ func (e MessageReportFiles) Valid() bool {
 	}
 }
 
+// Defines values for MyPresenceStatus.
+const (
+	MyPresenceStatusAway   MyPresenceStatus = "away"
+	MyPresenceStatusOnline MyPresenceStatus = "online"
+)
+
+// Valid indicates whether the value is a known member of the MyPresenceStatus enum.
+func (e MyPresenceStatus) Valid() bool {
+	switch e {
+	case MyPresenceStatusAway:
+		return true
+	case MyPresenceStatusOnline:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Presence.
+const (
+	PresenceAway    Presence = "away"
+	PresenceOffline Presence = "offline"
+	PresenceOnline  Presence = "online"
+)
+
+// Valid indicates whether the value is a known member of the Presence enum.
+func (e Presence) Valid() bool {
+	switch e {
+	case PresenceAway:
+		return true
+	case PresenceOffline:
+		return true
+	case PresenceOnline:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	RoleAdmin    Role = "admin"
@@ -563,6 +602,24 @@ func (e Role) Valid() bool {
 	case RoleOperator:
 		return true
 	case RoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoutingSettingsMode.
+const (
+	Manual     RoutingSettingsMode = "manual"
+	RoundRobin RoutingSettingsMode = "round_robin"
+)
+
+// Valid indicates whether the value is a known member of the RoutingSettingsMode enum.
+func (e RoutingSettingsMode) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case RoundRobin:
 		return true
 	default:
 		return false
@@ -1485,6 +1542,10 @@ type Member struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 
+	// Presence `online` accepts conversations, `away` does not; both with the panel open.
+	// `offline`: the panel has not been open for about 90 seconds.
+	Presence Presence `json:"presence"`
+
 	// Role System role in phase 1.
 	Role   Role      `json:"role"`
 	UserId uuid.UUID `json:"user_id"`
@@ -1638,6 +1699,15 @@ type MessageReport struct {
 // MessageReportFiles defines model for MessageReport.Files.
 type MessageReportFiles string
 
+// MyPresence defines model for MyPresence.
+type MyPresence struct {
+	// Status What the user chose; `offline` follows from a closed panel.
+	Status MyPresenceStatus `json:"status"`
+}
+
+// MyPresenceStatus What the user chose; `offline` follows from a closed panel.
+type MyPresenceStatus string
+
 // NotificationSettings defines model for NotificationSettings.
 type NotificationSettings struct {
 	// EmailAvailable Outgoing email is configured on this server; without it nothing is sent.
@@ -1675,6 +1745,10 @@ type PostMessageRequest struct {
 	// Private Internal note instead of a reply.
 	Private *bool `json:"private,omitempty"`
 }
+
+// Presence `online` accepts conversations, `away` does not; both with the panel open.
+// `offline`: the panel has not been open for about 90 seconds.
+type Presence string
 
 // Problem RFC 9457 problem details.
 type Problem struct {
@@ -1723,6 +1797,17 @@ type ResetPasswordRequest struct {
 
 // Role System role in phase 1.
 type Role string
+
+// RoutingSettings defines model for RoutingSettings.
+type RoutingSettings struct {
+	// Mode `manual`: operators take conversations from the queue. `round_robin`: the server
+	// assigns them in turn to members who are `online`.
+	Mode RoutingSettingsMode `json:"mode"`
+}
+
+// RoutingSettingsMode `manual`: operators take conversations from the queue. `round_robin`: the server
+// assigns them in turn to members who are `online`.
+type RoutingSettingsMode string
 
 // Session defines model for Session.
 type Session struct {
@@ -2316,6 +2401,12 @@ type UpdateMyNotificationSettingsJSONRequestBody = UpdateNotificationSettingsReq
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest
 
+// SetMyPresenceJSONRequestBody defines body for SetMyPresence for application/json ContentType.
+type SetMyPresenceJSONRequestBody = MyPresence
+
+// SetRoutingJSONRequestBody defines body for SetRouting for application/json ContentType.
+type SetRoutingJSONRequestBody = RoutingSettings
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
@@ -2549,6 +2640,12 @@ type ServerInterface interface {
 	// ChangePassword Change the current user's password
 	// (POST /me/password)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// GetMyPresence Whether the current user accepts conversations in this workspace
+	// (GET /me/presence)
+	GetMyPresence(w http.ResponseWriter, r *http.Request)
+	// SetMyPresence Accept conversations or step away
+	// (PUT /me/presence)
+	SetMyPresence(w http.ResponseWriter, r *http.Request)
 	// ListMySessions Active sessions (signed-in devices) of the current user
 	// (GET /me/sessions)
 	ListMySessions(w http.ResponseWriter, r *http.Request)
@@ -2564,6 +2661,12 @@ type ServerInterface interface {
 	// ListMembers Members of the current workspace
 	// (GET /members)
 	ListMembers(w http.ResponseWriter, r *http.Request)
+	// GetRouting How the workspace distributes its queue
+	// (GET /routing)
+	GetRouting(w http.ResponseWriter, r *http.Request)
+	// SetRouting Change how the workspace distributes its queue
+	// (PUT /routing)
+	SetRouting(w http.ResponseWriter, r *http.Request)
 	// ListTags Every tag of the workspace, by name
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -3020,6 +3123,18 @@ func (_ Unimplemented) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetMyPresence Whether the current user accepts conversations in this workspace
+// (GET /me/presence)
+func (_ Unimplemented) GetMyPresence(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetMyPresence Accept conversations or step away
+// (PUT /me/presence)
+func (_ Unimplemented) SetMyPresence(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMySessions Active sessions (signed-in devices) of the current user
 // (GET /me/sessions)
 func (_ Unimplemented) ListMySessions(w http.ResponseWriter, r *http.Request) {
@@ -3047,6 +3162,18 @@ func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) 
 // ListMembers Members of the current workspace
 // (GET /members)
 func (_ Unimplemented) ListMembers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRouting How the workspace distributes its queue
+// (GET /routing)
+func (_ Unimplemented) GetRouting(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetRouting Change how the workspace distributes its queue
+// (PUT /routing)
+func (_ Unimplemented) SetRouting(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4830,6 +4957,34 @@ func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyPresence operation middleware
+func (siw *ServerInterfaceWrapper) GetMyPresence(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyPresence(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMyPresence operation middleware
+func (siw *ServerInterfaceWrapper) SetMyPresence(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMyPresence(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMySessions operation middleware
 func (siw *ServerInterfaceWrapper) ListMySessions(w http.ResponseWriter, r *http.Request) {
 
@@ -4903,6 +5058,34 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMembers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRouting operation middleware
+func (siw *ServerInterfaceWrapper) GetRouting(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRouting(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetRouting operation middleware
+func (siw *ServerInterfaceWrapper) SetRouting(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetRouting(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5269,6 +5452,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/me/notifications", wrapper.UpdateMyNotificationSettings)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/presence", wrapper.GetMyPresence)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/me/presence", wrapper.SetMyPresence)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/workspaces", wrapper.ListMyWorkspaces)
 	})
 	r.Group(func(r chi.Router) {
@@ -5276,6 +5465,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/routing", wrapper.GetRouting)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/routing", wrapper.SetRouting)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/invitations", wrapper.ListInvitations)

@@ -107,7 +107,7 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 		return wrap(err, "record issue")
 	}
 	cur := state{Status: Status(row.Status), AssigneeID: row.AssigneeID, ResolvedAt: row.ResolvedAt, ClosedAt: row.ClosedAt}
-	next, err := s.issueState(ctx, q, row, cur, n)
+	next, err := s.issueState(ctx, q, tx, row, cur, n)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 		if changed == 0 {
 			return ErrConflict // the row is locked: cannot happen
 		}
-		if err := addStateEvents(ctx, tx, workspaceID, uuid.Nil, conversationID, cur, next); err != nil {
+		if err := s.addStateEvents(ctx, tx, workspaceID, uuid.Nil, conversationID, cur, next); err != nil {
 			return err
 		}
 	}
@@ -164,7 +164,7 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 }
 
 // issueState is the state an issue event leaves the conversation in.
-func (s *Service) issueState(ctx context.Context, q *store.Queries, row store.Conversation, cur state, n IssueNote) (state, error) {
+func (s *Service) issueState(ctx context.Context, q *store.Queries, tx pgx.Tx, row store.Conversation, cur state, n IssueNote) (state, error) {
 	switch {
 	case n.AwaitingFix && cur.Status == StatusAssigned:
 		return transition(cur, StatusPending, s.now())
@@ -174,11 +174,11 @@ func (s *Service) issueState(ctx context.Context, q *store.Queries, row store.Co
 		if err != nil {
 			return state{}, err
 		}
-		ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: row.WorkspaceID, UserID: *cur.AssigneeID})
+		ok, err := s.canReturnTo(ctx, q, tx, row.WorkspaceID, *cur.AssigneeID)
 		if err != nil || ok {
 			return next, err
 		}
-		return transition(next, StatusQueued, s.now()) // released, as when the operator leaves
+		return transition(next, StatusQueued, s.now()) // released, as when the operator is away
 	}
 	return cur, nil
 }

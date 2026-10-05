@@ -21,6 +21,13 @@
     },
     "language": {
       "label": "Interface language"
+    },
+    "status": {
+      "label": "Your status: {status}",
+      "online": "Online",
+      "away": "On a break",
+      "onlineHint": "New conversations come to me in turn",
+      "awayHint": "No new ones; my conversations stay with me"
     }
   },
   "pages": {
@@ -360,7 +367,6 @@
       "role": "Role",
       "status": "Status",
       "you": "(you)",
-      "active": "Active",
       "inactive": "Deactivated",
       "invite": {
         "title": "Invite to the team",
@@ -389,6 +395,20 @@
         "revoked": "Invitation for {email} revoked.",
         "resent": "Invitation for {email} sent again."
       }
+    },
+    "routing": {
+      "title": "Distribution",
+      "mode": "How queued conversations reach operators",
+      "modes": {
+        "manual": "Manually",
+        "manualHint": "Conversations wait in the queue; operators take them with «Take».",
+        "round_robin": "In turn",
+        "round_robinHint": "Each new conversation goes at once to the next operator who is «Online» with the panel open. Those already waiting are distributed as soon as you switch this on."
+      },
+      "rules": "With nobody online, a conversation waits in the queue and goes to the first one back. A conversation given back to the queue does not return to the same operator while others are available. A resolved conversation the customer writes to again goes back to its operator if they are online, otherwise to the next one.",
+      "onlineNow": "{count, plural, one {# person takes conversations now:} other {# people take conversations now:}}",
+      "nobodyOnline": "Nobody takes conversations now: new ones will wait in the queue.",
+      "saved": "Saved."
     },
     "groups": {
       "workspace": "Workspace",
@@ -779,6 +799,7 @@
     "event": {
       "taken": "Taken by {name}",
       "assigned": "Assigned to {name}",
+      "autoAssigned": "Assigned automatically: {name}",
       "transferred": "Transferred: {from} → {to}",
       "released": "Returned to the queue",
       "reopened": "Reopened",
@@ -960,5 +981,10 @@
     "one": "The {name} channel is down: {reason}",
     "many": "Channels down: {count}. Customer messages through them do not arrive, replies do not go out.",
     "open": "Open channels"
+  },
+  "presence": {
+    "online": "Online",
+    "away": "On a break",
+    "offline": "Offline"
   }
 }

@@ -41,6 +41,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/widget
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -69,9 +71,11 @@ linters:
               desc: realtime relays outbox events, it does not call business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/widget
               desc: realtime gets the visitor from api as realtime.Visitor
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing
+              desc: realtime reports open panels through Options.OnPresence
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**", "**/internal/widget/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**", "**/internal/widget/**", "**/internal/routing/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
@@ -128,6 +132,11 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ingest/store
               desc: use the ingest facade, not its store
+        no-foreign-routing-store:
+          files: ["!**/internal/routing/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing/store
+              desc: use the routing facade, not its store
         no-foreign-widget-store:
           files: ["!**/internal/widget/**", "$all"]
           deny:
@@ -167,6 +176,13 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/notifications
               desc: conversations calls notifications through conversations.Notifier
+        # routing assigns through the conversations facade; conversations
+        # only knows its Router interface.
+        conversations-without-routing:
+          files: ["**/internal/conversations/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing
+              desc: conversations calls routing through conversations.Router
     forbidigo:
       analyze-types: true
       forbid:

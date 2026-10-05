@@ -443,11 +443,9 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {
-      return e.assignee_id === actorId ? (
-        <>{t("inbox.event.taken", { name: name(e.assignee_id) })}</>
-      ) : (
-        <>{t("inbox.event.assigned", { name: name(e.assignee_id) }) + by}</>
-      );
+      if (e.assignee_id === actorId) return <>{t("inbox.event.taken", { name: name(e.assignee_id) })}</>;
+      if (actorId === null) return <>{t("inbox.event.autoAssigned", { name: name(e.assignee_id) })}</>;
+      return <>{t("inbox.event.assigned", { name: name(e.assignee_id) }) + by}</>;
     }
     const transfer = t("inbox.event.transferred", { from: name(e.previous_assignee_id), to: name(e.assignee_id) });
     return <>{transfer + (actorId === e.previous_assignee_id ? "" : by)}</>;

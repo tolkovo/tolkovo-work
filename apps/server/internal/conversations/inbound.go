@@ -266,17 +266,21 @@ func (s *Service) openThread(
 	if err != nil {
 		return store.Conversation{}, err
 	}
-	return conv, outbox.Add(ctx, tx, workspaceID, "conversation.created", map[string]any{
+	if err := outbox.Add(ctx, tx, workspaceID, "conversation.created", map[string]any{
 		"conversation_id": id, "contact_id": contactID, "number": number, "status": StatusQueued,
-	})
+	}); err != nil {
+		return store.Conversation{}, err
+	}
+	return conv, s.queued(ctx, tx, workspaceID, nil)
 }
 
 // wakeUp applies what a customer message means for the state: waiting for
 // the customer is over (pending → assigned), a resolved conversation
-// reopens — to its operator while they are a member, otherwise to the
-// queue. Presence (Q-02) will add "if online". A closed one reopens the
-// same way; only an app report brings one here (ReceiveReportMessage),
-// since a report keeps its conversation for good (docs/02 §8).
+// reopens — to its operator while they are a member and, with automatic
+// distribution, online (canReturnTo), otherwise to the queue. A closed one
+// reopens the same way; only an app report brings one here
+// (ReceiveReportMessage), since a report keeps its conversation for good
+// (docs/02 §8).
 func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv store.Conversation, now time.Time) (store.Conversation, error) {
 	cur := state{Status: Status(conv.Status), AssigneeID: conv.AssigneeID, ResolvedAt: conv.ResolvedAt, ClosedAt: conv.ClosedAt}
 	to := cur.Status
@@ -286,7 +290,7 @@ func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv 
 	case StatusResolved, StatusClosed:
 		to = StatusQueued
 		if cur.AssigneeID != nil {
-			ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: conv.WorkspaceID, UserID: *cur.AssigneeID})
+			ok, err := s.canReturnTo(ctx, q, tx, conv.WorkspaceID, *cur.AssigneeID)
 			if err != nil {
 				return conv, err
 			}
@@ -315,7 +319,7 @@ func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv 
 	if n == 0 {
 		return conv, ErrConflict // cannot happen under the row lock
 	}
-	if err := addStateEvents(ctx, tx, conv.WorkspaceID, uuid.Nil, conv.ID, cur, next); err != nil {
+	if err := s.addStateEvents(ctx, tx, conv.WorkspaceID, uuid.Nil, conv.ID, cur, next); err != nil {
 		return conv, err
 	}
 	if err := addEventMessage(ctx, q, tx, conv, uuid.Nil, cur, next, now); err != nil {

@@ -66,6 +66,7 @@ export function ConversationActions({
           triggerClassName="inline-flex h-[26px] items-center gap-1 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-hover disabled:opacity-55"
           items={targets.map((m) => ({
             label: m.user_id === session?.user.id ? `${m.name} (${t("inbox.you")})` : m.name,
+            detail: t(`presence.${m.presence}`),
             onSelect: assign(m.user_id),
           }))}
         />

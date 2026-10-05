@@ -52,6 +52,7 @@ const (
 	DefaultSendBuffer         = 256
 	DefaultMaxConnsPerUser    = 10
 	DefaultReplayLimit        = 500
+	DefaultPresenceInterval   = 30 * time.Second
 )
 
 // Options configure the gateway; zero values take the defaults above.
@@ -71,6 +72,7 @@ type Options struct {
 	SendBuffer         int           // live events queued per connection
 	MaxConnsPerUser    int           // per user on one replica (tabs, devices)
 	ReplayLimit        int           // more missed events than this: resync_required
+	PresenceInterval   time.Duration // how often OnPresence hears of open panels
 
 	// Now defaults to time.Now.
 	Now func() time.Time
@@ -79,6 +81,12 @@ type Options struct {
 	// note), so a channel can show it to the customer (T-03). It must not
 	// block: it runs in the connection's reader.
 	OnReplyTyping func(ctx context.Context, workspaceID, conversationID uuid.UUID)
+
+	// OnPresence hears which members of a workspace have the panel open on
+	// this replica: for one member when they connect, and for all of them
+	// every PresenceInterval (operator presence, docs/02 §9.5). Errors are
+	// logged; the connections stay.
+	OnPresence func(ctx context.Context, workspaceID uuid.UUID, userIDs []uuid.UUID) error
 }
 
 func (o Options) withDefaults() Options {
@@ -92,6 +100,7 @@ func (o Options) withDefaults() Options {
 	def(&o.WriteTimeout, DefaultWriteTimeout)
 	def(&o.RecheckInterval, DefaultRecheckInterval)
 	def(&o.ReplayRecheckDelay, DefaultReplayRecheckDelay)
+	def(&o.PresenceInterval, DefaultPresenceInterval)
 	if o.SendBuffer <= 0 {
 		o.SendBuffer = DefaultSendBuffer
 	}
@@ -151,8 +160,41 @@ func New(tdb TenantDB, rdb *redis.Client, log *slog.Logger, o Options) *Gateway 
 
 func (g *Gateway) now() time.Time { return g.o.Now() }
 
-// Run keeps the Redis subscription until ctx is done, then returns nil.
-func (g *Gateway) Run(ctx context.Context) error { return g.hub.run(ctx) }
+// Run keeps the Redis subscription and reports open panels until ctx is
+// done, then returns nil.
+func (g *Gateway) Run(ctx context.Context) error {
+	if g.o.OnPresence != nil {
+		go g.presenceLoop(ctx)
+	}
+	return g.hub.run(ctx)
+}
+
+// presenceLoop reports the members with an open panel every
+// PresenceInterval, one call per workspace.
+func (g *Gateway) presenceLoop(ctx context.Context) {
+	t := time.NewTicker(g.o.PresenceInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			for ws, users := range g.hub.panelUsers() {
+				g.reportPresence(ctx, ws, users)
+			}
+		}
+	}
+}
+
+// reportPresence calls OnPresence, bounded so a slow database cannot hold
+// up the loop or a handshake.
+func (g *Gateway) reportPresence(ctx context.Context, workspaceID uuid.UUID, userIDs []uuid.UUID) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := g.o.OnPresence(ctx, workspaceID, userIDs); err != nil && ctx.Err() == nil {
+		g.log.Warn("realtime: report presence", "workspace_id", workspaceID, "err", err)
+	}
+}
 
 // Ready reports whether the gateway accepts connections.
 func (g *Gateway) Ready() bool {
@@ -211,6 +253,9 @@ func (g *Gateway) Serve(w http.ResponseWriter, r *http.Request, cl Client) error
 		c.fail(CloseServiceRestart, "server restart")
 	}
 	g.mu.Unlock()
+	if g.o.OnPresence != nil {
+		g.reportPresence(ctx, c.workspaceID, []uuid.UUID{c.userID})
+	}
 
 	g.serveConn(ctx, cancel, c)
 	return nil

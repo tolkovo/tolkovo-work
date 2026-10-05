@@ -55,6 +55,16 @@ SELECT * FROM conversations
 WHERE workspace_id = @workspace_id AND id = @id
 FOR UPDATE;
 
+-- name: LockQueue :many
+-- The head of the queue for the router (docs/02 §9.2): higher priority
+-- first, then the oldest. Rows another transaction holds are skipped, so
+-- an operator taking one by hand never waits for the router.
+SELECT * FROM conversations
+WHERE workspace_id = @workspace_id AND status = 'queued'
+ORDER BY priority DESC, created_at, id
+LIMIT @lim
+FOR UPDATE SKIP LOCKED;
+
 -- name: ListConversations :many
 -- Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the
