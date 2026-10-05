@@ -574,6 +574,10 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 	}
 	if e.Issue != nil {
 		out.Issue = &oapi.MessageEventIssue{LinkId: e.Issue.LinkID, Repository: e.Issue.Repository, Number: e.Issue.Number, Url: e.Issue.URL}
+		if e.Issue.Reason != "" {
+			r := oapi.MessageEventIssueReason(e.Issue.Reason)
+			out.Issue.Reason = &r
+		}
 	}
 	return out
 }

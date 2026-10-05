@@ -473,8 +473,10 @@ func (e MessageUnsupported) Valid() bool {
 // Defines values for MessageEventType.
 const (
 	MessageEventTypeAssigned      MessageEventType = "assigned"
+	MessageEventTypeIssueClosed   MessageEventType = "issue_closed"
 	MessageEventTypeIssueCreated  MessageEventType = "issue_created"
 	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
+	MessageEventTypeIssueReopened MessageEventType = "issue_reopened"
 	MessageEventTypeStatusChanged MessageEventType = "status_changed"
 )
 
@@ -483,11 +485,33 @@ func (e MessageEventType) Valid() bool {
 	switch e {
 	case MessageEventTypeAssigned:
 		return true
+	case MessageEventTypeIssueClosed:
+		return true
 	case MessageEventTypeIssueCreated:
 		return true
 	case MessageEventTypeIssueLinked:
 		return true
+	case MessageEventTypeIssueReopened:
+		return true
 	case MessageEventTypeStatusChanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MessageEventIssueReason.
+const (
+	Completed  MessageEventIssueReason = "completed"
+	NotPlanned MessageEventIssueReason = "not_planned"
+)
+
+// Valid indicates whether the value is a known member of the MessageEventIssueReason enum.
+func (e MessageEventIssueReason) Valid() bool {
+	switch e {
+	case Completed:
+		return true
+	case NotPlanned:
 		return true
 	default:
 		return false
@@ -884,6 +908,11 @@ type Conversation struct {
 // ConversationIssues defines model for ConversationIssues.
 type ConversationIssues struct {
 	Items []IssueLink `json:"items"`
+
+	// ReplyDraft The reply about the fix the operator may send, once an issue of the conversation was
+	// closed as completed; `null` otherwise and after an operator replied to the customer
+	// since. Tolkovo never sends it itself (ADR-0012).
+	ReplyDraft *IssueReplyDraft `json:"reply_draft"`
 
 	// Repository Where new issues go; `null` when GitHub is not connected or has no repository.
 	Repository *GitHubRepository `json:"repository"`
@@ -1349,6 +1378,17 @@ type IssueLink struct {
 // answer through every attempt, or GitHub was disconnected.
 type IssueLinkError string
 
+// IssueReplyDraft defines model for IssueReplyDraft.
+type IssueReplyDraft struct {
+	// IssueId The closed issue link the draft is about.
+	IssueId uuid.UUID `json:"issue_id"`
+	Number  int64     `json:"number"`
+
+	// Text The workspace's reply template in the contact's language (the workspace's when the
+	// contact has none), `{name}` and `{issue_number}` filled.
+	Text string `json:"text"`
+}
+
 // IssueStatus `creating`: GitHub has not created it yet; `open` and `closed` as on GitHub; `failed`:
 // GitHub refused it, `error` says why.
 type IssueStatus string
@@ -1477,23 +1517,37 @@ type MessageEvent struct {
 	// Type `assigned` covers taking, transferring and releasing. `issue_created` and
 	// `issue_linked`: a GitHub issue was created from the conversation or it was linked to
 	// one, with `issue`; `from` and `to` differ when the conversation went to wait for the
-	// fix with it.
+	// fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
+	// closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
+	// the conversation back to its assignee (`pending → assigned`) or to the queue, or a
+	// reopened one put it to wait for the fix again.
 	Type MessageEventType `json:"type"`
 }
 
 // MessageEventType `assigned` covers taking, transferring and releasing. `issue_created` and
 // `issue_linked`: a GitHub issue was created from the conversation or it was linked to
 // one, with `issue`; `from` and `to` differ when the conversation went to wait for the
-// fix with it.
+// fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
+// closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
+// the conversation back to its assignee (`pending → assigned`) or to the queue, or a
+// reopened one put it to wait for the fix again.
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
 type MessageEventIssue struct {
-	LinkId     uuid.UUID `json:"link_id"`
-	Number     int64     `json:"number"`
-	Repository string    `json:"repository"`
-	Url        string    `json:"url"`
+	LinkId uuid.UUID `json:"link_id"`
+	Number int64     `json:"number"`
+
+	// Reason Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
+	// `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
+	Reason     *MessageEventIssueReason `json:"reason,omitempty"`
+	Repository string                   `json:"repository"`
+	Url        string                   `json:"url"`
 }
+
+// MessageEventIssueReason Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
+// `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
+type MessageEventIssueReason string
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {

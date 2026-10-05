@@ -439,7 +439,7 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   const names = useMemberNames();
   const name = (id: string | null) => (id ? (names.get(id) ?? t("inbox.colleague")) : t("inbox.sender.system"));
   const by = actorId ? ` · ${name(actorId)}` : "";
-  if (e.type === "issue_created" || e.type === "issue_linked") return <IssueEventText event={e} by={by} />;
+  if (e.type.startsWith("issue_")) return <IssueEventText event={e} by={by} />;
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {

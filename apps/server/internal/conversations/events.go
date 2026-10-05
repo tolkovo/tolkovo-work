@@ -25,6 +25,17 @@ const (
 	// for the fix with it.
 	EventIssueCreated = "issue_created"
 	EventIssueLinked  = "issue_linked"
+	// EventIssueClosed and EventIssueReopened: GitHub closed (IssueRef.Reason
+	// says why) or reopened a linked issue (GH-03). From and To are set when
+	// the conversation came back from waiting for the fix or went to wait again.
+	EventIssueClosed   = "issue_closed"
+	EventIssueReopened = "issue_reopened"
+)
+
+// Why GitHub closed an issue (IssueRef.Reason).
+const (
+	IssueFixed      = "completed"
+	IssueNotPlanned = "not_planned"
 )
 
 // Event is what a system message records. It holds ids and statuses only:
@@ -45,6 +56,8 @@ type IssueRef struct {
 	Repository string    `json:"repository"`
 	Number     int64     `json:"number"`
 	URL        string    `json:"url"`
+	// Reason is set on EventIssueClosed: IssueFixed or IssueNotPlanned.
+	Reason string `json:"reason,omitempty"`
 }
 
 // addEventMessage writes the system line of a state change, by actorID.
@@ -92,7 +105,7 @@ func eventFrom(kind string, meta []byte) *Event {
 	}
 	switch ev.Type {
 	case EventStatusChanged, EventAssigned:
-	case EventIssueCreated, EventIssueLinked:
+	case EventIssueCreated, EventIssueLinked, EventIssueClosed, EventIssueReopened:
 		if ev.Issue == nil {
 			return nil
 		}

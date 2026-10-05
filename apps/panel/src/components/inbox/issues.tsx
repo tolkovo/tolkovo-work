@@ -392,11 +392,23 @@ function IssueItem({ conversationId, issue: l }: { conversationId: string; issue
   );
 }
 
-/** The feed line of an issue event: «Создан issue #12», linked to GitHub. */
+const EVENT_LABELS = {
+  issue_created: "inbox.event.issueCreated",
+  issue_linked: "inbox.event.issueLinked",
+  issue_reopened: "inbox.event.issueReopened",
+  issue_closed: "inbox.event.issueFixed",
+} as const;
+
+/**
+ * The feed line of an issue event, linked to GitHub: «Создан issue owner/name#12», «Issue … закрыт:
+ * исправлен» and so on, with what happened to the conversation.
+ */
 export function IssueEventText({ event: e, by }: { event: MessageEvent; by: string }) {
   const { t } = useTranslation();
-  if (!e.issue) return <>{t(`inbox.event.${e.type === "issue_created" ? "issueCreated" : "issueLinked"}`, { number: "" }) + by}</>;
-  const label = e.type === "issue_created" ? "inbox.event.issueCreated" : "inbox.event.issueLinked";
+  const type = e.type as keyof typeof EVENT_LABELS;
+  const label =
+    type === "issue_closed" && e.issue?.reason === "not_planned" ? "inbox.event.issueNotPlanned" : (EVENT_LABELS[type] ?? "inbox.event.issueLinked");
+  if (!e.issue) return <>{t(label, { number: "" }) + by}</>;
   const [before, after] = t(label, { number: "\u0000" }).split("\u0000");
   return (
     <>
@@ -406,7 +418,33 @@ export function IssueEventText({ event: e, by }: { event: MessageEvent; by: stri
       </a>
       {after}
       {e.from !== e.to && e.to === "pending" ? t("inbox.event.awaitingFix") : ""}
+      {e.from !== e.to && e.to === "assigned" ? t("inbox.event.backToAssignee") : ""}
+      {e.from !== e.to && e.to === "queued" ? t("inbox.event.backToQueue") : ""}
       {by}
     </>
+  );
+}
+
+/**
+ * The reply about a fix (GH-03): once GitHub closed an issue of the conversation as completed, the
+ * composer offers the template reply in the customer's language. The operator inserts it, edits
+ * it and sends it as any reply; Tolkovo never writes to the customer itself.
+ */
+export function FixReplyOffer({ conversation: c, text, onInsert }: { conversation: Conversation; text: string; onInsert: (t: string) => void }) {
+  const { t } = useTranslation();
+  const can = useAbilities(c);
+  const issues = useConversationIssues(c.id, { enabled: can.issues });
+  const d = issues.data?.reply_draft;
+  if (!d || text === d.text) return null;
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-teal bg-teal-soft px-3 py-2 text-[13px] text-ink">
+      <CircleDot aria-hidden="true" className="size-4 shrink-0 text-teal" />
+      <span className="mr-auto min-w-0">
+        {t("inbox.issues.fixed", { number: d.number })} <span className="text-ink-2">«{d.text}»</span>
+      </span>
+      <Button size="sm" variant="primary" onClick={() => onInsert(d.text)}>
+        {t("inbox.issues.insertReply")}
+      </Button>
+    </div>
   );
 }

@@ -589,3 +589,36 @@ func (q *Queries) PendingAttachments(ctx context.Context, arg PendingAttachments
 	}
 	return items, nil
 }
+
+const replySource = `-- name: ReplySource :one
+SELECT ct.name AS contact_name, ct.locale AS contact_locale,
+       coalesce((
+           SELECT max(m.created_at) FROM messages m
+           WHERE m.workspace_id = c.workspace_id AND m.conversation_id = c.id
+             AND m.sender_type = 'operator' AND NOT m.is_private AND m.kind <> 'event' AND m.deleted_at IS NULL
+       ), c.created_at)::timestamptz AS last_reply_at
+FROM conversations c
+JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
+WHERE c.workspace_id = $1 AND c.id = $2
+`
+
+type ReplySourceParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+type ReplySourceRow struct {
+	ContactName   string
+	ContactLocale *string
+	LastReplyAt   time.Time
+}
+
+// Who a reply about a fix is drafted for, and when an operator last wrote
+// to them (the conversation's start when never): the draft is offered
+// until the next reply.
+func (q *Queries) ReplySource(ctx context.Context, arg ReplySourceParams) (ReplySourceRow, error) {
+	row := q.db.QueryRow(ctx, replySource, arg.WorkspaceID, arg.ID)
+	var i ReplySourceRow
+	err := row.Scan(&i.ContactName, &i.ContactLocale, &i.LastReplyAt)
+	return i, err
+}

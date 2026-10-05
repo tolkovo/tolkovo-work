@@ -13,7 +13,7 @@ import (
 )
 
 const conversationIssueLinks = `-- name: ConversationIssueLinks :many
-SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at FROM issue_links
+SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason FROM issue_links
 WHERE workspace_id = $1 AND conversation_id = $2
 ORDER BY created_at, id
 `
@@ -52,6 +52,7 @@ func (q *Queries) ConversationIssueLinks(ctx context.Context, arg ConversationIs
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.CloseReason,
 		); err != nil {
 			return nil, err
 		}
@@ -76,6 +77,89 @@ type DeleteIssueLinkParams struct {
 func (q *Queries) DeleteIssueLink(ctx context.Context, arg DeleteIssueLinkParams) error {
 	_, err := q.db.Exec(ctx, deleteIssueLink, arg.WorkspaceID, arg.ID)
 	return err
+}
+
+const detachInstallation = `-- name: DetachInstallation :execrows
+UPDATE integrations
+SET status = 'install_pending', installation_id = NULL, account = NULL, updated_at = $1
+WHERE workspace_id = $2 AND id = $3 AND status = 'active' AND installation_id = $4
+`
+
+type DetachInstallationParams struct {
+	UpdatedAt      time.Time
+	WorkspaceID    uuid.UUID
+	ID             uuid.UUID
+	InstallationID *int64
+}
+
+// The App was uninstalled on GitHub: the integration waits to be installed again.
+func (q *Queries) DetachInstallation(ctx context.Context, arg DetachInstallationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachInstallation,
+		arg.UpdatedAt,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.InstallationID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const fixedIssue = `-- name: FixedIssue :many
+SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason FROM issue_links
+WHERE workspace_id = $1 AND conversation_id = $2
+  AND status = 'closed' AND close_reason = 'completed'
+ORDER BY closed_at DESC, id DESC
+LIMIT 1
+`
+
+type FixedIssueParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+}
+
+// The issue of the conversation closed as completed most recently: the
+// reply about the fix is drafted from it.
+func (q *Queries) FixedIssue(ctx context.Context, arg FixedIssueParams) ([]IssueLink, error) {
+	rows, err := q.db.Query(ctx, fixedIssue, arg.WorkspaceID, arg.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueLink
+	for rows.Next() {
+		var i IssueLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IntegrationID,
+			&i.ConversationID,
+			&i.Provider,
+			&i.RepoID,
+			&i.RepoFullName,
+			&i.Status,
+			&i.ErrorCode,
+			&i.Number,
+			&i.NodeID,
+			&i.Url,
+			&i.Title,
+			&i.Body,
+			&i.Labels,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+			&i.CloseReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getIntegration = `-- name: GetIntegration :one
@@ -121,7 +205,7 @@ func (q *Queries) GetIntegration(ctx context.Context, arg GetIntegrationParams) 
 }
 
 const getIssueLink = `-- name: GetIssueLink :one
-SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at FROM issue_links
+SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason FROM issue_links
 WHERE workspace_id = $1 AND id = $2
 `
 
@@ -153,12 +237,13 @@ func (q *Queries) GetIssueLink(ctx context.Context, arg GetIssueLinkParams) (Iss
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.CloseReason,
 	)
 	return i, err
 }
 
 const getIssueLinkForUpdate = `-- name: GetIssueLinkForUpdate :one
-SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at FROM issue_links
+SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason FROM issue_links
 WHERE workspace_id = $1 AND id = $2
 FOR UPDATE
 `
@@ -191,8 +276,70 @@ func (q *Queries) GetIssueLinkForUpdate(ctx context.Context, arg GetIssueLinkFor
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.CloseReason,
 	)
 	return i, err
+}
+
+const hasOtherOpenIssue = `-- name: HasOtherOpenIssue :one
+SELECT EXISTS (
+    SELECT 1 FROM issue_links
+    WHERE workspace_id = $1 AND conversation_id = $2 AND status = 'open' AND id <> $3
+)
+`
+
+type HasOtherOpenIssueParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	ExceptID       uuid.UUID
+}
+
+// Whether the conversation waits for a fix besides except_id: another open issue.
+func (q *Queries) HasOtherOpenIssue(ctx context.Context, arg HasOtherOpenIssueParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOtherOpenIssue, arg.WorkspaceID, arg.ConversationID, arg.ExceptID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const insertDelivery = `-- name: InsertDelivery :many
+INSERT INTO integration_deliveries (workspace_id, integration_id, delivery_id, received_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+RETURNING delivery_id
+`
+
+type InsertDeliveryParams struct {
+	WorkspaceID   uuid.UUID
+	IntegrationID uuid.UUID
+	DeliveryID    string
+	ReceivedAt    time.Time
+}
+
+// A webhook delivery seen for the first time; no row back means a repeat.
+func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, insertDelivery,
+		arg.WorkspaceID,
+		arg.IntegrationID,
+		arg.DeliveryID,
+		arg.ReceivedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var delivery_id string
+		if err := rows.Scan(&delivery_id); err != nil {
+			return nil, err
+		}
+		items = append(items, delivery_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertIssueLink = `-- name: InsertIssueLink :one
@@ -204,7 +351,7 @@ INSERT INTO issue_links (
     $9, $10, $11, $12, $13, $14, $15,
     $16, $16, $17
 )
-RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at
+RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason
 `
 
 type InsertIssueLinkParams struct {
@@ -268,8 +415,106 @@ func (q *Queries) InsertIssueLink(ctx context.Context, arg InsertIssueLinkParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.CloseReason,
 	)
 	return i, err
+}
+
+const integrationHasIssues = `-- name: IntegrationHasIssues :one
+SELECT EXISTS (
+    SELECT 1 FROM issue_links WHERE workspace_id = $1 AND integration_id = $2
+)
+`
+
+type IntegrationHasIssuesParams struct {
+	WorkspaceID   uuid.UUID
+	IntegrationID uuid.UUID
+}
+
+// An integration with issues is disabled, never deleted: the issues keep it.
+func (q *Queries) IntegrationHasIssues(ctx context.Context, arg IntegrationHasIssuesParams) (bool, error) {
+	row := q.db.QueryRow(ctx, integrationHasIssues, arg.WorkspaceID, arg.IntegrationID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const issueLinksByNumberForUpdate = `-- name: IssueLinksByNumberForUpdate :many
+SELECT id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason FROM issue_links
+WHERE workspace_id = $1 AND integration_id = $2 AND repo_id = $3 AND number = $4
+ORDER BY id
+FOR UPDATE
+`
+
+type IssueLinksByNumberForUpdateParams struct {
+	WorkspaceID   uuid.UUID
+	IntegrationID uuid.UUID
+	RepoID        int64
+	Number        *int64
+}
+
+// Every conversation linked to one issue of the integration (the webhook,
+// GH-03), locked in id order.
+func (q *Queries) IssueLinksByNumberForUpdate(ctx context.Context, arg IssueLinksByNumberForUpdateParams) ([]IssueLink, error) {
+	rows, err := q.db.Query(ctx, issueLinksByNumberForUpdate,
+		arg.WorkspaceID,
+		arg.IntegrationID,
+		arg.RepoID,
+		arg.Number,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueLink
+	for rows.Next() {
+		var i IssueLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IntegrationID,
+			&i.ConversationID,
+			&i.Provider,
+			&i.RepoID,
+			&i.RepoFullName,
+			&i.Status,
+			&i.ErrorCode,
+			&i.Number,
+			&i.NodeID,
+			&i.Url,
+			&i.Title,
+			&i.Body,
+			&i.Labels,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+			&i.CloseReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pruneDeliveries = `-- name: PruneDeliveries :exec
+DELETE FROM integration_deliveries
+WHERE workspace_id = $1 AND integration_id = $2 AND received_at < $3
+`
+
+type PruneDeliveriesParams struct {
+	WorkspaceID   uuid.UUID
+	IntegrationID uuid.UUID
+	Before        time.Time
+}
+
+func (q *Queries) PruneDeliveries(ctx context.Context, arg PruneDeliveriesParams) error {
+	_, err := q.db.Exec(ctx, pruneDeliveries, arg.WorkspaceID, arg.IntegrationID, arg.Before)
+	return err
 }
 
 const recentOpenIssues = `-- name: RecentOpenIssues :many
@@ -329,7 +574,7 @@ UPDATE issue_links
 SET status = 'open', number = $1, node_id = $2, url = $3, body = NULL, error_code = NULL,
     updated_at = $4
 WHERE workspace_id = $5 AND id = $6
-RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at
+RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason
 `
 
 type SetIssueCreatedParams struct {
@@ -372,6 +617,7 @@ func (q *Queries) SetIssueCreated(ctx context.Context, arg SetIssueCreatedParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.CloseReason,
 	)
 	return i, err
 }
@@ -380,7 +626,7 @@ const setIssueCreating = `-- name: SetIssueCreating :one
 UPDATE issue_links
 SET status = 'creating', error_code = NULL, updated_at = $1
 WHERE workspace_id = $2 AND id = $3
-RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at
+RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason
 `
 
 type SetIssueCreatingParams struct {
@@ -413,6 +659,7 @@ func (q *Queries) SetIssueCreating(ctx context.Context, arg SetIssueCreatingPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.CloseReason,
 	)
 	return i, err
 }
@@ -421,7 +668,7 @@ const setIssueFailed = `-- name: SetIssueFailed :one
 UPDATE issue_links
 SET status = 'failed', error_code = $1, updated_at = $2
 WHERE workspace_id = $3 AND id = $4
-RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at
+RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason
 `
 
 type SetIssueFailedParams struct {
@@ -459,6 +706,59 @@ func (q *Queries) SetIssueFailed(ctx context.Context, arg SetIssueFailedParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.CloseReason,
+	)
+	return i, err
+}
+
+const setIssueState = `-- name: SetIssueState :one
+UPDATE issue_links
+SET status = $1, close_reason = $2, closed_at = $3, updated_at = $4
+WHERE workspace_id = $5 AND id = $6
+RETURNING id, workspace_id, integration_id, conversation_id, provider, repo_id, repo_full_name, status, error_code, number, node_id, url, title, body, labels, created_by, created_at, updated_at, closed_at, close_reason
+`
+
+type SetIssueStateParams struct {
+	Status      string
+	CloseReason *string
+	ClosedAt    *time.Time
+	UpdatedAt   time.Time
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// GitHub closed or reopened the issue.
+func (q *Queries) SetIssueState(ctx context.Context, arg SetIssueStateParams) (IssueLink, error) {
+	row := q.db.QueryRow(ctx, setIssueState,
+		arg.Status,
+		arg.CloseReason,
+		arg.ClosedAt,
+		arg.UpdatedAt,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	var i IssueLink
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.IntegrationID,
+		&i.ConversationID,
+		&i.Provider,
+		&i.RepoID,
+		&i.RepoFullName,
+		&i.Status,
+		&i.ErrorCode,
+		&i.Number,
+		&i.NodeID,
+		&i.Url,
+		&i.Title,
+		&i.Body,
+		&i.Labels,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+		&i.CloseReason,
 	)
 	return i, err
 }

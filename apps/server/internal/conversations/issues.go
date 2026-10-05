@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -60,24 +61,44 @@ func (s *Service) IssueSource(ctx context.Context, workspaceID, conversationID u
 
 // IssueNote is an issue event for a conversation feed.
 type IssueNote struct {
-	Type  string // EventIssueCreated or EventIssueLinked
+	// Type is EventIssueCreated, EventIssueLinked, EventIssueClosed or EventIssueReopened.
+	Type  string
 	Issue IssueRef
-	// ActorID is the member who created or linked the issue; nil for the system.
+	// ActorID is the member who created or linked the issue; nil for the
+	// system (GitHub closing or reopening it).
 	ActorID *uuid.UUID
-	// AwaitingFix: the issue is open, so the conversation waits for the fix.
+	// AwaitingFix: an issue of the conversation is open, so it waits for
+	// the fix. The caller looks at every issue of the conversation.
 	AwaitingFix bool
+	// Key tells apart events of one issue that may repeat (closed, reopened,
+	// closed again): the webhook delivery id. Empty for created and linked,
+	// which happen once per issue.
+	Key string
 }
 
-// RecordIssue writes the feed line of an issue and, for an open one, puts
-// the conversation to wait for the fix: the mark is set and a conversation
-// an operator works on goes to pending, out of their way (docs/02 §8).
-// Conversations in the queue or finished keep their status. Recording the
-// same issue event again does nothing, so a retried job is safe.
+// RecordIssue writes the feed line of an issue event and keeps the
+// conversation waiting for the fix while an issue is open (docs/02 §8):
 //
-// It runs inside the caller's tenant transaction (tx), with the change of
-// the issue link that caused it; it never calls the network.
+//   - waiting starts (an open issue created, linked or reopened): the mark
+//     is set and a conversation an operator works on goes to pending, out of
+//     their way; queued and finished ones keep their status;
+//   - waiting ends with an issue closed as fixed: a pending conversation
+//     comes back to its assignee (pending → assigned), or to the queue when
+//     they are no longer a member (presence, Q-02, will add "if online");
+//   - an issue closed as not planned only clears the mark.
+//
+// Recording the same event again does nothing, so a retried job or a
+// repeated webhook is safe. It runs inside the caller's tenant transaction
+// (tx), with the change of the issue link that caused it; it never calls
+// the network.
 func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, n IssueNote) error {
-	if n.Type != EventIssueCreated && n.Type != EventIssueLinked {
+	switch n.Type {
+	case EventIssueCreated, EventIssueLinked, EventIssueReopened:
+	case EventIssueClosed:
+		if n.Issue.Reason != IssueFixed && n.Issue.Reason != IssueNotPlanned {
+			return fmt.Errorf("%w: unknown close reason %q", ErrInvalid, n.Issue.Reason)
+		}
+	default:
 		return fmt.Errorf("%w: unknown issue event %q", ErrInvalid, n.Type)
 	}
 	q := store.New(tx)
@@ -86,11 +107,9 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 		return wrap(err, "record issue")
 	}
 	cur := state{Status: Status(row.Status), AssigneeID: row.AssigneeID, ResolvedAt: row.ResolvedAt, ClosedAt: row.ClosedAt}
-	next := cur
-	if n.AwaitingFix && cur.Status == StatusAssigned {
-		if next, err = transition(cur, StatusPending, s.now()); err != nil {
-			return err
-		}
+	next, err := s.issueState(ctx, q, row, cur, n)
+	if err != nil {
+		return err
 	}
 	ev := Event{Type: n.Type, From: cur.Status, To: next.Status, AssigneeID: next.AssigneeID, PreviousAssigneeID: cur.AssigneeID, Issue: &n.Issue}
 	meta, err := json.Marshal(ev)
@@ -101,9 +120,13 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 	if err != nil {
 		return err
 	}
+	key := n.Type + ":" + n.Issue.LinkID.String()
+	if n.Key != "" {
+		key += ":" + n.Key
+	}
 	ids, err := q.CreateKeyedEventMessage(ctx, store.CreateKeyedEventMessageParams{
 		ID: id, WorkspaceID: workspaceID, ConversationID: conversationID, SenderID: n.ActorID, Meta: meta,
-		IdempotencyKey: ptr(n.Type + ":" + n.Issue.LinkID.String()), CreatedAt: s.now(),
+		IdempotencyKey: ptr(key), CreatedAt: s.now(),
 	})
 	if err != nil {
 		return wrap(err, "record issue")
@@ -138,4 +161,54 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 		}
 	}
 	return nil
+}
+
+// issueState is the state an issue event leaves the conversation in.
+func (s *Service) issueState(ctx context.Context, q *store.Queries, row store.Conversation, cur state, n IssueNote) (state, error) {
+	switch {
+	case n.AwaitingFix && cur.Status == StatusAssigned:
+		return transition(cur, StatusPending, s.now())
+	case !n.AwaitingFix && row.AwaitingFix && cur.Status == StatusPending &&
+		n.Type == EventIssueClosed && n.Issue.Reason == IssueFixed:
+		next, err := transition(cur, StatusAssigned, s.now())
+		if err != nil {
+			return state{}, err
+		}
+		ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: row.WorkspaceID, UserID: *cur.AssigneeID})
+		if err != nil || ok {
+			return next, err
+		}
+		return transition(next, StatusQueued, s.now()) // released, as when the operator leaves
+	}
+	return cur, nil
+}
+
+// ReplySource is who a reply about a fix is drafted for (GH-03).
+type ReplySource struct {
+	ContactName string
+	// ContactLocale is "ru", "en" or empty when unknown.
+	ContactLocale string
+	// LastReplyAt is when an operator last wrote to the customer, or when
+	// the conversation started.
+	LastReplyAt time.Time
+}
+
+// ReplySource returns what a reply about a fix is drafted from.
+func (s *Service) ReplySource(ctx context.Context, workspaceID, conversationID uuid.UUID) (ReplySource, error) {
+	var out ReplySource
+	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
+		row, err := q.ReplySource(ctx, store.ReplySourceParams{WorkspaceID: workspaceID, ID: conversationID})
+		if err != nil {
+			return err
+		}
+		out = ReplySource{ContactName: row.ContactName, LastReplyAt: row.LastReplyAt}
+		if row.ContactLocale != nil {
+			out.ContactLocale = *row.ContactLocale
+		}
+		return nil
+	})
+	if err != nil {
+		return ReplySource{}, wrap(err, "reply source")
+	}
+	return out, nil
 }

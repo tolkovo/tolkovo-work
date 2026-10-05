@@ -80,6 +80,7 @@ var (
 type Conversations interface {
 	IssueSource(ctx context.Context, workspaceID, conversationID uuid.UUID) (conversations.IssueSource, error)
 	RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, n conversations.IssueNote) error
+	ReplySource(ctx context.Context, workspaceID, conversationID uuid.UUID) (conversations.ReplySource, error)
 }
 
 // Jobs queues github.create_issue in the caller's transaction; *jobs.Client
@@ -112,12 +113,18 @@ type ConversationIssues struct {
 	// repository is picked.
 	Repository *Repository
 	Items      []IssueLink
+	// ReplyDraft is the reply about a fix to send, nil when there is none.
+	ReplyDraft *ReplyDraft
 }
 
-// ConversationIssues lists the issues of a conversation, oldest first. The
-// caller has checked the conversation is visible.
-func (s *Service) ConversationIssues(ctx context.Context, workspaceID, conversationID uuid.UUID) (ConversationIssues, error) {
+// ConversationIssues lists the issues of a conversation, oldest first, and
+// the reply about a fix when one of them was fixed. The caller has checked
+// the conversation is visible; locale is the workspace language, the
+// reply's when the contact's is unknown.
+func (s *Service) ConversationIssues(ctx context.Context, workspaceID, conversationID uuid.UUID, locale string) (ConversationIssues, error) {
 	var out ConversationIssues
+	var fixed *store.IssueLink
+	var fixedBy *store.Integration
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		cur, err := q.GetLiveIntegration(ctx, store.GetLiveIntegrationParams{WorkspaceID: workspaceID, Provider: ProviderGitHub})
@@ -136,10 +143,23 @@ func (s *Service) ConversationIssues(ctx context.Context, workspaceID, conversat
 		for _, r := range rows {
 			out.Items = append(out.Items, issueLinkFrom(r))
 		}
-		return nil
+		got, err := q.FixedIssue(ctx, store.FixedIssueParams{WorkspaceID: workspaceID, ConversationID: conversationID})
+		if err != nil || len(got) == 0 {
+			return err
+		}
+		fixed = &got[0]
+		// The templates of the integration the issue was closed through.
+		integ, err := q.GetIntegration(ctx, store.GetIntegrationParams{WorkspaceID: workspaceID, ID: fixed.IntegrationID})
+		fixedBy = &integ
+		return err
 	})
 	if err != nil {
 		return ConversationIssues{}, fmt.Errorf("list conversation issues: %w", err)
+	}
+	if fixed != nil && s.opts.Conversations != nil {
+		if out.ReplyDraft, err = s.replyDraft(ctx, workspaceID, conversationID, fixedBy, *fixed, locale); err != nil {
+			return ConversationIssues{}, fmt.Errorf("draft reply: %w", err)
+		}
 	}
 	return out, nil
 }
@@ -321,8 +341,13 @@ func (s *Service) LinkIssue(ctx context.Context, workspaceID, actorID, conversat
 			return err
 		}
 		out = issueLinkFrom(row)
+		// A closed issue does not end waiting for another one that is open.
+		other, err := q.HasOtherOpenIssue(ctx, store.HasOtherOpenIssueParams{WorkspaceID: workspaceID, ConversationID: conversationID, ExceptID: id})
+		if err != nil {
+			return err
+		}
 		if err := s.opts.Conversations.RecordIssue(ctx, tx, workspaceID, conversationID, conversations.IssueNote{
-			Type: conversations.EventIssueLinked, Issue: issueRef(row), ActorID: &actorID, AwaitingFix: status == IssueOpen,
+			Type: conversations.EventIssueLinked, Issue: issueRef(row), ActorID: &actorID, AwaitingFix: status == IssueOpen || other,
 		}); err != nil {
 			return err
 		}

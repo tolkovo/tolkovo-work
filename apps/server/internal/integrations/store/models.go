@@ -57,4 +57,5 @@ type IssueLink struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	ClosedAt       *time.Time
+	CloseReason    *string
 }

@@ -97,6 +97,9 @@ func NewRouter(d Deps) http.Handler {
 	if d.Channels != nil {
 		mountHooks(r, d.Channels, d.Log)
 	}
+	if d.Integrations != nil {
+		mountGitHubHook(r, d.Integrations, d.Log)
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(noStore, sameOrigin(d.TrustedOrigins))
 		oapi.HandlerWithOptions(srv, oapi.ChiServerOptions{

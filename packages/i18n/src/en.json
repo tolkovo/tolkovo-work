@@ -757,7 +757,12 @@
       },
       "issueCreated": "Issue {number} created",
       "issueLinked": "Linked to issue {number}",
-      "awaitingFix": ", the conversation waits for the fix"
+      "awaitingFix": ", the conversation waits for the fix",
+      "issueReopened": "Issue {number} reopened",
+      "issueFixed": "Issue {number} closed as fixed",
+      "issueNotPlanned": "Issue {number} closed as not planned",
+      "backToAssignee": ", the conversation is back with its assignee",
+      "backToQueue": ", the conversation is back in the queue"
     },
     "card": {
       "label": "Customer card",
@@ -897,7 +902,9 @@
         "disconnected": "GitHub was disconnected before the issue was created."
       },
       "retry": "Try again",
-      "dismiss": "Remove"
+      "dismiss": "Remove",
+      "fixed": "Issue #{number} is fixed. Draft reply:",
+      "insertReply": "Insert into the reply"
     },
     "awaitingFix": "Waiting for a fix"
   },

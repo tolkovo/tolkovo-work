@@ -1810,8 +1810,9 @@ paths:
       summary: GitHub issues of the conversation
       description: |
         Oldest first, with `repository`: where new issues go, `null` when GitHub is not
-        connected or has no repository (the panel hides "Create issue" then). Requires
-        `issues.create` (ADR-0012).
+        connected or has no repository (the panel hides "Create issue" then), and
+        `reply_draft` once an issue was closed as fixed (GH-03: GitHub's `issues` webhook
+        closes and reopens the issues, outside this API). Requires `issues.create` (ADR-0012).
       responses:
         '200':
           description: The issues.
@@ -3029,12 +3030,15 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
             one, with `issue`; `from` and `to` differ when the conversation went to wait for the
-            fix with it.
+            fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
+            closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
+            the conversation back to its assignee (`pending → assigned`) or to the queue, or a
+            reopened one put it to wait for the fix again.
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -3058,6 +3062,12 @@ components:
         repository: { type: string }
         number: { type: integer, format: int64 }
         url: { type: string }
+        reason:
+          type: string
+          enum: [completed, not_planned]
+          description: |
+            Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
+            `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
 
     Tag:
       type: object
@@ -3457,7 +3467,7 @@ components:
 
     ConversationIssues:
       type: object
-      required: [repository, items]
+      required: [repository, items, reply_draft]
       properties:
         repository:
           description: Where new issues go; `null` when GitHub is not connected or has no repository.
@@ -3467,6 +3477,31 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/IssueLink' }
+        reply_draft:
+          description: |
+            The reply about the fix the operator may send, once an issue of the conversation was
+            closed as completed; `null` otherwise and after an operator replied to the customer
+            since. Tolkovo never sends it itself (ADR-0012).
+          oneOf:
+            - $ref: '#/components/schemas/IssueReplyDraft'
+            - type: 'null'
+
+    IssueReplyDraft:
+      type: object
+      required: [issue_id, number, text]
+      properties:
+        issue_id:
+          type: string
+          description: The closed issue link the draft is about.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        text:
+          type: string
+          maxLength: 4000
+          description: |
+            The workspace's reply template in the contact's language (the workspace's when the
+            contact has none), `{name}` and `{issue_number}` filled.
 
     IssueDraft:
       type: object

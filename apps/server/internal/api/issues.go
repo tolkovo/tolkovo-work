@@ -34,7 +34,7 @@ func (s *server) ListConversationIssues(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	got, err := s.integrations.ConversationIssues(r.Context(), p.WorkspaceID, id)
+	got, err := s.integrations.ConversationIssues(r.Context(), p.WorkspaceID, id, workspaceLocale(r))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -43,6 +43,9 @@ func (s *server) ListConversationIssues(w http.ResponseWriter, r *http.Request, 
 	if got.Repository != nil {
 		repo := repositoryBody(*got.Repository)
 		out.Repository = &repo
+	}
+	if d := got.ReplyDraft; d != nil {
+		out.ReplyDraft = &oapi.IssueReplyDraft{IssueId: d.LinkID, Number: d.Number, Text: d.Text}
 	}
 	for _, l := range got.Items {
 		out.Items = append(out.Items, issueLinkBody(l))

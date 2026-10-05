@@ -186,13 +186,19 @@ export const attachmentSchema = z.object({
 }) satisfies z.ZodType<Schemas["Attachment"]>;
 
 export const messageEventSchema = z.object({
-  type: z.enum(["status_changed", "assigned", "issue_created", "issue_linked"]),
+  type: z.enum(["status_changed", "assigned", "issue_created", "issue_linked", "issue_closed", "issue_reopened"]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
   assignee_id: z.string().nullable(),
   previous_assignee_id: z.string().nullable(),
   issue: z
-    .object({ link_id: z.string(), repository: z.string(), number: z.number(), url: z.string() })
+    .object({
+      link_id: z.string(),
+      repository: z.string(),
+      number: z.number(),
+      url: z.string(),
+      reason: z.enum(["completed", "not_planned"]).optional(),
+    })
     .optional() satisfies z.ZodType<Schemas["MessageEventIssue"] | undefined>,
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
@@ -383,6 +389,7 @@ export const issueLinkSchema = z.object({
 export const conversationIssuesSchema = z.object({
   repository: gitHubRepositorySchema.nullable(),
   items: z.array(issueLinkSchema),
+  reply_draft: z.object({ issue_id: z.string(), number: z.number(), text: z.string() }).nullable(),
 }) satisfies z.ZodType<Schemas["ConversationIssues"]>;
 
 export const issueDraftSchema = z.object({

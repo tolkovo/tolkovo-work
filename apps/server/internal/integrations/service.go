@@ -3,7 +3,8 @@
 // manifest, installs it on its repositories and picks the repository, the
 // labels and the templates new issues and replies about fixes start from.
 // Operators create issues from conversations or link conversations to
-// issues (GH-02, issues.go); the closing webhook (GH-03) builds on this.
+// issues (GH-02, issues.go); the App's webhook closes and reopens them and
+// drafts the reply about a fix (GH-03, hooks.go).
 //
 // The App's private key and webhook secret are sealed with
 // internal/platform/crypto and never leave the module. Calls to GitHub
@@ -244,7 +245,7 @@ func (s *Service) StartGitHub(ctx context.Context, workspaceID, actorID uuid.UUI
 		default:
 			// An App created by the abandoned flow stays on GitHub; the
 			// panel tells the admin to delete it there.
-			if err := q.DeleteIntegration(ctx, store.DeleteIntegrationParams{WorkspaceID: workspaceID, ID: cur.ID}); err != nil {
+			if err := s.dropUnfinished(ctx, q, cur); err != nil {
 				return err
 			}
 		}
@@ -561,18 +562,37 @@ func (s *Service) DisconnectGitHub(ctx context.Context, workspaceID uuid.UUID) e
 			return err
 		}
 		if row.Status != StatusActive {
-			return q.DeleteIntegration(ctx, store.DeleteIntegrationParams{WorkspaceID: workspaceID, ID: row.ID})
+			return s.dropUnfinished(ctx, q, row)
 		}
-		if err := q.DeleteIntegrationSecret(ctx, store.DeleteIntegrationSecretParams{WorkspaceID: workspaceID, IntegrationID: row.ID}); err != nil {
-			return err
-		}
-		now := s.now()
-		return q.DisableIntegration(ctx, store.DisableIntegrationParams{WorkspaceID: workspaceID, ID: row.ID, DisabledAt: &now})
+		return s.disable(ctx, q, row)
 	})
 	if err != nil {
 		return fmt.Errorf("disconnect github: %w", err)
 	}
 	return nil
+}
+
+// dropUnfinished removes an integration that is not active. One that was
+// active once and lost its installation (GH-03) has issues: it is disabled
+// like a working one, so they stay.
+func (s *Service) dropUnfinished(ctx context.Context, q *store.Queries, row store.Integration) error {
+	used, err := q.IntegrationHasIssues(ctx, store.IntegrationHasIssuesParams{WorkspaceID: row.WorkspaceID, IntegrationID: row.ID})
+	if err != nil {
+		return err
+	}
+	if used {
+		return s.disable(ctx, q, row)
+	}
+	return q.DeleteIntegration(ctx, store.DeleteIntegrationParams{WorkspaceID: row.WorkspaceID, ID: row.ID})
+}
+
+// disable forgets the App's key and keeps the integration for its issues.
+func (s *Service) disable(ctx context.Context, q *store.Queries, row store.Integration) error {
+	if err := q.DeleteIntegrationSecret(ctx, store.DeleteIntegrationSecretParams{WorkspaceID: row.WorkspaceID, IntegrationID: row.ID}); err != nil {
+		return err
+	}
+	now := s.now()
+	return q.DisableIntegration(ctx, store.DisableIntegrationParams{WorkspaceID: row.WorkspaceID, ID: row.ID, DisabledAt: &now})
 }
 
 // live returns the live GitHub integration or ErrNotFound.
@@ -600,6 +620,19 @@ func (s *Service) app(ctx context.Context, row store.Integration) (github.App, e
 	if row.AppID == nil {
 		return github.App{}, ErrStep
 	}
+	sec, err := s.secret(ctx, row)
+	if err != nil {
+		return github.App{}, err
+	}
+	return github.App{ID: *row.AppID, PrivateKey: crypto.NewSecret(sec.PrivateKey)}, nil
+}
+
+// secret opens the App's key and webhook secret; ErrStep when there are
+// none (not created yet, or disconnected).
+func (s *Service) secret(ctx context.Context, row store.Integration) (appSecret, error) {
+	if s.opts.Sealer == nil {
+		return appSecret{}, ErrNoEncryption
+	}
 	var sealed []byte
 	err := s.db.InTenantTx(ctx, row.WorkspaceID, func(tx pgx.Tx) error {
 		var err error
@@ -607,20 +640,20 @@ func (s *Service) app(ctx context.Context, row store.Integration) (github.App, e
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return github.App{}, ErrStep
+		return appSecret{}, ErrStep
 	}
 	if err != nil {
-		return github.App{}, fmt.Errorf("load github secret: %w", err)
+		return appSecret{}, fmt.Errorf("load github secret: %w", err)
 	}
 	plain, err := s.opts.Sealer.Open(ctx, sealed, crypto.AAD{WorkspaceID: row.WorkspaceID, SecretID: row.ID})
 	if err != nil {
-		return github.App{}, fmt.Errorf("open github secret: %w", err)
+		return appSecret{}, fmt.Errorf("open github secret: %w", err)
 	}
 	var sec appSecret
 	if err := json.Unmarshal([]byte(plain.Reveal()), &sec); err != nil {
-		return github.App{}, fmt.Errorf("decode github secret: %w", err)
+		return appSecret{}, fmt.Errorf("decode github secret: %w", err)
 	}
-	return github.App{ID: *row.AppID, PrivateKey: crypto.NewSecret(sec.PrivateKey)}, nil
+	return sec, nil
 }
 
 // token returns an installation token of an active integration.

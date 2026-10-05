@@ -34,8 +34,10 @@ const link = (id: string, patch: Partial<IssueLink> = {}): IssueLink => ({
   ...patch,
 });
 
-function server(issues: ConversationIssues, extra: FakeRoutes = {}, feed: Message[] = [msg("m1", { body: "Корзина пустая" })]) {
-  const state = { issues, conversation: conv("c1") };
+type Issues = Omit<ConversationIssues, "reply_draft"> & Partial<Pick<ConversationIssues, "reply_draft">>;
+
+function server(issues: Issues, extra: FakeRoutes = {}, feed: Message[] = [msg("m1", { body: "Корзина пустая" })]) {
+  const state = { issues: { reply_draft: null, ...issues }, conversation: conv("c1") };
   const api = fakeApi({
     session: operator,
     routes: {
@@ -212,5 +214,68 @@ describe("GitHub issues in a conversation", () => {
       "href",
       "https://github.com/zerno-team/desktop/issues/12",
     );
+  });
+
+  it("offers the reply about a fix and inserts it into the composer", async () => {
+    const user = userEvent.setup();
+    const closed = msg("m2", {
+      sender_type: "system",
+      sender_id: null,
+      direction: "out",
+      kind: "event",
+      event: {
+        type: "issue_closed",
+        from: "pending",
+        to: "assigned",
+        assignee_id: operator.user.id,
+        previous_assignee_id: operator.user.id,
+        issue: { link_id: "i1", repository: "zerno-team/desktop", number: 12, url: "https://github.com/zerno-team/desktop/issues/12", reason: "completed" },
+      },
+    });
+    const { api } = server(
+      {
+        repository: desktop,
+        items: [link("i1", { status: "closed", number: 12, url: "https://github.com/zerno-team/desktop/issues/12" })],
+        reply_draft: { issue_id: "i1", number: 12, text: "Марина, исправили, обновление скоро." },
+      },
+      {},
+      [msg("m1", { body: "Корзина пустая" }), closed],
+    );
+    renderApp("/inbox/c1", { api });
+    const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
+    const line = await within(feed).findByRole("link", { name: "zerno-team/desktop#12" });
+    expect(line.parentElement).toHaveTextContent(/Issue zerno-team\/desktop#12 закрыт: исправлен, диалог вернулся исполнителю/);
+
+    expect(await screen.findByText(/Issue #12 исправлен/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Вставить в ответ" }));
+    const field = screen.getByRole("textbox", { name: "Ответ клиенту" });
+    expect(field).toHaveValue("Марина, исправили, обновление скоро.");
+    expect(field).toHaveFocus();
+    // Inserted, the offer steps aside; nothing was sent by itself.
+    expect(screen.queryByRole("button", { name: "Вставить в ответ" })).not.toBeInTheDocument();
+    expect(calls(api, "POST", "/conversations/c1/messages")).toHaveLength(0);
+  });
+
+  it("says when an issue is closed without a fix", async () => {
+    const notPlanned = msg("m2", {
+      sender_type: "system",
+      sender_id: null,
+      direction: "out",
+      kind: "event",
+      event: {
+        type: "issue_closed",
+        from: "pending",
+        to: "pending",
+        assignee_id: operator.user.id,
+        previous_assignee_id: operator.user.id,
+        issue: { link_id: "i1", repository: "zerno-team/desktop", number: 12, url: "https://github.com/zerno-team/desktop/issues/12", reason: "not_planned" },
+      },
+    });
+    const { api } = server({ repository: desktop, items: [] }, {}, [msg("m1", { body: "Корзина пустая" }), notPlanned]);
+    renderApp("/inbox/c1", { api });
+    const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
+    const line = await within(feed).findByRole("link", { name: "zerno-team/desktop#12" });
+    expect(line.parentElement).toHaveTextContent(/Issue zerno-team\/desktop#12 закрыт без исправления/);
+    expect(screen.queryByRole("button", { name: "Вставить в ответ" })).not.toBeInTheDocument();
   });
 });

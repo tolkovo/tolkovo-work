@@ -757,7 +757,12 @@
       },
       "issueCreated": "Создан issue {number}",
       "issueLinked": "Привязан к issue {number}",
-      "awaitingFix": ", диалог ждёт исправления"
+      "awaitingFix": ", диалог ждёт исправления",
+      "issueReopened": "Issue {number} переоткрыт",
+      "issueFixed": "Issue {number} закрыт: исправлен",
+      "issueNotPlanned": "Issue {number} закрыт без исправления",
+      "backToAssignee": ", диалог вернулся исполнителю",
+      "backToQueue": ", диалог вернулся в очередь"
     },
     "card": {
       "label": "Карточка клиента",
@@ -897,7 +902,9 @@
         "disconnected": "GitHub отключили до того, как issue был создан."
       },
       "retry": "Повторить",
-      "dismiss": "Убрать"
+      "dismiss": "Убрать",
+      "fixed": "Issue #{number} исправлен. Черновик ответа:",
+      "insertReply": "Вставить в ответ"
     },
     "awaitingFix": "Ждёт исправления"
   },

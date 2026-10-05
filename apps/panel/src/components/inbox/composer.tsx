@@ -18,6 +18,7 @@ import { clearDraftText, updateDraft, useDraft, type ComposerMode } from "../../
 import { signalSender } from "../../lib/realtime/signals";
 import { Menu } from "../menu";
 import { actionError } from "./conversation-actions";
+import { FixReplyOffer } from "./issues";
 import { useMemberNames } from "./presence";
 
 /** Characters a message may have (messages.body in api/openapi.yaml). */
@@ -144,6 +145,17 @@ export function Composer({ conversation: c, onShowLatest }: ComposerProps) {
 
       {allowed ? (
         <>
+          {!note && (
+            <FixReplyOffer
+              conversation={c}
+              text={draft.text}
+              onInsert={(text) => {
+                updateDraft(c.id, { text, key: null, seenId: newestForeign });
+                setPaused(false);
+                document.getElementById(fieldId)?.focus();
+              }}
+            />
+          )}
           <label htmlFor={fieldId} className="sr-only">
             {t(note ? "inbox.composer.noteLabel" : "inbox.composer.replyLabel")}
           </label>
