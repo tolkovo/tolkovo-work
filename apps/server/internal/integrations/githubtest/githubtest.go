@@ -1,6 +1,6 @@
 // Package githubtest is an in-memory GitHub for tests of the integrations
-// module and the API: manifest codes, installations, tokens and
-// repositories, with the same errors as the real client.
+// module and the API: manifest codes, installations, tokens, repositories
+// and issues, with the same errors as the real client.
 package githubtest
 
 import (
@@ -28,7 +28,15 @@ type GitHub struct {
 	keys     map[int64]string // App id → private key, to check the sealed one comes back
 	installs map[int64]installation
 	repos    []github.Repository
+	issues   map[string][]github.Issue // repository → issues, number = index + 1
+	created  []Created
 	fail     error
+}
+
+// Created is an issue the fake created, with what it was created from.
+type Created struct {
+	Repository string
+	github.NewIssue
 }
 
 // AddApp makes code exchangeable once for a new App.
@@ -63,6 +71,38 @@ func (g *GitHub) SetRepositories(r ...github.Repository) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.repos = r
+}
+
+// AddIssue puts an issue (or a pull request) into a repository and
+// returns its number.
+func (g *GitHub) AddIssue(fullName, title, state string, pullRequest bool) int64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.addIssue(fullName, title, state, pullRequest).Number
+}
+
+func (g *GitHub) addIssue(fullName, title, state string, pullRequest bool) github.Issue {
+	if g.issues == nil {
+		g.issues = map[string][]github.Issue{}
+	}
+	key := strings.ToLower(fullName)
+	n := int64(len(g.issues[key]) + 1)
+	is := github.Issue{
+		ID: 1000 + n, NodeID: fmt.Sprintf("I_%d", n), Number: n, Title: title, State: state,
+		HTMLURL: fmt.Sprintf("%s/%s/issues/%d", Web, fullName, n),
+	}
+	if pullRequest {
+		is.PullRequest = &struct{}{}
+	}
+	g.issues[key] = append(g.issues[key], is)
+	return is
+}
+
+// Created returns the issues created through CreateIssue, in order.
+func (g *GitHub) Created() []Created {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]Created(nil), g.created...)
 }
 
 // Fail makes every call fail with err until Fail(nil).
@@ -167,4 +207,45 @@ func (g *GitHub) Repository(_ context.Context, token crypto.Secret, fullName str
 		}
 	}
 	return github.Repository{}, github.ErrNotFound
+}
+
+// CreateIssue implements integrations.GitHub.
+func (g *GitHub) CreateIssue(_ context.Context, token crypto.Secret, fullName string, in github.NewIssue) (github.Issue, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.reach(token, fullName); err != nil {
+		return github.Issue{}, err
+	}
+	g.created = append(g.created, Created{Repository: fullName, NewIssue: in})
+	return g.addIssue(fullName, in.Title, "open", false), nil
+}
+
+// Issue implements integrations.GitHub.
+func (g *GitHub) Issue(_ context.Context, token crypto.Secret, fullName string, number int64) (github.Issue, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.reach(token, fullName); err != nil {
+		return github.Issue{}, err
+	}
+	list := g.issues[strings.ToLower(fullName)]
+	if number < 1 || number > int64(len(list)) {
+		return github.Issue{}, github.ErrNotFound
+	}
+	return list[number-1], nil
+}
+
+// reach checks the token and that the installation reaches the repository.
+func (g *GitHub) reach(token crypto.Secret, fullName string) error {
+	if g.fail != nil {
+		return g.fail
+	}
+	if !strings.HasPrefix(token.Reveal(), "ghs_") {
+		return github.ErrUnauthorized
+	}
+	for _, r := range g.repos {
+		if strings.EqualFold(r.FullName, fullName) {
+			return nil
+		}
+	}
+	return github.ErrNotFound
 }

@@ -75,6 +75,7 @@ type Conversation struct {
 	Version          int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	AwaitingFix      bool
 }
 
 type Message struct {

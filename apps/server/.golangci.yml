@@ -137,6 +137,13 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/channels
               desc: channels calls conversations, not the other way round
+        # integrations records issues in conversations (GH-02) through its
+        # facade; conversations does not know about trackers.
+        conversations-without-integrations:
+          files: ["**/internal/conversations/**"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/integrations
+              desc: integrations calls conversations, not the other way round
         # notifications reads conversations; conversations only knows its
         # Notifier interface.
         conversations-without-notifications:

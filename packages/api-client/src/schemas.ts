@@ -144,6 +144,7 @@ export const conversationSchema = z.object({
   last_message_at: z.string(),
   resolved_at: z.string().nullable(),
   closed_at: z.string().nullable(),
+  awaiting_fix: z.boolean(),
   version: z.number(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -184,11 +185,14 @@ export const attachmentSchema = z.object({
 }) satisfies z.ZodType<Schemas["Attachment"]>;
 
 export const messageEventSchema = z.object({
-  type: z.enum(["status_changed", "assigned"]),
+  type: z.enum(["status_changed", "assigned", "issue_created", "issue_linked"]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
   assignee_id: z.string().nullable(),
   previous_assignee_id: z.string().nullable(),
+  issue: z
+    .object({ link_id: z.string(), repository: z.string(), number: z.number(), url: z.string() })
+    .optional() satisfies z.ZodType<Schemas["MessageEventIssue"] | undefined>,
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({
@@ -360,6 +364,37 @@ export const gitHubRepositoryListSchema = z.object({
   items: z.array(gitHubRepositorySchema),
   more: z.boolean(),
 }) satisfies z.ZodType<Schemas["GitHubRepositoryList"]>;
+
+export const issueLinkSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  repository: z.string(),
+  number: z.number().nullable(),
+  url: z.string().nullable(),
+  title: z.string(),
+  status: z.enum(["creating", "open", "closed", "failed"]),
+  error: z.enum(["repository_unreachable", "app_refused", "rejected", "unavailable", "disconnected"]).optional(),
+  created_by: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}) satisfies z.ZodType<Schemas["IssueLink"]>;
+
+export const conversationIssuesSchema = z.object({
+  repository: gitHubRepositorySchema.nullable(),
+  items: z.array(issueLinkSchema),
+}) satisfies z.ZodType<Schemas["ConversationIssues"]>;
+
+export const issueDraftSchema = z.object({
+  repository: gitHubRepositorySchema,
+  title: z.string(),
+  body: z.string(),
+  quote: z.string(),
+  labels: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["IssueDraft"]>;
+
+export const openGitHubIssueListSchema = z.object({
+  items: z.array(z.object({ repository: z.string(), number: z.number(), title: z.string(), url: z.string() })),
+}) satisfies z.ZodType<Schemas["OpenGitHubIssueList"]>;
 
 export const telegramLoginSchema = z.object({
   channel: channelSchema,

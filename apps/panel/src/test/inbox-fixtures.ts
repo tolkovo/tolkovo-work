@@ -33,6 +33,7 @@ export const conv = (id: string, patch: Partial<Conversation> = {}): Conversatio
   last_message_at: new Date().toISOString(),
   resolved_at: null,
   closed_at: null,
+  awaiting_fix: false,
   version: 1,
   created_at: "2026-10-04T12:00:00Z",
   updated_at: "2026-10-04T12:00:00Z",

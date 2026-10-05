@@ -63,7 +63,8 @@ type env struct {
 	rdb    *redis.Client
 	prefix string
 	// github is the fake GitHub behind the integrations module.
-	github *githubtest.GitHub
+	github       *githubtest.GitHub
+	integrations *integrations.Service
 }
 
 type envOptions struct {
@@ -160,6 +161,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	gh := &githubtest.GitHub{}
 	integ := integrations.New(app, integrations.Options{
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
+		Conversations: convs, Jobs: inserter,
 	})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
@@ -172,7 +174,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	}
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
-		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh,
+		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
 	}
 }
 

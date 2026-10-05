@@ -98,6 +98,16 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.githubAppRefused") };
     case "github_unavailable":
       return { message: t("errors.githubUnavailable") };
+    case "github_not_connected":
+      return { message: t("errors.githubNotConnected") };
+    case "issue_in_progress":
+      return { message: t("errors.issueInProgress") };
+    case "issue_linked":
+      return { message: t("errors.issueLinked") };
+    case "issue_not_found":
+      return { message: t("errors.issueNotFound") };
+    case "issue_state":
+      return { message: t("errors.issueState") };
     default:
       return { message: t("errors.unknown") };
   }

@@ -19,6 +19,12 @@ const (
 	// EventAssigned covers taking, transferring and releasing; the status
 	// change that comes with it is in the same event.
 	EventAssigned = "assigned"
+	// EventIssueCreated and EventIssueLinked: a GitHub issue was created
+	// from the conversation or the conversation was linked to one
+	// (ADR-0012). From and To are set when the conversation went to wait
+	// for the fix with it.
+	EventIssueCreated = "issue_created"
+	EventIssueLinked  = "issue_linked"
 )
 
 // Event is what a system message records. It holds ids and statuses only:
@@ -29,6 +35,16 @@ type Event struct {
 	To                 Status     `json:"to"`
 	AssigneeID         *uuid.UUID `json:"assignee_id"`
 	PreviousAssigneeID *uuid.UUID `json:"previous_assignee_id"`
+	// Issue is set on the issue events.
+	Issue *IssueRef `json:"issue,omitempty"`
+}
+
+// IssueRef names an issue in a feed line: no title, the panel links to it.
+type IssueRef struct {
+	LinkID     uuid.UUID `json:"link_id"`
+	Repository string    `json:"repository"`
+	Number     int64     `json:"number"`
+	URL        string    `json:"url"`
 }
 
 // addEventMessage writes the system line of a state change, by actorID.
@@ -71,7 +87,16 @@ func eventFrom(kind string, meta []byte) *Event {
 		return nil
 	}
 	var ev Event
-	if err := json.Unmarshal(meta, &ev); err != nil || (ev.Type != EventStatusChanged && ev.Type != EventAssigned) {
+	if err := json.Unmarshal(meta, &ev); err != nil {
+		return nil
+	}
+	switch ev.Type {
+	case EventStatusChanged, EventAssigned:
+	case EventIssueCreated, EventIssueLinked:
+		if ev.Issue == nil {
+			return nil
+		}
+	default:
 		return nil
 	}
 	return &ev

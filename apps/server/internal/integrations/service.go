@@ -2,8 +2,8 @@
 // Phase 1 has GitHub: a workspace creates its own GitHub App from a
 // manifest, installs it on its repositories and picks the repository, the
 // labels and the templates new issues and replies about fixes start from.
-// Issues from conversations (GH-02) and the closing webhook (GH-03) build
-// on this.
+// Operators create issues from conversations or link conversations to
+// issues (GH-02, issues.go); the closing webhook (GH-03) builds on this.
 //
 // The App's private key and webhook secret are sealed with
 // internal/platform/crypto and never leave the module. Calls to GitHub
@@ -90,6 +90,8 @@ type GitHub interface {
 	InstallationToken(ctx context.Context, app github.App, installationID int64) (crypto.Secret, error)
 	Repositories(ctx context.Context, token crypto.Secret) ([]github.Repository, bool, error)
 	Repository(ctx context.Context, token crypto.Secret, fullName string) (github.Repository, error)
+	CreateIssue(ctx context.Context, token crypto.Secret, fullName string, in github.NewIssue) (github.Issue, error)
+	Issue(ctx context.Context, token crypto.Secret, fullName string, number int64) (github.Issue, error)
 }
 
 // Options configure the module.
@@ -99,8 +101,13 @@ type Options struct {
 	GitHub GitHub
 	// PublicURL is where GitHub posts webhooks (TOLKOVO_PUBLIC_URL).
 	PublicURL string
-	// PanelURL is where GitHub sends the browser back.
+	// PanelURL is where GitHub sends the browser back; issues link to
+	// conversations under it.
 	PanelURL string
+	// Conversations draft issues and record them in the feed (GH-02).
+	Conversations Conversations
+	// Jobs queues github.create_issue (role api); nil refuses to create issues.
+	Jobs Jobs
 }
 
 // Service is the facade of the module.
@@ -733,4 +740,15 @@ func deref(p *string) string {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// isConstraint reports a unique violation of the named index.
+func isConstraint(err error, name string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == name
+}
+
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }

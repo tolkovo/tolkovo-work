@@ -14,6 +14,7 @@
     { "$ref": "#/$defs/conversationStatusChanged" },
     { "$ref": "#/$defs/conversationAssigned" },
     { "$ref": "#/$defs/conversationTagsChanged" },
+    { "$ref": "#/$defs/conversationIssuesChanged" },
     { "$ref": "#/$defs/conversationRead" },
     { "$ref": "#/$defs/messageCreated" },
     { "$ref": "#/$defs/messageDelivery" },
@@ -34,6 +35,7 @@
         "conversation.status_changed",
         "conversation.assigned",
         "conversation.tags_changed",
+        "conversation.issues_changed",
         "conversation.read",
         "message.created",
         "message.delivery",
@@ -229,6 +231,20 @@
       "allOf": [{ "$ref": "#/$defs/event" }],
       "properties": {
         "type": { "const": "conversation.tags_changed" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "conversationIssuesChanged": {
+      "description": "A GitHub issue of a conversation was created, linked, failed or removed (ADR-0012); clients fetch the issues and the conversation over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.issues_changed" },
         "data": {
           "type": "object",
           "required": ["conversation_id"],

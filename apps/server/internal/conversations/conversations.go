@@ -31,9 +31,12 @@ type Conversation struct {
 	LastMessageAt   time.Time
 	ResolvedAt      *time.Time
 	ClosedAt        *time.Time
-	Version         int // bumps on every change; send it back to detect conflicts
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// AwaitingFix: an open GitHub issue is linked to the conversation
+	// (ADR-0012); it does not resolve itself by inactivity.
+	AwaitingFix bool
+	Version     int // bumps on every change; send it back to detect conflicts
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	// LastMessage is the newest message the customer could see (no notes,
 	// no system events): the inbox preview. Nil until there is one.
 	LastMessage *Preview
@@ -365,7 +368,7 @@ func conversationFrom(c store.Conversation, contactName string) Conversation {
 		ID: c.ID, Number: c.Number, ContactID: c.ContactID, ContactName: contactName,
 		ChannelID: c.ChannelID, Status: Status(c.Status), Priority: int(c.Priority), LineLevel: int(c.LineLevel),
 		AssigneeID: c.AssigneeID, Subject: c.Subject, FirstResponseAt: c.FirstResponseAt,
-		LastMessageAt: c.LastMessageAt, ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt,
+		LastMessageAt: c.LastMessageAt, ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix,
 		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 }

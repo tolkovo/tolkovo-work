@@ -36,3 +36,25 @@ type Integration struct {
 	UpdatedAt          time.Time
 	DisabledAt         *time.Time
 }
+
+type IssueLink struct {
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	IntegrationID  uuid.UUID
+	ConversationID uuid.UUID
+	Provider       string
+	RepoID         int64
+	RepoFullName   string
+	Status         string
+	ErrorCode      *string
+	Number         *int64
+	NodeID         *string
+	Url            *string
+	Title          string
+	Body           *string
+	Labels         []string
+	CreatedBy      *uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ClosedAt       *time.Time
+}

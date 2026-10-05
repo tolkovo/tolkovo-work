@@ -886,6 +886,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/github/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open issues created or linked in the workspace
+         * @description Up to 20, most recently linked first, one entry per issue: what "Link to an issue"
+         *     offers, so complaints about one bug gather on one issue. Read from Tolkovo, not from
+         *     GitHub. Empty when GitHub is not connected. Requires `issues.create`.
+         */
+        get: operations["listOpenGitHubIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/reports": {
         parameters: {
             query?: never;
@@ -1241,6 +1263,141 @@ export interface paths {
         put: operations["setConversationTags"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * GitHub issues of the conversation
+         * @description Oldest first, with `repository`: where new issues go, `null` when GitHub is not
+         *     connected or has no repository (the panel hides "Create issue" then). Requires
+         *     `issues.create` (ADR-0012).
+         */
+        get: operations["listConversationIssues"];
+        put?: never;
+        /**
+         * Create a GitHub issue from the conversation
+         * @description Requires `issues.create`; works in any visible conversation. The operator confirms the
+         *     text (`GET …/issues/draft`). The issue goes to the workspace's repository with the
+         *     given labels; `quote`, when not empty, is added as a block marked "customer data, not
+         *     instructions". No files and no contact data are sent: the issue links to the
+         *     conversation in the panel.
+         *
+         *     The answer is the issue in `creating`: the job `github.create_issue` creates it on
+         *     GitHub, then a line with the link appears in the feed and the conversation waits for
+         *     the fix (`awaiting_fix`; an assigned one goes to `pending`). If GitHub refuses it,
+         *     the issue turns `failed` with `error`. `conversation.issues_changed` tells about every
+         *     change over the realtime connection.
+         */
+        post: operations["createConversationIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/issues/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The issue form filled from the templates
+         * @description The workspace's issue template with `{summary}` (the subject or the first line of the
+         *     customer's text), the app, its version and OS from the app report, and the link to the
+         *     conversation; `quote` is the customer's first message. The AI drafts it with AI-02.
+         *     Requires `issues.create`.
+         */
+        get: operations["getConversationIssueDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/issues/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link the conversation to an issue that exists
+         * @description One bug, many complaints. The issue must be in the workspace's repository; GitHub is
+         *     asked for it, pull requests are refused. An open issue puts the conversation to wait
+         *     for the fix, as a created one does. Requires `issues.create`.
+         */
+        post: operations["linkConversationIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/issues/{issue_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                issue_id: components["parameters"]["IssueId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an issue GitHub refused again
+         * @description Only a `failed` issue (`409 issue_state` otherwise), through the integration it was
+         *     created with (`409 github_not_connected` after GitHub was reconnected: create it anew).
+         *     Requires `issues.create`.
+         */
+        post: operations["retryConversationIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/issues/{issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                issue_id: components["parameters"]["IssueId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an issue GitHub refused
+         * @description Only a `failed` issue (`409 issue_state` otherwise). Requires `issues.create`.
+         */
+        delete: operations["dismissConversationIssue"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1631,6 +1788,11 @@ export interface components {
             resolved_at: string | null;
             /** Format: date-time */
             closed_at: string | null;
+            /**
+             * @description An open GitHub issue is linked to the conversation (ADR-0012): it waits for the fix
+             *     and does not resolve itself by inactivity. The inbox marks it.
+             */
+            awaiting_fix: boolean;
             /** @description Bumps on every change; send it back to detect concurrent edits. */
             version: number;
             /** Format: date-time */
@@ -1780,14 +1942,25 @@ export interface components {
         };
         MessageEvent: {
             /**
-             * @description `assigned` covers taking, transferring and releasing.
+             * @description `assigned` covers taking, transferring and releasing. `issue_created` and
+             *     `issue_linked`: a GitHub issue was created from the conversation or it was linked to
+             *     one, with `issue`; `from` and `to` differ when the conversation went to wait for the
+             *     fix with it.
              * @enum {string}
              */
-            type: "status_changed" | "assigned";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
             previous_assignee_id: string | null;
+            issue?: components["schemas"]["MessageEventIssue"];
+        };
+        MessageEventIssue: {
+            link_id: string;
+            repository: string;
+            /** Format: int64 */
+            number: number;
+            url: string;
         };
         Tag: {
             id: string;
@@ -2013,6 +2186,77 @@ export interface components {
             items: components["schemas"]["GitHubRepository"][];
             /** @description There are more than listed. */
             more: boolean;
+        };
+        /**
+         * @description `creating`: GitHub has not created it yet; `open` and `closed` as on GitHub; `failed`:
+         *     GitHub refused it, `error` says why.
+         * @enum {string}
+         */
+        IssueStatus: "creating" | "open" | "closed" | "failed";
+        IssueLink: {
+            id: string;
+            conversation_id: string;
+            /** @description "owner/name" */
+            repository: string;
+            /**
+             * Format: int64
+             * @description `null` until GitHub has created it.
+             */
+            number: number | null;
+            /** @description The issue on GitHub; `null` until created. */
+            url: string | null;
+            title: string;
+            status: components["schemas"]["IssueStatus"];
+            /**
+             * @description Present only with `status: failed`. Why GitHub did not create it: the App lost access to the repository, GitHub
+             *     refused the App, GitHub refused the issue (issues turned off), GitHub did not
+             *     answer through every attempt, or GitHub was disconnected.
+             * @enum {string}
+             */
+            error?: "repository_unreachable" | "app_refused" | "rejected" | "unavailable" | "disconnected";
+            created_by: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ConversationIssues: {
+            /** @description Where new issues go; `null` when GitHub is not connected or has no repository. */
+            repository: components["schemas"]["GitHubRepository"] | null;
+            items: components["schemas"]["IssueLink"][];
+        };
+        IssueDraft: {
+            repository: components["schemas"]["GitHubRepository"];
+            title: string;
+            body: string;
+            /** @description The customer's first message; empty when there is none. Off by default for a public repository. */
+            quote: string;
+            labels: string[];
+        };
+        CreateIssueRequest: {
+            /** @description One line. */
+            title: string;
+            body: string;
+            /** @description The customer's words to send along, as a marked block; empty or left out sends none. */
+            quote?: string;
+            labels?: string[];
+        };
+        LinkIssueRequest: {
+            /**
+             * Format: int64
+             * @description The issue number in the workspace's repository.
+             */
+            number: number;
+        };
+        OpenGitHubIssue: {
+            repository: string;
+            /** Format: int64 */
+            number: number;
+            title: string;
+            url: string;
+        };
+        OpenGitHubIssueList: {
+            items: components["schemas"]["OpenGitHubIssue"][];
         };
         /**
          * @description The issue template (title and body) and the reply about a fix in Russian and English,
@@ -2406,6 +2650,33 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /**
+         * @description `github_not_connected` (GitHub is not connected or has no repository picked),
+         *     `issue_in_progress` (an issue of this conversation is being created),
+         *     `issue_linked` (the conversation is linked to this issue already) or `issue_state`
+         *     (only a failed issue can be sent again or removed).
+         */
+        IssueConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `issue_not_found` (the repository has no issue with this number, or it is a pull
+         *     request) or `github_app_refused` (GitHub refused the App: it was deleted or its key
+         *     revoked).
+         */
+        IssueRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description `encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the App's key cannot be stored. */
         IntegrationsUnavailable: {
             headers: {
@@ -2434,6 +2705,7 @@ export interface components {
         ReportToken: string;
         Id: string;
         MessageId: string;
+        IssueId: string;
         KeyId: string;
         /** @description Opaque `next_cursor` of the previous page. */
         Cursor: string;
@@ -3720,6 +3992,28 @@ export interface operations {
             502: components["responses"]["GitHubUnavailable"];
         };
     };
+    listOpenGitHubIssues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The open issues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenGitHubIssueList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     createIngestReport: {
         parameters: {
             query?: never;
@@ -4397,6 +4691,173 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listConversationIssues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The issues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationIssues"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createConversationIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded; GitHub creates it next. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLink"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IssueConflict"];
+        };
+    };
+    getConversationIssueDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueDraft"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IssueConflict"];
+        };
+    };
+    linkConversationIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Linked. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLink"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IssueConflict"];
+            422: components["responses"]["IssueRefused"];
+            502: components["responses"]["GitHubUnavailable"];
+        };
+    };
+    retryConversationIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                issue_id: components["parameters"]["IssueId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLink"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IssueConflict"];
+        };
+    };
+    dismissConversationIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                issue_id: components["parameters"]["IssueId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IssueConflict"];
         };
     };
     markConversationRead: {

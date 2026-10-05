@@ -23,6 +23,7 @@ const conv = (id: string, minute: number, patch: Partial<Conversation> = {}): Co
   last_message_at: `2026-10-04T12:${String(minute).padStart(2, "0")}:00Z`,
   resolved_at: null,
   closed_at: null,
+  awaiting_fix: false,
   version: 1,
   created_at: "2026-10-04T12:00:00Z",
   updated_at: "2026-10-04T12:00:00Z",
@@ -124,6 +125,20 @@ describe("createInboxSync", () => {
     expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
     // The own read mark changes mine_unread (the tab title), the tags change no counter.
     expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([queryKeys.inboxCounts]);
+    sync.stop();
+  });
+
+  it("refetches the issues of a conversation and the conversation when they change", async () => {
+    const { api, queryClient, sync } = setup({ "GET /conversations/c1": () => json(200, conv("c1", 5)) });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    sync.onEvent(event("conversation.issues_changed", { conversation_id: "c1" }));
+    await vi.advanceTimersByTimeAsync(50);
+    // awaiting_fix lives on the conversation; no counter changes.
+    expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([
+      queryKeys.conversationIssues("c1"),
+      queryKeys.openGitHubIssues,
+    ]);
     sync.stop();
   });
 

@@ -115,6 +115,53 @@ func (q *Queries) CreateEventMessage(ctx context.Context, arg CreateEventMessage
 	return i, err
 }
 
+const createKeyedEventMessage = `-- name: CreateKeyedEventMessage :many
+INSERT INTO messages (id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, meta, idempotency_key, created_at)
+VALUES ($1, $2, $3, 'out', 'system', $4, 'event', $5, $6, $7)
+ON CONFLICT (workspace_id, conversation_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+RETURNING id
+`
+
+type CreateKeyedEventMessageParams struct {
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	SenderID       *uuid.UUID
+	Meta           []byte
+	IdempotencyKey *string
+	CreatedAt      time.Time
+}
+
+// A system line recorded once per key: a retried job does not repeat it.
+// No row back means it is there already.
+func (q *Queries) CreateKeyedEventMessage(ctx context.Context, arg CreateKeyedEventMessageParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, createKeyedEventMessage,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.SenderID,
+		arg.Meta,
+		arg.IdempotencyKey,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (
     id, workspace_id, conversation_id, direction, sender_type, sender_id, kind,
@@ -181,6 +228,46 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.DeliveryError,
 	)
 	return i, err
+}
+
+const firstCustomerText = `-- name: FirstCustomerText :many
+SELECT body, meta FROM messages
+WHERE workspace_id = $1 AND conversation_id = $2
+  AND sender_type = 'contact' AND body <> '' AND deleted_at IS NULL
+ORDER BY id
+LIMIT 1
+`
+
+type FirstCustomerTextParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+}
+
+type FirstCustomerTextRow struct {
+	Body string
+	Meta []byte
+}
+
+// The customer's first message with text and its meta (the app report):
+// what an issue draft starts from.
+func (q *Queries) FirstCustomerText(ctx context.Context, arg FirstCustomerTextParams) ([]FirstCustomerTextRow, error) {
+	rows, err := q.db.Query(ctx, firstCustomerText, arg.WorkspaceID, arg.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FirstCustomerTextRow
+	for rows.Next() {
+		var i FirstCustomerTextRow
+		if err := rows.Scan(&i.Body, &i.Meta); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getAttachment = `-- name: GetAttachment :one

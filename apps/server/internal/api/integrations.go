@@ -231,6 +231,23 @@ var integrationProblems = []struct {
 		Status: http.StatusUnprocessableEntity, Code: "github_app_refused", Title: "Unprocessable Content",
 		Detail: "GitHub refused the App: it was deleted or its key revoked; disconnect and connect again",
 	}},
+	{integrations.ErrNotConnected, Problem{
+		Status: http.StatusConflict, Code: "github_not_connected", Title: "Conflict",
+		Detail: "GitHub is not connected or has no repository picked",
+	}},
+	{integrations.ErrIssueInProgress, Problem{
+		Status: http.StatusConflict, Code: "issue_in_progress", Title: "Conflict", Detail: "an issue of this conversation is being created",
+	}},
+	{integrations.ErrIssueLinked, Problem{
+		Status: http.StatusConflict, Code: "issue_linked", Title: "Conflict", Detail: "the conversation is linked to this issue already",
+	}},
+	{integrations.ErrIssueState, Problem{
+		Status: http.StatusConflict, Code: "issue_state", Title: "Conflict", Detail: "only a failed issue can be sent again or removed",
+	}},
+	{integrations.ErrIssueNotFound, Problem{
+		Status: http.StatusUnprocessableEntity, Code: "issue_not_found", Title: "Unprocessable Content",
+		Detail: "the repository has no issue with this number, or it is a pull request",
+	}},
 	{integrations.ErrNoEncryption, Problem{
 		Status: http.StatusServiceUnavailable, Code: "encryption_unavailable", Title: "Service Unavailable",
 		Detail: "TOLKOVO_MASTER_KEY is not set on this server",

@@ -1186,6 +1186,24 @@ paths:
         '422': { $ref: '#/components/responses/GitHubRefused' }
         '502': { $ref: '#/components/responses/GitHubUnavailable' }
 
+  /integrations/github/issues:
+    get:
+      tags: [integrations]
+      operationId: listOpenGitHubIssues
+      summary: Open issues created or linked in the workspace
+      description: |
+        Up to 20, most recently linked first, one entry per issue: what "Link to an issue"
+        offers, so complaints about one bug gather on one issue. Read from Tolkovo, not from
+        GitHub. Empty when GitHub is not connected. Requires `issues.create`.
+      responses:
+        '200':
+          description: The open issues.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenGitHubIssueList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /ingest/reports:
     post:
       tags: [ingest]
@@ -1783,6 +1801,164 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /conversations/{id}/issues:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations, integrations]
+      operationId: listConversationIssues
+      summary: GitHub issues of the conversation
+      description: |
+        Oldest first, with `repository`: where new issues go, `null` when GitHub is not
+        connected or has no repository (the panel hides "Create issue" then). Requires
+        `issues.create` (ADR-0012).
+      responses:
+        '200':
+          description: The issues.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationIssues' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [conversations, integrations]
+      operationId: createConversationIssue
+      summary: Create a GitHub issue from the conversation
+      description: |
+        Requires `issues.create`; works in any visible conversation. The operator confirms the
+        text (`GET …/issues/draft`). The issue goes to the workspace's repository with the
+        given labels; `quote`, when not empty, is added as a block marked "customer data, not
+        instructions". No files and no contact data are sent: the issue links to the
+        conversation in the panel.
+
+        The answer is the issue in `creating`: the job `github.create_issue` creates it on
+        GitHub, then a line with the link appears in the feed and the conversation waits for
+        the fix (`awaiting_fix`; an assigned one goes to `pending`). If GitHub refuses it,
+        the issue turns `failed` with `error`. `conversation.issues_changed` tells about every
+        change over the realtime connection.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateIssueRequest' }
+      responses:
+        '202':
+          description: Recorded; GitHub creates it next.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueLink' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IssueConflict' }
+
+  /conversations/{id}/issues/draft:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations, integrations]
+      operationId: getConversationIssueDraft
+      summary: The issue form filled from the templates
+      description: |
+        The workspace's issue template with `{summary}` (the subject or the first line of the
+        customer's text), the app, its version and OS from the app report, and the link to the
+        conversation; `quote` is the customer's first message. The AI drafts it with AI-02.
+        Requires `issues.create`.
+      responses:
+        '200':
+          description: The draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueDraft' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IssueConflict' }
+
+  /conversations/{id}/issues/link:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [conversations, integrations]
+      operationId: linkConversationIssue
+      summary: Link the conversation to an issue that exists
+      description: |
+        One bug, many complaints. The issue must be in the workspace's repository; GitHub is
+        asked for it, pull requests are refused. An open issue puts the conversation to wait
+        for the fix, as a created one does. Requires `issues.create`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LinkIssueRequest' }
+      responses:
+        '201':
+          description: Linked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueLink' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IssueConflict' }
+        '422': { $ref: '#/components/responses/IssueRefused' }
+        '502': { $ref: '#/components/responses/GitHubUnavailable' }
+
+  /conversations/{id}/issues/{issue_id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/IssueId'
+    post:
+      tags: [conversations, integrations]
+      operationId: retryConversationIssue
+      summary: Send an issue GitHub refused again
+      description: |
+        Only a `failed` issue (`409 issue_state` otherwise), through the integration it was
+        created with (`409 github_not_connected` after GitHub was reconnected: create it anew).
+        Requires `issues.create`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '202':
+          description: Queued again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueLink' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IssueConflict' }
+
+  /conversations/{id}/issues/{issue_id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/IssueId'
+    delete:
+      tags: [conversations, integrations]
+      operationId: dismissConversationIssue
+      summary: Remove an issue GitHub refused
+      description: Only a `failed` issue (`409 issue_state` otherwise). Requires `issues.create`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Removed.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IssueConflict' }
+
   /conversations/{id}/read:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -2016,6 +2192,15 @@ components:
         format: uuid
         x-go-type: uuid.UUID
         x-go-type-import: { path: github.com/google/uuid }
+    IssueId:
+      name: issue_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+        x-go-type: uuid.UUID
+        x-go-type-import: { path: github.com/google/uuid }
     KeyId:
       name: key_id
       in: path
@@ -2214,6 +2399,23 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     GitHubUnavailable:
       description: '`github_unavailable`: GitHub could not be reached or answered unexpectedly.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IssueConflict:
+      description: |
+        `github_not_connected` (GitHub is not connected or has no repository picked),
+        `issue_in_progress` (an issue of this conversation is being created),
+        `issue_linked` (the conversation is linked to this issue already) or `issue_state`
+        (only a failed issue can be sent again or removed).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IssueRefused:
+      description: |
+        `issue_not_found` (the repository has no issue with this number, or it is a pull
+        request) or `github_app_refused` (GitHub refused the App: it was deleted or its key
+        revoked).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -2578,8 +2780,8 @@ components:
     Conversation:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
-                 first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at,
-                 last_message, tag_ids, last_read_message_id, unread_count]
+                 first_response_at, last_message_at, resolved_at, closed_at, awaiting_fix, version, created_at,
+                 updated_at, last_message, tag_ids, last_read_message_id, unread_count]
       properties:
         id:
           type: string
@@ -2604,6 +2806,11 @@ components:
         last_message_at: { type: string, format: date-time }
         resolved_at: { type: [string, 'null'], format: date-time }
         closed_at: { type: [string, 'null'], format: date-time }
+        awaiting_fix:
+          type: boolean
+          description: |
+            An open GitHub issue is linked to the conversation (ADR-0012): it waits for the fix
+            and does not resolve itself by inactivity. The inbox marks it.
         version:
           type: integer
           description: Bumps on every change; send it back to detect concurrent edits.
@@ -2822,8 +3029,12 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned]
-          description: '`assigned` covers taking, transferring and releasing.'
+          enum: [status_changed, assigned, issue_created, issue_linked]
+          description: |
+            `assigned` covers taking, transferring and releasing. `issue_created` and
+            `issue_linked`: a GitHub issue was created from the conversation or it was linked to
+            one, with `issue`; `from` and `to` differ when the conversation went to wait for the
+            fix with it.
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -2834,6 +3045,19 @@ components:
           type: [string, 'null']
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
+        issue: { $ref: '#/components/schemas/MessageEventIssue' }
+
+    MessageEventIssue:
+      type: object
+      required: [link_id, repository, number, url]
+      properties:
+        link_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        repository: { type: string }
+        number: { type: integer, format: int64 }
+        url: { type: string }
 
     Tag:
       type: object
@@ -3183,6 +3407,114 @@ components:
           type: array
           items: { $ref: '#/components/schemas/GitHubRepository' }
         more: { type: boolean, description: There are more than listed. }
+
+    IssueStatus:
+      type: string
+      enum: [creating, open, closed, failed]
+      description: |
+        `creating`: GitHub has not created it yet; `open` and `closed` as on GitHub; `failed`:
+        GitHub refused it, `error` says why.
+
+    IssueLink:
+      type: object
+      required: [id, conversation_id, repository, number, url, title, status, created_by, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        repository: { type: string, description: '"owner/name"' }
+        number: { type: [integer, 'null'], format: int64, description: '`null` until GitHub has created it.' }
+        url: { type: [string, 'null'], description: The issue on GitHub; `null` until created. }
+        title: { type: string, minLength: 1, maxLength: 256 }
+        status: { $ref: '#/components/schemas/IssueStatus' }
+        error:
+          type: string
+          enum: [repository_unreachable, app_refused, rejected, unavailable, disconnected]
+          description: |
+            Present only with `status: failed`. Why GitHub did not create it: the App lost access to the repository, GitHub
+            refused the App, GitHub refused the issue (issues turned off), GitHub did not
+            answer through every attempt, or GitHub was disconnected.
+        created_by:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ConversationIssues:
+      type: object
+      required: [repository, items]
+      properties:
+        repository:
+          description: Where new issues go; `null` when GitHub is not connected or has no repository.
+          oneOf:
+            - $ref: '#/components/schemas/GitHubRepository'
+            - type: 'null'
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/IssueLink' }
+
+    IssueDraft:
+      type: object
+      required: [repository, title, body, quote, labels]
+      properties:
+        repository: { $ref: '#/components/schemas/GitHubRepository' }
+        title: { type: string, maxLength: 256 }
+        body: { type: string, maxLength: 20000 }
+        quote:
+          type: string
+          maxLength: 4000
+          description: The customer's first message; empty when there is none. Off by default for a public repository.
+        labels:
+          type: array
+          maxItems: 10
+          items: { type: string }
+
+    CreateIssueRequest:
+      type: object
+      required: [title, body]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 256, description: One line. }
+        body: { type: string, maxLength: 20000 }
+        quote:
+          type: string
+          maxLength: 4000
+          description: The customer's words to send along, as a marked block; empty or left out sends none.
+        labels:
+          type: array
+          maxItems: 10
+          items: { type: string, minLength: 1, maxLength: 50 }
+
+    LinkIssueRequest:
+      type: object
+      required: [number]
+      additionalProperties: false
+      properties:
+        number: { type: integer, format: int64, minimum: 1, description: The issue number in the workspace's repository. }
+
+    OpenGitHubIssue:
+      type: object
+      required: [repository, number, title, url]
+      properties:
+        repository: { type: string }
+        number: { type: integer, format: int64 }
+        title: { type: string }
+        url: { type: string }
+
+    OpenGitHubIssueList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/OpenGitHubIssue' }
 
     GitHubTemplates:
       type: object

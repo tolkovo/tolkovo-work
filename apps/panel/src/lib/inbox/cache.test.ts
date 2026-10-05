@@ -30,6 +30,7 @@ function conv(id: string, minute: number, patch: Partial<Conversation> = {}): Co
     last_message_at: `2026-10-04T12:${String(minute).padStart(2, "0")}:00Z`,
     resolved_at: null,
     closed_at: null,
+    awaiting_fix: false,
     version: 1,
     created_at: "2026-10-04T12:00:00Z",
     updated_at: "2026-10-04T12:00:00Z",

@@ -79,7 +79,7 @@ func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountIn
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, status, priority, subject)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at
+RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix
 `
 
 type CreateConversationParams struct {
@@ -122,12 +122,13 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AwaitingFix,
 	)
 	return i, err
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -207,6 +208,7 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.Conversation.Version,
 		&i.Conversation.CreatedAt,
 		&i.Conversation.UpdatedAt,
+		&i.Conversation.AwaitingFix,
 		&i.ContactName,
 		&i.LastSenderType,
 		&i.LastKind,
@@ -243,7 +245,7 @@ func (q *Queries) IsActiveMember(ctx context.Context, arg IsActiveMemberParams) 
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -357,6 +359,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.Conversation.Version,
 			&i.Conversation.CreatedAt,
 			&i.Conversation.UpdatedAt,
+			&i.Conversation.AwaitingFix,
 			&i.ContactName,
 			&i.LastSenderType,
 			&i.LastKind,
@@ -378,7 +381,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const lockConversation = `-- name: LockConversation :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix FROM conversations
 WHERE workspace_id = $1 AND id = $2
 FOR UPDATE
 `
@@ -411,6 +414,7 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AwaitingFix,
 	)
 	return i, err
 }
@@ -428,6 +432,25 @@ func (q *Queries) NextConversationNumber(ctx context.Context, workspaceID uuid.U
 	var last_number int64
 	err := row.Scan(&last_number)
 	return last_number, err
+}
+
+const setAwaitingFix = `-- name: SetAwaitingFix :exec
+UPDATE conversations
+SET awaiting_fix = $1, version = version + 1, updated_at = now()
+WHERE workspace_id = $2 AND id = $3
+`
+
+type SetAwaitingFixParams struct {
+	AwaitingFix bool
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// An open issue is linked to the conversation, or the last one was closed
+// (ADR-0012): the inbox shows the mark, clients compare versions.
+func (q *Queries) SetAwaitingFix(ctx context.Context, arg SetAwaitingFixParams) error {
+	_, err := q.db.Exec(ctx, setAwaitingFix, arg.AwaitingFix, arg.WorkspaceID, arg.ID)
+	return err
 }
 
 const touchConversation = `-- name: TouchConversation :exec

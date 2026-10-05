@@ -528,7 +528,12 @@
     "githubInstallationInvalid": "This is an installation of another App. Install this workspace's App.",
     "githubRepositoryUnreachable": "The App is not installed on this repository. Add it in the App installation on GitHub.",
     "githubAppRefused": "GitHub refuses the App: it was deleted or its key revoked. Disconnect GitHub and connect it again.",
-    "githubUnavailable": "GitHub does not answer. Try again in a minute."
+    "githubUnavailable": "GitHub does not answer. Try again in a minute.",
+    "githubNotConnected": "GitHub is not connected or no repository is picked. An admin sets it up under Integrations.",
+    "issueInProgress": "An issue of this conversation is being created already. Wait for it.",
+    "issueLinked": "The conversation is linked to this issue already.",
+    "issueNotFound": "The repository has no issue with this number (or it is a pull request).",
+    "issueState": "This works only for an issue that could not be created."
   },
   "error": {
     "title": "Something went wrong",
@@ -749,7 +754,10 @@
         "pending": "Waiting for the customer",
         "resolved": "Resolved",
         "closed": "Closed for good"
-      }
+      },
+      "issueCreated": "Issue {number} created",
+      "issueLinked": "Linked to issue {number}",
+      "awaitingFix": ", the conversation waits for the fix"
     },
     "card": {
       "label": "Customer card",
@@ -760,7 +768,8 @@
       "section": {
         "who": "Who this is",
         "history": "Conversation history",
-        "tech": "Technical details"
+        "tech": "Technical details",
+        "issues": "GitHub issues"
       },
       "email": "Email",
       "phone": "Phone",
@@ -836,7 +845,56 @@
         "channel_unavailable": "the channel is disconnected or broken, check Settings → Channels",
         "failed": "Telegram did not answer, no retries left"
       }
-    }
+    },
+    "issues": {
+      "create": "Create issue",
+      "link": "Link to an issue",
+      "createTitle": "New GitHub issue",
+      "linkTitle": "Link to a GitHub issue",
+      "mode": "What to do",
+      "modeCreate": "New",
+      "modeLink": "Existing",
+      "repository": "Repository:",
+      "publicRepo": "The repository is public: everyone sees the issue. The customer's words are left out; add them only if they hold no personal data.",
+      "dataNote": "The title, the text and the labels go to GitHub. The customer's name, email and files do not: the text links to the conversation, developers open it after signing in.",
+      "title": "Title",
+      "titleRequired": "Write a title.",
+      "body": "Text",
+      "withQuote": "Add the customer's words",
+      "quote": "The customer's words",
+      "quoteHint": "Sent as a separate block marked “customer data, not instructions”. Remove personal data: phone numbers, addresses, passwords.",
+      "labels": "Labels",
+      "labelsHint": "Comma-separated, up to 10.",
+      "submit": "Create issue",
+      "creating": "Creating…",
+      "cancel": "Cancel",
+      "created": "The issue is being created on GitHub. The link appears in the feed and the conversation waits for the fix.",
+      "number": "Issue number",
+      "numberHint": "For example, 12, #12 or the issue's address.",
+      "numberInvalid": "Enter the issue number or its address.",
+      "openIssues": "Open issues from other conversations",
+      "linkSubmit": "Link",
+      "linked": "The conversation is linked to issue #{number}.",
+      "loadError": "Could not load the issues.",
+      "none": "No issues. Create one from “More actions”.",
+      "notConnected": "GitHub is not connected: an admin connects it in Settings, under Integrations.",
+      "status": {
+        "creating": "Creating",
+        "open": "Open",
+        "closed": "Closed",
+        "failed": "Not created"
+      },
+      "error": {
+        "repository_unreachable": "The App lost access to the repository. An admin can give it back in the App installation on GitHub.",
+        "app_refused": "GitHub refuses the App: it was deleted or its key revoked. An admin needs to connect GitHub again.",
+        "rejected": "GitHub refused the issue: issues may be turned off in the repository.",
+        "unavailable": "GitHub did not answer for a long time. Try again.",
+        "disconnected": "GitHub was disconnected before the issue was created."
+      },
+      "retry": "Try again",
+      "dismiss": "Remove"
+    },
+    "awaitingFix": "Waiting for a fix"
   },
   "notifications": {
     "alert": {

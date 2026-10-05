@@ -13,7 +13,16 @@ import { Menu, type MenuItem } from "../menu";
  * Close — and the rest under ⋯. Escalation arrives with lines (phase 3). Every change sends the
  * version the operator saw; a conflict refetches and asks to retry.
  */
-export function ConversationActions({ conversation: c, change }: { conversation: Conversation; change: ConversationChange }) {
+export function ConversationActions({
+  conversation: c,
+  change,
+  extra = [],
+}: {
+  conversation: Conversation;
+  change: ConversationChange;
+  /** More items for ⋯ that are not status changes (GitHub issues). */
+  extra?: MenuItem[];
+}) {
   const { t } = useTranslation();
   const can = useAbilities(c);
   const { data: session } = useSession();
@@ -29,6 +38,7 @@ export function ConversationActions({ conversation: c, change }: { conversation:
     ...(can.wait ? [{ label: t("inbox.actions.wait"), onSelect: status("pending") }] : []),
     ...(can.resume ? [{ label: t("inbox.actions.resume"), onSelect: status("assigned") }] : []),
     ...(can.release ? [{ label: t("inbox.actions.release"), onSelect: assign(null) }] : []),
+    ...extra,
   ];
 
   return (

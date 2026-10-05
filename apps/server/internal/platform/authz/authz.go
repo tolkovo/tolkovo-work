@@ -58,6 +58,7 @@ const (
 	ChannelsManage Permission = "channels.manage" // connect, rename and disconnect channels (tokens, sessions)
 
 	IntegrationsManage Permission = "integrations.manage" // connect GitHub, pick the repository, labels and templates
+	IssuesCreate       Permission = "issues.create"       // create a GitHub issue from a visible conversation or link it to one
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
@@ -67,19 +68,19 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, IntegrationsManage,
+		ChannelsView, ChannelsManage, IntegrationsManage, IssuesCreate,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, IntegrationsManage,
+		ChannelsView, ChannelsManage, IntegrationsManage, IssuesCreate,
 	},
 	RoleOperator: {
 		MembersView,
 		ConversationsView, ConversationsReply, ConversationsNote, ConversationsTake, ConversationsTag,
-		ContactsView, ContactsEdit,
+		ContactsView, ContactsEdit, IssuesCreate,
 	},
 }
 

@@ -63,3 +63,16 @@ export function parseLabels(text: string): string[] {
     .map((l) => l.trim())
     .filter(Boolean);
 }
+
+/**
+ * The issue number from what an operator types: `12`, `#12` or the issue's address
+ * (…/owner/name/issues/12). Null when it is none of these; the repository of an address is not
+ * checked here, the server asks GitHub in the workspace's repository.
+ */
+export function parseIssueNumber(text: string): number | null {
+  const v = text.trim();
+  const m = /^#?(\d{1,10})$/.exec(v) ?? /\/issues\/(\d{1,10})\/?(?:[?#].*)?$/.exec(v);
+  if (!m?.[1]) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}

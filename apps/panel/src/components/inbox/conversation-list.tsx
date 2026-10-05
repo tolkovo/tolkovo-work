@@ -177,6 +177,11 @@ function ConversationRow({ conversation: c, tab, selected }: { conversation: Con
             </span>
           )
         )}
+        {c.awaiting_fix && !finished && (
+          <span className="shrink-0 rounded-sm bg-lamp-soft px-1.5 py-0.5 text-[10.5px] font-medium text-lamp-ink">
+            {t("inbox.awaitingFix")}
+          </span>
+        )}
         <span className="truncate">
           {preview ? <PreviewText text={preview.text} files={preview.attachments} /> : t("inbox.noPreview")}
         </span>

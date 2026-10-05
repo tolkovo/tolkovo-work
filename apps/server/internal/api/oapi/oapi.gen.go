@@ -257,6 +257,57 @@ func (e IngestReplySender) Valid() bool {
 	}
 }
 
+// Defines values for IssueLinkError.
+const (
+	IssueLinkErrorAppRefused            IssueLinkError = "app_refused"
+	IssueLinkErrorDisconnected          IssueLinkError = "disconnected"
+	IssueLinkErrorRejected              IssueLinkError = "rejected"
+	IssueLinkErrorRepositoryUnreachable IssueLinkError = "repository_unreachable"
+	IssueLinkErrorUnavailable           IssueLinkError = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the IssueLinkError enum.
+func (e IssueLinkError) Valid() bool {
+	switch e {
+	case IssueLinkErrorAppRefused:
+		return true
+	case IssueLinkErrorDisconnected:
+		return true
+	case IssueLinkErrorRejected:
+		return true
+	case IssueLinkErrorRepositoryUnreachable:
+		return true
+	case IssueLinkErrorUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueStatus.
+const (
+	IssueStatusClosed   IssueStatus = "closed"
+	IssueStatusCreating IssueStatus = "creating"
+	IssueStatusFailed   IssueStatus = "failed"
+	IssueStatusOpen     IssueStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the IssueStatus enum.
+func (e IssueStatus) Valid() bool {
+	switch e {
+	case IssueStatusClosed:
+		return true
+	case IssueStatusCreating:
+		return true
+	case IssueStatusFailed:
+		return true
+	case IssueStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Locale.
 const (
 	En Locale = "en"
@@ -401,6 +452,8 @@ func (e MessageUnsupported) Valid() bool {
 // Defines values for MessageEventType.
 const (
 	MessageEventTypeAssigned      MessageEventType = "assigned"
+	MessageEventTypeIssueCreated  MessageEventType = "issue_created"
+	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
 	MessageEventTypeStatusChanged MessageEventType = "status_changed"
 )
 
@@ -408,6 +461,10 @@ const (
 func (e MessageEventType) Valid() bool {
 	switch e {
 	case MessageEventTypeAssigned:
+		return true
+	case MessageEventTypeIssueCreated:
+		return true
+	case MessageEventTypeIssueLinked:
 		return true
 	case MessageEventTypeStatusChanged:
 		return true
@@ -756,6 +813,10 @@ type ContactRef struct {
 type Conversation struct {
 	AssigneeId *uuid.UUID `json:"assignee_id"`
 
+	// AwaitingFix An open GitHub issue is linked to the conversation (ADR-0012): it waits for the fix
+	// and does not resolve itself by inactivity. The inbox marks it.
+	AwaitingFix bool `json:"awaiting_fix"`
+
 	// ChannelId `null` for conversations started from the panel or API.
 	ChannelId       *uuid.UUID `json:"channel_id"`
 	ClosedAt        *time.Time `json:"closed_at"`
@@ -791,6 +852,14 @@ type Conversation struct {
 
 	// Version Bumps on every change; send it back to detect concurrent edits.
 	Version int `json:"version"`
+}
+
+// ConversationIssues defines model for ConversationIssues.
+type ConversationIssues struct {
+	Items []IssueLink `json:"items"`
+
+	// Repository Where new issues go; `null` when GitHub is not connected or has no repository.
+	Repository *GitHubRepository `json:"repository"`
 }
 
 // ConversationPage defines model for ConversationPage.
@@ -843,6 +912,18 @@ type CreateInvitationRequest struct {
 
 // CreateInvitationRequestRole defines model for CreateInvitationRequest.Role.
 type CreateInvitationRequestRole string
+
+// CreateIssueRequest defines model for CreateIssueRequest.
+type CreateIssueRequest struct {
+	Body   string    `json:"body"`
+	Labels *[]string `json:"labels,omitempty"`
+
+	// Quote The customer's words to send along, as a marked block; empty or left out sends none.
+	Quote *string `json:"quote,omitempty"`
+
+	// Title One line.
+	Title string `json:"title"`
+}
 
 // CreateTagRequest defines model for CreateTagRequest.
 type CreateTagRequest struct {
@@ -1197,6 +1278,60 @@ type InvitationSent struct {
 	InviteUrl *string `json:"invite_url,omitempty"`
 }
 
+// IssueDraft defines model for IssueDraft.
+type IssueDraft struct {
+	Body   string   `json:"body"`
+	Labels []string `json:"labels"`
+
+	// Quote The customer's first message; empty when there is none. Off by default for a public repository.
+	Quote      string           `json:"quote"`
+	Repository GitHubRepository `json:"repository"`
+	Title      string           `json:"title"`
+}
+
+// IssueLink defines model for IssueLink.
+type IssueLink struct {
+	ConversationId uuid.UUID  `json:"conversation_id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	CreatedBy      *uuid.UUID `json:"created_by"`
+
+	// Error Present only with `status: failed`. Why GitHub did not create it: the App lost access to the repository, GitHub
+	// refused the App, GitHub refused the issue (issues turned off), GitHub did not
+	// answer through every attempt, or GitHub was disconnected.
+	Error *IssueLinkError `json:"error,omitempty"`
+	Id    uuid.UUID       `json:"id"`
+
+	// Number `null` until GitHub has created it.
+	Number *int64 `json:"number"`
+
+	// Repository "owner/name"
+	Repository string `json:"repository"`
+
+	// Status `creating`: GitHub has not created it yet; `open` and `closed` as on GitHub; `failed`:
+	// GitHub refused it, `error` says why.
+	Status    IssueStatus `json:"status"`
+	Title     string      `json:"title"`
+	UpdatedAt time.Time   `json:"updated_at"`
+
+	// Url The issue on GitHub; `null` until created.
+	Url *string `json:"url"`
+}
+
+// IssueLinkError Present only with `status: failed`. Why GitHub did not create it: the App lost access to the repository, GitHub
+// refused the App, GitHub refused the issue (issues turned off), GitHub did not
+// answer through every attempt, or GitHub was disconnected.
+type IssueLinkError string
+
+// IssueStatus `creating`: GitHub has not created it yet; `open` and `closed` as on GitHub; `failed`:
+// GitHub refused it, `error` says why.
+type IssueStatus string
+
+// LinkIssueRequest defines model for LinkIssueRequest.
+type LinkIssueRequest struct {
+	// Number The issue number in the workspace's repository.
+	Number int64 `json:"number"`
+}
+
 // Locale defines model for Locale.
 type Locale string
 
@@ -1306,17 +1441,32 @@ type MessageEvent struct {
 
 	// From State of a conversation (docs/02 §8).
 	From               ConversationStatus `json:"from"`
+	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
 
 	// To State of a conversation (docs/02 §8).
 	To ConversationStatus `json:"to"`
 
-	// Type `assigned` covers taking, transferring and releasing.
+	// Type `assigned` covers taking, transferring and releasing. `issue_created` and
+	// `issue_linked`: a GitHub issue was created from the conversation or it was linked to
+	// one, with `issue`; `from` and `to` differ when the conversation went to wait for the
+	// fix with it.
 	Type MessageEventType `json:"type"`
 }
 
-// MessageEventType `assigned` covers taking, transferring and releasing.
+// MessageEventType `assigned` covers taking, transferring and releasing. `issue_created` and
+// `issue_linked`: a GitHub issue was created from the conversation or it was linked to
+// one, with `issue`; `from` and `to` differ when the conversation went to wait for the
+// fix with it.
 type MessageEventType string
+
+// MessageEventIssue defines model for MessageEventIssue.
+type MessageEventIssue struct {
+	LinkId     uuid.UUID `json:"link_id"`
+	Number     int64     `json:"number"`
+	Repository string    `json:"repository"`
+	Url        string    `json:"url"`
+}
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {
@@ -1354,6 +1504,19 @@ type NotificationSettings struct {
 	// for `email_delay_minutes`. Goes only to a confirmed email (`User.email_verified`),
 	// without message texts. On by default.
 	EmailMissed bool `json:"email_missed"`
+}
+
+// OpenGitHubIssue defines model for OpenGitHubIssue.
+type OpenGitHubIssue struct {
+	Number     int64  `json:"number"`
+	Repository string `json:"repository"`
+	Title      string `json:"title"`
+	Url        string `json:"url"`
+}
+
+// OpenGitHubIssueList defines model for OpenGitHubIssueList.
+type OpenGitHubIssueList struct {
+	Items []OpenGitHubIssue `json:"items"`
 }
 
 // PostMessageRequest defines model for PostMessageRequest.
@@ -1582,6 +1745,9 @@ type Id = uuid.UUID
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = string
 
+// IssueId defines model for IssueId.
+type IssueId = uuid.UUID
+
 // KeyId defines model for KeyId.
 type KeyId = uuid.UUID
 
@@ -1632,6 +1798,12 @@ type InvalidIngestKey = Problem
 
 // InvalidToken RFC 9457 problem details.
 type InvalidToken = Problem
+
+// IssueConflict RFC 9457 problem details.
+type IssueConflict = Problem
+
+// IssueRefused RFC 9457 problem details.
+type IssueRefused = Problem
 
 // LoginStep RFC 9457 problem details.
 type LoginStep = Problem
@@ -1796,6 +1968,12 @@ type AssignConversationJSONRequestBody = AssignRequest
 // CreateAttachmentUploadJSONRequestBody defines body for CreateAttachmentUpload for application/json ContentType.
 type CreateAttachmentUploadJSONRequestBody = CreateUploadRequest
 
+// CreateConversationIssueJSONRequestBody defines body for CreateConversationIssue for application/json ContentType.
+type CreateConversationIssueJSONRequestBody = CreateIssueRequest
+
+// LinkConversationIssueJSONRequestBody defines body for LinkConversationIssue for application/json ContentType.
+type LinkConversationIssueJSONRequestBody = LinkIssueRequest
+
 // PostMessageJSONRequestBody defines body for PostMessage for application/json ContentType.
 type PostMessageJSONRequestBody = PostMessageRequest
 
@@ -1945,6 +2123,24 @@ type ServerInterface interface {
 	// CreateAttachmentUpload Register a file and get a signed upload request
 	// (POST /conversations/{id}/attachments)
 	CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, id Id)
+	// ListConversationIssues GitHub issues of the conversation
+	// (GET /conversations/{id}/issues)
+	ListConversationIssues(w http.ResponseWriter, r *http.Request, id Id)
+	// CreateConversationIssue Create a GitHub issue from the conversation
+	// (POST /conversations/{id}/issues)
+	CreateConversationIssue(w http.ResponseWriter, r *http.Request, id Id)
+	// GetConversationIssueDraft The issue form filled from the templates
+	// (GET /conversations/{id}/issues/draft)
+	GetConversationIssueDraft(w http.ResponseWriter, r *http.Request, id Id)
+	// LinkConversationIssue Link the conversation to an issue that exists
+	// (POST /conversations/{id}/issues/link)
+	LinkConversationIssue(w http.ResponseWriter, r *http.Request, id Id)
+	// DismissConversationIssue Remove an issue GitHub refused
+	// (DELETE /conversations/{id}/issues/{issue_id})
+	DismissConversationIssue(w http.ResponseWriter, r *http.Request, id Id, issueId IssueId)
+	// RetryConversationIssue Send an issue GitHub refused again
+	// (POST /conversations/{id}/issues/{issue_id}/retry)
+	RetryConversationIssue(w http.ResponseWriter, r *http.Request, id Id, issueId IssueId)
 	// ListMessages The conversation feed, newest first
 	// (GET /conversations/{id}/messages)
 	ListMessages(w http.ResponseWriter, r *http.Request, id Id, params ListMessagesParams)
@@ -1990,6 +2186,9 @@ type ServerInterface interface {
 	// CompleteGitHubInstallation Finish installing the GitHub App
 	// (POST /integrations/github/installation)
 	CompleteGitHubInstallation(w http.ResponseWriter, r *http.Request)
+	// ListOpenGitHubIssues Open issues created or linked in the workspace
+	// (GET /integrations/github/issues)
+	ListOpenGitHubIssues(w http.ResponseWriter, r *http.Request)
 	// StartGitHubIntegration Start connecting GitHub
 	// (POST /integrations/github/manifest)
 	StartGitHubIntegration(w http.ResponseWriter, r *http.Request)
@@ -2254,6 +2453,42 @@ func (_ Unimplemented) CreateAttachmentUpload(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListConversationIssues GitHub issues of the conversation
+// (GET /conversations/{id}/issues)
+func (_ Unimplemented) ListConversationIssues(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateConversationIssue Create a GitHub issue from the conversation
+// (POST /conversations/{id}/issues)
+func (_ Unimplemented) CreateConversationIssue(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetConversationIssueDraft The issue form filled from the templates
+// (GET /conversations/{id}/issues/draft)
+func (_ Unimplemented) GetConversationIssueDraft(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LinkConversationIssue Link the conversation to an issue that exists
+// (POST /conversations/{id}/issues/link)
+func (_ Unimplemented) LinkConversationIssue(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DismissConversationIssue Remove an issue GitHub refused
+// (DELETE /conversations/{id}/issues/{issue_id})
+func (_ Unimplemented) DismissConversationIssue(w http.ResponseWriter, r *http.Request, id Id, issueId IssueId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RetryConversationIssue Send an issue GitHub refused again
+// (POST /conversations/{id}/issues/{issue_id}/retry)
+func (_ Unimplemented) RetryConversationIssue(w http.ResponseWriter, r *http.Request, id Id, issueId IssueId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMessages The conversation feed, newest first
 // (GET /conversations/{id}/messages)
 func (_ Unimplemented) ListMessages(w http.ResponseWriter, r *http.Request, id Id, params ListMessagesParams) {
@@ -2341,6 +2576,12 @@ func (_ Unimplemented) CompleteGitHubApp(w http.ResponseWriter, r *http.Request)
 // CompleteGitHubInstallation Finish installing the GitHub App
 // (POST /integrations/github/installation)
 func (_ Unimplemented) CompleteGitHubInstallation(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListOpenGitHubIssues Open issues created or linked in the workspace
+// (GET /integrations/github/issues)
+func (_ Unimplemented) ListOpenGitHubIssues(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3227,6 +3468,180 @@ func (siw *ServerInterfaceWrapper) CreateAttachmentUpload(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// ListConversationIssues operation middleware
+func (siw *ServerInterfaceWrapper) ListConversationIssues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConversationIssues(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateConversationIssue operation middleware
+func (siw *ServerInterfaceWrapper) CreateConversationIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateConversationIssue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversationIssueDraft operation middleware
+func (siw *ServerInterfaceWrapper) GetConversationIssueDraft(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversationIssueDraft(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LinkConversationIssue operation middleware
+func (siw *ServerInterfaceWrapper) LinkConversationIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LinkConversationIssue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissConversationIssue operation middleware
+func (siw *ServerInterfaceWrapper) DismissConversationIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issue_id" -------------
+	var issueId IssueId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issue_id", chi.URLParam(r, "issue_id"), &issueId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issue_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissConversationIssue(w, r, id, issueId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryConversationIssue operation middleware
+func (siw *ServerInterfaceWrapper) RetryConversationIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issue_id" -------------
+	var issueId IssueId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issue_id", chi.URLParam(r, "issue_id"), &issueId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issue_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryConversationIssue(w, r, id, issueId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMessages operation middleware
 func (siw *ServerInterfaceWrapper) ListMessages(w http.ResponseWriter, r *http.Request) {
 
@@ -3741,6 +4156,20 @@ func (siw *ServerInterfaceWrapper) CompleteGitHubInstallation(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompleteGitHubInstallation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOpenGitHubIssues operation middleware
+func (siw *ServerInterfaceWrapper) ListOpenGitHubIssues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOpenGitHubIssues(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4315,6 +4744,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/integrations/github/repositories", wrapper.ListGitHubRepositories)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/integrations/github/issues", wrapper.ListOpenGitHubIssues)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ingest/reports", wrapper.CreateIngestReport)
 	})
 	r.Group(func(r chi.Router) {
@@ -4355,6 +4787,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/conversations/{id}/tags", wrapper.SetConversationTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/issues", wrapper.ListConversationIssues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/issues", wrapper.CreateConversationIssue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/issues/draft", wrapper.GetConversationIssueDraft)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/issues/link", wrapper.LinkConversationIssue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/issues/{issue_id}/retry", wrapper.RetryConversationIssue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/conversations/{id}/issues/{issue_id}", wrapper.DismissConversationIssue)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/conversations/{id}/read", wrapper.MarkConversationRead)

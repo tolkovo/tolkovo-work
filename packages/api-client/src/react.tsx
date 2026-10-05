@@ -38,6 +38,13 @@ import {
   completeGitHubInstallation,
   updateGitHubIntegration,
   disconnectGitHubIntegration,
+  fetchConversationIssues,
+  fetchIssueDraft,
+  fetchOpenGitHubIssues,
+  createConversationIssue,
+  linkConversationIssue,
+  retryConversationIssue,
+  dismissConversationIssue,
   fetchMyWorkspaces,
   fetchSession,
   fetchTags,
@@ -77,6 +84,7 @@ import {
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
+  type CreateIssueRequest,
   type CreateTagRequest,
   type LoginRequest,
   type RegisterRequest,
@@ -114,6 +122,7 @@ export const queryKeys = {
   ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
   githubIntegration: ["integrations", "github"] as const,
   githubRepositories: ["integrations", "github", "repositories"] as const,
+  openGitHubIssues: ["integrations", "github", "issues"] as const,
   /**
    * Roots for conversation and contact queries (lists, details, message feeds nest under them):
    * realtime events invalidate by these prefixes (docs/02 §10, apps/panel/src/lib/realtime).
@@ -126,6 +135,9 @@ export const queryKeys = {
   /** Pages of one conversation feed, newest first (an infinite query). */
   conversationMessages: (id: string) => ["conversations", "messages", id] as const,
   inboxCounts: ["conversations", "counts"] as const,
+  /** GitHub issues of one conversation (GH-02). */
+  conversationIssues: (id: string) => ["conversations", "issues", id] as const,
+  issueDraft: (id: string) => ["conversations", "issue-draft", id] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
@@ -460,6 +472,70 @@ export function useUpdateGitHubIntegration() {
 
 export function useDisconnectGitHubIntegration() {
   return useGitHubMutation((client) => disconnectGitHubIntegration(client));
+}
+
+/**
+ * GitHub issues of a conversation (GH-02). While one is being created it is asked again every
+ * few seconds, in case the realtime connection is away: conversation.issues_changed refreshes it
+ * otherwise.
+ */
+export function useConversationIssues(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.conversationIssues(conversationId),
+    queryFn: () => fetchConversationIssues(client, conversationId),
+    enabled,
+    refetchInterval: (q) => (q.state.data?.items.some((i) => i.status === "creating") ? 5000 : false),
+  });
+}
+
+/** The issue form filled from the templates; fetched anew every time the form opens. */
+export function useIssueDraft(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.issueDraft(conversationId),
+    queryFn: () => fetchIssueDraft(client, conversationId),
+    enabled,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+export function useOpenGitHubIssues({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.openGitHubIssues, queryFn: () => fetchOpenGitHubIssues(client), enabled });
+}
+
+/** An issue change refreshes the issues, the conversation (awaiting_fix) and its feed. */
+function useIssueMutation<TArgs, TResult>(conversationId: string, fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversationIssues(conversationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversation(conversationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversationMessages(conversationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.openGitHubIssues }),
+      ]),
+  });
+}
+
+export function useCreateConversationIssue(conversationId: string) {
+  return useIssueMutation(conversationId, (client, body: CreateIssueRequest) => createConversationIssue(client, conversationId, body));
+}
+
+export function useLinkConversationIssue(conversationId: string) {
+  return useIssueMutation(conversationId, (client, number: number) => linkConversationIssue(client, conversationId, number));
+}
+
+export function useRetryConversationIssue(conversationId: string) {
+  return useIssueMutation(conversationId, (client, issueId: string) => retryConversationIssue(client, conversationId, issueId));
+}
+
+export function useDismissConversationIssue(conversationId: string) {
+  return useIssueMutation(conversationId, (client, issueId: string) => dismissConversationIssue(client, conversationId, issueId));
 }
 
 export function useInvitations({ enabled = true }: { enabled?: boolean } = {}) {

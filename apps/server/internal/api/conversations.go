@@ -492,8 +492,8 @@ func conversationBody(c conversations.Conversation) oapi.Conversation {
 		Id: c.ID, Number: c.Number, Status: oapi.ConversationStatus(c.Status), Priority: c.Priority, LineLevel: c.LineLevel,
 		Contact: oapi.ContactRef{Id: c.ContactID, Name: c.ContactName}, AssigneeId: c.AssigneeID, ChannelId: c.ChannelID,
 		Subject: c.Subject, FirstResponseAt: c.FirstResponseAt, LastMessageAt: c.LastMessageAt,
-		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, Version: c.Version, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
-		LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs),
+		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix, Version: c.Version,
+		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs),
 		LastReadMessageId: c.LastReadMessageID, UnreadCount: c.UnreadCount,
 	}
 }
@@ -568,10 +568,14 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 	if e == nil {
 		return nil
 	}
-	return &oapi.MessageEvent{
+	out := &oapi.MessageEvent{
 		Type: oapi.MessageEventType(e.Type), From: oapi.ConversationStatus(e.From), To: oapi.ConversationStatus(e.To),
 		AssigneeId: e.AssigneeID, PreviousAssigneeId: e.PreviousAssigneeID,
 	}
+	if e.Issue != nil {
+		out.Issue = &oapi.MessageEventIssue{LinkId: e.Issue.LinkID, Repository: e.Issue.Repository, Number: e.Issue.Number, Url: e.Issue.URL}
+	}
+	return out
 }
 
 func attachmentBody(a conversations.Attachment) oapi.Attachment {

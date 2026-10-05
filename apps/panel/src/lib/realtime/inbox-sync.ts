@@ -102,6 +102,11 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
         counts = true; // mine_unread
       } else if (event.type === "conversation.tags_changed" && conversationId) {
         conversations.add(conversationId);
+      } else if (event.type === "conversation.issues_changed" && conversationId) {
+        // A GitHub issue was created, linked, refused or removed: its list and awaiting_fix.
+        conversations.add(conversationId);
+        roots.set(`issues:${conversationId}`, queryKeys.conversationIssues(conversationId));
+        roots.set("open-issues", queryKeys.openGitHubIssues);
       } else if (event.type.startsWith("conversation.") && conversationId) {
         conversations.add(conversationId);
         remember(conversationId, event);

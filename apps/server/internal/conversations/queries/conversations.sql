@@ -163,3 +163,10 @@ SELECT EXISTS (
 UPDATE conversations
 SET version = version + 1, updated_at = now()
 WHERE workspace_id = @workspace_id AND id = @id;
+
+-- name: SetAwaitingFix :exec
+-- An open issue is linked to the conversation, or the last one was closed
+-- (ADR-0012): the inbox shows the mark, clients compare versions.
+UPDATE conversations
+SET awaiting_fix = @awaiting_fix, version = version + 1, updated_at = now()
+WHERE workspace_id = @workspace_id AND id = @id;

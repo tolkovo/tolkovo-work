@@ -9,6 +9,7 @@ import {
   ingestKeyListSchema,
   contactSchema,
   conversationPageSchema,
+  conversationIssuesSchema,
   conversationSchema,
   deviceSessionListSchema,
   gitHubIntegrationSchema,
@@ -16,6 +17,8 @@ import {
   gitHubManifestStartSchema,
   gitHubRepositoryListSchema,
   inboxCountsSchema,
+  issueDraftSchema,
+  issueLinkSchema,
   notificationSettingsSchema,
   invitationListSchema,
   invitationPreviewSchema,
@@ -23,6 +26,7 @@ import {
   memberListSchema,
   messagePageSchema,
   messageSchema,
+  openGitHubIssueListSchema,
   sessionSchema,
   signedRequestSchema,
   tagListSchema,
@@ -79,6 +83,11 @@ export type GitHubRepository = Schemas["GitHubRepository"];
 export type GitHubRepositoryList = Schemas["GitHubRepositoryList"];
 export type GitHubTemplates = Schemas["GitHubTemplates"];
 export type UpdateGitHubIntegrationRequest = Schemas["UpdateGitHubIntegrationRequest"];
+export type IssueLink = Schemas["IssueLink"];
+export type ConversationIssues = Schemas["ConversationIssues"];
+export type IssueDraft = Schemas["IssueDraft"];
+export type CreateIssueRequest = Schemas["CreateIssueRequest"];
+export type OpenGitHubIssue = Schemas["OpenGitHubIssue"];
 export type IngestKeyCreated = Schemas["IngestKeyCreated"];
 export type Message = Schemas["Message"];
 export type MessageReport = Schemas["MessageReport"];
@@ -504,6 +513,50 @@ export async function updateGitHubIntegration(client: ApiClient, body: UpdateGit
 /** Forgets the App's key; the App itself stays on GitHub. */
 export async function disconnectGitHubIntegration(client: ApiClient): Promise<void> {
   await unwrap(client.DELETE("/integrations/github"));
+}
+
+/** Issues of a conversation (GH-02); `repository` is null when GitHub cannot take new ones. */
+export async function fetchConversationIssues(client: ApiClient, conversationId: string): Promise<ConversationIssues> {
+  const data = await unwrap(client.GET("/conversations/{id}/issues", { params: { path: { id: conversationId } } }));
+  return parseAnswer(conversationIssuesSchema, data);
+}
+
+/** The issue form filled from the workspace's templates. */
+export async function fetchIssueDraft(client: ApiClient, conversationId: string): Promise<IssueDraft> {
+  const data = await unwrap(client.GET("/conversations/{id}/issues/draft", { params: { path: { id: conversationId } } }));
+  return parseAnswer(issueDraftSchema, data);
+}
+
+/** Records the issue; the worker creates it on GitHub next. */
+export async function createConversationIssue(client: ApiClient, conversationId: string, body: CreateIssueRequest): Promise<IssueLink> {
+  const data = await unwrap(client.POST("/conversations/{id}/issues", { params: { path: { id: conversationId } }, body }));
+  return parseAnswer(issueLinkSchema, data, 202);
+}
+
+/** Links the conversation to an issue of the workspace's repository by number. */
+export async function linkConversationIssue(client: ApiClient, conversationId: string, number: number): Promise<IssueLink> {
+  const data = await unwrap(
+    client.POST("/conversations/{id}/issues/link", { params: { path: { id: conversationId } }, body: { number } }),
+  );
+  return parseAnswer(issueLinkSchema, data, 201);
+}
+
+/** Sends an issue GitHub refused again. */
+export async function retryConversationIssue(client: ApiClient, conversationId: string, issueId: string): Promise<IssueLink> {
+  const data = await unwrap(
+    client.POST("/conversations/{id}/issues/{issue_id}/retry", { params: { path: { id: conversationId, issue_id: issueId } } }),
+  );
+  return parseAnswer(issueLinkSchema, data, 202);
+}
+
+/** Removes an issue GitHub refused. */
+export async function dismissConversationIssue(client: ApiClient, conversationId: string, issueId: string): Promise<void> {
+  await unwrap(client.DELETE("/conversations/{id}/issues/{issue_id}", { params: { path: { id: conversationId, issue_id: issueId } } }));
+}
+
+/** Open issues created or linked in the workspace, to link another conversation to. */
+export async function fetchOpenGitHubIssues(client: ApiClient): Promise<OpenGitHubIssue[]> {
+  return parseAnswer(openGitHubIssueListSchema, await unwrap(client.GET("/integrations/github/issues"))).items;
 }
 
 /** UI hint only: the server checks every permission again (docs/00 §9.2). */

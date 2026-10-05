@@ -36,6 +36,8 @@ export type Abilities = {
   reopen: boolean;
   tag: boolean;
   createTag: boolean;
+  /** Create a GitHub issue from the conversation or link it to one (GH-02). */
+  issues: boolean;
 };
 
 export function abilities(session: Session | null | undefined, c: Conversation): Abilities {
@@ -58,6 +60,7 @@ export function abilities(session: Session | null | undefined, c: Conversation):
     reopen: changeStatus && c.status === "resolved" && c.assignee_id !== null,
     tag: can("conversations.tag"),
     createTag: can("tags.manage"),
+    issues: can("issues.create"),
   };
 }
 

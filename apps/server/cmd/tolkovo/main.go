@@ -218,12 +218,19 @@ func startWorker(
 		log.Info("TOLKOVO_CLAMAV_ADDR is not set: files of app reports are checked by type only")
 	}
 	reports := ingest.New(pool, reportOpts)
+	// Issues confirmed in the panel are created on GitHub (GH-02).
+	sealer, err := newSealer(cfg)
+	if err != nil {
+		return err
+	}
+	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil))
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
+	integ.AddWorkers(workers)
 	periodic := []*river.PeriodicJob{outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic()}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
@@ -338,8 +345,9 @@ func apiDeps(
 		// Reports from company apps (AP-02): keys come from the channels
 		// module; complete queues ingest.process for the worker (AP-03); the
 		// app user reads replies and writes back through convs (AP-06).
+		// Issues are recorded here and created on GitHub by the worker (GH-02).
 		Ingest:        ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
-		Integrations:  integrations.New(pool, integrationsOptions(cfg, sealer)),
+		Integrations:  integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter)),
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -413,16 +421,22 @@ func newSealer(cfg config.Config) (*crypto.Sealer, error) {
 	return crypto.NewSealer(keys)
 }
 
-// integrationsOptions wires GitHub into the integrations module (GH-01).
-// Requests go through the SafeClient; a GitHub Enterprise Server on a
-// private network needs TOLKOVO_EGRESS_ALLOW_PRIVATE.
-func integrationsOptions(cfg config.Config, sealer *crypto.Sealer) integrations.Options {
+// integrationsOptions wires GitHub into the integrations module (GH-01)
+// and issues into conversations (GH-02); jobs is nil in the worker, which
+// runs github.create_issue instead of queueing it. Requests go through the
+// SafeClient; a GitHub Enterprise Server on a private network needs
+// TOLKOVO_EGRESS_ALLOW_PRIVATE.
+func integrationsOptions(
+	cfg config.Config, sealer *crypto.Sealer, convs *conversations.Service, jobs integrations.Jobs,
+) integrations.Options {
 	hc := httpx.NewSafeClient(httpx.Options{Timeout: 20 * time.Second, AllowPrivate: cfg.EgressAllowPrivatePrefixes()})
 	return integrations.Options{
-		Sealer:    sealer,
-		GitHub:    github.New(cfg.GitHub.APIURL, cfg.GitHub.WebURL, hc),
-		PublicURL: cfg.PublicURL,
-		PanelURL:  cfg.PanelBaseURL(),
+		Sealer:        sealer,
+		GitHub:        github.New(cfg.GitHub.APIURL, cfg.GitHub.WebURL, hc),
+		PublicURL:     cfg.PublicURL,
+		PanelURL:      cfg.PanelBaseURL(),
+		Conversations: convs,
+		Jobs:          jobs,
 	}
 }
 

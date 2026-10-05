@@ -13,6 +13,7 @@ import { MessageAttachments, ReportDetails } from "./attachments";
 import { Composer } from "./composer";
 import { ActionErrorLine, ConversationActions } from "./conversation-actions";
 import { CUSTOMER_CARD_ID, CustomerCard } from "./customer-card";
+import { IssueEventText, IssueForm, useIssueMenuItems, type IssueMode } from "./issues";
 import { PresenceLine, useMemberNames } from "./presence";
 import { ConversationTags } from "./tags";
 
@@ -63,11 +64,18 @@ function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: Inb
   const cardToggle = useRef<HTMLButtonElement>(null);
   const cardHeading = useRef<HTMLHeadingElement>(null);
   const card = useCardDrawer(cardToggle, cardHeading);
+  // The issue form takes the place of the feed while it is open (GH-02).
+  const [issueMode, setIssueMode] = useState<IssueMode | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const issueItems = useIssueMenuItems(c, (mode) => {
+    setNotice(null);
+    setIssueMode(mode);
+  });
   return (
     <>
       <section aria-labelledby="conversation-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header conversation={c} tab={tab}>
-          <ConversationActions conversation={c} change={change} />
+          <ConversationActions conversation={c} change={change} extra={issueItems} />
           <button
             ref={cardToggle}
             type="button"
@@ -81,12 +89,45 @@ function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: Inb
           </button>
         </Header>
         {change.isError && <ActionErrorLine error={change.error} onDismiss={() => change.reset()} />}
+        <NoticeLine message={notice} onDismiss={() => setNotice(null)} />
         <ConversationTags conversation={c} change={change} />
-        <Feed conversation={c} latestRequest={latestRequest} />
-        <Composer conversation={c} onShowLatest={() => setLatestRequest((n) => n + 1)} />
+        {issueMode ? (
+          <IssueForm
+            conversation={c}
+            mode={issueMode}
+            onMode={setIssueMode}
+            onClose={() => setIssueMode(null)}
+            onDone={(message) => {
+              setIssueMode(null);
+              setNotice(message);
+            }}
+          />
+        ) : (
+          <>
+            <Feed conversation={c} latestRequest={latestRequest} />
+            <Composer conversation={c} onShowLatest={() => setLatestRequest((n) => n + 1)} />
+          </>
+        )}
       </section>
       <CustomerCard conversation={c} tab={tab} open={card.open} onClose={card.close} headingRef={cardHeading} />
     </>
+  );
+}
+
+/** The outcome of an action that has no place of its own, e.g. "the issue is being created". */
+function NoticeLine({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div role="status" className={message ? "flex items-center gap-2 border-b border-line bg-teal-soft px-4 py-1.5 text-[13px] text-ink" : "sr-only"}>
+      {message && (
+        <>
+          <span className="mr-auto">{message}</span>
+          <Button size="sm" variant="ghost" onClick={onDismiss}>
+            {t("inbox.actions.dismiss")}
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -159,6 +200,7 @@ function Header({ conversation: c, tab, children }: { conversation: Conversation
         </h2>
         <p className="m-0 mt-0.5 flex flex-wrap gap-x-2.5 text-xs text-ink-3">
           <span>{t(`inbox.status.${c.status}`)}</span>
+          {c.awaiting_fix && <span className="font-medium text-ink-2">{t("inbox.awaitingFix")}</span>}
           <span>{assignee ? t("inbox.assignee", { name: assignee }) : t("inbox.unassigned")}</span>
           {c.subject && <span className="truncate">{c.subject}</span>}
         </p>
@@ -397,6 +439,7 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   const names = useMemberNames();
   const name = (id: string | null) => (id ? (names.get(id) ?? t("inbox.colleague")) : t("inbox.sender.system"));
   const by = actorId ? ` · ${name(actorId)}` : "";
+  if (e.type === "issue_created" || e.type === "issue_linked") return <IssueEventText event={e} by={by} />;
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {

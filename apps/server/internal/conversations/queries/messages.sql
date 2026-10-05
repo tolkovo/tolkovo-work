@@ -77,3 +77,20 @@ VALUES (@workspace_id, @conversation_id, @user_id, @message_id, @read_at)
 ON CONFLICT (workspace_id, conversation_id, user_id) DO UPDATE
 SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = EXCLUDED.read_at
 WHERE conversation_reads.last_read_message_id < EXCLUDED.last_read_message_id;
+
+-- name: CreateKeyedEventMessage :many
+-- A system line recorded once per key: a retried job does not repeat it.
+-- No row back means it is there already.
+INSERT INTO messages (id, workspace_id, conversation_id, direction, sender_type, sender_id, kind, meta, idempotency_key, created_at)
+VALUES (@id, @workspace_id, @conversation_id, 'out', 'system', sqlc.narg(sender_id), 'event', @meta, @idempotency_key, @created_at)
+ON CONFLICT (workspace_id, conversation_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+RETURNING id;
+
+-- name: FirstCustomerText :many
+-- The customer's first message with text and its meta (the app report):
+-- what an issue draft starts from.
+SELECT body, meta FROM messages
+WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id
+  AND sender_type = 'contact' AND body <> '' AND deleted_at IS NULL
+ORDER BY id
+LIMIT 1;

@@ -1,6 +1,6 @@
 // Package github is a thin client of the GitHub REST API for a GitHub App
 // (ADR-0012): the manifest flow that creates the App, its installation,
-// installation tokens and repositories. No SDK: a handful of calls over
+// installation tokens, repositories and issues. No SDK: a handful of calls over
 // net/http, the App's JWT signed with crypto/rsa.
 //
 // The client never logs and never puts secrets into errors: an error names
@@ -47,6 +47,9 @@ var (
 	ErrUnauthorized = errors.New("github: credentials refused")
 	// ErrUnavailable: GitHub could not be reached or answered unexpectedly.
 	ErrUnavailable = errors.New("github: unavailable")
+	// ErrRejected: GitHub refused the request itself (410 or 422), e.g.
+	// issues are turned off in the repository or a field is not accepted.
+	ErrRejected = errors.New("github: request rejected")
 	// ErrPrivateKey: the App's private key does not parse.
 	ErrPrivateKey = errors.New("github: the App private key is not an RSA key in PEM")
 )
@@ -230,16 +233,80 @@ func (c *Client) Repositories(ctx context.Context, token tcrypto.Secret) ([]Repo
 // Repository returns one repository by "owner/name" if the installation
 // can reach it.
 func (c *Client) Repository(ctx context.Context, token tcrypto.Secret, fullName string) (Repository, error) {
-	owner, name, ok := strings.Cut(fullName, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return Repository{}, fmt.Errorf("get repository: %w", ErrNotFound)
+	path, err := repoPath(fullName)
+	if err != nil {
+		return Repository{}, fmt.Errorf("get repository: %w", err)
 	}
 	var out Repository
-	path := "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
 	if err := c.do(ctx, http.MethodGet, path, "token "+token.Reveal(), nil, &out); err != nil {
 		return Repository{}, fmt.Errorf("get repository: %w", err)
 	}
 	return out, nil
+}
+
+// Issue is an issue on GitHub.
+type Issue struct {
+	ID      int64  `json:"id"`
+	NodeID  string `json:"node_id"`
+	Number  int64  `json:"number"`
+	Title   string `json:"title"`
+	State   string `json:"state"` // open or closed
+	HTMLURL string `json:"html_url"`
+	// PullRequest is set when the number is a pull request: GitHub serves
+	// them from the issues API too.
+	PullRequest *struct{} `json:"pull_request,omitempty"`
+}
+
+// NewIssue is an issue to create.
+type NewIssue struct {
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	Labels []string `json:"labels,omitempty"`
+}
+
+// CreateIssue creates an issue in the repository "owner/name".
+func (c *Client) CreateIssue(ctx context.Context, token tcrypto.Secret, fullName string, in NewIssue) (Issue, error) {
+	path, err := repoPath(fullName)
+	if err != nil {
+		return Issue{}, fmt.Errorf("create issue: %w", err)
+	}
+	var out Issue
+	if err := c.do(ctx, http.MethodPost, path+"/issues", "token "+token.Reveal(), in, &out); err != nil {
+		return Issue{}, fmt.Errorf("create issue: %w", err)
+	}
+	return out, nil
+}
+
+// Issue returns an issue of the repository "owner/name" by number.
+func (c *Client) Issue(ctx context.Context, token tcrypto.Secret, fullName string, number int64) (Issue, error) {
+	path, err := repoPath(fullName)
+	if err != nil {
+		return Issue{}, fmt.Errorf("get issue: %w", err)
+	}
+	var out Issue
+	if err := c.do(ctx, http.MethodGet, path+"/issues/"+strconv.FormatInt(number, 10), "token "+token.Reveal(), nil, &out); err != nil {
+		return Issue{}, fmt.Errorf("get issue: %w", err)
+	}
+	return out, nil
+}
+
+// repoPath is /repos/{owner}/{name} of "owner/name".
+func repoPath(fullName string) (string, error) {
+	owner, name, ok := strings.Cut(fullName, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return "", ErrNotFound
+	}
+	return "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name), nil
+}
+
+// rateLimited: GitHub answers 429, or 403 with no requests left or a
+// Retry-After, when the App sends too much; that passes, unlike a refusal.
+func rateLimited(resp *http.Response) bool {
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	return resp.StatusCode == http.StatusForbidden &&
+		(resp.Header.Get("X-RateLimit-Remaining") == "0" || resp.Header.Get("Retry-After") != "")
 }
 
 // appJWT signs the short-lived JWT a GitHub App authenticates with
@@ -322,8 +389,12 @@ func (c *Client) do(ctx context.Context, method, path, authorization string, bod
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
 		return ErrNotFound
+	case rateLimited(resp):
+		return fmt.Errorf("%w: rate limited", ErrUnavailable)
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return ErrUnauthorized
+	case resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusUnprocessableEntity:
+		return ErrRejected
 	case resp.StatusCode < 200 || resp.StatusCode > 299:
 		return fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode)
 	}

@@ -13,6 +13,7 @@ import { queriesShowingContact } from "../../lib/inbox/cache";
 import { useCardSections, type CardSection } from "../../lib/inbox/card-sections";
 import { initials, type InboxTab } from "../../lib/inbox/tabs";
 import { FormMessage, SelectField, TextField } from "../form/fields";
+import { ConversationIssuesList } from "./issues";
 
 export const CUSTOMER_CARD_ID = "customer-card";
 
@@ -102,12 +103,24 @@ export function CustomerCard({ conversation: c, tab, open, onClose, headingRef }
             <Who contact={contact.data} />
           )}
         </Section>
+        <IssuesSection conversation={c} />
         <History conversation={c} tab={tab} />
         <Section id="tech" title={t("inbox.card.section.tech")}>
           <TechDetails contactId={c.contact.id} />
         </Section>
       </aside>
     </>
+  );
+}
+
+/** GitHub issues of the conversation (GH-02), for those who may create them. */
+function IssuesSection({ conversation: c }: { conversation: Conversation }) {
+  const { t } = useTranslation();
+  if (!useCan("issues.create")) return null;
+  return (
+    <Section id="issues" title={t("inbox.card.section.issues")}>
+      <ConversationIssuesList conversation={c} />
+    </Section>
   );
 }
 
