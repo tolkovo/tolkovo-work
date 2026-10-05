@@ -1205,6 +1205,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/widget/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The visitor fills in the pre-chat form
+         * @description What the visitor typed about themselves (the widget's `prechat` option) and their
+         *     consent to the processing of personal data. Which fields the form asks for and which
+         *     are required is set in the widget's code; send only what was filled in. Before the
+         *     first message the values wait in the session and go onto the contact with that
+         *     message; later they fill what the contact lacks (a typed name replaces the guest
+         *     name) and never overwrite what an operator entered. Typed values are claims: the
+         *     contact becomes `unverified`, the next `POST /widget/session` says so, and it is never
+         *     merged with others. A verified contact keeps its values and takes only the consent,
+         *     stored with the policy URL and the time. Rate: 10 a minute per session.
+         */
+        post: operations["submitWidgetContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/widget/receipts": {
         parameters: {
             query?: never;
@@ -2708,6 +2736,21 @@ export interface components {
             user_hash?: string;
             name?: string;
             email?: string;
+        };
+        /** @description At least one field. */
+        WidgetContactRequest: {
+            name?: string;
+            email?: string;
+            /** @description 3–32 digits, spaces, brackets or hyphens, an optional leading `+`. */
+            phone?: string;
+            /** @description The visitor ticked the consent shown with a link to this policy. */
+            consent?: {
+                /**
+                 * Format: uri
+                 * @description An http(s) URL.
+                 */
+                policy_url: string;
+            };
         };
         WidgetSession: {
             /** @description `tk_wsess_…`; keep it and send it as `Authorization: Bearer`. */
@@ -4855,6 +4898,32 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WidgetUpload"];
                 };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    submitWidgetContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Kept. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["Invalid"];
             401: components["responses"]["WidgetSessionEnded"];

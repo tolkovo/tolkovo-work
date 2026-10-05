@@ -3,14 +3,16 @@
 
 -- name: CreateContact :one
 -- A contact without a name gets a guest name in the workspace's language.
-INSERT INTO contacts (id, workspace_id, name, name_placeholder, email, phone, locale, external_id, identity_unverified)
+INSERT INTO contacts (id, workspace_id, name, name_placeholder, email, phone, locale, external_id, identity_unverified, attributes)
 VALUES (
     @id, @workspace_id,
     CASE WHEN @name::text = ''
         THEN contact_guest_name((SELECT w.locale FROM workspaces w WHERE w.id = @workspace_id), @id)
         ELSE @name::text END,
     @name::text = '',
-    sqlc.narg(email), sqlc.narg(phone), sqlc.narg(locale), sqlc.narg(external_id), @identity_unverified
+    sqlc.narg(email), sqlc.narg(phone), sqlc.narg(locale), sqlc.narg(external_id), @identity_unverified,
+    CASE WHEN sqlc.narg(consent)::jsonb IS NULL THEN '{}'::jsonb
+        ELSE jsonb_build_object('consent', sqlc.narg(consent)::jsonb) END
 )
 RETURNING *;
 

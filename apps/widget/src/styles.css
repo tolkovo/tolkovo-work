@@ -537,6 +537,102 @@ a.tk-file:hover .tk-file-name {
   outline-color: var(--tk-on-accent);
 }
 
+/* The pre-chat form: in place of the message field, under the greeting. */
+.tk-prechat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 70%;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--tk-line);
+  background: var(--tk-surface);
+}
+
+.tk-prechat-intro {
+  margin: 0;
+  color: var(--tk-ink-2);
+  font-size: 13px;
+}
+
+.tk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.tk-text {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--tk-line);
+  border-radius: calc(var(--tk-radius) * 0.6);
+  background: var(--tk-surface);
+  color: var(--tk-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.tk-text:focus {
+  border-color: var(--tk-accent);
+  outline: 1px solid var(--tk-accent);
+}
+
+.tk-text[aria-invalid] {
+  border-color: var(--tk-danger);
+}
+
+.tk-field-error {
+  color: var(--tk-danger);
+  font-size: 12.5px;
+}
+
+.tk-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--tk-ink-2);
+  line-height: 1.35;
+}
+
+.tk-consent input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  flex: none;
+  accent-color: var(--tk-accent);
+}
+
+.tk-consent a {
+  /* The accent may be too dark on the dark theme: the text color, an accent underline. */
+  color: var(--tk-ink);
+  text-decoration-color: var(--tk-accent);
+  text-underline-offset: 2px;
+}
+
+.tk-start {
+  height: 38px;
+  border: 0;
+  border-radius: calc(var(--tk-radius) * 0.6);
+  background: var(--tk-accent);
+  color: var(--tk-on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tk-start:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.tk-start:focus-visible,
+.tk-consent input:focus-visible,
+.tk-consent a:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+
 .tk-composer:focus-within {
   box-shadow: inset 0 2px 0 var(--tk-accent);
 }
@@ -565,6 +661,12 @@ a.tk-file:hover .tk-file-name {
 
   .tk-root[data-open] .tk-launcher {
     display: none;
+  }
+
+  /* iOS Safari zooms the page into a field with text under 16px. */
+  .tk-input,
+  .tk-text {
+    font-size: 16px;
   }
 }
 

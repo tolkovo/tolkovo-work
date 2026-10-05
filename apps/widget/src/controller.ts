@@ -1,4 +1,4 @@
-import { WidgetApi, WidgetApiError, isSessionEnded, type WidgetMessage } from "./api";
+import { WidgetApi, WidgetApiError, isSessionEnded, type WidgetContactRequest, type WidgetMessage } from "./api";
 import { MAX_FILE_SIZE, MAX_FILES, fileType, isImage } from "./files";
 import { Realtime, type SocketFactory } from "./realtime";
 import type { ChatMessage, EventName, Events, Handler, TokenStorage, User } from "./types";
@@ -46,6 +46,8 @@ export interface State {
   /** An operator typed within the last 6 s. */
   typing: boolean;
   unread: number;
+  /** The pre-chat form is shown instead of the message field. */
+  intro: boolean;
 }
 
 const TYPING_MS = 6_000;
@@ -68,6 +70,9 @@ function defaultStorage(): TokenStorage {
     return memoryStorage();
   }
 }
+
+/** A short mark of the session the form was filled in for; not the token itself. */
+const mark = (token: string) => token.slice(-12);
 
 function newKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -99,6 +104,8 @@ export interface ControllerOptions {
   storage?: TokenStorage | undefined;
   open?: boolean | undefined;
   launcher?: boolean | undefined;
+  /** The site asks for the pre-chat form. */
+  prechat?: boolean | undefined;
   /** Tests replace the WebSocket. */
   socket?: SocketFactory;
 }
@@ -140,6 +147,8 @@ export class Controller {
       pending: [],
       typing: false,
       unread: 0,
+      // Until the session says otherwise, a site with the form shows it.
+      intro: o.prechat ?? false,
     };
     this.realtime = new Realtime(
       this.api.realtimeUrl(),
@@ -192,11 +201,7 @@ export class Controller {
   // --- session ---
 
   private safeGet(): string | null {
-    try {
-      return this.storage.getItem(this.storageKey);
-    } catch {
-      return null;
-    }
+    return this.storageGet(this.storageKey);
   }
 
   private saveToken(token: string | null): void {
@@ -239,7 +244,48 @@ export class Controller {
     });
     if (session.session_token !== this.token) this.resetChat();
     this.saveToken(session.session_token);
-    this.set({ channelName: session.channel_name });
+    // A visitor the site identified, or who filled in the form, is not asked again.
+    const intro = !!this.o.prechat && session.identity === "none" && this.storageGet(this.introKey) !== mark(session.session_token);
+    this.set({ channelName: session.channel_name, intro });
+  }
+
+  private get introKey(): string {
+    return this.storageKey.replace(/:session$/, ":intro");
+  }
+
+  private storageGet(key: string): string | null {
+    try {
+      return this.storage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sends the pre-chat form; nothing filled in just closes it. Throws when the server did not take it. */
+  async introduce(form: WidgetContactRequest): Promise<void> {
+    await this.start();
+    if (this.state.status !== "ready") throw new WidgetApiError(0, "unavailable", null);
+    const filled = Object.keys(form).length > 0;
+    if (filled) {
+      const attempt = () => {
+        if (!this.token) throw new WidgetApiError(0, "no_session", null);
+        return this.api.contact(this.token, form);
+      };
+      try {
+        await attempt();
+      } catch (e) {
+        if (!isSessionEnded(e)) throw e;
+        await this.restart();
+        await attempt();
+      }
+    }
+    try {
+      if (this.token) this.storage.setItem(this.introKey, mark(this.token));
+    } catch {
+      // Not kept: the server knows, the next session start says so.
+    }
+    this.set({ intro: false });
+    if (filled) this.emit("contactCollected", { source: "prechat" });
   }
 
   /** The session ended on the server: a new one, a fresh chat, a new connection. Unsent messages stay: they are the same visitor's. */

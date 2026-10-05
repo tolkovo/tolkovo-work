@@ -100,9 +100,19 @@ UPDATE contacts
 SET name = CASE WHEN name_placeholder AND @name::text <> '' THEN @name::text ELSE name END,
     name_placeholder = name_placeholder AND @name::text = '',
     email = COALESCE(email, sqlc.narg(email)::citext),
+    phone = COALESCE(phone, sqlc.narg(phone)::text),
+    attributes = CASE WHEN sqlc.narg(consent)::jsonb IS NULL THEN attributes
+        ELSE attributes || jsonb_build_object('consent', sqlc.narg(consent)::jsonb) END,
     identity_unverified = true,
     updated_at = now()
 WHERE workspace_id = @workspace_id AND id = @id AND external_id IS NULL AND deleted_at IS NULL;
+
+-- name: RecordConsent :exec
+-- The visitor agreed to the processing of personal data (the widget's
+-- pre-chat form); a later consent replaces an earlier one.
+UPDATE contacts
+SET attributes = attributes || jsonb_build_object('consent', @consent::jsonb), updated_at = now()
+WHERE workspace_id = @workspace_id AND id = @id AND deleted_at IS NULL;
 
 -- name: ExpireAttachments :execrows
 -- Files past the retention of their channel: the objects are deleted, the

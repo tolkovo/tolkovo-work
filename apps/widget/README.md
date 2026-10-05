@@ -54,10 +54,28 @@ Tolkovo.open(); Tolkovo.close(); Tolkovo.toggle();
 Tolkovo.show(); Tolkovo.hide(); // the launcher button
 await Tolkovo.identify({ id, hash, name, email }); // the user signed in
 await Tolkovo.logout(); // the user signed out: the next person starts afresh
-Tolkovo.on("message", (m) => {}); // also: ready, open, close, unread, chatStarted
+Tolkovo.on("message", (m) => {}); // also: ready, open, close, unread, chatStarted, contactCollected
 Tolkovo.off("message", handler);
 Tolkovo.destroy();
 ```
+
+### Pre-chat form
+
+Ask who the visitor is before the first message:
+
+```ts
+Tolkovo.init({
+  // …
+  prechat: {
+    fields: ["name", "email", "phone"], // in this order; default ["name", "email"]
+    required: ["name"], // default: none
+    intro: { ru: "Представьтесь, чтобы мы ответили на почту", en: "Tell us where to reply" }, // optional
+    consent: { policyUrl: "https://example.com/privacy" }, // a required checkbox with a link to the policy
+  },
+});
+```
+
+The form replaces the message field until the visitor sends it. A visitor you identified (`user` or `identify`) is not asked. Neither is a visitor who has already filled the form in for this session. What they type fills the customer card. The name replaces the guest name ("Гость 4821"), but values an operator entered are never overwritten. The customer shows as "identity not confirmed", because the values are only what the visitor typed. The consent is stored with the policy link and the time. After the form is sent, the `contactCollected` event fires with `{ source: "prechat" }` only, never the values.
 
 ## 3. Signed-in users (recommended)
 
@@ -121,7 +139,7 @@ The widget's styles live in a shadow root (`adoptedStyleSheets`), so no `'unsafe
 
 - **Session.** The session token is kept in `localStorage` under `tolkovo:<widgetKey>:session`, or in memory if storage is blocked. You can pass your own `storage`. A session lives 30 days after the last activity.
 - **Live updates.** A WebSocket to `/api/v1/widget/realtime` carries only signals: "a reply is here", "an operator is typing". Texts always come over HTTPS. After a reconnect the widget refetches what it missed.
-- **Contacts.** An anonymous visitor appears in the inbox only after their first message.
+- **Contacts.** An anonymous visitor appears in the inbox only after their first message, as "Гость 4821" ("Guest 4821" in an English workspace) until they or an operator give a name.
 - **Receipts.** The operator sees "delivered" when the widget has a reply and "read" when it was shown in an open window.
 - **Files.** The visitor attaches up to 5 files per message with the paperclip button, by pasting a screenshot or by dragging files onto the window. Each file can be up to 10 MB: a picture, PDF, text, CSV, JSON, ZIP, DOCX or XLSX. Before the message is stored, the server checks that a file is what its type says and, if your server runs an antivirus, scans it. A file that fails is deleted, and the visitor sees which one did not go. Pictures in the chat show as previews. Other files open from a link.
 

@@ -432,14 +432,19 @@ UPDATE contacts
 SET name = CASE WHEN name_placeholder AND $1::text <> '' THEN $1::text ELSE name END,
     name_placeholder = name_placeholder AND $1::text = '',
     email = COALESCE(email, $2::citext),
+    phone = COALESCE(phone, $3::text),
+    attributes = CASE WHEN $4::jsonb IS NULL THEN attributes
+        ELSE attributes || jsonb_build_object('consent', $4::jsonb) END,
     identity_unverified = true,
     updated_at = now()
-WHERE workspace_id = $3 AND id = $4 AND external_id IS NULL AND deleted_at IS NULL
+WHERE workspace_id = $5 AND id = $6 AND external_id IS NULL AND deleted_at IS NULL
 `
 
 type MarkContactUnverifiedParams struct {
 	Name        string
 	Email       *string
+	Phone       *string
+	Consent     []byte
 	WorkspaceID uuid.UUID
 	ID          uuid.UUID
 }
@@ -451,6 +456,8 @@ func (q *Queries) MarkContactUnverified(ctx context.Context, arg MarkContactUnve
 	_, err := q.db.Exec(ctx, markContactUnverified,
 		arg.Name,
 		arg.Email,
+		arg.Phone,
+		arg.Consent,
 		arg.WorkspaceID,
 		arg.ID,
 	)
@@ -514,6 +521,25 @@ func (q *Queries) OpenThreadExists(ctx context.Context, arg OpenThreadExistsPara
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const recordConsent = `-- name: RecordConsent :exec
+UPDATE contacts
+SET attributes = attributes || jsonb_build_object('consent', $1::jsonb), updated_at = now()
+WHERE workspace_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type RecordConsentParams struct {
+	Consent     []byte
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// The visitor agreed to the processing of personal data (the widget's
+// pre-chat form); a later consent replaces an earlier one.
+func (q *Queries) RecordConsent(ctx context.Context, arg RecordConsentParams) error {
+	_, err := q.db.Exec(ctx, recordConsent, arg.Consent, arg.WorkspaceID, arg.ID)
+	return err
 }
 
 const reportReplies = `-- name: ReportReplies :many

@@ -209,6 +209,26 @@ func (s *server) MarkWidgetReceipt(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *server) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
+	if s.widgetOff(w, r) {
+		return
+	}
+	var req oapi.WidgetContactRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	in := widget.Intro{Name: deref(req.Name), Email: deref(req.Email), Phone: deref(req.Phone)}
+	if req.Consent != nil {
+		in.PolicyURL = req.Consent.PolicyUrl
+	}
+	if err := s.widget.Introduce(r.Context(), s.widgetCaller(r), widgetToken(r), in); err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func widgetMessageBody(m conversations.VisitorMessage) oapi.WidgetMessage {
 	files := make([]oapi.IngestReplyFile, 0, len(m.Files))
 	for _, f := range m.Files {

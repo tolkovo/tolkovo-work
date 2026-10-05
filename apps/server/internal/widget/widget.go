@@ -18,9 +18,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -63,6 +65,7 @@ var (
 	receiptsPerVisit  = ratelimit.Rule{Limit: 60, Window: time.Minute}
 	requestsPerIP     = ratelimit.Rule{Limit: 300, Window: time.Minute}
 	connectsPerTarget = ratelimit.Rule{Limit: 30, Window: time.Minute}
+	introsPerSession  = ratelimit.Rule{Limit: 10, Window: time.Minute}
 )
 
 // Errors of the module.
@@ -482,8 +485,16 @@ func (s *Service) firstContact(ctx context.Context, v Visitor) (uuid.UUID, error
 	if sess.ContactID != nil {
 		return *sess.ContactID, nil
 	}
+	var consent *conversations.Consent
+	if sess.ClaimConsent != nil {
+		consent = new(conversations.Consent)
+		if err := json.Unmarshal(sess.ClaimConsent, consent); err != nil {
+			return uuid.Nil, fmt.Errorf("widget: session consent: %w", err)
+		}
+	}
 	vc, err := s.opts.Inbox.ResolveVisitor(ctx, v.WorkspaceID, conversations.Visitor{
 		Claimed: sess.Claimed, Name: deref(sess.ClaimName), Email: deref(sess.ClaimEmail),
+		Phone: deref(sess.ClaimPhone), Consent: consent,
 	})
 	if err != nil {
 		return uuid.Nil, s.inboxError(err)
@@ -507,6 +518,144 @@ func (s *Service) firstContact(ctx context.Context, v Visitor) (uuid.UUID, error
 		return uuid.Nil, fmt.Errorf("widget: attach contact: %w", err)
 	}
 	return vc.ContactID, nil
+}
+
+// Intro is what the visitor typed into the widget's pre-chat form
+// (docs/04 §6.3). Which fields the form asks for is the site's choice, set
+// in the widget's code.
+type Intro struct {
+	Name  string
+	Email string
+	Phone string
+	// PolicyURL: the visitor ticked the consent to the processing of
+	// personal data, shown with a link to this policy.
+	PolicyURL string
+}
+
+// Introduce keeps what the visitor said about themselves. A session
+// without a contact keeps it until the first message, as it keeps an
+// identify claim; otherwise it goes onto the contact at once. Typed values
+// are claims: the contact becomes unverified and is never merged; a
+// verified contact keeps its values and takes only the consent.
+func (s *Service) Introduce(ctx context.Context, c Caller, token string, in Intro) error {
+	if err := s.allow(ctx, "widget:ip:"+c.IP, requestsPerIP); err != nil {
+		return err
+	}
+	in, err := in.validate()
+	if err != nil {
+		return err
+	}
+	v, err := s.Authenticate(ctx, c, token)
+	if err != nil {
+		return err
+	}
+	if err := s.allow(ctx, "widget:intros:"+v.SessionID.String(), introsPerSession); err != nil {
+		return err
+	}
+	var consent *conversations.Consent
+	if in.PolicyURL != "" {
+		consent = &conversations.Consent{PolicyURL: in.PolicyURL, GivenAt: s.now(), Source: "widget_prechat"}
+	}
+	if v.ContactID == uuid.Nil {
+		kept, contact, err := s.keepIntro(ctx, v, in, consent)
+		if err != nil || kept {
+			return err
+		}
+		// A first message gave the session its contact meanwhile.
+		v.ContactID = contact
+	}
+	vc, err := s.opts.Inbox.ResolveVisitor(ctx, v.WorkspaceID, conversations.Visitor{
+		Current: v.ContactID, Name: in.Name, Email: in.Email, Phone: in.Phone, Consent: consent,
+	})
+	if err != nil {
+		return s.inboxError(err)
+	}
+	if vc.ContactID == v.ContactID {
+		return nil
+	}
+	// The session's contact was deleted: the session goes on with the new one.
+	err = s.db.InTenantTx(ctx, v.WorkspaceID, func(tx pgx.Tx) error {
+		_, err := store.New(tx).SetSessionContact(ctx, store.SetSessionContactParams{WorkspaceID: v.WorkspaceID, ID: v.SessionID, ContactID: &vc.ContactID})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("widget: save session: %w", err)
+	}
+	return nil
+}
+
+// keepIntro adds the form to the claims of a session without a contact.
+// kept is false when the session has a contact by now; contact is that one.
+func (s *Service) keepIntro(ctx context.Context, v Visitor, in Intro, consent *conversations.Consent) (kept bool, contact uuid.UUID, err error) {
+	p := store.AddSessionIntroParams{
+		WorkspaceID: v.WorkspaceID, ID: v.SessionID,
+		ClaimName: optional(in.Name), ClaimEmail: optional(in.Email), ClaimPhone: optional(in.Phone),
+	}
+	if consent != nil {
+		if p.ClaimConsent, err = json.Marshal(consent); err != nil {
+			return false, uuid.Nil, err
+		}
+	}
+	err = s.db.InTenantTx(ctx, v.WorkspaceID, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		_, err := q.AddSessionIntro(ctx, p)
+		if err == nil {
+			kept = true
+			return nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		sess, err := q.GetSession(ctx, store.GetSessionParams{WorkspaceID: v.WorkspaceID, ID: v.SessionID})
+		if err != nil {
+			return err
+		}
+		if sess.ContactID != nil {
+			contact = *sess.ContactID
+		}
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, uuid.Nil, ErrSessionEnded
+	}
+	if err != nil {
+		return false, uuid.Nil, fmt.Errorf("widget: keep intro: %w", err)
+	}
+	return kept, contact, nil
+}
+
+// validate trims the form and checks it; messages name the field, never
+// the value.
+func (in Intro) validate() (Intro, error) {
+	in = Intro{
+		Name: strings.TrimSpace(in.Name), Email: strings.TrimSpace(in.Email),
+		Phone: strings.TrimSpace(in.Phone), PolicyURL: strings.TrimSpace(in.PolicyURL),
+	}
+	switch {
+	case in == Intro{}:
+		return in, fmt.Errorf("%w: give a name, an email, a phone or the consent", ErrInvalid)
+	case utf8.RuneCountInString(in.Name) > maxNameChars || !utf8.ValidString(in.Name):
+		return in, fmt.Errorf("%w: name must be at most %d characters", ErrInvalid, maxNameChars)
+	case in.Email != "" && !conversations.ValidEmail(in.Email):
+		return in, fmt.Errorf("%w: email is not a valid address", ErrInvalid)
+	case in.Phone != "" && !conversations.ValidPhone(in.Phone):
+		return in, fmt.Errorf("%w: phone must be 3-32 digits, spaces, brackets or hyphens", ErrInvalid)
+	case in.PolicyURL != "" && !validPolicyURL(in.PolicyURL):
+		return in, fmt.Errorf("%w: consent.policy_url must be an http(s) URL of at most %d bytes", ErrInvalid, conversations.MaxPolicyURLLength)
+	}
+	return in, nil
+}
+
+func validPolicyURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && len(raw) <= conversations.MaxPolicyURLLength && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
+}
+
+func optional(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
 }
 
 // Messages returns the visitor's chat after since; without since, its

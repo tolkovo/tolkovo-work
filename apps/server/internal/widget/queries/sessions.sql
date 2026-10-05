@@ -16,7 +16,8 @@ WHERE workspace_id = @workspace_id AND token_hash = @token_hash;
 -- The visitor's contact is known now (identify): pending claims are used
 -- up.
 UPDATE widget_sessions
-SET contact_id = @contact_id, claimed = false, claim_name = NULL, claim_email = NULL
+SET contact_id = @contact_id, claimed = false, claim_name = NULL, claim_email = NULL, claim_phone = NULL,
+    claim_consent = NULL
 WHERE workspace_id = @workspace_id AND id = @id
 RETURNING *;
 
@@ -24,7 +25,8 @@ RETURNING *;
 -- The first message gave an anonymous session its contact; a concurrent
 -- first message that won keeps its own (no row).
 UPDATE widget_sessions
-SET contact_id = @contact_id, claimed = false, claim_name = NULL, claim_email = NULL
+SET contact_id = @contact_id, claimed = false, claim_name = NULL, claim_email = NULL, claim_phone = NULL,
+    claim_consent = NULL
 WHERE workspace_id = @workspace_id AND id = @id AND contact_id IS NULL
 RETURNING *;
 
@@ -37,6 +39,20 @@ WHERE workspace_id = @workspace_id AND id = @id;
 UPDATE widget_sessions
 SET claimed = true, claim_name = sqlc.narg(claim_name), claim_email = sqlc.narg(claim_email)
 WHERE workspace_id = @workspace_id AND id = @id
+RETURNING *;
+
+-- name: AddSessionIntro :one
+-- An anonymous visitor without a contact filled in the pre-chat form: what
+-- they typed adds to what they claimed before. No row once a concurrent
+-- first message gave the session its contact.
+UPDATE widget_sessions
+SET claimed = claimed OR sqlc.narg(claim_name)::text IS NOT NULL OR sqlc.narg(claim_email)::text IS NOT NULL
+        OR sqlc.narg(claim_phone)::text IS NOT NULL,
+    claim_name = COALESCE(sqlc.narg(claim_name)::text, claim_name),
+    claim_email = COALESCE(sqlc.narg(claim_email)::text, claim_email),
+    claim_phone = COALESCE(sqlc.narg(claim_phone)::text, claim_phone),
+    claim_consent = COALESCE(sqlc.narg(claim_consent)::jsonb, claim_consent)
+WHERE workspace_id = @workspace_id AND id = @id AND contact_id IS NULL
 RETURNING *;
 
 -- name: TouchSession :exec

@@ -11,17 +11,19 @@ import (
 )
 
 type WidgetSession struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	ChannelID   uuid.UUID
-	ContactID   *uuid.UUID
-	TokenHash   []byte
-	Claimed     bool
-	ClaimName   *string
-	ClaimEmail  *string
-	CreatedAt   time.Time
-	LastSeenAt  time.Time
-	ExpiresAt   time.Time
+	ID           uuid.UUID
+	WorkspaceID  uuid.UUID
+	ChannelID    uuid.UUID
+	ContactID    *uuid.UUID
+	TokenHash    []byte
+	Claimed      bool
+	ClaimName    *string
+	ClaimEmail   *string
+	CreatedAt    time.Time
+	LastSeenAt   time.Time
+	ExpiresAt    time.Time
+	ClaimPhone   *string
+	ClaimConsent []byte
 }
 
 type WidgetUpload struct {

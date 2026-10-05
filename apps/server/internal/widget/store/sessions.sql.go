@@ -12,11 +12,64 @@ import (
 	"github.com/google/uuid"
 )
 
+const addSessionIntro = `-- name: AddSessionIntro :one
+UPDATE widget_sessions
+SET claimed = claimed OR $1::text IS NOT NULL OR $2::text IS NOT NULL
+        OR $3::text IS NOT NULL,
+    claim_name = COALESCE($1::text, claim_name),
+    claim_email = COALESCE($2::text, claim_email),
+    claim_phone = COALESCE($3::text, claim_phone),
+    claim_consent = COALESCE($4::jsonb, claim_consent)
+WHERE workspace_id = $5 AND id = $6 AND contact_id IS NULL
+RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent
+`
+
+type AddSessionIntroParams struct {
+	ClaimName    *string
+	ClaimEmail   *string
+	ClaimPhone   *string
+	ClaimConsent []byte
+	WorkspaceID  uuid.UUID
+	ID           uuid.UUID
+}
+
+// An anonymous visitor without a contact filled in the pre-chat form: what
+// they typed adds to what they claimed before. No row once a concurrent
+// first message gave the session its contact.
+func (q *Queries) AddSessionIntro(ctx context.Context, arg AddSessionIntroParams) (WidgetSession, error) {
+	row := q.db.QueryRow(ctx, addSessionIntro,
+		arg.ClaimName,
+		arg.ClaimEmail,
+		arg.ClaimPhone,
+		arg.ClaimConsent,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	var i WidgetSession
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ChannelID,
+		&i.ContactID,
+		&i.TokenHash,
+		&i.Claimed,
+		&i.ClaimName,
+		&i.ClaimEmail,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
+	)
+	return i, err
+}
+
 const attachSessionContact = `-- name: AttachSessionContact :one
 UPDATE widget_sessions
-SET contact_id = $1, claimed = false, claim_name = NULL, claim_email = NULL
+SET contact_id = $1, claimed = false, claim_name = NULL, claim_email = NULL, claim_phone = NULL,
+    claim_consent = NULL
 WHERE workspace_id = $2 AND id = $3 AND contact_id IS NULL
-RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at
+RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent
 `
 
 type AttachSessionContactParams struct {
@@ -42,6 +95,8 @@ func (q *Queries) AttachSessionContact(ctx context.Context, arg AttachSessionCon
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
 	)
 	return i, err
 }
@@ -62,7 +117,7 @@ func (q *Queries) DeleteSession(ctx context.Context, arg DeleteSessionParams) er
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at FROM widget_sessions
+SELECT id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent FROM widget_sessions
 WHERE workspace_id = $1 AND id = $2
 `
 
@@ -86,6 +141,8 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (WidgetS
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
 	)
 	return i, err
 }
@@ -98,7 +155,7 @@ INSERT INTO widget_sessions (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $9, $10
 )
-RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at
+RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent
 `
 
 type InsertSessionParams struct {
@@ -140,6 +197,8 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (W
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
 	)
 	return i, err
 }
@@ -162,7 +221,7 @@ func (q *Queries) PruneExpiredSessions(ctx context.Context) (int64, error) {
 }
 
 const sessionByHash = `-- name: SessionByHash :one
-SELECT id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at FROM widget_sessions
+SELECT id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent FROM widget_sessions
 WHERE workspace_id = $1 AND token_hash = $2
 `
 
@@ -186,6 +245,8 @@ func (q *Queries) SessionByHash(ctx context.Context, arg SessionByHashParams) (W
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
 	)
 	return i, err
 }
@@ -194,7 +255,7 @@ const setSessionClaim = `-- name: SetSessionClaim :one
 UPDATE widget_sessions
 SET claimed = true, claim_name = $1, claim_email = $2
 WHERE workspace_id = $3 AND id = $4
-RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at
+RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent
 `
 
 type SetSessionClaimParams struct {
@@ -225,15 +286,18 @@ func (q *Queries) SetSessionClaim(ctx context.Context, arg SetSessionClaimParams
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
 	)
 	return i, err
 }
 
 const setSessionContact = `-- name: SetSessionContact :one
 UPDATE widget_sessions
-SET contact_id = $1, claimed = false, claim_name = NULL, claim_email = NULL
+SET contact_id = $1, claimed = false, claim_name = NULL, claim_email = NULL, claim_phone = NULL,
+    claim_consent = NULL
 WHERE workspace_id = $2 AND id = $3
-RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at
+RETURNING id, workspace_id, channel_id, contact_id, token_hash, claimed, claim_name, claim_email, created_at, last_seen_at, expires_at, claim_phone, claim_consent
 `
 
 type SetSessionContactParams struct {
@@ -259,6 +323,8 @@ func (q *Queries) SetSessionContact(ctx context.Context, arg SetSessionContactPa
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.ClaimPhone,
+		&i.ClaimConsent,
 	)
 	return i, err
 }

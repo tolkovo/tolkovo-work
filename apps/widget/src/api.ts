@@ -14,6 +14,7 @@ type SignedRequest = Schemas["SignedRequest"];
 type WidgetSessionRequest = Schemas["WidgetSessionRequest"];
 type WidgetReceiptRequest = Schemas["WidgetReceiptRequest"];
 type WidgetUploadRequest = Schemas["WidgetUploadRequest"];
+export type WidgetContactRequest = Schemas["WidgetContactRequest"];
 
 /** An answer that is not 2xx: the problem's code, Retry-After for 429 and 503, the file a message was refused for. */
 export class WidgetApiError extends Error {
@@ -93,6 +94,10 @@ export class WidgetApi {
   async put(req: SignedRequest, file: Blob): Promise<void> {
     const res = await fetch(req.url, { method: req.method, headers: req.headers, body: file, credentials: "omit" });
     if (!res.ok) throw new WidgetApiError(res.status, "upload_failed", null);
+  }
+
+  contact(token: string, req: WidgetContactRequest): Promise<void> {
+    return this.call("POST", "/contact", token, req);
   }
 
   receipt(token: string, req: WidgetReceiptRequest): Promise<void> {

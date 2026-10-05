@@ -1667,6 +1667,36 @@ paths:
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
+  /widget/contact:
+    post:
+      tags: [widget]
+      operationId: submitWidgetContact
+      summary: The visitor fills in the pre-chat form
+      description: |
+        What the visitor typed about themselves (the widget's `prechat` option) and their
+        consent to the processing of personal data. Which fields the form asks for and which
+        are required is set in the widget's code; send only what was filled in. Before the
+        first message the values wait in the session and go onto the contact with that
+        message; later they fill what the contact lacks (a typed name replaces the guest
+        name) and never overwrite what an operator entered. Typed values are claims: the
+        contact becomes `unverified`, the next `POST /widget/session` says so, and it is never
+        merged with others. A verified contact keeps its values and takes only the consent,
+        stored with the policy URL and the time. Rate: 10 a minute per session.
+      security:
+        - widgetSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetContactRequest' }
+      responses:
+        '204':
+          description: Kept.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
   /widget/receipts:
     post:
       tags: [widget]
@@ -4211,6 +4241,25 @@ components:
         user_hash: { type: string, maxLength: 128 }
         name: { type: string, maxLength: 200 }
         email: { type: string, maxLength: 254 }
+
+    WidgetContactRequest:
+      type: object
+      additionalProperties: false
+      description: At least one field.
+      properties:
+        name: { type: string, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+        phone:
+          type: string
+          maxLength: 32
+          description: 3–32 digits, spaces, brackets or hyphens, an optional leading `+`.
+        consent:
+          type: object
+          additionalProperties: false
+          required: [policy_url]
+          description: The visitor ticked the consent shown with a link to this policy.
+          properties:
+            policy_url: { type: string, format: uri, maxLength: 2048, description: An http(s) URL. }
 
     WidgetSession:
       type: object

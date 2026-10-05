@@ -4,8 +4,8 @@ import { Controller } from "./controller";
 import { localized, resolveLocale, translator } from "./i18n";
 import type { SocketFactory } from "./realtime";
 import styles from "./styles.css?inline";
-import type { Options, Theme } from "./types";
-import { App, type View } from "./ui/app";
+import type { Locale, Options, Prechat, PrechatField, Theme } from "./types";
+import { App, type PrechatView, type View } from "./ui/app";
 
 /**
  * One widget on the page: a host element with an open shadow root (docs/04 §6.1), so the page's
@@ -28,6 +28,7 @@ export class Widget {
       storage: options.storage,
       open: options.open,
       launcher: options.launcher,
+      prechat: options.prechat !== undefined,
       ...(socket ? { socket } : {}),
     });
     this.host = document.createElement("tolkovo-widget");
@@ -49,6 +50,7 @@ export class Widget {
       placeholder: localized(options.placeholder, locale),
       logo: options.logo,
       position: options.theme?.position === "bottom-left" ? "bottom-left" : "bottom-right",
+      prechat: prechatView(options.prechat, locale),
     };
     render(<App c={this.controller} view={view} />, mount);
     document.addEventListener("visibilitychange", this.onVisibility);
@@ -66,6 +68,22 @@ export class Widget {
     render(null, this.root.lastChild as Element);
     this.host.remove();
   }
+}
+
+const FIELDS: readonly PrechatField[] = ["name", "email", "phone"];
+
+/** The form as the UI shows it; unknown fields and a policy link that is not http(s) are ignored. */
+export function prechatView(p: Prechat | undefined, locale: Locale): PrechatView | undefined {
+  if (!p) return undefined;
+  const pick = (list: unknown) => (Array.isArray(list) ? FIELDS.filter((f) => list.includes(f)) : []);
+  const fields = p.fields === undefined ? (["name", "email"] as PrechatField[]) : pick(p.fields);
+  const policy = p.consent?.policyUrl?.trim();
+  return {
+    fields,
+    required: pick(p.required).filter((f) => fields.includes(f)),
+    intro: localized(p.intro, locale),
+    consent: policy && /^https?:\/\/[^/]/i.test(policy) ? { policyUrl: policy, text: localized(p.consent?.text, locale) } : undefined,
+  };
 }
 
 function adoptStyles(root: ShadowRoot, css: string): void {

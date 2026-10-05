@@ -13,14 +13,16 @@ import (
 
 const createContact = `-- name: CreateContact :one
 
-INSERT INTO contacts (id, workspace_id, name, name_placeholder, email, phone, locale, external_id, identity_unverified)
+INSERT INTO contacts (id, workspace_id, name, name_placeholder, email, phone, locale, external_id, identity_unverified, attributes)
 VALUES (
     $1, $2,
     CASE WHEN $3::text = ''
         THEN contact_guest_name((SELECT w.locale FROM workspaces w WHERE w.id = $2), $1)
         ELSE $3::text END,
     $3::text = '',
-    $4, $5, $6, $7, $8
+    $4, $5, $6, $7, $8,
+    CASE WHEN $9::jsonb IS NULL THEN '{}'::jsonb
+        ELSE jsonb_build_object('consent', $9::jsonb) END
 )
 RETURNING id, workspace_id, name, email, phone, locale, external_id, attributes, blocked_at, deleted_at, created_at, updated_at, identity_unverified, name_placeholder
 `
@@ -34,6 +36,7 @@ type CreateContactParams struct {
 	Locale             *string
 	ExternalID         *string
 	IdentityUnverified bool
+	Consent            []byte
 }
 
 // Every query on a tenant table filters by workspace_id explicitly, even
@@ -49,6 +52,7 @@ func (q *Queries) CreateContact(ctx context.Context, arg CreateContactParams) (C
 		arg.Locale,
 		arg.ExternalID,
 		arg.IdentityUnverified,
+		arg.Consent,
 	)
 	var i Contact
 	err := row.Scan(

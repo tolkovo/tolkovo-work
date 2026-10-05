@@ -1876,6 +1876,20 @@ type WidgetChannelCreated struct {
 	IdentitySecret string `json:"identity_secret"`
 }
 
+// WidgetContactRequest At least one field.
+type WidgetContactRequest struct {
+	// Consent The visitor ticked the consent shown with a link to this policy.
+	Consent *struct {
+		// PolicyUrl An http(s) URL.
+		PolicyUrl string `json:"policy_url"`
+	} `json:"consent,omitempty"`
+	Email *string `json:"email,omitempty"`
+	Name  *string `json:"name,omitempty"`
+
+	// Phone 3–32 digits, spaces, brackets or hyphens, an optional leading `+`.
+	Phone *string `json:"phone,omitempty"`
+}
+
 // WidgetMessage defines model for WidgetMessage.
 type WidgetMessage struct {
 	Body           string            `json:"body"`
@@ -2305,6 +2319,9 @@ type ChangePasswordJSONRequestBody = ChangePasswordRequest
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
+// SubmitWidgetContactJSONRequestBody defines body for SubmitWidgetContact for application/json ContentType.
+type SubmitWidgetContactJSONRequestBody = WidgetContactRequest
+
 // SendWidgetMessageJSONRequestBody defines body for SendWidgetMessage for application/json ContentType.
 type SendWidgetMessageJSONRequestBody = WidgetMessageRequest
 
@@ -2553,6 +2570,9 @@ type ServerInterface interface {
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	// SubmitWidgetContact The visitor fills in the pre-chat form
+	// (POST /widget/contact)
+	SubmitWidgetContact(w http.ResponseWriter, r *http.Request)
 	// ListWidgetMessages The visitor's chat
 	// (GET /widget/messages)
 	ListWidgetMessages(w http.ResponseWriter, r *http.Request, params ListWidgetMessagesParams)
@@ -3039,6 +3059,12 @@ func (_ Unimplemented) ListTags(w http.ResponseWriter, r *http.Request) {
 // CreateTag Create a tag
 // (POST /tags)
 func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SubmitWidgetContact The visitor fills in the pre-chat form
+// (POST /widget/contact)
+func (_ Unimplemented) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4914,6 +4940,20 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// SubmitWidgetContact operation middleware
+func (siw *ServerInterfaceWrapper) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitWidgetContact(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWidgetMessages operation middleware
 func (siw *ServerInterfaceWrapper) ListWidgetMessages(w http.ResponseWriter, r *http.Request) {
 
@@ -5344,6 +5384,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/uploads", wrapper.CreateWidgetUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/contact", wrapper.SubmitWidgetContact)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/receipts", wrapper.MarkWidgetReceipt)

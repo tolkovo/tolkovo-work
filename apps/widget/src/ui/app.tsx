@@ -3,7 +3,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Controller, OutFile, State } from "../controller";
 import { ACCEPT, MAX_FILE_SIZE, MAX_FILES, fileType, formatSize, isImage } from "../files";
 import type { Translate } from "../i18n";
-import type { ChatFile, ChatMessage, Locale } from "../types";
+import type { ChatFile, ChatMessage, Locale, PrechatField } from "../types";
+
+/** The pre-chat form from Tolkovo.init(), checked (widget.tsx). */
+export interface PrechatView {
+  fields: PrechatField[];
+  required: PrechatField[];
+  intro: string | undefined;
+  consent: { policyUrl: string; text: string | undefined } | undefined;
+}
 
 /** What the UI shows besides the state: texts and looks from Tolkovo.init(). */
 export interface View {
@@ -15,6 +23,7 @@ export interface View {
   placeholder: string | undefined;
   logo: string | undefined;
   position: "bottom-right" | "bottom-left";
+  prechat: PrechatView | undefined;
 }
 
 function useStore(c: Controller): State {
@@ -137,7 +146,8 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
   const logo = safeImage(view.logo);
   const draft = useDraftFiles(t);
   const [dragging, setDragging] = useState(false);
-  const canAttach = s.status !== "unavailable";
+  const asking = s.intro && !!view.prechat && s.status !== "unavailable";
+  const canAttach = s.status !== "unavailable" && !asking;
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
   return (
     <section
@@ -187,7 +197,7 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
           {t("offline")}
         </p>
       ) : null}
-      <Composer c={c} view={view} draft={draft} disabled={!canAttach} />
+      {asking ? <PrechatForm c={c} view={view} form={view.prechat!} /> : <Composer c={c} view={view} draft={draft} disabled={!canAttach} />}
     </section>
   );
 }
@@ -417,6 +427,149 @@ function Composer({ c, view, draft, disabled }: { c: Controller; view: View; dra
       ) : null}
       <button type="submit" class="tk-send" aria-label={t("send")} disabled={disabled || empty || tooLong}>
         <SendIcon />
+      </button>
+    </form>
+  );
+}
+
+/** The same checks as the server (internal/conversations). */
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE = /^\+?[0-9][0-9 ()-]{1,30}$/;
+const LIMITS: Record<PrechatField, number> = { name: 200, email: 254, phone: 32 };
+const INPUT: Record<PrechatField, { type: "text" | "email" | "tel"; autocomplete: string }> = {
+  name: { type: "text", autocomplete: "name" },
+  email: { type: "email", autocomplete: "email" },
+  phone: { type: "tel", autocomplete: "tel" },
+};
+
+type FormErrors = Partial<Record<PrechatField | "consent", string>>;
+
+/** Who the visitor is, asked before the first message instead of the message field. */
+function PrechatForm({ c, view, form }: { c: Controller; view: View; form: PrechatView }) {
+  const { t } = view;
+  const [values, setValues] = useState<Record<PrechatField, string>>({ name: "", email: "", phone: "" });
+  const [agreed, setAgreed] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    formRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+  }, []);
+
+  const check = (): FormErrors => {
+    const e: FormErrors = {};
+    for (const f of form.fields) {
+      const v = values[f].trim();
+      if (!v) {
+        if (form.required.includes(f)) e[f] = t("required");
+      } else if (f === "email" && !EMAIL.test(v)) e[f] = t("badEmail");
+      else if (f === "phone" && (!PHONE.test(v) || v.length < 3)) e[f] = t("badPhone");
+    }
+    if (form.consent && !agreed) e.consent = t("needConsent");
+    return e;
+  };
+
+  const submit = async () => {
+    const e = check();
+    setErrors(e);
+    const first = Object.keys(e)[0];
+    if (first) {
+      formRef.current?.querySelector<HTMLInputElement>(`#tk-pre-${first}`)?.focus();
+      return;
+    }
+    const body: Record<string, unknown> = {};
+    for (const f of form.fields) if (values[f].trim()) body[f] = values[f].trim();
+    if (form.consent) body.consent = { policy_url: form.consent.policyUrl };
+    setBusy(true);
+    setFailed(false);
+    try {
+      await c.introduce(body);
+    } catch {
+      setFailed(true);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      ref={formRef}
+      class="tk-prechat"
+      noValidate
+      aria-busy={busy || undefined}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <p class="tk-prechat-intro">{form.intro ?? t("prechatIntro")}</p>
+      {form.fields.map((f) => {
+        const required = form.required.includes(f);
+        return (
+          <div key={f} class="tk-field">
+            <label for={`tk-pre-${f}`}>
+              {t(f)}
+              {required ? <span aria-hidden="true"> *</span> : null}
+            </label>
+            <input
+              id={`tk-pre-${f}`}
+              class="tk-text"
+              // All three are text boxes, but Preact's types cannot take a union here (tsc
+              // fails without the assertion, which the linter's view of the types misses).
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+              type={INPUT[f].type as "text"}
+              autocomplete={INPUT[f].autocomplete}
+              maxLength={LIMITS[f]}
+              required={required}
+              value={values[f]}
+              disabled={busy}
+              aria-invalid={errors[f] ? true : undefined}
+              aria-describedby={errors[f] ? `tk-pre-${f}-error` : undefined}
+              onInput={(e) => setValues({ ...values, [f]: e.currentTarget.value })}
+            />
+            {errors[f] ? (
+              <span id={`tk-pre-${f}-error`} class="tk-field-error">
+                {errors[f]}
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
+      {form.consent ? (
+        <div class="tk-field">
+          <label class="tk-consent">
+            <input
+              id="tk-pre-consent"
+              type="checkbox"
+              checked={agreed}
+              disabled={busy}
+              required
+              aria-invalid={errors.consent ? true : undefined}
+              aria-describedby={errors.consent ? "tk-pre-consent-error" : undefined}
+              onChange={(e) => setAgreed(e.currentTarget.checked)}
+            />
+            <span>
+              {form.consent.text ?? t("consent")}.{" "}
+              <a href={form.consent.policyUrl} target="_blank" rel="noopener noreferrer">
+                {t("policy")}
+              </a>
+            </span>
+          </label>
+          {errors.consent ? (
+            <span id="tk-pre-consent-error" class="tk-field-error">
+              {errors.consent}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {failed ? (
+        <p class="tk-file-error" role="alert">
+          {t("prechatFailed")}
+        </p>
+      ) : null}
+      <button type="submit" class="tk-start" disabled={busy}>
+        {t("start")}
       </button>
     </form>
   );

@@ -155,6 +155,11 @@ export class FakeServer {
         this.messages.push(m);
         return json(201, m);
       }
+      case "POST /contact": {
+        const req = body as { name?: string; email?: string; phone?: string };
+        if (req.name || req.email || req.phone) this.identity = "unverified";
+        return new Response(null, { status: 204 });
+      }
       case "POST /receipts":
         return new Response(null, { status: 204 });
     }

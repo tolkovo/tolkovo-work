@@ -2,10 +2,12 @@ package conversations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/mail"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -38,10 +40,35 @@ type Visitor struct {
 	// widget session remembers only that there was a claim). It counts as
 	// a claim like a non-empty unverified ExternalID.
 	Claimed bool
-	// Email and Name are what the site passed; they fill what a contact
-	// lacks and never overwrite what an operator entered.
+	// Email, Name and Phone are what the site passed or the visitor typed
+	// into the pre-chat form; they fill what a contact lacks and never
+	// overwrite what an operator entered.
 	Email string
 	Name  string
+	Phone string
+	// Consent: the visitor agreed to the processing of personal data. It
+	// is not a claim about who they are, so it is kept on any contact.
+	Consent *Consent
+}
+
+// Consent is a visitor's agreement to the processing of personal data
+// (152-ФЗ, GDPR), kept in contacts.attributes.consent.
+type Consent struct {
+	// PolicyURL is the policy the visitor was shown.
+	PolicyURL string    `json:"policy_url"`
+	GivenAt   time.Time `json:"given_at"`
+	// Source is where it was given: "widget_prechat".
+	Source string `json:"source"`
+}
+
+// MaxPolicyURLLength bounds Consent.PolicyURL.
+const MaxPolicyURLLength = 2048
+
+func (c *Consent) json() ([]byte, error) {
+	if c == nil {
+		return nil, nil
+	}
+	return json.Marshal(c)
 }
 
 // VisitorContact is the contact a visitor's session continues with.
@@ -68,15 +95,22 @@ func (s *Service) ResolveVisitor(ctx context.Context, workspaceID uuid.UUID, v V
 	if err := v.validate(); err != nil {
 		return VisitorContact{}, err
 	}
-	name, email := v.claimed()
+	name, email, phone := v.claimed()
+	consent, err := v.Consent.json()
+	if err != nil {
+		return VisitorContact{}, err
+	}
 	var out VisitorContact
-	err := s.tx(ctx, workspaceID, func(q *store.Queries, tx pgx.Tx) error {
+	err = s.tx(ctx, workspaceID, func(q *store.Queries, tx pgx.Tx) error {
 		if v.Verified {
 			id, created, err := s.verifiedContact(ctx, q, tx, workspaceID, v.ExternalID, name, email)
 			out = VisitorContact{ContactID: id, Identity: IdentityVerified, Created: created}
-			return err
+			if err != nil {
+				return err
+			}
+			return s.recordConsent(ctx, q, tx, workspaceID, id, consent)
 		}
-		claimed := v.Claimed || v.ExternalID != "" || name != "" || email != nil
+		claimed := v.Claimed || v.ExternalID != "" || name != "" || email != nil || phone != nil
 		if v.Current != uuid.Nil {
 			cur, err := q.GetContact(ctx, store.GetContactParams{WorkspaceID: workspaceID, ID: v.Current})
 			switch {
@@ -86,17 +120,17 @@ func (s *Service) ResolveVisitor(ctx context.Context, workspaceID uuid.UUID, v V
 				return err
 			case cur.ExternalID != nil && v.ExternalID == "":
 				// A verified session goes on; a typed email or name is not
-				// written onto a verified contact.
+				// written onto a verified contact, a consent is.
 				out = VisitorContact{ContactID: cur.ID, Identity: IdentityVerified}
-				return nil
+				return s.recordConsent(ctx, q, tx, workspaceID, cur.ID, consent)
 			case cur.ExternalID == nil:
 				out = VisitorContact{ContactID: cur.ID, Identity: contactFrom(cur).Identity}
 				if !claimed {
-					return nil
+					return s.recordConsent(ctx, q, tx, workspaceID, cur.ID, consent)
 				}
 				out.Identity = IdentityUnverified
 				if err := q.MarkContactUnverified(ctx, store.MarkContactUnverifiedParams{
-					WorkspaceID: workspaceID, ID: cur.ID, Name: name, Email: email,
+					WorkspaceID: workspaceID, ID: cur.ID, Name: name, Email: email, Phone: phone, Consent: consent,
 				}); err != nil {
 					return err
 				}
@@ -104,7 +138,7 @@ func (s *Service) ResolveVisitor(ctx context.Context, workspaceID uuid.UUID, v V
 			}
 		}
 		id, err := s.newContact(ctx, q, tx, workspaceID, store.CreateContactParams{
-			Name: name, Email: email, IdentityUnverified: claimed,
+			Name: name, Email: email, Phone: phone, IdentityUnverified: claimed, Consent: consent,
 		})
 		out = VisitorContact{ContactID: id, Identity: IdentityNone, Created: true}
 		if claimed {
@@ -125,21 +159,50 @@ func (v Visitor) validate() error {
 		return fmt.Errorf("%w: external_id must be valid text of at most 255 bytes", ErrInvalid)
 	case v.Verified && v.ExternalID == "":
 		return fmt.Errorf("%w: a verified visitor needs an external id", ErrInvalid)
-	case len(v.Email) > 254 || len(v.Name) > 4*200:
-		return fmt.Errorf("%w: visitor email or name is too long", ErrInvalid)
+	case len(v.Email) > 254 || len(v.Name) > 4*200 || len(v.Phone) > 64:
+		return fmt.Errorf("%w: visitor email, name or phone is too long", ErrInvalid)
+	case v.Consent != nil && (v.Consent.PolicyURL == "" || len(v.Consent.PolicyURL) > MaxPolicyURLLength):
+		return fmt.Errorf("%w: consent needs a policy URL of at most %d bytes", ErrInvalid, MaxPolicyURLLength)
 	}
 	return nil
 }
 
-// claimed returns the name and email worth keeping: the name trimmed to
-// the column, the email only when it is an address.
-func (v Visitor) claimed() (string, *string) {
+// claimed returns the name, email and phone worth keeping: the name
+// trimmed to the column, the email only when it is an address, the phone
+// only when it looks like one.
+func (v Visitor) claimed() (string, *string, *string) {
 	name := truncate(strings.TrimSpace(strings.ToValidUTF8(v.Name, "")), 200)
-	e := strings.TrimSpace(v.Email)
-	if addr, err := mail.ParseAddress(e); err != nil || addr.Address != e || len(e) < 3 {
-		return name, nil
+	var email, phone *string
+	if e := strings.TrimSpace(v.Email); ValidEmail(e) {
+		email = &e
 	}
-	return name, &e
+	if ph := strings.TrimSpace(v.Phone); ValidPhone(ph) {
+		phone = &ph
+	}
+	return name, email, phone
+}
+
+// ValidEmail reports whether e is a bare email address.
+func ValidEmail(e string) bool {
+	addr, err := mail.ParseAddress(e)
+	return err == nil && addr.Address == e && len(e) >= 3 && len(e) <= 254
+}
+
+// ValidPhone reports whether ph looks like a phone number: 3 to 32
+// digits, spaces, brackets or hyphens, an optional leading plus.
+func ValidPhone(ph string) bool {
+	return phoneRe.MatchString(ph) && len(ph) >= 3 && len(ph) <= 32
+}
+
+// recordConsent keeps a consent on a contact, if there is one.
+func (s *Service) recordConsent(ctx context.Context, q *store.Queries, tx pgx.Tx, workspaceID, id uuid.UUID, consent []byte) error {
+	if consent == nil {
+		return nil
+	}
+	if err := q.RecordConsent(ctx, store.RecordConsentParams{WorkspaceID: workspaceID, ID: id, Consent: consent}); err != nil {
+		return err
+	}
+	return outbox.Add(ctx, tx, workspaceID, "contact.updated", map[string]any{"contact_id": id})
 }
 
 // verifiedContact returns the contact with a verified external id, the

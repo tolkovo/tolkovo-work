@@ -35,6 +35,26 @@ export interface User {
   email?: string;
 }
 
+/** A field of the pre-chat form. */
+export type PrechatField = "name" | "email" | "phone";
+
+/** The form a visitor fills in before the first message (docs/04 §6.3). It is skipped for a visitor the site identified. */
+export interface Prechat {
+  /** Fields, in this order. Default ["name", "email"]. */
+  fields?: PrechatField[];
+  /** Fields that must be filled in. Default none. */
+  required?: PrechatField[];
+  /** A line above the form. */
+  intro?: Localized;
+  /** A required checkbox of consent to the processing of personal data (152-ФЗ, GDPR), with a link to the policy. */
+  consent?: {
+    /** An http(s) link to the policy; it is stored with the consent. */
+    policyUrl: string;
+    /** The checkbox's text; «Даю согласие на обработку персональных данных» by default. */
+    text?: Localized;
+  };
+}
+
 /** A key-value store for the session token; localStorage by default. */
 export interface TokenStorage {
   getItem(key: string): string | null;
@@ -70,6 +90,8 @@ export interface Options {
   storage?: TokenStorage;
   /** Open the window at start. */
   open?: boolean;
+  /** Ask who the visitor is before the first message. No form by default. */
+  prechat?: Prechat;
 }
 
 /** A file of a message. The link is signed and short-lived; the widget renews it while the chat is open. */
@@ -103,6 +125,8 @@ export interface Events {
   unread: number;
   /** The visitor sent their first message in this session. */
   chatStarted: void;
+  /** The visitor left their contact. No names or emails here: only where it came from. */
+  contactCollected: { source: "prechat" };
 }
 
 export type EventName = keyof Events;
