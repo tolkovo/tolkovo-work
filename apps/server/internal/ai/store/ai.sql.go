@@ -49,6 +49,20 @@ func (q *Queries) DeleteCredentialsExcept(ctx context.Context, arg DeleteCredent
 	return err
 }
 
+const dropExpiredReservations = `-- name: DropExpiredReservations :exec
+DELETE FROM ai_reservations WHERE workspace_id = $1 AND expires_at <= $2::timestamptz
+`
+
+type DropExpiredReservationsParams struct {
+	WorkspaceID uuid.UUID
+	Now         time.Time
+}
+
+func (q *Queries) DropExpiredReservations(ctx context.Context, arg DropExpiredReservationsParams) error {
+	_, err := q.db.Exec(ctx, dropExpiredReservations, arg.WorkspaceID, arg.Now)
+	return err
+}
+
 const ensureSettings = `-- name: EnsureSettings :exec
 INSERT INTO ai_settings (workspace_id) VALUES ($1)
 ON CONFLICT (workspace_id) DO NOTHING
@@ -259,6 +273,66 @@ func (q *Queries) ListCalls(ctx context.Context, arg ListCallsParams) ([]AiCall,
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockBudget = `-- name: LockBudget :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ai.budget:' || ($1::uuid)::text, 0))
+`
+
+// One budget check of a workspace at a time, until the transaction ends.
+func (q *Queries) LockBudget(ctx context.Context, workspaceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockBudget, workspaceID)
+	return err
+}
+
+const release = `-- name: Release :exec
+DELETE FROM ai_reservations WHERE workspace_id = $1 AND id = $2
+`
+
+type ReleaseParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) Release(ctx context.Context, arg ReleaseParams) error {
+	_, err := q.db.Exec(ctx, release, arg.WorkspaceID, arg.ID)
+	return err
+}
+
+const reserve = `-- name: Reserve :exec
+INSERT INTO ai_reservations (id, workspace_id, reserved_micros, expires_at)
+VALUES ($1, $2, $3, $4)
+`
+
+type ReserveParams struct {
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	ReservedMicros int64
+	ExpiresAt      time.Time
+}
+
+func (q *Queries) Reserve(ctx context.Context, arg ReserveParams) error {
+	_, err := q.db.Exec(ctx, reserve,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ReservedMicros,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const reservedNow = `-- name: ReservedNow :one
+SELECT COALESCE(SUM(reserved_micros), 0)::bigint AS reserved
+FROM ai_reservations
+WHERE workspace_id = $1
+`
+
+// What calls in flight have reserved.
+func (q *Queries) ReservedNow(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, reservedNow, workspaceID)
+	var reserved int64
+	err := row.Scan(&reserved)
+	return reserved, err
 }
 
 const spentSince = `-- name: SpentSince :one

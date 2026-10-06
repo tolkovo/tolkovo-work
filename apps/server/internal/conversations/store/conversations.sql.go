@@ -230,6 +230,18 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 	return i, err
 }
 
+const hasQueued = `-- name: HasQueued :one
+SELECT EXISTS (SELECT 1 FROM conversations WHERE workspace_id = $1 AND status = 'queued')
+`
+
+// Whether the queue still holds something, locked rows included.
+func (q *Queries) HasQueued(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasQueued, workspaceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const isActiveMember = `-- name: IsActiveMember :one
 SELECT EXISTS (
     SELECT 1 FROM memberships m

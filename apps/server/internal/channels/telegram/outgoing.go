@@ -101,6 +101,19 @@ func (b *BotAPI) SendMessage(ctx context.Context, token string, chatID int64, te
 	return res.MessageID, botSendErr(err)
 }
 
+// SendNotice sends a service message to a private chat without link
+// previews: a link in it, such as one from a customer's words, is not
+// fetched for a preview.
+func (b *BotAPI) SendNotice(ctx context.Context, token string, chatID int64, text string) (int64, error) {
+	var res struct {
+		MessageID int64 `json:"message_id"`
+	}
+	err := b.call(ctx, token, "sendMessage", map[string]any{
+		"chat_id": chatID, "text": text, "link_preview_options": map[string]any{"is_disabled": true},
+	}, &res)
+	return res.MessageID, botSendErr(err)
+}
+
 // SendFile uploads a file from r to a private chat (multipart, as the Bot
 // API takes uploads) and returns the message id.
 func (b *BotAPI) SendFile(ctx context.Context, token string, chatID int64, f OutFile, r io.Reader) (int64, error) {

@@ -116,7 +116,7 @@ WHERE workspace_id = @workspace_id AND task_id = @task_id AND conversation_id = 
 -- name: TaskConversationIDs :many
 SELECT conversation_id FROM task_conversations
 WHERE workspace_id = @workspace_id AND task_id = @task_id
-ORDER BY created_at, conversation_id;
+ORDER BY conversation_id; -- one order for every task: no deadlock between two tasks sharing conversations
 
 -- name: ConversationTasks :many
 -- The tasks of a conversation, oldest link first.

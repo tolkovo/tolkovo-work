@@ -280,6 +280,26 @@ func (q *Queries) GetUpdateState(ctx context.Context, arg GetUpdateStateParams) 
 	return i, err
 }
 
+const hasBot = `-- name: HasBot :one
+SELECT EXISTS (
+    SELECT 1 FROM channels
+    WHERE workspace_id = $1 AND type = 'telegram_bot' AND external_id = $2 AND deleted_at IS NULL
+)
+`
+
+type HasBotParams struct {
+	WorkspaceID uuid.UUID
+	ExternalID  *string
+}
+
+// Whether a bot (its Telegram id) is a channel of the workspace.
+func (q *Queries) HasBot(ctx context.Context, arg HasBotParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasBot, arg.WorkspaceID, arg.ExternalID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertChannel = `-- name: InsertChannel :one
 INSERT INTO channels (id, workspace_id, type, name, status, external_id, config, created_by, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)

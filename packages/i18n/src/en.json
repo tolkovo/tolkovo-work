@@ -500,7 +500,7 @@
       },
       "providerRequired": "Choose a provider.",
       "baseUrl": "Server address",
-      "baseUrlHint": "Including /v1. An address on a private network works only if the Tolkovo server admin allowed it in TOLKOVO_EGRESS_ALLOW_PRIVATE.",
+      "baseUrlHint": "Including /v1. An outside server only over https://; http:// is for a server on a private network, if the Tolkovo server admin allowed it in TOLKOVO_EGRESS_ALLOW_PRIVATE. The key belongs to the server: enter it again when the address changes.",
       "baseUrlPlaceholder": "http://ollama:11434/v1",
       "baseUrlInvalid": "Enter an address starting with http:// or https://.",
       "key": "API key",
@@ -744,7 +744,8 @@
     "queueExists": "A queue with this name exists.",
     "tasksDisabled": "The tasks section is turned off in the settings.",
     "noNotifyBot": "An admin has not added a bot for notifications yet.",
-    "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications."
+    "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications.",
+    "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks."
   },
   "error": {
     "title": "Something went wrong",

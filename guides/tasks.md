@@ -65,9 +65,9 @@ In the panel, the assignee of a task hears a sound and gets a desktop notificati
 
 In Telegram, members get a message when a task is assigned to them, and when a task without an assignee appears in a queue they are a member of. Nobody is told about a task they assigned to themselves.
 
-1. **The admin** creates a bot with [@BotFather](https://t.me/BotFather) just for notifications — not the bot of a support channel — and pastes its token in **Settings → Tasks → Telegram bot for notifications**. The token is stored encrypted (the server needs `TOLKOVO_MASTER_KEY`). Replacing the bot unlinks every member.
+1. **The admin** creates a bot with [@BotFather](https://t.me/BotFather) just for notifications and pastes its token in **Settings → Tasks → Telegram bot for notifications**. The bot of a support channel is refused: reading its messages would take the customers' ones. The token is stored encrypted (the server needs `TOLKOVO_MASTER_KEY`). Replacing the bot unlinks every member. If Telegram stops knowing the token, members see that an admin has to replace the bot.
 2. **Each member** opens **Settings → Notifications → Telegram → Link Telegram**, opens the bot from the link and presses **Start**. The link works for 15 minutes. The panel notices the Start by itself: Tolkovo reads the bot's messages, so no webhook is needed and it works on a server behind NAT.
-3. **Unlink** stops the messages. A member who blocks the bot is unlinked automatically.
+3. **Unlink** stops the messages. A member who blocks the bot is unlinked automatically. One Telegram account gets the messages of one member: a second member's link from the same account is refused, and the bot says so.
 
 ## 8. What leaves Tolkovo
 

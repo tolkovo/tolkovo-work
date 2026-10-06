@@ -450,3 +450,53 @@ func TestDispatch_SkipsInactive(t *testing.T) {
 		t.Fatalf("assigned %d to an inactive member", n)
 	}
 }
+
+// A conversation another transaction holds while the router runs, such as
+// one taking the customer's message, is not left waiting: the run comes
+// back for it.
+func TestDispatch_ComesBackForLocked(t *testing.T) {
+	f := setup(t)
+	a := f.operator("anna")
+	f.roundRobin()
+	f.seen(a)
+	held := f.conversation(0)
+	f.forgetJobs()
+
+	conn, err := pgx.Connect(f.ctx, f.ownerURL)
+	if err != nil {
+		t.Fatalf("connect owner: %v", err)
+	}
+	defer func() { _ = conn.Close(f.ctx) }()
+	tx, err := conn.Begin(f.ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := tx.Exec(f.ctx, "SELECT 1 FROM conversations WHERE id = $1 FOR UPDATE", held); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	if n := f.dispatch(); n != 0 {
+		t.Fatalf("assigned %d while the row was held", n)
+	}
+	if err := tx.Rollback(f.ctx); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	var later int
+	if err := conn.QueryRow(f.ctx,
+		"SELECT count(*) FROM river.river_job WHERE kind = 'routing.dispatch' AND state = 'scheduled' AND scheduled_at > now()",
+	).Scan(&later); err != nil {
+		t.Fatalf("count jobs: %v", err)
+	}
+	if later != 1 {
+		t.Fatalf("%d runs scheduled for the held conversation, want 1", later)
+	}
+	if n := f.dispatch(); n != 1 || f.assigneeOf(held) != a {
+		t.Fatalf("assigned %d after the row was released", n)
+	}
+	// With nothing left in the queue no run comes back.
+	f.forgetJobs()
+	f.dispatch()
+	var left int
+	if err := conn.QueryRow(f.ctx, "SELECT count(*) FROM river.river_job WHERE kind = 'routing.dispatch'").Scan(&left); err != nil || left != 0 {
+		t.Fatalf("an empty queue queued %d runs (%v)", left, err)
+	}
+}

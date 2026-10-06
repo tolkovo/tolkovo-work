@@ -231,6 +231,26 @@ func TestSettings_KeyIsSealedAndHinted(t *testing.T) {
 	if err != nil || got.BaseURL != "http://127.0.0.1:11434/v1" || !got.Enabled {
 		t.Fatalf("compatible: %+v %v", got, err)
 	}
+	// A key saved for one server does not go to another; plain http is for
+	// servers inside the network, such as a service of docker compose.
+	got, err = f.svc.UpdateSettings(f.ctx, f.ws, f.owner, SettingsUpdate{
+		Enabled: true, Provider: llm.OpenAICompatible, Model: "qwen2.5:7b", BaseURL: "http://127.0.0.1:11434/v1", Key: key("sk-local-0001"),
+	})
+	if err != nil || got.KeyHint != "…0001" {
+		t.Fatalf("compatible with a key: %+v %v", got, err)
+	}
+	got, err = f.svc.UpdateSettings(f.ctx, f.ws, f.owner, SettingsUpdate{
+		Enabled: true, Provider: llm.OpenAICompatible, Model: "qwen2.5:7b", BaseURL: "http://127.0.0.1:11434/v2",
+	})
+	if err != nil || got.KeyHint != "…0001" {
+		t.Fatalf("same server keeps the key: %+v %v", got, err)
+	}
+	got, err = f.svc.UpdateSettings(f.ctx, f.ws, f.owner, SettingsUpdate{
+		Enabled: true, Provider: llm.OpenAICompatible, Model: "qwen2.5:7b", BaseURL: "http://ollama:11434/v1",
+	})
+	if err != nil || got.KeyHint != "" {
+		t.Fatalf("another server forgets the key: %+v %v", got, err)
+	}
 	// The other workspace sees none of it.
 	other, err := f.svc.Settings(f.ctx, f.ws2)
 	if err != nil || other.Provider != "" || other.KeyHint != "" {
@@ -254,6 +274,8 @@ func TestSettings_Validation(t *testing.T) {
 		{"private base_url", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "http://10.0.0.5/v1"}},
 		{"metadata base_url", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "http://169.254.169.254/v1"}},
 		{"base_url with password", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "https://u:p@example.com/v1"}},
+		{"plain http to a public host", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "http://llm.example.com/v1"}},
+		{"plain http to a public address", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "http://8.8.8.8/v1"}},
 		{"key with a space", SettingsUpdate{Provider: llm.Anthropic, Model: "m", Key: key("sk ant")}},
 		{"empty key", SettingsUpdate{Provider: llm.Anthropic, Model: "m", Key: key("")}},
 		{"negative price", SettingsUpdate{Provider: llm.Anthropic, Model: "m", Prices: Prices{InputMicros: -1}}},
@@ -332,6 +354,79 @@ func TestComplete_StopsAtTheBudget(t *testing.T) {
 	}
 }
 
+// A call in flight holds the most it may cost: a parallel call finds the
+// budget taken until the first one is logged, or its reservation expires.
+func TestComplete_ReservesTheBudget(t *testing.T) {
+	f := setup(t)
+	f.haiku(f.ws, budget(0.01))
+	reservations := func() (n int) {
+		err := f.app.InTenantTx(f.ctx, f.ws, func(tx pgx.Tx) error {
+			return tx.QueryRow(f.ctx, "SELECT count(*) FROM ai_reservations").Scan(&n)
+		})
+		if err != nil {
+			t.Fatalf("count reservations: %v", err)
+		}
+		return n
+	}
+	hold := func(micros int64, expires time.Time) {
+		err := f.app.InTenantTx(f.ctx, f.ws, func(tx pgx.Tx) error {
+			_, err := tx.Exec(f.ctx, "INSERT INTO ai_reservations (id, workspace_id, reserved_micros, expires_at) VALUES ($1, $2, $3, $4)",
+				uuid.Must(uuid.NewV7()), f.ws, micros, expires)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("reserve: %v", err)
+		}
+	}
+	// A call gives its reservation back when it is logged.
+	f.provider.answer(anthropicText("ok", 10, 2))
+	if _, err := f.svc.Complete(f.ctx, f.ws, ask("one")); err != nil || reservations() != 0 {
+		t.Fatalf("first call: %v, %d reservations left", err, reservations())
+	}
+	// Another call in flight holds the rest of the budget.
+	hold(10_000, time.Now().Add(time.Minute))
+	if _, err := f.svc.Complete(f.ctx, f.ws, ask("two")); !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("budget held by a call in flight: %v", err)
+	}
+	// A stopped server's reservation expires.
+	owner, err := pgx.Connect(f.ctx, f.data.OwnerURL)
+	if err != nil {
+		t.Fatalf("connect owner: %v", err)
+	}
+	defer func() { _ = owner.Close(f.ctx) }()
+	if _, err := owner.Exec(f.ctx, "UPDATE ai_reservations SET expires_at = now() - interval '1 second'"); err != nil {
+		t.Fatalf("expire: %v", err)
+	}
+	f.provider.answer(anthropicText("ok", 10, 2))
+	if _, err := f.svc.Complete(f.ctx, f.ws, ask("three")); err != nil || reservations() != 0 {
+		t.Fatalf("after expiry: %v, %d reservations", err, reservations())
+	}
+	// A failed call gives it back too.
+	f.provider.answer(fakeAnswer{status: 401, body: `{"type":"error","error":{"type":"authentication_error","message":"no"}}`})
+	if _, err := f.svc.Complete(f.ctx, f.ws, ask("four")); !errors.Is(err, llm.ErrAuth) || reservations() != 0 {
+		t.Fatalf("failed call: %v, %d reservations", err, reservations())
+	}
+}
+
+// Token counts are the provider's word: nonsense is logged as ai_calls can
+// store it, not lost with the call's cost.
+func TestComplete_NonsenseUsage(t *testing.T) {
+	f := setup(t)
+	f.haiku(f.ws, nil)
+	f.provider.answer(anthropicText("ok", -5, 1<<40))
+	res, err := f.svc.Complete(f.ctx, f.ws, ask("hi"))
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	// (2^31-1) output tokens × $5 per million.
+	if want := int64(10_737_418_235); res.CostMicros != want {
+		t.Fatalf("cost %d, want %d", res.CostMicros, want)
+	}
+	if c := f.loggedCalls(f.ws); len(c) != 1 || c[0].InputTokens != 0 || c[0].CostMicros != res.CostMicros {
+		t.Fatalf("logged %+v", c)
+	}
+}
+
 func TestComplete_NeedsAISwitchedOn(t *testing.T) {
 	f := setup(t)
 	if _, err := f.svc.Complete(f.ctx, f.ws, ask("hi")); !errors.Is(err, ErrNotConfigured) {
@@ -373,8 +468,10 @@ func TestComplete_RetriesOnceOnOutage(t *testing.T) {
 	if !errors.Is(err, llm.ErrAuth) || f.provider.calls() != 3 {
 		t.Fatalf("auth: %v after %d requests", err, f.provider.calls())
 	}
+	// The outage before the retry is logged as an attempt of its own.
 	logged := f.loggedCalls(f.ws)
-	if len(logged) != 2 || logged[0].Status != "error" || logged[0].ErrorCode == nil || *logged[0].ErrorCode != "auth:authentication_error" {
+	if len(logged) != 3 || logged[0].Status != "error" || logged[0].ErrorCode == nil || *logged[0].ErrorCode != "auth:authentication_error" ||
+		logged[2].ErrorCode == nil || !strings.HasPrefix(*logged[2].ErrorCode, "unavailable") {
 		t.Fatalf("logged %+v", logged)
 	}
 	// Two outages in a row give up.

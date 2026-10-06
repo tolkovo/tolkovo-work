@@ -3,12 +3,15 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/channelstest"
@@ -165,6 +168,37 @@ func TestTasks_Lifecycle(t *testing.T) {
 	if page := decode[oapi.TaskPage](t, foreign.do(http.MethodGet, "/api/v1/tasks", nil)); len(page.Items) != 0 {
 		t.Fatalf("foreign list: %+v", page)
 	}
+
+	// Ids of another workspace's queue, member or conversation work nowhere
+	// here, and that workspace changes nothing of ours.
+	fq := decode[oapi.TaskQueue](t, foreign.do(http.MethodPost, "/api/v1/task-queues", map[string]any{"name": "Чужая", "member_ids": []string{}}))
+	fct := decode[oapi.Contact](t, foreign.do(http.MethodPost, "/api/v1/contacts", map[string]any{"name": "Чужой клиент"}))
+	fconv := decode[oapi.Conversation](t, foreign.do(http.MethodPost, "/api/v1/conversations", map[string]any{"contact_id": fct.Id}))
+	wantProblem(t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "В чужую очередь", "queue_id": fq.Id}),
+		http.StatusBadRequest, "invalid_request")
+	wantProblem(t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Из чужого диалога", "conversation_id": fconv.Id}),
+		http.StatusNotFound, "not_found")
+	obase := "/api/v1/tasks/" + other.Id.String()
+	wantProblem(t, op.do(http.MethodPut, obase, taskUpdate(other, func(b map[string]any) { b["queue_id"] = fq.Id })),
+		http.StatusBadRequest, "invalid_request")
+	wantProblem(t, op.do(http.MethodPut, obase, taskUpdate(other, func(b map[string]any) { b["assignee_id"] = stranger.User.Id })),
+		http.StatusBadRequest, "invalid_request")
+	wantProblem(t, op.do(http.MethodPost, obase+"/conversations", map[string]any{"conversation_id": fconv.Id}),
+		http.StatusNotFound, "not_found")
+	wantProblem(t, foreign.do(http.MethodPut, obase, taskUpdate(other, func(b map[string]any) { b["title"], b["assignee_id"] = "Взлом", nil })),
+		http.StatusNotFound, "not_found")
+	wantProblem(t, foreign.do(http.MethodPost, obase+"/activity", map[string]any{"body": "Взлом"}), http.StatusNotFound, "not_found")
+	wantProblem(t, foreign.do(http.MethodPost, obase+"/conversations", map[string]any{"conversation_id": fconv.Id}),
+		http.StatusNotFound, "not_found")
+	wantProblem(t, foreign.do(http.MethodDelete, obase, nil), http.StatusNotFound, "not_found")
+	if got := decode[oapi.Task](t, op.do(http.MethodGet, obase, nil)); got.Title != other.Title || got.Version != other.Version {
+		t.Fatalf("changed from another workspace: %+v", got)
+	}
+
+	// A NUL in a text is a bad request, not a server error.
+	wantProblem(t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "a\x00b"}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, op.do(http.MethodPost, obase+"/activity", map[string]any{"body": "a\x00b"}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, op.do(http.MethodGet, "/api/v1/tasks?q=a%00b", nil), http.StatusBadRequest, "invalid_request")
 }
 
 // A task from a conversation keeps it waiting for the fix like a GitHub
@@ -317,6 +351,11 @@ func TestTasks_TelegramNotifications(t *testing.T) {
 		http.StatusForbidden, "forbidden")
 	wantProblem(t, owner.do(http.MethodPut, "/api/v1/task-settings/telegram-bot", map[string]any{"token": "111111111:AAH-unknown-token-000000000000000000000"}),
 		http.StatusUnprocessableEntity, "telegram_token_invalid")
+	// A support channel's bot is refused: reading its updates would take the
+	// customers' messages.
+	decode[oapi.Channel](t, owner.do(http.MethodPost, "/api/v1/channels/telegram-bot", map[string]any{"token": channelstest.BotToken}))
+	wantProblem(t, owner.do(http.MethodPut, "/api/v1/task-settings/telegram-bot", map[string]any{"token": channelstest.BotToken}),
+		http.StatusConflict, "notify_bot_busy")
 	st := decode[oapi.TelegramBotState](t, owner.do(http.MethodPut, "/api/v1/task-settings/telegram-bot", map[string]any{"token": channelstest.OtherBotToken}))
 	if st.Bot == nil || st.Bot.Username != "other_bot" || !st.EncryptionAvailable {
 		t.Fatalf("bot: %+v", st)
@@ -370,8 +409,34 @@ func TestTasks_TelegramNotifications(t *testing.T) {
 	sent = e.bots.SnapshotSent()
 	msg := sent[len(sent)-1]
 	if msg.ChatID != 555 || !strings.Contains(msg.Text, "З-1") || !strings.Contains(msg.Text, "Обновить сертификат") ||
-		!strings.Contains(msg.Text, panelURL+"/tasks/"+task.Id.String()) || strings.Contains(msg.Text, "секретная") {
+		!strings.Contains(msg.Text, panelURL+"/tasks/"+task.Id.String()) || strings.Contains(msg.Text, "секретная") || !msg.NoPreview {
 		t.Fatalf("message: %+v", msg)
+	}
+	// Too many requests: the job waits as long as Telegram asks.
+	e.bots.FailNext(&telegram.APIError{Method: "sendMessage", Code: http.StatusTooManyRequests, RetryAfter: 7 * time.Second})
+	var snooze *rivertype.JobSnoozeError
+	if err := notifications.SendTaskMessage(context.Background(), worker, job); !errors.As(err, &snooze) || snooze.Duration != 7*time.Second {
+		t.Fatalf("send after 429: %v", err)
+	}
+
+	// The Telegram linked to the member is not linked to the owner too: the
+	// chat is told so and the owner's code keeps waiting.
+	time.Sleep(notifications.CheckInterval)
+	ownerLink := decode[oapi.TelegramLinkStart](t, owner.do(http.MethodPost, "/api/v1/me/telegram/link", nil))
+	ownerCode, _ := strings.CutPrefix(ownerLink.Url, "https://t.me/other_bot?start=")
+	e.bots.Push(`{"message":{"message_id":3,"from":{"id":555,"first_name":"Пётр"},"chat":{"id":555,"type":"private"},"text":"/start ` + ownerCode + `"}}`)
+	if me := decode[oapi.MyTelegram](t, owner.do(http.MethodPost, "/api/v1/me/telegram/check", nil)); me.Linked || !me.Pending {
+		t.Fatalf("a chat of another member linked: %+v", me)
+	}
+	if sent = e.bots.SnapshotSent(); !strings.Contains(sent[len(sent)-1].Text, "другому сотруднику") || sent[len(sent)-1].ChatID != 555 {
+		t.Fatalf("refusal: %+v", sent[len(sent)-1])
+	}
+	// A member without a code waiting does not make the server read the bot.
+	reads := e.bots.Reads()
+	time.Sleep(notifications.CheckInterval)
+	decode[oapi.MyTelegram](t, op.do(http.MethodPost, "/api/v1/me/telegram/check", nil))
+	if e.bots.Reads() != reads {
+		t.Fatal("a check without a code read the bot")
 	}
 	// Assigning yourself tells nobody.
 	before := e.ownerCount("SELECT count(*) FROM river.river_job WHERE kind = 'notifications.telegram_task'")
@@ -388,6 +453,12 @@ func TestTasks_TelegramNotifications(t *testing.T) {
 	if me := decode[oapi.MyTelegram](t, op.do(http.MethodGet, "/api/v1/me/telegram", nil)); me.Linked {
 		t.Fatalf("still linked after a block: %+v", me)
 	}
+
+	// A revoked token is the admin's to replace; the member is told so.
+	time.Sleep(notifications.CheckInterval)
+	decode[oapi.TelegramLinkStart](t, op.do(http.MethodPost, "/api/v1/me/telegram/link", nil))
+	e.bots.Revoke()
+	wantProblem(t, op.do(http.MethodPost, "/api/v1/me/telegram/check", nil), http.StatusConflict, "notify_bot_revoked")
 
 	// Removing the bot forgets every link.
 	if rec := owner.do(http.MethodDelete, "/api/v1/task-settings/telegram-bot", nil); rec.Code != http.StatusNoContent {

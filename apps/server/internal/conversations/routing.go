@@ -16,6 +16,16 @@ type Assignment struct {
 	UserID         uuid.UUID
 }
 
+// HasQueued reports whether the queue still holds conversations, those
+// another transaction holds included, in the router's transaction tx.
+func (s *Service) HasQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) (bool, error) {
+	ok, err := store.New(tx).HasQueued(ctx, workspaceID)
+	if err != nil {
+		return false, wrap(err, "has queued")
+	}
+	return ok, nil
+}
+
 // AssignQueued gives up to limit conversations from the head of the queue
 // to assignees in turn: the first to assignees[0], the second to
 // assignees[1], and around again. It runs in the router's tenant

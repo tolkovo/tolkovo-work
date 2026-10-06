@@ -37,6 +37,16 @@ UPDATE telegram_links
 SET chat_id = @chat_id, telegram_name = @telegram_name, linked_at = @linked_at, code_hash = NULL, code_expires_at = NULL
 WHERE workspace_id = @workspace_id AND code_hash = @code_hash AND code_expires_at > @linked_at;
 
+-- name: ChatLinkedToOther :one
+-- Whether the chat is linked to a member other than the one whose live
+-- code it brings: one Telegram gets the messages of one member.
+SELECT EXISTS (
+    SELECT 1 FROM telegram_links o
+    JOIN telegram_links c ON c.workspace_id = o.workspace_id AND c.user_id <> o.user_id
+    WHERE o.workspace_id = @workspace_id AND o.chat_id = @chat_id::bigint
+      AND c.code_hash = @code_hash AND c.code_expires_at > @now::timestamptz
+);
+
 -- name: DeleteTelegramLink :exec
 DELETE FROM telegram_links WHERE workspace_id = @workspace_id AND user_id = @user_id;
 

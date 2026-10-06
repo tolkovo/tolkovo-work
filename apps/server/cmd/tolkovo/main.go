@@ -427,7 +427,7 @@ func apiDeps(
 	tasksSvc := tasks.New(pool, tasks.Options{Conversations: convs, Drafter: aiSvc, Log: log})
 	// Messages about tasks are queued here and sent to Telegram by the worker (TK-02).
 	notifs.SetTelegram(notifications.TelegramOptions{
-		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Jobs: inserter, Log: log,
+		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Channels: chans, Jobs: inserter, Log: log,
 	})
 	tasksSvc.SetNotifier(notifs)
 	// A conversation waits for the fix on issues and tasks (ADR-0015).

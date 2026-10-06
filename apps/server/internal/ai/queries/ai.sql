@@ -43,6 +43,26 @@ SELECT COALESCE(SUM(cost_micros), 0)::bigint AS spent
 FROM ai_calls
 WHERE workspace_id = @workspace_id AND created_at >= @since;
 
+-- name: LockBudget :exec
+-- One budget check of a workspace at a time, until the transaction ends.
+SELECT pg_advisory_xact_lock(hashtextextended('ai.budget:' || (@workspace_id::uuid)::text, 0));
+
+-- name: DropExpiredReservations :exec
+DELETE FROM ai_reservations WHERE workspace_id = @workspace_id AND expires_at <= @now::timestamptz;
+
+-- name: ReservedNow :one
+-- What calls in flight have reserved.
+SELECT COALESCE(SUM(reserved_micros), 0)::bigint AS reserved
+FROM ai_reservations
+WHERE workspace_id = @workspace_id;
+
+-- name: Reserve :exec
+INSERT INTO ai_reservations (id, workspace_id, reserved_micros, expires_at)
+VALUES (@id, @workspace_id, @reserved_micros, @expires_at);
+
+-- name: Release :exec
+DELETE FROM ai_reservations WHERE workspace_id = @workspace_id AND id = @id;
+
 -- name: InsertCall :exec
 INSERT INTO ai_calls (
     id, workspace_id, conversation_id, purpose, provider, model,

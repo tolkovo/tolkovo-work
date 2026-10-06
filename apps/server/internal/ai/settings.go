@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -177,8 +179,8 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID, actorID uuid.
 			if err != nil {
 				return err
 			}
-			if cred.Provider != in.Provider {
-				credID = nil // the old key opens another provider's API
+			if cred.Provider != in.Provider || !sameServer(deref(row.BaseUrl), in.BaseURL) {
+				credID = nil // the old key opens another provider's API, or goes to another server
 			}
 		}
 		if in.Enabled && credID == nil && in.Provider != llm.OpenAICompatible {
@@ -204,6 +206,44 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID, actorID uuid.
 	return out, nil
 }
 
+// secureEnough: the key goes over https, or over http only to a server
+// inside the network: a private address, localhost, a name without a dot
+// (a service of docker compose) or a local domain. The dial-time check
+// still decides which private addresses may be reached.
+func secureEnough(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "https" {
+		return true
+	}
+	host := strings.ToLower(u.Hostname())
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return httpx.Blocked(ip.Unmap())
+	}
+	if !strings.Contains(host, ".") {
+		return true
+	}
+	for _, suffix := range []string{".localhost", ".local", ".internal", ".lan", ".home.arpa"} {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameServer: two base URLs reach the same server (scheme and host); a
+// saved key does not follow the settings to another one.
+func sameServer(a, b string) bool {
+	ua, errA := url.Parse(a)
+	ub, errB := url.Parse(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)
+}
+
 func (s *Service) validate(in SettingsUpdate) error {
 	switch in.Provider {
 	case "":
@@ -227,6 +267,8 @@ func (s *Service) validate(in SettingsUpdate) error {
 		return fmt.Errorf("%w: base_url is only for an OpenAI-compatible server", ErrInvalid)
 	case in.BaseURL != "" && (utf8.RuneCountInString(in.BaseURL) > maxBaseURLChars || httpx.ValidateURLAllowing(in.BaseURL, s.opts.AllowPrivate) != nil):
 		return fmt.Errorf("%w: base_url must be a public http(s) URL without a password", ErrInvalid)
+	case in.BaseURL != "" && !secureEnough(in.BaseURL):
+		return fmt.Errorf("%w: base_url must be https, http only for a server inside the network", ErrInvalid)
 	}
 	if in.Key != nil {
 		k := in.Key.Reveal()

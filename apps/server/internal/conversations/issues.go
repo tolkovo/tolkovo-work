@@ -68,7 +68,9 @@ type IssueNote struct {
 	// system (GitHub closing or reopening it).
 	ActorID *uuid.UUID
 	// AwaitingFix: an issue of the conversation is open, so it waits for
-	// the fix. The caller looks at every issue of the conversation.
+	// the fix. The caller looks at every issue of the conversation; with
+	// the issues source registered (AddFixWaiter) it is asked again under
+	// the conversation's lock instead.
 	AwaitingFix bool
 	// Key tells apart events of one issue that may repeat (closed, reopened,
 	// closed again): the webhook delivery id. Empty for created and linked,
@@ -121,7 +123,8 @@ type TaskNote struct {
 	// ActorID is the member who caused it; nil for the system.
 	ActorID *uuid.UUID
 	// AwaitingFix: a task of the conversation is open. The caller looks at
-	// every task of the conversation; open issues are asked separately.
+	// every task of the conversation; open issues are asked separately, and
+	// with the tasks source registered it is asked again under the lock.
 	AwaitingFix bool
 	// Key tells apart events of one task that may repeat (closed, reopened,
 	// closed again): the id of the task's activity line.
@@ -178,13 +181,15 @@ func (s *Service) recordFix(ctx context.Context, tx pgx.Tx, workspaceID, convers
 	if err != nil {
 		return wrap(err, "record "+n.source)
 	}
-	awaiting := n.awaiting
+	// The sources are asked under the lock, the event's own one too when it
+	// is registered: a link or a close of another task or issue of the
+	// conversation that committed meanwhile is seen now, while n.awaiting
+	// was read before the lock.
+	_, own := s.waiters[n.source]
+	awaiting := n.awaiting && !own
 	for src, w := range s.waiters {
 		if awaiting {
 			break
-		}
-		if src == n.source {
-			continue
 		}
 		if awaiting, err = w(ctx, tx, workspaceID, conversationID); err != nil {
 			return fmt.Errorf("ask %s: %w", src, err)

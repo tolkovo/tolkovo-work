@@ -129,7 +129,7 @@ func (s *Service) DeleteQueue(ctx context.Context, workspaceID, queueID uuid.UUI
 
 func validQueue(in QueueInput) (string, error) {
 	name := strings.Join(strings.Fields(in.Name), " ")
-	if name == "" || utf8.RuneCountInString(name) > MaxQueue || !utf8.ValidString(name) {
+	if name == "" || utf8.RuneCountInString(name) > MaxQueue || !validText(name) {
 		return "", fmt.Errorf("%w: queue name must be 1 to %d characters", ErrInvalid, MaxQueue)
 	}
 	if len(in.MemberIDs) > 200 {
@@ -241,7 +241,7 @@ func validReply(text, def string) (*string, error) {
 	if t == "" || t == def {
 		return nil, nil
 	}
-	if utf8.RuneCountInString(t) > MaxReply || !utf8.ValidString(t) {
+	if utf8.RuneCountInString(t) > MaxReply || !validText(t) {
 		return nil, fmt.Errorf("%w: reply must be at most %d characters", ErrInvalid, MaxReply)
 	}
 	if err := checkPlaceholders(t); err != nil {

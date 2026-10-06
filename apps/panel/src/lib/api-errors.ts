@@ -122,6 +122,8 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.noNotifyBot") };
     case "notify_bot_busy":
       return { message: t("errors.notifyBotBusy") };
+    case "notify_bot_revoked":
+      return { message: t("errors.notifyBotRevoked") };
     case "ai_not_configured":
       return { message: t("errors.aiNotConfigured") };
     case "ai_budget_exceeded":

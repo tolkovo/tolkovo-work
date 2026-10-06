@@ -29,6 +29,36 @@ func (q *Queries) AdvanceNotifyOffset(ctx context.Context, arg AdvanceNotifyOffs
 	return err
 }
 
+const chatLinkedToOther = `-- name: ChatLinkedToOther :one
+SELECT EXISTS (
+    SELECT 1 FROM telegram_links o
+    JOIN telegram_links c ON c.workspace_id = o.workspace_id AND c.user_id <> o.user_id
+    WHERE o.workspace_id = $1 AND o.chat_id = $2::bigint
+      AND c.code_hash = $3 AND c.code_expires_at > $4::timestamptz
+)
+`
+
+type ChatLinkedToOtherParams struct {
+	WorkspaceID uuid.UUID
+	ChatID      int64
+	CodeHash    []byte
+	Now         time.Time
+}
+
+// Whether the chat is linked to a member other than the one whose live
+// code it brings: one Telegram gets the messages of one member.
+func (q *Queries) ChatLinkedToOther(ctx context.Context, arg ChatLinkedToOtherParams) (bool, error) {
+	row := q.db.QueryRow(ctx, chatLinkedToOther,
+		arg.WorkspaceID,
+		arg.ChatID,
+		arg.CodeHash,
+		arg.Now,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const clearTelegramLinks = `-- name: ClearTelegramLinks :exec
 DELETE FROM telegram_links WHERE workspace_id = $1
 `

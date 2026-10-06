@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -225,6 +226,22 @@ func (s *Service) UserAccountsAvailable() bool { return s.opts.Users != nil && s
 
 // EncryptionAvailable reports whether secrets can be stored at all.
 func (s *Service) EncryptionAvailable() bool { return s.opts.Sealer != nil }
+
+// HasBot reports whether the Telegram bot botID is a channel of the
+// workspace; the notifications module refuses such a bot (TK-02).
+func (s *Service) HasBot(ctx context.Context, workspaceID uuid.UUID, botID int64) (bool, error) {
+	var ok bool
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		ext := strconv.FormatInt(botID, 10)
+		var err error
+		ok, err = store.New(tx).HasBot(ctx, store.HasBotParams{WorkspaceID: workspaceID, ExternalID: &ext})
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("channel bot: %w", err)
+	}
+	return ok, nil
+}
 
 // List returns the workspace's channels, oldest first.
 func (s *Service) List(ctx context.Context, workspaceID uuid.UUID) ([]Channel, error) {

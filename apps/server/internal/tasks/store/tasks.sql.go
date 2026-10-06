@@ -44,6 +44,7 @@ func (q *Queries) ClearQueueMembers(ctx context.Context, arg ClearQueueMembersPa
 }
 
 const conversationTasks = `-- name: ConversationTasks :many
+
 SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2
@@ -55,6 +56,7 @@ type ConversationTasksParams struct {
 	ConversationID uuid.UUID
 }
 
+// one order for every task: no deadlock between two tasks sharing conversations
 // The tasks of a conversation, oldest link first.
 func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksParams) ([]Task, error) {
 	rows, err := q.db.Query(ctx, conversationTasks, arg.WorkspaceID, arg.ConversationID)
@@ -704,7 +706,7 @@ func (q *Queries) RenameQueue(ctx context.Context, arg RenameQueueParams) (TaskQ
 const taskConversationIDs = `-- name: TaskConversationIDs :many
 SELECT conversation_id FROM task_conversations
 WHERE workspace_id = $1 AND task_id = $2
-ORDER BY created_at, conversation_id
+ORDER BY conversation_id
 `
 
 type TaskConversationIDsParams struct {

@@ -137,13 +137,17 @@ func (q *Queries) ListStates(ctx context.Context, workspaceID uuid.UUID) ([]List
 }
 
 const lockAvailable = `-- name: LockAvailable :many
-SELECT os.user_id
-FROM operator_states os
-JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
-WHERE os.workspace_id = $1 AND m.is_active
-  AND os.status = 'online' AND os.seen_at > $2::timestamptz
-ORDER BY os.last_assigned_at ASC NULLS FIRST, os.user_id
-FOR UPDATE OF os
+WITH locked AS MATERIALIZED (
+    SELECT os.user_id, os.last_assigned_at
+    FROM operator_states os
+    JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    WHERE os.workspace_id = $1 AND m.is_active
+      AND os.status = 'online' AND os.seen_at > $2::timestamptz
+    ORDER BY os.user_id
+    FOR UPDATE OF os
+)
+SELECT user_id FROM locked
+ORDER BY last_assigned_at ASC NULLS FIRST, user_id
 `
 
 type LockAvailableParams struct {
@@ -152,7 +156,8 @@ type LockAvailableParams struct {
 }
 
 // Members who take conversations now, whose turn came first. The row
-// locks keep a parallel assignment from reading a stale turn order.
+// locks keep a parallel assignment from reading a stale turn order; they
+// are taken in user_id order, as MarkSeen does, so the two never deadlock.
 func (q *Queries) LockAvailable(ctx context.Context, arg LockAvailableParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, lockAvailable, arg.WorkspaceID, arg.SeenAfter)
 	if err != nil {
@@ -178,6 +183,7 @@ INSERT INTO operator_states (workspace_id, user_id, seen_at)
 SELECT m.workspace_id, m.user_id, $1::timestamptz
 FROM memberships m
 WHERE m.workspace_id = $2 AND m.user_id = ANY($3::uuid[]) AND m.is_active
+ORDER BY m.user_id
 ON CONFLICT (workspace_id, user_id) DO UPDATE
 SET seen_at = EXCLUDED.seen_at
 `
@@ -190,6 +196,7 @@ type MarkSeenParams struct {
 
 // The heartbeat of open panels. Only active members get a row: the
 // gateway closes the connections of the others at its next re-check.
+// Rows are locked in user_id order, as LockAvailable does: no deadlock.
 func (q *Queries) MarkSeen(ctx context.Context, arg MarkSeenParams) error {
 	_, err := q.db.Exec(ctx, markSeen, arg.SeenAt, arg.WorkspaceID, arg.UserIds)
 	return err

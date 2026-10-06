@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -229,7 +230,7 @@ func (s *Service) IssueDraft(ctx context.Context, workspaceID, conversationID uu
 		summary = firstLine(src.CustomerText, summaryChars)
 	}
 	vars := map[string]string{
-		"summary":          summary,
+		"summary":          inert(summary),
 		"steps":            "1. ",
 		"conversation_url": strings.TrimRight(s.opts.PanelURL, "/") + "/inbox/" + conversationID.String(),
 	}
@@ -252,16 +253,16 @@ func (s *Service) IssueDraft(ctx context.Context, workspaceID, conversationID uu
 		titleVars = maps.Clone(vars)
 		titleVars["summary"] = text.Title
 		if text.Summary != "" {
-			vars["summary"] = text.Summary
+			vars["summary"] = inert(text.Summary)
 		}
 		if len(text.Steps) > 0 {
 			steps := make([]string, len(text.Steps))
 			for i, st := range text.Steps {
-				steps[i] = fmt.Sprintf("%d. %s", i+1, st)
+				steps[i] = fmt.Sprintf("%d. %s", i+1, inert(st))
 			}
 			vars["steps"] = strings.Join(steps, "\n")
 		}
-		vars["expected"], vars["actual"] = text.Expected, text.Actual
+		vars["expected"], vars["actual"] = inert(text.Expected), inert(text.Actual)
 	} else {
 		out.AIFallback = fallback
 	}
@@ -802,6 +803,24 @@ func closedAt(status string, now time.Time) *time.Time {
 		return &now
 	}
 	return nil
+}
+
+var (
+	// mentionRE: an @mention of a user or a team.
+	mentionRE = regexp.MustCompile("(^|[^\\w`])(@[A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9._-]+)?)")
+	// refRE: a reference to an issue or a pull request: #12, owner/repo#12, GH-12.
+	refRE = regexp.MustCompile("(^|[^\\w&`])((?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+|GH-[0-9]+)\\b")
+)
+
+// inert makes text from the customer or the model plain on GitHub: no
+// @mention notifies anyone, no #reference links an issue, no image or HTML
+// loads from elsewhere. Mentions and references stay readable in code
+// spans; an image becomes a link.
+func inert(s string) string {
+	s = strings.ReplaceAll(s, "![", "[")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = mentionRE.ReplaceAllString(s, "$1`$2`")
+	return refRE.ReplaceAllString(s, "$1`$2`")
 }
 
 // quoteBlock is the customer's text as a marked block: data, not

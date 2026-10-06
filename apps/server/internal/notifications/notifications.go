@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,8 +65,10 @@ type Service struct {
 	// NeedsAttention does nothing.
 	jobs *jobs.Client
 	// tg connects Telegram (TK-02); zero sends nothing there.
-	tg  TelegramOptions
-	now func() time.Time
+	tg TelegramOptions
+	// checks throttles reading a bot's updates: workspace → last read.
+	checks sync.Map
+	now    func() time.Time
 }
 
 // New returns the notifications service. jobs may be nil: the server has

@@ -145,10 +145,13 @@ func (s *Service) log() *slog.Logger {
 	return slog.Default()
 }
 
+// validText: UTF-8 without NUL, which Postgres text cannot hold.
+func validText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }
+
 // validTitle trims a title and checks it is one line of 1 to MaxTitle characters.
 func validTitle(title string) (string, error) {
 	t := strings.TrimSpace(title)
-	if t == "" || utf8.RuneCountInString(t) > MaxTitle || strings.ContainsAny(t, "\r\n") || !utf8.ValidString(t) {
+	if t == "" || utf8.RuneCountInString(t) > MaxTitle || strings.ContainsAny(t, "\r\n") || !validText(t) {
 		return "", fmt.Errorf("%w: title must be 1 to %d characters on one line", ErrInvalid, MaxTitle)
 	}
 	return t, nil
@@ -156,7 +159,7 @@ func validTitle(title string) (string, error) {
 
 func validBody(body string) (string, error) {
 	b := strings.TrimRight(body, " \n\r\t")
-	if utf8.RuneCountInString(b) > MaxBody || !utf8.ValidString(b) {
+	if utf8.RuneCountInString(b) > MaxBody || !validText(b) {
 		return "", fmt.Errorf("%w: description must be at most %d characters", ErrInvalid, MaxBody)
 	}
 	return b, nil
@@ -190,8 +193,11 @@ func dbError(err error, what string) error {
 		case pg.Code == "23505" && pg.ConstraintName == "task_queues_name_uq":
 			return ErrQueueTaken
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "assignee"),
-			pg.Code == "23503" && strings.Contains(pg.ConstraintName, "user"):
+			pg.Code == "23503" && strings.Contains(pg.ConstraintName, "user"),
+			pg.Code == "23503" && strings.Contains(pg.ConstraintName, "created_by"):
 			return ErrMember
+		case pg.Code == "22021" || pg.Code == "22P05": // a character text cannot hold
+			return fmt.Errorf("%w: text holds a character that cannot be stored", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "queue"):
 			return fmt.Errorf("%w: unknown queue", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "conversation"):

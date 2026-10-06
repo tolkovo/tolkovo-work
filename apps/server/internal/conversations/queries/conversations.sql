@@ -65,6 +65,10 @@ ORDER BY priority DESC, created_at, id
 LIMIT @lim
 FOR UPDATE SKIP LOCKED;
 
+-- name: HasQueued :one
+-- Whether the queue still holds something, locked rows included.
+SELECT EXISTS (SELECT 1 FROM conversations WHERE workspace_id = @workspace_id AND status = 'queued');
+
 -- name: ListConversations :many
 -- Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the

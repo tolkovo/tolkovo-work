@@ -21,6 +21,12 @@ func TestMask(t *testing.T) {
 		{"inn of an organization", "ИНН 7707083893", "ИНН ⟨INN_1⟩"},
 		{"passport", "паспорт 45 06 123456 выдан", "паспорт ⟨PASSPORT_1⟩ выдан"},
 		{"passport with №", "Паспорт серии 4506 № 123456", "Паспорт серии ⟨PASSPORT_1⟩"},
+		{"card and its expiry", "card 4111 1111 1111 1111 12/26", "card ⟨CARD_1⟩ 12/26"},
+		{"card and a cvv without its label", "4111 1111 1111 1111 123 спасибо", "⟨CARD_1⟩ ⟨CVV_1⟩ спасибо"},
+		{"card and its expiry, no spaces", "4111111111111111 0526", "⟨CARD_1⟩ ⟨CVV_1⟩"},
+		{"card in a longer run", "41111111111111111226", "⟨CARD_1⟩1226"},
+		{"internationalized email", "почта иван@пример.рф", "почта ⟨EMAIL_1⟩"},
+		{"passport as series and number", "серия 4512 номер 123456", "серия ⟨PASSPORT_1⟩"},
 		{"same value, same token", "a@b.io и снова a@b.io, и c@d.io", "⟨EMAIL_1⟩ и снова ⟨EMAIL_1⟩, и ⟨EMAIL_2⟩"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -38,7 +44,9 @@ func TestMask_LeavesOrdinaryNumbers(t *testing.T) {
 		"2026-10-06 12:00:31 crashed at 0x00007ff8",
 		"order 12345, 3 items, total 1 299,00 ₽",
 		"card 4111 1111 1111 1112 fails Luhn and is too long for a phone",
-		"error code 1234567890123", // 13 digits, not Luhn, no plus
+		"error code 1234567890123",     // 13 digits, not Luhn, no plus
+		"trace id 1759752031000123456", // no card number starts with 1
+		"build 7 1111 1111 1111 1117",  // 7 is no card number's first digit
 	} {
 		if got := NewMasker().Mask(in); got != in {
 			t.Errorf("Mask(%q) = %q", in, got)

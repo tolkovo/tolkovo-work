@@ -18,6 +18,11 @@ import (
 // queues the next run.
 const DispatchBatch = 50
 
+// RetryLocked is when a run comes back for queued conversations another
+// transaction held, such as one taking a customer's message: nothing else
+// may queue a run for them.
+const RetryLocked = 2 * time.Second
+
 // DispatchArgs is the job that distributes a workspace's queue.
 type DispatchArgs struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
@@ -31,10 +36,14 @@ func (DispatchArgs) Kind() string { return "routing.dispatch" }
 // before tx commits, and River's unique jobs would drop the new one while
 // another runs. A run with nothing to do is one short transaction.
 func (s *Service) dispatchLater(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) error {
+	return s.dispatchAt(ctx, tx, workspaceID, nil)
+}
+
+func (s *Service) dispatchAt(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, opts *river.InsertOpts) error {
 	if s.jobs == nil {
 		return nil
 	}
-	_, err := s.jobs.InsertTx(ctx, tx, DispatchArgs{WorkspaceID: workspaceID}, nil)
+	_, err := s.jobs.InsertTx(ctx, tx, DispatchArgs{WorkspaceID: workspaceID}, opts)
 	if err != nil {
 		return fmt.Errorf("queue dispatch: %w", err)
 	}
@@ -87,7 +96,12 @@ func (s *Service) Dispatch(ctx context.Context, convs *conversations.Service, wo
 		if assigned == DispatchBatch {
 			return s.dispatchLater(ctx, tx, workspaceID)
 		}
-		return nil
+		// What is still queued was held by another transaction.
+		left, err := convs.HasQueued(ctx, tx, workspaceID)
+		if err != nil || !left {
+			return err
+		}
+		return s.dispatchAt(ctx, tx, workspaceID, &river.InsertOpts{ScheduledAt: now.Add(RetryLocked)})
 	})
 	if errors.Is(err, ErrBusy) {
 		return 0, ErrBusy

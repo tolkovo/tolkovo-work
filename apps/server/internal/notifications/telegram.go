@@ -34,6 +34,10 @@ import (
 // LinkTTL is how long a link code waits for Start.
 const LinkTTL = 15 * time.Minute
 
+// CheckInterval is how often one workspace's bot is read at most: panels
+// waiting for Start ask every few seconds, one read serves them all.
+const CheckInterval = time.Second
+
 // More errors of the module, for Telegram.
 var (
 	// ErrNoEncryption: TOLKOVO_MASTER_KEY is not set, the token cannot be stored.
@@ -42,9 +46,13 @@ var (
 	ErrBotToken = errors.New("notifications: Telegram refused the bot token")
 	// ErrNoBot: the workspace has no notifications bot.
 	ErrNoBot = errors.New("notifications: no Telegram bot for notifications")
-	// ErrBotBusy: the bot has a webhook (it serves a support channel) or
-	// another reader of its updates; it cannot be read with getUpdates.
+	// ErrBotBusy: the bot is a support channel of the workspace, has a
+	// webhook or another reader of its updates; it cannot be read with
+	// getUpdates.
 	ErrBotBusy = errors.New("notifications: the bot's updates are taken by a webhook or another reader")
+	// ErrBotRevoked: Telegram no longer knows the saved token; an admin
+	// replaces the bot.
+	ErrBotRevoked = errors.New("notifications: Telegram no longer knows the bot's token")
 	// ErrTelegram: Telegram could not be reached.
 	ErrTelegram = errors.New("notifications: Telegram is unavailable")
 )
@@ -54,7 +62,8 @@ var (
 type Bots interface {
 	GetMe(ctx context.Context, token string) (telegram.Bot, error)
 	GetUpdates(ctx context.Context, token string, offset int64, timeout int) ([]telegram.BotUpdate, error)
-	SendMessage(ctx context.Context, token string, chatID int64, text string) (int64, error)
+	// SendNotice sends a text without link previews.
+	SendNotice(ctx context.Context, token string, chatID int64, text string) (int64, error)
 }
 
 // Tasks reads the task a message is about; *tasks.Service implements it.
@@ -68,11 +77,20 @@ type Jobs interface {
 	InsertTx(ctx context.Context, tx pgx.Tx, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }
 
+// ChannelBots tells whether a bot is a support channel of the workspace;
+// *channels.Service implements it.
+type ChannelBots interface {
+	HasBot(ctx context.Context, workspaceID uuid.UUID, botID int64) (bool, error)
+}
+
 // TelegramOptions connect Telegram.
 type TelegramOptions struct {
 	// Sealer seals the bot token; nil refuses to add a bot (ErrNoEncryption).
 	Sealer *crypto.Sealer
 	Bots   Bots
+	// Channels refuses a bot that serves a support channel: reading its
+	// updates would take the customers' messages. Nil checks nothing.
+	Channels ChannelBots
 	// Jobs queues messages (role api); nil sends none.
 	Jobs Jobs
 	Log  *slog.Logger
@@ -136,6 +154,15 @@ func (s *Service) SetBot(ctx context.Context, workspaceID, actorID uuid.UUID, to
 	bot, err := s.tg.Bots.GetMe(ctx, token)
 	if err != nil {
 		return NotifyBot{}, botError(err)
+	}
+	if s.tg.Channels != nil {
+		taken, err := s.tg.Channels.HasBot(ctx, workspaceID, bot.ID)
+		if err != nil {
+			return NotifyBot{}, err
+		}
+		if taken {
+			return NotifyBot{}, ErrBotBusy
+		}
 	}
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -274,9 +301,14 @@ func (s *Service) StartLink(ctx context.Context, workspaceID, userID uuid.UUID) 
 }
 
 // CheckLink reads the bot's new updates and completes every link whose
-// code came with /start, then returns the member's link. Without a bot it
-// returns the empty state.
+// code came with /start, then returns the member's link. Without a bot, or
+// without a code of the member waiting for Start, it returns the state as
+// it is; so it does when the bot was read less than CheckInterval ago.
 func (s *Service) CheckLink(ctx context.Context, workspaceID, userID uuid.UUID) (MyTelegram, error) {
+	cur, err := s.MyTelegram(ctx, workspaceID, userID)
+	if err != nil || !cur.Pending || !s.mayRead(workspaceID) {
+		return cur, err
+	}
 	bot, token, err := s.openBot(ctx, workspaceID)
 	if errors.Is(err, ErrNoBot) {
 		return s.MyTelegram(ctx, workspaceID, userID)
@@ -286,15 +318,19 @@ func (s *Service) CheckLink(ctx context.Context, workspaceID, userID uuid.UUID) 
 	}
 	updates, err := s.tg.Bots.GetUpdates(ctx, token.Reveal(), bot.UpdatesOffset, 0)
 	if err != nil {
-		return MyTelegram{}, botError(err)
+		// A member cannot fix the token: they are told an admin can.
+		if err = botError(err); errors.Is(err, ErrBotToken) {
+			return MyTelegram{}, ErrBotRevoked
+		}
+		return MyTelegram{}, err
 	}
 	now := s.now()
 	var out MyTelegram
-	var linked []int64
+	var linked, refused []int64
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		next := bot.UpdatesOffset
-		linked = linked[:0]
+		linked, refused = linked[:0], refused[:0]
 		for _, u := range updates {
 			next = max(next, u.ID+1)
 			code, ok := startCode(u.Message)
@@ -302,6 +338,16 @@ func (s *Service) CheckLink(ctx context.Context, workspaceID, userID uuid.UUID) 
 				continue
 			}
 			hash := sha256.Sum256([]byte(code))
+			taken, err := q.ChatLinkedToOther(ctx, store.ChatLinkedToOtherParams{
+				WorkspaceID: workspaceID, ChatID: u.Message.ChatID, CodeHash: hash[:], Now: now,
+			})
+			if err != nil {
+				return err
+			}
+			if taken {
+				refused = append(refused, u.Message.ChatID)
+				continue
+			}
 			n, err := q.CompleteTelegramLink(ctx, store.CompleteTelegramLinkParams{
 				ChatID: pgtype.Int8{Int64: u.Message.ChatID, Valid: true}, TelegramName: pgtype.Text{String: personName(u.Message.From), Valid: true},
 				LinkedAt: &now, WorkspaceID: workspaceID, CodeHash: hash[:],
@@ -325,17 +371,35 @@ func (s *Service) CheckLink(ctx context.Context, workspaceID, userID uuid.UUID) 
 	if err != nil {
 		return MyTelegram{}, fmt.Errorf("check telegram link: %w", err)
 	}
-	s.welcome(ctx, token, linked)
+	s.tell(ctx, token, linked, "Tolkovo: уведомления о задачах будут приходить сюда. / Task notifications will arrive here.")
+	s.tell(ctx, token, refused, "Tolkovo: этот Telegram уже привязан к другому сотруднику. / This Telegram is already linked to another member.")
 	return out, nil
 }
 
-// welcome tells new chats they are linked. Best effort, after the links
-// are stored: a lost greeting changes nothing.
-func (s *Service) welcome(ctx context.Context, token crypto.Secret, chats []int64) {
+// mayRead reports whether the workspace's bot may be read now, and if so
+// marks it read: at most once per CheckInterval.
+func (s *Service) mayRead(workspaceID uuid.UUID) bool {
+	now := s.now()
+	for {
+		last, loaded := s.checks.LoadOrStore(workspaceID, now)
+		if !loaded {
+			return true
+		}
+		if now.Sub(last.(time.Time)) < CheckInterval {
+			return false
+		}
+		if s.checks.CompareAndSwap(workspaceID, last, now) {
+			return true
+		}
+	}
+}
+
+// tell sends text to chats: the greeting of new links or a refusal. Best
+// effort, after the links are stored: a lost message changes nothing.
+func (s *Service) tell(ctx context.Context, token crypto.Secret, chats []int64, text string) {
 	for _, chat := range chats {
-		if _, err := s.tg.Bots.SendMessage(ctx, token.Reveal(), chat,
-			"Tolkovo: уведомления о задачах будут приходить сюда. / Task notifications will arrive here."); err != nil {
-			s.tgLog().WarnContext(ctx, "telegram welcome not sent", "error", err)
+		if _, err := s.tg.Bots.SendNotice(ctx, token.Reveal(), chat, text); err != nil {
+			s.tgLog().WarnContext(ctx, "telegram notice not sent", "error", err)
 		}
 	}
 }
@@ -392,8 +456,10 @@ type TaskMessageArgs struct {
 func (TaskMessageArgs) Kind() string { return "notifications.telegram_task" }
 
 // InsertOpts implements river.JobArgsWithInsertOpts: Telegram may be away
-// for a while, a message an hour late is still useful.
-func (TaskMessageArgs) InsertOpts() river.InsertOpts { return river.InsertOpts{MaxAttempts: 6} }
+// for a while, a message an hour late is still useful. River's backoff
+// (attempt⁴ seconds) spreads 8 attempts over about 80 minutes; a 429 waits
+// as long as Telegram asks without spending one.
+func (TaskMessageArgs) InsertOpts() river.InsertOpts { return river.InsertOpts{MaxAttempts: 8} }
 
 // TelegramWorkerOptions configure the sending job (role worker).
 type TelegramWorkerOptions struct {
@@ -465,8 +531,14 @@ func SendTaskMessage(ctx context.Context, o TelegramWorkerOptions, a TaskMessage
 			locale = l
 		}
 	}
-	_, err = s.tg.Bots.SendMessage(ctx, token.Reveal(), chat, taskMessage(locale, a.About, task, strings.TrimRight(o.PanelURL, "/")))
-	var refused *telegram.UndeliverableError
+	_, err = s.tg.Bots.SendNotice(ctx, token.Reveal(), chat, taskMessage(locale, a.About, task, strings.TrimRight(o.PanelURL, "/")))
+	var (
+		refused *telegram.UndeliverableError
+		apiErr  *telegram.APIError
+	)
+	if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {
+		return river.JobSnooze(apiErr.RetryAfter)
+	}
 	if errors.As(err, &refused) {
 		if refused.Reason == telegram.ReasonBlocked || refused.Reason == telegram.ReasonChatNotFound {
 			return s.db.InTenantTx(ctx, a.WorkspaceID, func(tx pgx.Tx) error {

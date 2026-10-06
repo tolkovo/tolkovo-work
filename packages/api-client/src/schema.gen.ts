@@ -444,7 +444,9 @@ export interface paths {
          * Read the bot's new messages and complete links
          * @description The server reads the bot's updates (getUpdates, no webhook) and links every member whose
          *     code came with `/start`; the answer is the caller's link. The panel asks every few
-         *     seconds while the link waits.
+         *     seconds while the link waits. The bot is read only while the caller's code waits, and at
+         *     most once a second per workspace; otherwise the link is returned as it is. A chat already
+         *     linked to another member is not linked again.
          */
         post: operations["checkMyTelegramLink"];
         delete?: never;
@@ -994,11 +996,14 @@ export interface paths {
         /**
          * Choose the provider, model, key, prices and budget
          * @description Replaces the settings. `api_key` left out keeps the saved key; a key belongs to its
-         *     provider, so choosing another provider without a new key forgets the old one.
+         *     provider and its server, so choosing another provider, or a `base_url` on another scheme
+         *     or host, without a new key forgets the old one.
          *     Turning AI on needs a model and, except for `openai_compatible`, a key
          *     (`422 ai_key_required`). `base_url` is only for `openai_compatible` and must be a
          *     public address unless the server allows private ones
-         *     (`TOLKOVO_EGRESS_ALLOW_PRIVATE`). Requires `ai.manage`.
+         *     (`TOLKOVO_EGRESS_ALLOW_PRIVATE`); it is `https`, `http` only for a server inside the
+         *     network (a private address, `localhost`, a name without a dot, `.local`, `.internal`,
+         *     `.lan`). Requires `ai.manage`.
          */
         put: operations["setAISettings"];
         post?: never;
@@ -2295,7 +2300,8 @@ export interface paths {
         /**
          * Add or replace the notifications bot
          * @description Telegram is asked for the bot (getMe). Another bot replaces the old one and every member
-         *     links again. Requires `tasks.manage`.
+         *     links again. A bot connected as a support channel of the workspace is refused: reading its
+         *     updates would take the customers' messages. Requires `tasks.manage`.
          */
         put: operations["setTaskTelegramBot"];
         post?: never;
@@ -3995,9 +4001,10 @@ export interface components {
             };
         };
         /**
-         * @description `no_notify_bot` (the workspace has no notifications bot) or `notify_bot_busy` (the bot's
+         * @description `no_notify_bot` (the workspace has no notifications bot), `notify_bot_busy` (the bot's
          *     updates go to a webhook — it serves a support channel — or to another reader: use a bot of
-         *     its own).
+         *     its own) or `notify_bot_revoked` (Telegram no longer knows the saved token: an admin
+         *     replaces the bot).
          */
         NotifyBotConflict: {
             headers: {
@@ -7694,6 +7701,15 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            /** @description `notify_bot_busy`: the bot is a support channel of the workspace. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description `telegram_token_invalid`: Telegram does not know the token. */
             422: {
                 headers: {

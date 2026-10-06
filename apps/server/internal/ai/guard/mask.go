@@ -31,15 +31,22 @@ const (
 )
 
 var (
-	emailRE = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}`)
+	// emailRE: internationalized addresses too (иван@пример.рф).
+	emailRE = regexp.MustCompile(`[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}\-]+(?:\.[\p{L}\p{N}\-]+)*\.\p{L}{2,}`)
 	// cvvRE: the code after its label; only the digits are replaced.
 	cvvRE = regexp.MustCompile(`(?i)\b(cvv2?|cvc2?|cid)(\W{0,3})(\d{3,4})\b`)
 	// passportRE: series of four digits (often split in two) and a
 	// six-digit number, after a word like "паспорт".
 	passportRE = regexp.MustCompile(`(?i)(паспорт\S*|passport)(\D{0,20}?)(\d{2}\s?\d{2}\s?№?\s?\d{6})\b`)
-	// digitsRE: a run of 10 to 19 digits with short separators, the shape
-	// of phones, cards, SNILS and INN; classified by its digits.
-	digitsRE = regexp.MustCompile(`\+?\(?\d(?:[ \-().]{0,2}\d){9,18}`)
+	// seriesRE: the same written as "серия 4512 номер 123456".
+	seriesRE = regexp.MustCompile(`(?i)(сери[яи])(\s*)(\d{2}\s?\d{2}\s*(?:номер|№)\s*\d{6})\b`)
+	// cvvTailRE: three or four digits right after a card number, a CVV
+	// written without its label.
+	cvvTailRE = regexp.MustCompile(`^(\s{1,2})(\d{3,4})$`)
+	// digitsRE: a run of 10 or more digits with short separators, the shape
+	// of phones, cards, SNILS and INN; classified by its digits. A longer
+	// run is taken whole, so that a card is not cut where the run is.
+	digitsRE = regexp.MustCompile(`\+?\(?\d(?:[ \-().]{0,2}\d){9,40}`)
 	tokenRE  = regexp.MustCompile(`⟨([A-Z]+)_(\d+)⟩`)
 )
 
@@ -67,13 +74,65 @@ func (m *Masker) Mask(s string) string {
 		g := passportRE.FindStringSubmatch(v)
 		return g[1] + g[2] + m.token(Passport, g[3])
 	})
-	return digitsRE.ReplaceAllStringFunc(s, func(v string) string {
-		kind, ok := classify(v)
-		if !ok {
-			return v
-		}
-		return m.token(kind, v)
+	s = seriesRE.ReplaceAllStringFunc(s, func(v string) string {
+		g := seriesRE.FindStringSubmatch(v)
+		return g[1] + g[2] + m.token(Passport, g[3])
 	})
+	return digitsRE.ReplaceAllStringFunc(s, m.maskRun)
+}
+
+// maskRun masks a run of digits: as a whole when it is one of the kinds,
+// otherwise a card number inside it, such as one followed by its expiry
+// month or its CVV.
+func (m *Masker) maskRun(v string) string {
+	if kind, ok := classify(v); ok {
+		return m.token(kind, v)
+	}
+	i, j, ok := cardInside(v)
+	if !ok {
+		return v
+	}
+	out, rest := v[:i]+m.token(Card, v[i:j]), v[j:]
+	if g := cvvTailRE.FindStringSubmatch(rest); g != nil {
+		return out + g[1] + m.token(CVV, g[2])
+	}
+	return out + rest
+}
+
+// cardInside finds a card number within a run: 13 to 19 digits starting
+// with 2–6, as card numbers do, passing Luhn, and starting and ending on
+// the run's groups of digits (anywhere in a run without separators). It
+// returns the byte range of the number in the run.
+func cardInside(run string) (int, int, bool) {
+	if strings.HasPrefix(run, "+") {
+		return 0, 0, false
+	}
+	var pos []int     // byte offset of each digit
+	var starts []bool // whether a digit opens a group
+	for i, r := range run {
+		if r >= '0' && r <= '9' {
+			starts = append(starts, len(pos) == 0 || pos[len(pos)-1] != i-1)
+			pos = append(pos, i)
+		}
+	}
+	digits := make([]byte, len(pos))
+	for k, p := range pos {
+		digits[k] = run[p]
+	}
+	single := len(pos) == len(run)
+	for _, n := range []int{16, 19, 18, 17, 15, 14, 13} {
+		for k := 0; k+n <= len(pos); k++ {
+			end := k + n
+			if !starts[k] || (!single && end < len(pos) && !starts[end]) {
+				continue
+			}
+			if c := digits[k]; c < '2' || c > '6' || !luhn(string(digits[k:end])) {
+				continue
+			}
+			return pos[k], pos[end-1] + 1, true
+		}
+	}
+	return 0, 0, false
 }
 
 // Unmask puts the masked values back into s; tokens of cards and CVV stay

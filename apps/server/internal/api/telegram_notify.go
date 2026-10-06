@@ -30,6 +30,10 @@ var notifyProblems = []struct {
 		Status: http.StatusConflict, Code: "notify_bot_busy", Title: "Conflict",
 		Detail: "the bot's updates go to a webhook or another reader",
 	}},
+	{notifications.ErrBotRevoked, Problem{
+		Status: http.StatusConflict, Code: "notify_bot_revoked", Title: "Conflict",
+		Detail: "Telegram no longer knows the bot's token",
+	}},
 	{notifications.ErrTelegram, Problem{Status: http.StatusBadGateway, Code: "telegram_unavailable", Title: "Bad Gateway"}},
 }
 

@@ -166,7 +166,7 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 			return Page{}, err
 		}
 	}
-	if utf8.RuneCountInString(f.Query) > 100 {
+	if utf8.RuneCountInString(f.Query) > 100 || !validText(f.Query) {
 		return Page{}, fmt.Errorf("%w: query must be at most 100 characters", ErrInvalid)
 	}
 	limit := 50
@@ -448,7 +448,7 @@ func (s *Service) Activity(ctx context.Context, workspaceID, taskID uuid.UUID) (
 // Comment adds a comment to a task's feed.
 func (s *Service) Comment(ctx context.Context, workspaceID, actorID, taskID uuid.UUID, text string) (Activity, error) {
 	body := strings.TrimSpace(text)
-	if body == "" || utf8.RuneCountInString(body) > MaxComment || !utf8.ValidString(body) {
+	if body == "" || utf8.RuneCountInString(body) > MaxComment || !validText(body) {
 		return Activity{}, fmt.Errorf("%w: comment must be 1 to %d characters", ErrInvalid, MaxComment)
 	}
 	var out Activity
