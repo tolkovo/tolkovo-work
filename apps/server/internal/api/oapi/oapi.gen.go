@@ -167,6 +167,24 @@ func (e ConversationPreviewSenderType) Valid() bool {
 	}
 }
 
+// Defines values for ConversationRatingResolvedBy.
+const (
+	Ai    ConversationRatingResolvedBy = "ai"
+	Human ConversationRatingResolvedBy = "human"
+)
+
+// Valid indicates whether the value is a known member of the ConversationRatingResolvedBy enum.
+func (e ConversationRatingResolvedBy) Valid() bool {
+	switch e {
+	case Ai:
+		return true
+	case Human:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationStatus.
 const (
 	ConversationStatusAssigned ConversationStatus = "assigned"
@@ -722,6 +740,24 @@ func (e WidgetContactRequestForm) Valid() bool {
 	}
 }
 
+// Defines values for WidgetConversationStatus.
+const (
+	WidgetConversationStatusOpen     WidgetConversationStatus = "open"
+	WidgetConversationStatusResolved WidgetConversationStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the WidgetConversationStatus enum.
+func (e WidgetConversationStatus) Valid() bool {
+	switch e {
+	case WidgetConversationStatusOpen:
+		return true
+	case WidgetConversationStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WidgetMessageSender.
 const (
 	WidgetMessageSenderBot      WidgetMessageSender = "bot"
@@ -879,6 +915,12 @@ type ChannelDetails struct {
 	// AllowedOrigins Widgets only: the pages that may embed it (see `WidgetOriginsRequest`).
 	AllowedOrigins *[]string `json:"allowed_origins,omitempty"`
 
+	// Analytics Where the widget reports its goals on the site. Each way is on separately; a counter
+	// the page does not have is skipped. Parameters never carry texts, names, contacts or
+	// ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+	// `source`; `rated` — `score`, `resolvedBy`.
+	Analytics *WidgetAnalytics `json:"analytics,omitempty"`
+
 	// AppLimits Limits of an app channel (`details.app_limits`).
 	AppLimits *AppLimits `json:"app_limits,omitempty"`
 
@@ -1026,9 +1068,12 @@ type Conversation struct {
 	LineLevel         int        `json:"line_level"`
 
 	// Number Human-readable number inside the workspace.
-	Number     int64      `json:"number"`
-	Priority   int        `json:"priority"`
-	ResolvedAt *time.Time `json:"resolved_at"`
+	Number   int64 `json:"number"`
+	Priority int   `json:"priority"`
+
+	// Rating The customer's rating of the resolved conversation; `null` until they rate it.
+	Rating     *ConversationRating `json:"rating"`
+	ResolvedAt *time.Time          `json:"resolved_at"`
 
 	// Status State of a conversation.
 	Status  ConversationStatus `json:"status"`
@@ -1083,6 +1128,22 @@ type ConversationPreviewKind string
 
 // ConversationPreviewSenderType defines model for ConversationPreview.SenderType.
 type ConversationPreviewSenderType string
+
+// ConversationRating defines model for ConversationRating.
+type ConversationRating struct {
+	// Comment What the customer wrote with the score.
+	Comment *string `json:"comment"`
+
+	// RatedAt A later rating replaces the earlier one.
+	RatedAt time.Time `json:"rated_at"`
+
+	// ResolvedBy `ai` when only the bot replied in the conversation, `human` otherwise.
+	ResolvedBy ConversationRatingResolvedBy `json:"resolved_by"`
+	Score      int                          `json:"score"`
+}
+
+// ConversationRatingResolvedBy `ai` when only the bot replied in the conversation, `human` otherwise.
+type ConversationRatingResolvedBy string
 
 // ConversationStatus State of a conversation.
 type ConversationStatus string
@@ -1970,6 +2031,24 @@ type User struct {
 	Name          string    `json:"name"`
 }
 
+// WidgetAnalytics Where the widget reports its goals on the site. Each way is on separately; a counter
+// the page does not have is skipped. Parameters never carry texts, names, contacts or
+// ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+// `source`; `rated` — `score`, `resolvedBy`.
+type WidgetAnalytics struct {
+	// DataLayer Push `{event: <goal>, tolkovo: {...}}` to `window.dataLayer` (Google Tag Manager, GA4 through GTM).
+	DataLayer bool `json:"data_layer"`
+
+	// Goals Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`.
+	Goals WidgetGoals `json:"goals"`
+
+	// Gtag Call `gtag("event", <goal>, {...})` (GA4 without GTM).
+	Gtag bool `json:"gtag"`
+
+	// MetrikaCounter Yandex Metrica counter number: `ym(<counter>, "reachGoal", <goal>, {...})`; `null` — off.
+	MetrikaCounter *string `json:"metrika_counter"`
+}
+
 // WidgetAvailability defines model for WidgetAvailability.
 type WidgetAvailability struct {
 	// OperatorsOnline Someone on the team takes conversations now: the status «online» and the panel
@@ -2007,6 +2086,25 @@ type WidgetContactRequest struct {
 // WidgetContactRequestForm Which form it was; the consent is stored with it.
 type WidgetContactRequestForm string
 
+// WidgetConversation The visitor's newest conversation as they see it.
+type WidgetConversation struct {
+	Id     uuid.UUID           `json:"id"`
+	Rating *ConversationRating `json:"rating"`
+
+	// Status `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
+	Status WidgetConversationStatus `json:"status"`
+}
+
+// WidgetConversationStatus `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
+type WidgetConversationStatus string
+
+// WidgetGoals Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`.
+type WidgetGoals struct {
+	ChatStarted      string `json:"chat_started"`
+	ContactCollected string `json:"contact_collected"`
+	Rated            string `json:"rated"`
+}
+
 // WidgetMessage defines model for WidgetMessage.
 type WidgetMessage struct {
 	Body           string            `json:"body"`
@@ -2031,6 +2129,9 @@ type WidgetMessageRequest struct {
 
 // WidgetMessages defines model for WidgetMessages.
 type WidgetMessages struct {
+	// Conversation The visitor's newest conversation; `null` before the first message.
+	Conversation *WidgetConversation `json:"conversation"`
+
 	// Cursor Pass as `since` next time.
 	Cursor string          `json:"cursor"`
 	Items  []WidgetMessage `json:"items"`
@@ -2049,6 +2150,13 @@ type WidgetOriginsRequest struct {
 	AllowedOrigins []string `json:"allowed_origins"`
 }
 
+// WidgetRatingRequest defines model for WidgetRatingRequest.
+type WidgetRatingRequest struct {
+	Comment        *string   `json:"comment,omitempty"`
+	ConversationId uuid.UUID `json:"conversation_id"`
+	Score          int       `json:"score"`
+}
+
 // WidgetReceiptRequest defines model for WidgetReceiptRequest.
 type WidgetReceiptRequest struct {
 	DeliveredUpTo *uuid.UUID `json:"delivered_up_to,omitempty"`
@@ -2057,7 +2165,12 @@ type WidgetReceiptRequest struct {
 
 // WidgetSession defines model for WidgetSession.
 type WidgetSession struct {
-	ChannelName string `json:"channel_name"`
+	// Analytics Where the widget reports its goals on the site. Each way is on separately; a counter
+	// the page does not have is skipped. Parameters never carry texts, names, contacts or
+	// ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+	// `source`; `rated` — `score`, `resolvedBy`.
+	Analytics   WidgetAnalytics `json:"analytics"`
+	ChannelName string          `json:"channel_name"`
 
 	// ExpiresAt Moves 30 days ahead with activity.
 	ExpiresAt time.Time             `json:"expires_at"`
@@ -2370,6 +2483,9 @@ type SubmitTelegramUserCodeJSONRequestBody = TelegramCodeRequest
 // SubmitTelegramUserPasswordJSONRequestBody defines body for SubmitTelegramUserPassword for application/json ContentType.
 type SubmitTelegramUserPasswordJSONRequestBody = TelegramPasswordRequest
 
+// SetWidgetAnalyticsJSONRequestBody defines body for SetWidgetAnalytics for application/json ContentType.
+type SetWidgetAnalyticsJSONRequestBody = WidgetAnalytics
+
 // SetWidgetOriginsJSONRequestBody defines body for SetWidgetOrigins for application/json ContentType.
 type SetWidgetOriginsJSONRequestBody = WidgetOriginsRequest
 
@@ -2450,6 +2566,9 @@ type SubmitWidgetContactJSONRequestBody = WidgetContactRequest
 
 // SendWidgetMessageJSONRequestBody defines body for SendWidgetMessage for application/json ContentType.
 type SendWidgetMessageJSONRequestBody = WidgetMessageRequest
+
+// RateWidgetConversationJSONRequestBody defines body for RateWidgetConversation for application/json ContentType.
+type RateWidgetConversationJSONRequestBody = WidgetRatingRequest
 
 // MarkWidgetReceiptJSONRequestBody defines body for MarkWidgetReceipt for application/json ContentType.
 type MarkWidgetReceiptJSONRequestBody = WidgetReceiptRequest
@@ -2540,6 +2659,9 @@ type ServerInterface interface {
 	// SubmitTelegramUserPassword Enter the cloud password of a personal account
 	// (POST /channels/{id}/telegram-user/password)
 	SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id)
+	// SetWidgetAnalytics Change which site analytics a widget reports goals to
+	// (PUT /channels/{id}/widget-analytics)
+	SetWidgetAnalytics(w http.ResponseWriter, r *http.Request, id Id)
 	// SetWidgetOrigins Change the pages that may embed a widget
 	// (PUT /channels/{id}/widget-origins)
 	SetWidgetOrigins(w http.ResponseWriter, r *http.Request, id Id)
@@ -2720,6 +2842,9 @@ type ServerInterface interface {
 	// SendWidgetMessage The visitor writes
 	// (POST /widget/messages)
 	SendWidgetMessage(w http.ResponseWriter, r *http.Request, params SendWidgetMessageParams)
+	// RateWidgetConversation The visitor rates a resolved conversation
+	// (POST /widget/rating)
+	RateWidgetConversation(w http.ResponseWriter, r *http.Request)
 	// MarkWidgetReceipt The widget received or showed replies
 	// (POST /widget/receipts)
 	MarkWidgetReceipt(w http.ResponseWriter, r *http.Request)
@@ -2888,6 +3013,12 @@ func (_ Unimplemented) SubmitTelegramUserCode(w http.ResponseWriter, r *http.Req
 // SubmitTelegramUserPassword Enter the cloud password of a personal account
 // (POST /channels/{id}/telegram-user/password)
 func (_ Unimplemented) SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetWidgetAnalytics Change which site analytics a widget reports goals to
+// (PUT /channels/{id}/widget-analytics)
+func (_ Unimplemented) SetWidgetAnalytics(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3248,6 +3379,12 @@ func (_ Unimplemented) ListWidgetMessages(w http.ResponseWriter, r *http.Request
 // SendWidgetMessage The visitor writes
 // (POST /widget/messages)
 func (_ Unimplemented) SendWidgetMessage(w http.ResponseWriter, r *http.Request, params SendWidgetMessageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RateWidgetConversation The visitor rates a resolved conversation
+// (POST /widget/rating)
+func (_ Unimplemented) RateWidgetConversation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3760,6 +3897,32 @@ func (siw *ServerInterfaceWrapper) SubmitTelegramUserPassword(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SubmitTelegramUserPassword(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetWidgetAnalytics operation middleware
+func (siw *ServerInterfaceWrapper) SetWidgetAnalytics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWidgetAnalytics(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5269,6 +5432,20 @@ func (siw *ServerInterfaceWrapper) SendWidgetMessage(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// RateWidgetConversation operation middleware
+func (siw *ServerInterfaceWrapper) RateWidgetConversation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RateWidgetConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MarkWidgetReceipt operation middleware
 func (siw *ServerInterfaceWrapper) MarkWidgetReceipt(w http.ResponseWriter, r *http.Request) {
 
@@ -5588,6 +5765,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/channels/{id}/widget-origins", wrapper.SetWidgetOrigins)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/channels/{id}/widget-analytics", wrapper.SetWidgetAnalytics)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)
 	})
 	r.Group(func(r chi.Router) {
@@ -5646,6 +5826,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/receipts", wrapper.MarkWidgetReceipt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/rating", wrapper.RateWidgetConversation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)

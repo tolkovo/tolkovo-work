@@ -8,12 +8,13 @@
     { "$ref": "#/$defs/heartbeat" },
     { "$ref": "#/$defs/resyncRequired" },
     { "$ref": "#/$defs/widgetMessage" },
+    { "$ref": "#/$defs/widgetConversation" },
     { "$ref": "#/$defs/widgetTyping" }
   ],
   "$defs": {
     "messageType": {
       "description": "Every message type of the widget connection.",
-      "enum": ["hello", "heartbeat", "resync_required", "widget.message", "widget.typing"]
+      "enum": ["hello", "heartbeat", "resync_required", "widget.message", "widget.conversation", "widget.typing"]
     },
     "closeCode": {
       "description": "WebSocket close codes. 1008: the widget sent a frame, do not retry without a fix. 1011: internal error, reconnect with backoff. 1012: server restart, reconnect with jitter. 4401: the session ended (expired, ended, the widget was disconnected or no longer allows this page), start a new session over REST. 4408: slow consumer, reconnect and refetch. 4429: too many connections of this session, reconnect only after a long backoff.",
@@ -30,7 +31,7 @@
       "format": "date-time"
     },
     "id": {
-      "description": "Unique message id. For widget.message it is the outbox event id, the same on every redelivery.",
+      "description": "Unique message id. For widget.message and widget.conversation it is the outbox event id, the same on every redelivery.",
       "type": "string",
       "minLength": 1,
       "maxLength": 64
@@ -83,6 +84,21 @@
             "contact_id": { "$ref": "#/$defs/uuid" },
             "conversation_id": { "$ref": "#/$defs/uuid" },
             "message_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "widgetConversation": {
+      "description": "The visitor's conversation was resolved, closed or reopened: fetch the chat over REST (GET /widget/messages since the cursor), its conversation says whether to ask for a rating.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "properties": {
+        "type": { "const": "widget.conversation" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "conversation_id"],
+          "properties": {
+            "contact_id": { "$ref": "#/$defs/uuid" },
+            "conversation_id": { "$ref": "#/$defs/uuid" }
           }
         }
       }

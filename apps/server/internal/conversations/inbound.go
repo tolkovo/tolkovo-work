@@ -319,7 +319,7 @@ func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv 
 	if n == 0 {
 		return conv, ErrConflict // cannot happen under the row lock
 	}
-	if err := s.addStateEvents(ctx, tx, conv.WorkspaceID, uuid.Nil, conv.ID, cur, next); err != nil {
+	if err := s.addStateEvents(ctx, tx, conv, uuid.Nil, cur, next); err != nil {
 		return conv, err
 	}
 	if err := addEventMessage(ctx, q, tx, conv, uuid.Nil, cur, next, now); err != nil {

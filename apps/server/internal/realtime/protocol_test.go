@@ -25,6 +25,7 @@ var samplePayloads = map[string]string{
 	"conversation.tags_changed":   `{"conversation_id":"%c"}`,
 	"conversation.issues_changed": `{"conversation_id":"%c"}`,
 	"conversation.read":           `{"conversation_id":"%c","reader_type":"operator","reader_id":"%u","up_to_message_id":"%m"}`,
+	"conversation.rated":          `{"conversation_id":"%c"}`,
 	"message.created":             `{"conversation_id":"%c","message_id":"%m","kind":"text","is_private":false,"sender_type":"operator","sender_id":"%u"}`,
 	"message.delivery":            `{"conversation_id":"%c","message_id":"%m","status":"failed","error":"blocked"}`,
 	"contact.created":             `{"contact_id":"%k"}`,

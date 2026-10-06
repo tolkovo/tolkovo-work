@@ -61,6 +61,39 @@ type QueuedReply struct {
 	Thread    string
 }
 
+// StatusNotifier is an optional part of a Deliverer: it hears, in the
+// transaction of the change, that a conversation of a channel thread was
+// resolved or reopened, so a widget can ask for a rating (W-05). It must
+// not call the network.
+type StatusNotifier interface {
+	QueueSettled(ctx context.Context, tx pgx.Tx, c SettledConversation) error
+}
+
+// SettledConversation is a conversation of a channel thread that was
+// resolved (or closed) or reopened.
+type SettledConversation struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	ChannelID      uuid.UUID
+	Thread         string
+	Resolved       bool
+}
+
+// settled tells the channel of a conversation that it was resolved or
+// reopened; resolved to closed changes nothing the customer sees.
+func (s *Service) settled(ctx context.Context, tx pgx.Tx, row store.Conversation, cur, next state) error {
+	n, ok := s.deliverer.(StatusNotifier)
+	if !ok || row.ChannelID == nil || row.ExternalThreadID == nil || isSettled(cur.Status) == isSettled(next.Status) {
+		return nil
+	}
+	return n.QueueSettled(ctx, tx, SettledConversation{
+		WorkspaceID: row.WorkspaceID, ConversationID: row.ID, ChannelID: *row.ChannelID,
+		Thread: *row.ExternalThreadID, Resolved: isSettled(next.Status),
+	})
+}
+
+func isSettled(st Status) bool { return st == StatusResolved || st == StatusClosed }
+
 // SetDeliverer connects the channels module; call it before serving.
 func (s *Service) SetDeliverer(d Deliverer) { s.deliverer = d }
 

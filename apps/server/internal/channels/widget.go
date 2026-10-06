@@ -40,6 +40,11 @@ const MaxAllowedOrigins = 20
 // connections, never to the panel (internal/realtime).
 const TopicWidgetMessage = "widget.message"
 
+// TopicWidgetConversation tells a visitor's widget that their conversation
+// was resolved or reopened: it refetches the chat and asks for a rating
+// (W-05). Routed like TopicWidgetMessage.
+const TopicWidgetConversation = "widget.conversation"
+
 // widgetKeyPrefix starts a widget key. The key is base64url of the
 // workspace and channel ids: it is public by design (it sits in the page),
 // so it carries no secret, and the session API learns the tenant from it
@@ -66,6 +71,77 @@ type WidgetChannel struct {
 	ChannelID      uuid.UUID
 	Name           string
 	AllowedOrigins []string
+	Analytics      WidgetAnalytics
+}
+
+// WidgetAnalytics is where a widget reports its goals on the site (W-05,
+// docs/04 §6.6): to the counters the site already has, never one of its
+// own. Each way is on separately; nothing is on by default.
+type WidgetAnalytics struct {
+	// DataLayer pushes to window.dataLayer (Google Tag Manager, GA4).
+	DataLayer bool `json:"data_layer"`
+	// Gtag calls gtag("event", ...) (GA4 without GTM).
+	Gtag bool `json:"gtag"`
+	// MetrikaCounter is a Yandex Metrica counter number; empty is off.
+	MetrikaCounter string      `json:"metrika_counter,omitempty"`
+	Goals          WidgetGoals `json:"goals"`
+}
+
+// WidgetGoals are the goal names in the counters.
+type WidgetGoals struct {
+	ChatStarted      string `json:"chat_started"`
+	ContactCollected string `json:"contact_collected"`
+	Rated            string `json:"rated"`
+}
+
+// DefaultWidgetGoals are the goal names until an admin changes them.
+var DefaultWidgetGoals = WidgetGoals{
+	ChatStarted: "tolkovo.chatStarted", ContactCollected: "tolkovo.contactCollected", Rated: "tolkovo.rated",
+}
+
+var (
+	metrikaCounterRe = regexp.MustCompile(`^[0-9]{1,12}$`)
+	goalRe           = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,64}$`)
+)
+
+// normalized checks the settings and fills empty goal names with the
+// defaults.
+func (a WidgetAnalytics) normalized() (WidgetAnalytics, error) {
+	a.MetrikaCounter = strings.TrimSpace(a.MetrikaCounter)
+	if a.MetrikaCounter != "" && !metrikaCounterRe.MatchString(a.MetrikaCounter) {
+		return WidgetAnalytics{}, fmt.Errorf("%w: a Metrica counter is its number, up to 12 digits", ErrInvalid)
+	}
+	for _, g := range []struct {
+		name *string
+		def  string
+	}{
+		{&a.Goals.ChatStarted, DefaultWidgetGoals.ChatStarted},
+		{&a.Goals.ContactCollected, DefaultWidgetGoals.ContactCollected},
+		{&a.Goals.Rated, DefaultWidgetGoals.Rated},
+	} {
+		*g.name = strings.TrimSpace(*g.name)
+		if *g.name == "" {
+			*g.name = g.def
+		}
+		if !goalRe.MatchString(*g.name) {
+			return WidgetAnalytics{}, fmt.Errorf("%w: a goal name is 1 to 64 Latin letters, digits and _ . : -", ErrInvalid)
+		}
+	}
+	return a, nil
+}
+
+// widgetAnalytics is what a widget channel's config holds, with the
+// default goal names where it holds none.
+func widgetAnalytics(d Details) WidgetAnalytics {
+	a := WidgetAnalytics{Goals: DefaultWidgetGoals}
+	if d.Analytics != nil {
+		a = *d.Analytics
+	}
+	a, err := a.normalized()
+	if err != nil {
+		return WidgetAnalytics{Goals: DefaultWidgetGoals} // written only by SetWidgetAnalytics
+	}
+	return a
 }
 
 // Allows reports whether a page of origin may use the widget: only the
@@ -163,8 +239,31 @@ func (s *Service) SetWidgetOrigins(ctx context.Context, workspaceID, channelID u
 	if err != nil {
 		return Channel{}, err
 	}
+	ch, err := s.updateWidget(ctx, workspaceID, channelID, func(d *Details) { d.AllowedOrigins = origins })
+	if err != nil {
+		return Channel{}, fmt.Errorf("set widget origins: %w", err)
+	}
+	return ch, nil
+}
+
+// SetWidgetAnalytics replaces where a widget reports its goals; empty goal
+// names become the defaults. Pages pick it up with their next session.
+func (s *Service) SetWidgetAnalytics(ctx context.Context, workspaceID, channelID uuid.UUID, a WidgetAnalytics) (Channel, error) {
+	a, err := a.normalized()
+	if err != nil {
+		return Channel{}, err
+	}
+	ch, err := s.updateWidget(ctx, workspaceID, channelID, func(d *Details) { d.Analytics = &a })
+	if err != nil {
+		return Channel{}, fmt.Errorf("set widget analytics: %w", err)
+	}
+	return ch, nil
+}
+
+// updateWidget changes the config of a widget channel under a row lock.
+func (s *Service) updateWidget(ctx context.Context, workspaceID, channelID uuid.UUID, edit func(*Details)) (Channel, error) {
 	var ch Channel
-	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		row, err := q.GetChannelForUpdate(ctx, store.GetChannelForUpdateParams{WorkspaceID: workspaceID, ID: channelID})
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && row.Type != TypeWidget) {
@@ -173,8 +272,9 @@ func (s *Service) SetWidgetOrigins(ctx context.Context, workspaceID, channelID u
 		if err != nil {
 			return err
 		}
-		details := channelFrom(row).Details
-		details.AllowedOrigins = origins
+		var details Details
+		_ = json.Unmarshal(row.Config, &details) // written only by this module
+		edit(&details)
 		cfg, err := json.Marshal(details)
 		if err != nil {
 			return err
@@ -185,10 +285,7 @@ func (s *Service) SetWidgetOrigins(ctx context.Context, workspaceID, channelID u
 		ch = channelFrom(row)
 		return err
 	})
-	if err != nil {
-		return Channel{}, fmt.Errorf("set widget origins: %w", err)
-	}
-	return ch, nil
+	return ch, err
 }
 
 // WidgetByKey finds the active widget channel of a public key. The key
@@ -226,7 +323,10 @@ func (s *Service) Widget(ctx context.Context, workspaceID, channelID uuid.UUID) 
 		return WidgetChannel{}, fmt.Errorf("load widget channel: %w", err)
 	}
 	ch := channelFrom(row)
-	return WidgetChannel{WorkspaceID: workspaceID, ChannelID: channelID, Name: ch.Name, AllowedOrigins: ch.Details.AllowedOrigins}, nil
+	return WidgetChannel{
+		WorkspaceID: workspaceID, ChannelID: channelID, Name: ch.Name, AllowedOrigins: ch.Details.AllowedOrigins,
+		Analytics: *ch.Details.Analytics,
+	}, nil
 }
 
 // VisitorMessage is what a visitor wrote in the widget.
@@ -279,6 +379,23 @@ func VisitorExternalID(key string) string { return "msg:" + key }
 func queueWidgetPush(ctx context.Context, tx pgx.Tx, r conversations.QueuedReply) error {
 	return outbox.Add(ctx, tx, r.WorkspaceID, TopicWidgetMessage, map[string]any{
 		"contact_id": r.Thread, "conversation_id": r.ConversationID, "message_id": r.MessageID,
+	})
+}
+
+// QueueSettled implements conversations.StatusNotifier: a widget visitor's
+// conversation was resolved or reopened, so their widget refetches the
+// chat and asks for a rating or stops asking. Other channels ask nothing
+// yet.
+func (s *Service) QueueSettled(ctx context.Context, tx pgx.Tx, c conversations.SettledConversation) error {
+	ch, err := store.New(tx).GetChannel(ctx, store.GetChannelParams{WorkspaceID: c.WorkspaceID, ID: c.ChannelID})
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && ch.Type != TypeWidget) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return outbox.Add(ctx, tx, c.WorkspaceID, TopicWidgetConversation, map[string]any{
+		"contact_id": c.Thread, "conversation_id": c.ConversationID,
 	})
 }
 

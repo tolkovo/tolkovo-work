@@ -46,6 +46,9 @@ type Conversation struct {
 	// MaxUnreadCount.
 	LastReadMessageID *uuid.UUID
 	UnreadCount       int
+	// Rating is the customer's rating of the resolved conversation; nil
+	// until they rate it.
+	Rating *Rating
 }
 
 // MaxUnreadCount caps the unread counter of a conversation.
@@ -303,7 +306,7 @@ func (s *Service) change(
 func (s *Service) recordChange(
 	ctx context.Context, q *store.Queries, tx pgx.Tx, row store.Conversation, actorID uuid.UUID, cur, next state,
 ) error {
-	if err := s.addStateEvents(ctx, tx, row.WorkspaceID, actorID, row.ID, cur, next); err != nil {
+	if err := s.addStateEvents(ctx, tx, row, actorID, cur, next); err != nil {
 		return err
 	}
 	if err := addEventMessage(ctx, q, tx, row, actorID, cur, next, s.now()); err != nil {
@@ -344,8 +347,13 @@ func (s *Service) canReturnTo(ctx context.Context, q *store.Queries, tx pgx.Tx, 
 // addStateEvents writes conversation.status_changed and
 // conversation.assigned. Payloads carry ids only; actor_id is null for a
 // change made by the system. A conversation entering the queue is told to
-// the router, with whoever held it, so it does not go straight back.
-func (s *Service) addStateEvents(ctx context.Context, tx pgx.Tx, workspaceID, actorID, id uuid.UUID, cur, next state) error {
+// the router, with whoever held it, so it does not go straight back; one
+// resolved or reopened is told to its channel.
+func (s *Service) addStateEvents(ctx context.Context, tx pgx.Tx, row store.Conversation, actorID uuid.UUID, cur, next state) error {
+	workspaceID, id := row.WorkspaceID, row.ID
+	if err := s.settled(ctx, tx, row, cur, next); err != nil {
+		return err
+	}
 	var actor *uuid.UUID
 	if actorID != uuid.Nil {
 		actor = &actorID
@@ -413,6 +421,6 @@ func conversationFrom(c store.Conversation, contactName string) Conversation {
 		ChannelID: c.ChannelID, Status: Status(c.Status), Priority: int(c.Priority), LineLevel: int(c.LineLevel),
 		AssigneeID: c.AssigneeID, Subject: c.Subject, FirstResponseAt: c.FirstResponseAt,
 		LastMessageAt: c.LastMessageAt, ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix,
-		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Rating: ratingFrom(c),
 	}
 }

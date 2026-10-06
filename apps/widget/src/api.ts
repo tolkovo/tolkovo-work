@@ -17,6 +17,10 @@ type WidgetUploadRequest = Schemas["WidgetUploadRequest"];
 /** `form` has a default on the server, so it may be left out. */
 export type WidgetContactRequest = Omit<Schemas["WidgetContactRequest"], "form"> & Partial<Pick<Schemas["WidgetContactRequest"], "form">>;
 type WidgetAvailability = Schemas["WidgetAvailability"];
+export type WidgetAnalytics = Schemas["WidgetAnalytics"];
+export type WidgetConversation = Schemas["WidgetConversation"];
+export type ConversationRating = Schemas["ConversationRating"];
+type WidgetRatingRequest = Schemas["WidgetRatingRequest"];
 
 /** An answer that is not 2xx: the problem's code, Retry-After for 429 and 503, the file a message was refused for. */
 export class WidgetApiError extends Error {
@@ -104,6 +108,10 @@ export class WidgetApi {
 
   availability(token: string): Promise<WidgetAvailability> {
     return this.call("GET", "/availability", token);
+  }
+
+  rate(token: string, req: WidgetRatingRequest): Promise<ConversationRating> {
+    return this.call("POST", "/rating", token, req);
   }
 
   receipt(token: string, req: WidgetReceiptRequest): Promise<void> {

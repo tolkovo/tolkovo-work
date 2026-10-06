@@ -46,3 +46,32 @@ JOIN conversations c ON c.workspace_id = m.workspace_id AND c.id = m.conversatio
 WHERE c.workspace_id = @workspace_id AND c.channel_id = @channel_id AND c.external_thread_id = @thread
   AND m.workspace_id = @workspace_id AND m.external_id = @external_id AND m.direction = 'in'
 LIMIT 1;
+
+-- name: VisitorConversation :one
+-- The newest conversation of the visitor's chat: whether to ask for a
+-- rating.
+SELECT * FROM conversations
+WHERE workspace_id = @workspace_id AND channel_id = @channel_id AND external_thread_id = @thread
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
+-- name: LockVisitorConversation :one
+-- A conversation of the visitor's chat, locked for their rating; none for
+-- a conversation of anyone else.
+SELECT * FROM conversations
+WHERE workspace_id = @workspace_id AND id = @id AND channel_id = @channel_id AND external_thread_id = @thread
+FOR UPDATE;
+
+-- name: ConversationRepliers :one
+-- Who replied in a conversation: operators, the bot, or both.
+SELECT
+    EXISTS (SELECT 1 FROM messages m WHERE m.workspace_id = @workspace_id AND m.conversation_id = @conversation_id
+            AND m.sender_type = 'operator' AND m.deleted_at IS NULL) AS operator,
+    EXISTS (SELECT 1 FROM messages m WHERE m.workspace_id = @workspace_id AND m.conversation_id = @conversation_id
+            AND m.sender_type = 'bot' AND m.deleted_at IS NULL) AS bot;
+
+-- name: SetConversationRating :exec
+UPDATE conversations
+SET rating = @rating::smallint, rating_comment = sqlc.narg(comment), rating_resolved_by = @resolved_by::text,
+    rated_at = @rated_at::timestamptz, updated_at = @rated_at::timestamptz
+WHERE workspace_id = @workspace_id AND id = @id;

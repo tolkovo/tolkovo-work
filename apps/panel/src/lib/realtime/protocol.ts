@@ -33,6 +33,7 @@ export const EVENT_TYPES = [
   "conversation.tags_changed",
   "conversation.issues_changed",
   "conversation.read",
+  "conversation.rated",
   "message.created",
   "message.delivery",
   "contact.created",

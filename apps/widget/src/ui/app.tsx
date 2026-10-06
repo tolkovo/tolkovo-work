@@ -67,6 +67,12 @@ const FileIcon = () => (
   </svg>
 );
 
+const StarIcon = () => (
+  <svg viewBox="0 0 24 24" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <path d="m12 3.2 2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6-4.3-4.2 6-.9Z" />
+  </svg>
+);
+
 /** An image is shown only from http(s) or an inline image. */
 function safeImage(src: string | undefined): string | undefined {
   return src && /^(https?:|data:image\/)/i.test(src) ? src : undefined;
@@ -225,7 +231,9 @@ function Log({ c, s, view }: { c: Controller; s: State; view: View }) {
   const { t } = view;
   const time = useTime(view.locale);
   const logRef = useRef<HTMLOListElement>(null);
-  const count = s.messages.length + s.pending.length + (s.typing ? 1 : 0);
+  // A resolved conversation asks for a rating under the last message.
+  const rating = s.conversation?.resolved && s.pending.length === 0 ? s.conversation : null;
+  const count = s.messages.length + s.pending.length + (s.typing ? 1 : 0) + (rating ? 1 : 0);
 
   // New messages scroll into view.
   useLayoutEffect(() => {
@@ -265,6 +273,7 @@ function Log({ c, s, view }: { c: Controller; s: State; view: View }) {
           )}
         </li>
       ))}
+      {rating ? <Rating key={rating.id} c={c} score={rating.rating?.score ?? 0} view={view} /> : null}
       {s.typing ? <li class="tk-typing">{t("typing")}</li> : null}
     </ol>
   );
@@ -278,6 +287,124 @@ function Message({ m, time, view, onBroken }: { m: ChatMessage; time: string; vi
       {m.files.length > 0 ? <Files files={m.files} view={view} onBroken={onBroken} /> : null}
       {m.body ? <div class="tk-bubble">{m.body}</div> : null}
       <span class="tk-meta">{time}</span>
+    </li>
+  );
+}
+
+const SCORES = [1, 2, 3, 4, 5];
+
+/** Stars from 1 to 5 and a comment; once rated, thanks and the score. */
+function Rating({ c, score: rated, view }: { c: Controller; score: number; view: View }) {
+  const { t } = view;
+  const [score, setScore] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const groupRef = useRef<HTMLDivElement>(null);
+
+  if (rated > 0) {
+    return (
+      <li class="tk-rate">
+        <p class="tk-rate-title">{t("rateThanks")}</p>
+        <span class="tk-stars" role="img" aria-label={t("rateYours", { n: rated })}>
+          {SCORES.map((n) => (
+            <span key={n} class="tk-star" data-on={n <= rated ? "" : undefined}>
+              <StarIcon />
+            </span>
+          ))}
+        </span>
+      </li>
+    );
+  }
+
+  // One tab stop for the stars; the arrows move between them, as in any radio group.
+  const choose = (n: number, focus = false) => {
+    setScore(n);
+    if (focus) groupRef.current?.querySelectorAll<HTMLButtonElement>("button")[n - 1]?.focus();
+  };
+  const submit = async () => {
+    if (!score || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await c.rate(score, comment);
+    } catch {
+      setFailed(true);
+      setBusy(false);
+    }
+  };
+  const shown = hover || score;
+  return (
+    <li class="tk-rate">
+      <form
+        class="tk-rate-form"
+        aria-busy={busy || undefined}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <p id="tk-rate-title" class="tk-rate-title">
+          {t("rateTitle")}
+        </p>
+        <div
+          ref={groupRef}
+          class="tk-stars"
+          role="radiogroup"
+          aria-labelledby="tk-rate-title"
+          onMouseLeave={() => setHover(0)}
+          onKeyDown={(e) => {
+            const step = e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : 0;
+            if (!step) return;
+            e.preventDefault();
+            choose(Math.min(5, Math.max(1, (score || 0) + step)), true);
+          }}
+        >
+          {SCORES.map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              class="tk-star"
+              aria-checked={score === n}
+              aria-label={t("rateStar", { n })}
+              tabIndex={(score || 1) === n ? 0 : -1}
+              data-on={n <= shown ? "" : undefined}
+              disabled={busy}
+              onMouseEnter={() => setHover(n)}
+              onClick={() => choose(n)}
+            >
+              <StarIcon />
+            </button>
+          ))}
+        </div>
+        {score > 0 ? (
+          <>
+            <label class="tk-sr" for="tk-rate-comment">
+              {t("rateComment")}
+            </label>
+            <textarea
+              id="tk-rate-comment"
+              class="tk-text tk-textarea"
+              rows={2}
+              maxLength={1000}
+              placeholder={t("rateComment")}
+              value={comment}
+              disabled={busy}
+              onInput={(e) => setComment(e.currentTarget.value)}
+            />
+            {failed ? (
+              <p class="tk-file-error" role="alert">
+                {t("prechatFailed")}
+              </p>
+            ) : null}
+            <button type="submit" class="tk-start" disabled={busy}>
+              {t("rateSend")}
+            </button>
+          </>
+        ) : null}
+      </form>
     </li>
   );
 }

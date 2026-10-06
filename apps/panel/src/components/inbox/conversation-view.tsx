@@ -1,4 +1,4 @@
-import { isApiError, type Conversation, type Message, type MessageEvent } from "@tolkovo/api-client";
+import { isApiError, type Conversation, type ConversationRating, type Message, type MessageEvent } from "@tolkovo/api-client";
 import { useConversation, useMessages, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
@@ -201,6 +201,7 @@ function Header({ conversation: c, tab, children }: { conversation: Conversation
         <p className="m-0 mt-0.5 flex flex-wrap gap-x-2.5 text-xs text-ink-3">
           <span>{t(`inbox.status.${c.status}`)}</span>
           {c.awaiting_fix && <span className="font-medium text-ink-2">{t("inbox.awaitingFix")}</span>}
+          {c.rating && <span className="font-medium text-ink-2">{t("inbox.rating.short", { score: c.rating.score })}</span>}
           <span>{assignee ? t("inbox.assignee", { name: assignee }) : t("inbox.unassigned")}</span>
           {c.subject && <span className="truncate">{c.subject}</span>}
         </p>
@@ -296,8 +297,31 @@ function Feed({ conversation, latestRequest }: { conversation: Conversation; lat
         m.id === firstNew && m.id !== items[0]?.id ? <NewMessagesLine key="new" /> : null,
         <MessageItem key={m.id} message={m} conversation={conversation} />,
       ])}
+      {conversation.rating && <RatingLine rating={conversation.rating} />}
       <PresenceLine conversationId={conversation.id} />
     </div>
+  );
+}
+
+/** The customer's rating of the resolved conversation, under the feed (docs/04 §5.4). */
+function RatingLine({ rating: r }: { rating: ConversationRating }) {
+  const { t } = useTranslation();
+  return (
+    <figure className="m-0 flex max-w-[80%] flex-col items-center gap-1 self-center rounded-lg border border-line bg-surface px-3 py-2 text-center text-xs text-ink-2">
+      <figcaption className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+        <span aria-hidden="true" className="tracking-[0.12em] text-teal">
+          {"★".repeat(r.score)}
+          <span className="text-line">{"★".repeat(5 - r.score)}</span>
+        </span>
+        <span className="font-medium text-ink">{t("inbox.rating.line", { score: r.score })}</span>
+        {r.resolved_by === "ai" && <span className="text-ink-3">{t("inbox.rating.byAi")}</span>}
+      </figcaption>
+      {r.comment && (
+        <blockquote aria-label={t("inbox.rating.comment")} className="m-0 text-[13px] break-words whitespace-pre-wrap text-ink">
+          {r.comment}
+        </blockquote>
+      )}
+    </figure>
   );
 }
 

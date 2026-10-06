@@ -1,6 +1,6 @@
 # @tolkovo/widget
 
-A live chat with your support team, for a website or an Electron app. Messages land in the Tolkovo inbox; operators answer from the panel. Everything the widget needs ships in the package (Preact included, about 16 kB gzip): it loads nothing from a CDN at runtime.
+A live chat with your support team, for a website or an Electron app. Messages land in the Tolkovo inbox; operators answer from the panel. Everything the widget needs ships in the package (Preact included, about 25 kB gzip): it loads nothing from a CDN at runtime.
 
 > Not published to npm yet. Until it is, build it from this repository (`pnpm --filter @tolkovo/widget build`) and add `dist/` to your app.
 
@@ -45,7 +45,7 @@ Tolkovo.init({
 });
 ```
 
-All looks are set here, in code. The panel holds only the key, the pages and the secret. A value the browser does not accept, such as a misspelled color, is ignored, and the default stays.
+All looks are set here, in code. The panel holds only the key, the pages, the secret and where goals go (below). A value the browser does not accept, such as a misspelled color, is ignored, and the default stays.
 
 ### JavaScript API
 
@@ -54,7 +54,7 @@ Tolkovo.open(); Tolkovo.close(); Tolkovo.toggle();
 Tolkovo.show(); Tolkovo.hide(); // the launcher button
 await Tolkovo.identify({ id, hash, name, email }); // the user signed in
 await Tolkovo.logout(); // the user signed out: the next person starts afresh
-Tolkovo.on("message", (m) => {}); // also: ready, open, close, unread, chatStarted, contactCollected
+Tolkovo.on("message", (m) => {}); // also: ready, open, close, unread, chatStarted, contactCollected, rated
 Tolkovo.off("message", handler);
 Tolkovo.destroy();
 ```
@@ -94,6 +94,20 @@ Tolkovo.init({
 ```
 
 The pre-chat form is not shown on top of it. After the form is sent, `contactCollected` fires with `{ source: "offline" }`.
+
+### Rating
+
+When an operator resolves the conversation, the chat asks the visitor to rate it: five stars and an optional comment. The operator sees the rating in the conversation. Rating again replaces it; a new message reopens the conversation and the request goes away. After a rating, `rated` fires with `{ score, resolvedBy }`.
+
+### Goals in Yandex Metrica and Google Analytics
+
+The widget can report three goals to the counters your site already has: a visitor started a chat (`chatStarted`), left a contact (`contactCollected`), rated the conversation (`rated`). Turn them on in the panel, not in code: **Settings → Channels → your widget → Site analytics**.
+
+- **Google Tag Manager, or GA4 through GTM**: `window.dataLayer.push({ event: "tolkovo.chatStarted", tolkovo: { channel: "widget", page: "/checkout" } })`.
+- **GA4 without GTM**: `gtag("event", "tolkovo.chatStarted", { ... })`.
+- **Yandex Metrica**: `ym(<counter>, "reachGoal", "tolkovo.chatStarted", { ... })`.
+
+Goal names can be changed in the same place. Parameters never carry texts, names, contacts or ids: `chatStarted` has `channel` and `page` (the path without the query; nothing for a page loaded from a file), `contactCollected` has `source`, `rated` has `score` and `resolvedBy`. The widget loads no counter and sets no cookie: a counter the page does not have is skipped, so your cookie consent works as before. The same events reach `Tolkovo.on(...)`.
 
 ## 3. Signed-in users (recommended)
 

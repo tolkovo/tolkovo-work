@@ -426,4 +426,66 @@ describe("channels settings", () => {
       allowed_origins: ["app://zerno"],
     });
   });
+
+  it("sends a widget's goals to the counters the admin turns on", async () => {
+    const user = userEvent.setup();
+    const goals = { chat_started: "tolkovo.chatStarted", contact_collected: "tolkovo.contactCollected", rated: "tolkovo.rated" };
+    let widget: Channel = {
+      id: "ch-widget",
+      type: "widget",
+      name: "Чат на сайте",
+      status: "active",
+      error_code: null,
+      details: {
+        username: null,
+        display_name: null,
+        phone_masked: null,
+        widget_key: "tk_widget_public-key",
+        allowed_origins: ["https://shop.example.com"],
+        analytics: { data_layer: false, gtag: false, metrika_counter: null, goals },
+      },
+      last_inbound_at: null,
+      created_at: "2026-10-05T09:00:00Z",
+    };
+    const api = fakeApi({
+      routes: {
+        "GET /channels": () => list([widget]),
+        "PUT /channels/ch-widget/widget-analytics": async (request) => {
+          const body = (await request.json()) as NonNullable<Channel["details"]["analytics"]>;
+          widget = { ...widget, details: { ...widget.details, analytics: { ...body, goals: { ...body.goals, chat_started: body.goals.chat_started || goals.chat_started } } } };
+          return json(200, widget);
+        },
+      },
+    });
+    renderApp("/settings/channels", { api });
+    const row = within(await screen.findByRole("list", { name: "Подключённые каналы" })).getAllByRole("listitem")[0]!;
+    await user.click(within(row).getByRole("button", { name: "Ключ и адреса" }));
+    const section = within(row).getByRole("region", { name: "Аналитика сайта" });
+    expect(within(section).getByRole("checkbox", { name: "Google Tag Manager или GA4 через GTM" })).not.toBeChecked();
+
+    await user.click(within(section).getByRole("checkbox", { name: "Google Tag Manager или GA4 через GTM" }));
+    const counter = within(section).getByLabelText("Номер счётчика Яндекс Метрики");
+    await user.type(counter, "ym-123");
+    await user.click(within(section).getByRole("button", { name: "Сохранить аналитику" }));
+    // Checked before a round trip: the field explains and takes the focus.
+    expect(counter).toHaveFocus();
+    expect(counter).toHaveAccessibleDescription(/Только цифры/);
+    expect(api.calls.some((c) => c.path === "/channels/ch-widget/widget-analytics")).toBe(false);
+
+    await user.clear(counter);
+    await user.type(counter, "12345678");
+    await user.click(within(section).getByText("Имена целей"));
+    const chat = within(section).getByLabelText("Начал чат");
+    await user.clear(chat);
+    await user.clear(within(section).getByLabelText("Оставил контакт"));
+    await user.type(within(section).getByLabelText("Оставил контакт"), "lead");
+    await user.click(within(section).getByRole("button", { name: "Сохранить аналитику" }));
+    expect(await within(section).findByText(/Сохранено/)).toBeInTheDocument();
+    expect(api.calls.find((c) => c.path === "/channels/ch-widget/widget-analytics")?.body).toEqual({
+      data_layer: true,
+      gtag: false,
+      metrika_counter: "12345678",
+      goals: { chat_started: "", contact_collected: "lead", rated: "tolkovo.rated" },
+    });
+  });
 });

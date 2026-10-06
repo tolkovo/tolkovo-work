@@ -100,7 +100,8 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
         if (!conversationId || str(event.data.reader_id) !== meId()) return;
         conversations.add(conversationId);
         counts = true; // mine_unread
-      } else if (event.type === "conversation.tags_changed" && conversationId) {
+      } else if ((event.type === "conversation.tags_changed" || event.type === "conversation.rated") && conversationId) {
+        // The customer's rating is on the conversation itself.
         conversations.add(conversationId);
       } else if (event.type === "conversation.issues_changed" && conversationId) {
         // A GitHub issue was created, linked, refused or removed: its list and awaiting_fix.

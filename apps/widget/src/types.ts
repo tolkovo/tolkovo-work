@@ -138,10 +138,12 @@ export interface Events {
   message: ChatMessage;
   /** Unread replies changed. */
   unread: number;
-  /** The visitor sent their first message in this session. */
-  chatStarted: void;
+  /** The visitor started a conversation: their first message in it. `page` is the path, without the query. */
+  chatStarted: { channel: "widget"; page: string };
   /** The visitor left their contact. No names or emails here: only where it came from. */
   contactCollected: { source: "prechat" | "offline" };
+  /** The visitor rated the resolved conversation, 1 to 5; `resolvedBy` is `ai` when only the bot replied. */
+  rated: { score: number; resolvedBy: "human" | "ai" };
 }
 
 export type EventName = keyof Events;

@@ -151,7 +151,7 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 		if changed == 0 {
 			return ErrConflict // the row is locked: cannot happen
 		}
-		if err := s.addStateEvents(ctx, tx, workspaceID, uuid.Nil, conversationID, cur, next); err != nil {
+		if err := s.addStateEvents(ctx, tx, row, uuid.Nil, cur, next); err != nil {
 			return err
 		}
 	}

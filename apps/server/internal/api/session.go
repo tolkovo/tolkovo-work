@@ -49,6 +49,7 @@ var publicOperations = map[string]bool{
 	"POST /api/v1/widget/uploads":     true,
 	"POST /api/v1/widget/contact":     true,
 	"GET /api/v1/widget/availability": true,
+	"POST /api/v1/widget/rating":      true,
 }
 
 // sessionCookies writes and reads the session cookie.

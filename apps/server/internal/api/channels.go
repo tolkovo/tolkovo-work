@@ -133,6 +133,29 @@ func (s *server) RenameChannel(w http.ResponseWriter, r *http.Request, id oapi.I
 	writeJSON(w, http.StatusOK, channelBody(ch))
 }
 
+// SetWidgetAnalytics implements PUT /channels/{id}/widget-analytics.
+func (s *server) SetWidgetAnalytics(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, err := authz.Require(r.Context(), authz.ChannelsManage)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req oapi.WidgetAnalytics
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	ch, err := s.channels.SetWidgetAnalytics(r.Context(), p.WorkspaceID, id, channels.WidgetAnalytics{
+		DataLayer: req.DataLayer, Gtag: req.Gtag, MetrikaCounter: deref(req.MetrikaCounter),
+		Goals: channels.WidgetGoals{ChatStarted: req.Goals.ChatStarted, ContactCollected: req.Goals.ContactCollected, Rated: req.Goals.Rated},
+	})
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, channelBody(ch))
+}
+
 // DisconnectChannel implements DELETE /channels/{id}.
 func (s *server) DisconnectChannel(w http.ResponseWriter, r *http.Request, id oapi.Id) {
 	p, err := authz.Require(r.Context(), authz.ChannelsManage)
@@ -172,8 +195,19 @@ func channelBody(ch channels.Channel) oapi.Channel {
 			origins = []string{}
 		}
 		body.Details.WidgetKey, body.Details.AllowedOrigins = &d.WidgetKey, &origins
+		if d.Analytics != nil {
+			a := widgetAnalyticsBody(*d.Analytics)
+			body.Details.Analytics = &a
+		}
 	}
 	return body
+}
+
+func widgetAnalyticsBody(a channels.WidgetAnalytics) oapi.WidgetAnalytics {
+	return oapi.WidgetAnalytics{
+		DataLayer: a.DataLayer, Gtag: a.Gtag, MetrikaCounter: nonEmpty(a.MetrikaCounter),
+		Goals: oapi.WidgetGoals{ChatStarted: a.Goals.ChatStarted, ContactCollected: a.Goals.ContactCollected, Rated: a.Goals.Rated},
+	}
 }
 
 func loginBody(l channels.Login) oapi.TelegramLogin {

@@ -1,5 +1,5 @@
-import type { Channel, WidgetChannelCreated } from "@tolkovo/api-client";
-import { useConnectWidgetChannel, useSetWidgetOrigins } from "@tolkovo/api-client/react";
+import type { Channel, WidgetAnalytics, WidgetChannelCreated } from "@tolkovo/api-client";
+import { useConnectWidgetChannel, useSetWidgetAnalytics, useSetWidgetOrigins } from "@tolkovo/api-client/react";
 import { Button, Label, cn } from "@tolkovo/ui";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,7 +13,8 @@ import { IdentitySecret, SecretBox } from "./app-channel";
  * The «Виджет» channel (docs/04 §6, W-01): a chat on a site or inside the company's app. The
  * widget key is public — it goes into the page — and the server answers only the pages on the
  * list. The identity secret stays on the company's backend, which signs who the visitor is
- * (W-04); it is shown once. How the widget looks is set in code, not here (docs/README §1).
+ * (W-04); it is shown once. How the widget looks is set in code, not here (docs/README §1); which
+ * site counters get its goals is set here (W-05).
  */
 
 /** One origin per line or separated by commas; empty lines dropped. */
@@ -198,6 +199,7 @@ export function WidgetChannelSettings({ channel, canManage }: { channel: Channel
         <Snippet widgetKey={key} />
       </section>
       <Origins channel={channel} canManage={canManage} />
+      <Analytics channel={channel} canManage={canManage} />
       {canManage ? <IdentitySecret channel={channel} /> : null}
     </div>
   );
@@ -247,6 +249,135 @@ function Origins({ channel, canManage }: { channel: Channel; canManage: boolean 
         </ul>
       ) : (
         <p className="m-0 text-[12.5px] text-ink-3">{t("settings.channels.widget.noOrigins")}</p>
+      )}
+      <FormMessage tone="success" message={message?.tone === "success" ? message.text : null} />
+      <FormMessage tone="error" message={message?.tone === "error" ? message.text : null} />
+    </section>
+  );
+}
+
+const GOALS = [
+  { key: "chat_started", label: "settings.channels.widget.goalChatStarted" },
+  { key: "contact_collected", label: "settings.channels.widget.goalContactCollected" },
+  { key: "rated", label: "settings.channels.widget.goalRated" },
+] as const;
+const GOAL_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
+const DEFAULT_GOALS = { chat_started: "tolkovo.chatStarted", contact_collected: "tolkovo.contactCollected", rated: "tolkovo.rated" };
+
+type AnalyticsField = "metrika" | (typeof GOALS)[number]["key"];
+
+/** Which of the site's counters get the widget's goals (docs/04 §6.6). */
+function Analytics({ channel, canManage }: { channel: Channel; canManage: boolean }) {
+  const { t } = useTranslation();
+  const save = useSetWidgetAnalytics();
+  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<AnalyticsField, string>>>({});
+  const a: WidgetAnalytics = channel.details.analytics ?? { data_layer: false, gtag: false, metrika_counter: null, goals: DEFAULT_GOALS };
+  const id = (name: string) => `widget-${name}-${channel.id}`;
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const text = (name: string) => {
+      const v = form.get(name);
+      return typeof v === "string" ? v.trim() : "";
+    };
+    const next: WidgetAnalytics = {
+      data_layer: form.get("data_layer") === "on",
+      gtag: form.get("gtag") === "on",
+      metrika_counter: text("metrika") || null,
+      goals: { chat_started: text("chat_started"), contact_collected: text("contact_collected"), rated: text("rated") },
+    };
+    const found: Partial<Record<AnalyticsField, string>> = {};
+    if (next.metrika_counter && !/^[0-9]{1,12}$/.test(next.metrika_counter)) found.metrika = t("settings.channels.widget.metrikaHint");
+    for (const g of GOALS) if (next.goals[g.key] && !GOAL_PATTERN.test(next.goals[g.key])) found[g.key] = t("settings.channels.widget.goalsHint");
+    setErrors(found);
+    setMessage(null);
+    const first = (["metrika", ...GOALS.map((g) => g.key)] as const).find((f) => found[f]);
+    if (first) {
+      document.getElementById(id(first))?.focus();
+      return;
+    }
+    save.mutate(
+      { id: channel.id, analytics: next },
+      {
+        onSuccess: () => setMessage({ tone: "success", text: t("settings.channels.widget.analyticsSaved") }),
+        onError: (e) => setMessage({ tone: "error", text: describeApiError(t, e).message }),
+      },
+    );
+  };
+
+  const targets = [a.data_layer ? "dataLayer" : "", a.gtag ? "gtag" : "", a.metrika_counter ? t("settings.channels.widget.metrikaTarget", { counter: a.metrika_counter }) : ""].filter(Boolean);
+  return (
+    <section aria-labelledby={id("analytics")} className="flex flex-col gap-2">
+      <h4 id={id("analytics")} className="m-0 text-[13px] font-semibold text-ink">
+        {t("settings.channels.widget.analytics")}
+      </h4>
+      <p className="m-0 max-w-[600px] text-[12.5px] text-ink-3">{t("settings.channels.widget.analyticsLead")}</p>
+      {canManage ? (
+        <form onSubmit={onSubmit} noValidate aria-busy={save.isPending} className="flex max-w-[480px] flex-col gap-3">
+          <fieldset disabled={save.isPending} className="m-0 flex flex-col gap-3 border-0 p-0">
+            {(["data_layer", "gtag"] as const).map((name) => (
+              <div key={name} className="flex items-start gap-2.5">
+                <input
+                  id={id(name)}
+                  name={name}
+                  type="checkbox"
+                  defaultChecked={a[name]}
+                  aria-describedby={`${id(name)}-hint`}
+                  className="mt-0.5 size-4 shrink-0 accent-teal"
+                />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <label htmlFor={id(name)} className="text-[13px] text-ink">
+                    {name === "data_layer" ? t("settings.channels.widget.dataLayer") : t("settings.channels.widget.gtag")}
+                  </label>
+                  <p id={`${id(name)}-hint`} className="m-0 font-mono text-[12px] break-words text-ink-3">
+                    {name === "data_layer" ? t("settings.channels.widget.dataLayerHint") : t("settings.channels.widget.gtagHint")}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <TextField
+              id={id("metrika")}
+              name="metrika"
+              label={t("settings.channels.widget.metrika")}
+              hint={t("settings.channels.widget.metrikaHint")}
+              error={errors.metrika}
+              defaultValue={a.metrika_counter ?? ""}
+              inputMode="numeric"
+              maxLength={12}
+              autoComplete="off"
+            />
+            <details className="group flex flex-col gap-3">
+              <summary className="cursor-pointer text-[13px] font-medium text-ink">{t("settings.channels.widget.goals")}</summary>
+              <div className="mt-3 flex flex-col gap-3">
+                {GOALS.map((g) => (
+                  <TextField
+                    key={g.key}
+                    id={id(g.key)}
+                    name={g.key}
+                    label={t(g.label)}
+                    error={errors[g.key]}
+                    defaultValue={a.goals[g.key]}
+                    placeholder={DEFAULT_GOALS[g.key]}
+                    maxLength={64}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono"
+                  />
+                ))}
+                <p className="m-0 text-[12.5px] text-ink-3">{t("settings.channels.widget.goalsHint")}</p>
+              </div>
+            </details>
+          </fieldset>
+          <div>
+            <Button type="submit" variant="secondary" disabled={save.isPending}>
+              {t("settings.channels.widget.saveAnalytics")}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <p className="m-0 text-[12.5px] text-ink-2">{targets.length > 0 ? t("settings.channels.widget.analyticsOn", { targets: targets.join(", ") }) : t("settings.channels.widget.analyticsOff")}</p>
       )}
       <FormMessage tone="success" message={message?.tone === "success" ? message.text : null} />
       <FormMessage tone="error" message={message?.tone === "error" ? message.text : null} />

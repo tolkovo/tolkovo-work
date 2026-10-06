@@ -144,6 +144,13 @@ export const conversationPreviewSchema = z.object({
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["ConversationPreview"]>;
 
+export const conversationRatingSchema = z.object({
+  score: z.number(),
+  comment: z.string().nullable(),
+  resolved_by: z.enum(["human", "ai"]),
+  rated_at: z.string(),
+}) satisfies z.ZodType<Schemas["ConversationRating"]>;
+
 export const conversationSchema = z.object({
   id: z.string(),
   number: z.number(),
@@ -166,6 +173,7 @@ export const conversationSchema = z.object({
   tag_ids: z.array(z.string()),
   last_read_message_id: z.string().nullable(),
   unread_count: z.number(),
+  rating: conversationRatingSchema.nullable(),
 }) satisfies z.ZodType<Schemas["Conversation"]>;
 
 export const contactSchema = z.object({
@@ -285,6 +293,13 @@ export const appLimitsSchema = z.object({
   daily_mb: z.number(),
 }) satisfies z.ZodType<Schemas["AppLimits"]>;
 
+export const widgetAnalyticsSchema = z.object({
+  data_layer: z.boolean(),
+  gtag: z.boolean(),
+  metrika_counter: z.string().nullable(),
+  goals: z.object({ chat_started: z.string(), contact_collected: z.string(), rated: z.string() }) satisfies z.ZodType<Schemas["WidgetGoals"]>,
+}) satisfies z.ZodType<Schemas["WidgetAnalytics"]>;
+
 export const channelSchema = z.object({
   id: z.string(),
   type: z.enum(["telegram_bot", "telegram_user", "app", "widget"]),
@@ -299,6 +314,7 @@ export const channelSchema = z.object({
     app_limits: appLimitsSchema.optional(),
     widget_key: z.string().optional(),
     allowed_origins: z.array(z.string()).optional(),
+    analytics: widgetAnalyticsSchema.optional(),
   }),
   last_inbound_at: z.string().nullable(),
   created_at: z.string(),

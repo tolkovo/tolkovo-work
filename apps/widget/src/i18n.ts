@@ -49,6 +49,12 @@ const dictionaries = {
     needConsentToSend: "Без согласия сообщение не отправить.",
     leave: "Отправить",
     away: "Сейчас никого нет на месте. Ответим, как только вернёмся.",
+    rateTitle: "Оцените, как мы помогли",
+    rateStar: "{n} из 5",
+    rateComment: "Комментарий, если хотите",
+    rateSend: "Отправить оценку",
+    rateThanks: "Спасибо за оценку!",
+    rateYours: "Ваша оценка: {n} из 5",
   },
   en: {
     open: "Open chat",
@@ -97,6 +103,12 @@ const dictionaries = {
     needConsentToSend: "The message cannot be sent without your consent.",
     leave: "Send",
     away: "Nobody is here right now. We will reply once we are back.",
+    rateTitle: "How did we do?",
+    rateStar: "{n} of 5",
+    rateComment: "A comment, if you like",
+    rateSend: "Send rating",
+    rateThanks: "Thanks for your rating!",
+    rateYours: "Your rating: {n} of 5",
   },
 } as const;
 

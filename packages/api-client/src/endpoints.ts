@@ -83,6 +83,8 @@ export type ChannelList = Schemas["ChannelList"];
 export type TelegramLogin = Schemas["TelegramLogin"];
 export type ConnectTelegramBotRequest = Schemas["ConnectTelegramBotRequest"];
 export type AppLimits = Schemas["AppLimits"];
+export type WidgetAnalytics = Schemas["WidgetAnalytics"];
+export type ConversationRating = Schemas["ConversationRating"];
 export type AppChannelCreated = Schemas["AppChannelCreated"];
 export type WidgetChannelCreated = Schemas["WidgetChannelCreated"];
 export type IngestKey = Schemas["IngestKey"];
@@ -519,6 +521,14 @@ export async function setWidgetOrigins(client: ApiClient, id: string, origins: s
   return parseAnswer(
     channelSchema,
     await unwrap(client.PUT("/channels/{id}/widget-origins", { params: { path: { id } }, body: { allowed_origins: origins } })),
+  );
+}
+
+/** Changes which site analytics a widget reports goals to (docs/04 §6.6). */
+export async function setWidgetAnalytics(client: ApiClient, id: string, analytics: WidgetAnalytics): Promise<Channel> {
+  return parseAnswer(
+    channelSchema,
+    await unwrap(client.PUT("/channels/{id}/widget-analytics", { params: { path: { id } }, body: analytics })),
   );
 }
 

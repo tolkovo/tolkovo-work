@@ -78,6 +78,10 @@ type Conversation struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	AwaitingFix      bool
+	Rating           pgtype.Int2
+	RatingComment    *string
+	RatingResolvedBy *string
+	RatedAt          *time.Time
 }
 
 type Message struct {

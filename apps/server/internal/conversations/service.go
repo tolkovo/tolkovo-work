@@ -145,7 +145,7 @@ func pageSize(limit int) int32 {
 
 var domainErrors = []error{
 	ErrNotFound, ErrInvalid, ErrTransition, ErrConflict, ErrNotAssignee,
-	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists, ErrNotFailed,
+	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists, ErrNotFailed, ErrConversationOpen,
 }
 
 // wrap returns domain errors as they are, turns "no rows" into ErrNotFound

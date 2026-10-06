@@ -31,6 +31,7 @@ const conv = (id: string, minute: number, patch: Partial<Conversation> = {}): Co
   tag_ids: [],
   last_read_message_id: null,
   unread_count: 0,
+  rating: null,
   ...patch,
 });
 
@@ -125,6 +126,16 @@ describe("createInboxSync", () => {
     expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
     // The own read mark changes mine_unread (the tab title), the tags change no counter.
     expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([queryKeys.inboxCounts]);
+    sync.stop();
+  });
+
+  it("refetches a conversation the customer rated, counters stay", async () => {
+    const { api, queryClient, sync } = setup({ "GET /conversations/c1": () => json(200, conv("c1", 5)) });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    sync.onEvent(event("conversation.rated", { conversation_id: "c1" }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
+    expect(invalidate).not.toHaveBeenCalled();
     sync.stop();
   });
 

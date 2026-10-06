@@ -119,6 +119,9 @@ type Details struct {
 	AppLimits *AppLimits `json:"app_limits,omitempty"`
 	// AllowedOrigins of a widget channel (W-01): pages that may embed it.
 	AllowedOrigins []string `json:"allowed_origins,omitempty"`
+	// Analytics of a widget channel (W-05): where it reports goals. Always
+	// set on a widget's Details read from the database.
+	Analytics *WidgetAnalytics `json:"analytics,omitempty"`
 	// WidgetKey of a widget channel, derived from its ids, never stored.
 	WidgetKey string `json:"-"`
 }
@@ -382,6 +385,8 @@ func channelFrom(r store.Channel) Channel {
 	_ = json.Unmarshal(r.Config, &ch.Details) // written only by this module
 	if r.Type == TypeWidget {
 		ch.Details.WidgetKey = WidgetKey(r.WorkspaceID, r.ID)
+		a := widgetAnalytics(ch.Details)
+		ch.Details.Analytics = &a
 	}
 	return ch
 }

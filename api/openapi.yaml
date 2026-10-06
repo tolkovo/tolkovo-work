@@ -1175,6 +1175,38 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /channels/{id}/widget-analytics:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [channels]
+      operationId: setWidgetAnalytics
+      summary: Change which site analytics a widget reports goals to
+      description: |
+        The widget sends `chatStarted`, `contactCollected` and `rated` to the counters the
+        site already has: Google Tag Manager or GA4 (`dataLayer`), GA4 without GTM (`gtag`)
+        and Yandex Metrica (`ym`, by counter number). It loads no counter itself and sends no
+        personal data. Pages pick up the change with their next session start. Requires
+        `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetAnalytics' }
+      responses:
+        '200':
+          description: The channel with the new settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Channel' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /integrations/github:
     get:
       tags: [integrations]
@@ -1636,8 +1668,9 @@ paths:
         The visitor's own messages and the replies of operators and the bot, oldest first:
         no internal notes, no events, no names of staff. Without `since`, the newest 100;
         with it, what came after. Messages of the last few seconds may come again with the
-        next call — drop repeats by `id`. Fetch after `hello`, `widget.message` and
-        `resync_required` of the realtime connection. Rate: 60 a minute per session.
+        next call — drop repeats by `id`. Fetch after `hello`, `widget.message`,
+        `widget.conversation` and `resync_required` of the realtime connection. Rate: 60 a
+        minute per session.
       security:
         - widgetSession: []
       parameters:
@@ -1821,6 +1854,44 @@ paths:
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/WidgetSessionEnded' }
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
+  /widget/rating:
+    post:
+      tags: [widget]
+      operationId: rateWidgetConversation
+      summary: The visitor rates a resolved conversation
+      description: |
+        A score from 1 to 5 and an optional comment, for a conversation of the visitor's chat
+        that is resolved or closed (`conversation` of `GET /widget/messages`). Rating again
+        replaces the rating. The operator sees it in the conversation (`conversation.rated`).
+        Rate: 10 a minute per session.
+      security:
+        - widgetSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetRatingRequest' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationRating' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '404':
+          description: '`not_found`: no such conversation in the visitor''s chat.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`conversation_open`: the conversation is not resolved; it may have reopened.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
   /files/{key}:
@@ -3266,7 +3337,7 @@ components:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
                  first_response_at, last_message_at, resolved_at, closed_at, awaiting_fix, version, created_at,
-                 updated_at, last_message, tag_ids, last_read_message_id, unread_count]
+                 updated_at, last_message, tag_ids, last_read_message_id, unread_count, rating]
       properties:
         id:
           type: string
@@ -3326,6 +3397,23 @@ components:
           minimum: 0
           maximum: 100
           description: Customer messages after the caller's read mark, counted up to 100.
+        rating:
+          description: The customer's rating of the resolved conversation; `null` until they rate it.
+          oneOf:
+            - $ref: '#/components/schemas/ConversationRating'
+            - type: 'null'
+
+    ConversationRating:
+      type: object
+      required: [score, comment, resolved_by, rated_at]
+      properties:
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: [string, 'null'], description: What the customer wrote with the score. }
+        resolved_by:
+          type: string
+          enum: [human, ai]
+          description: '`ai` when only the bot replied in the conversation, `human` otherwise.'
+        rated_at: { type: string, format: date-time, description: A later rating replaces the earlier one. }
 
     ConversationPreview:
       type: object
@@ -3757,6 +3845,7 @@ components:
           type: array
           description: 'Widgets only: the pages that may embed it (see `WidgetOriginsRequest`).'
           items: { type: string }
+        analytics: { $ref: '#/components/schemas/WidgetAnalytics' }
 
     Channel:
       type: object
@@ -4408,9 +4497,71 @@ components:
             open. Without them the widget offers the offline form to a visitor who has not
             written yet.
 
+    WidgetAnalytics:
+      type: object
+      additionalProperties: false
+      description: |
+        Where the widget reports its goals on the site. Each way is on separately; a counter
+        the page does not have is skipped. Parameters never carry texts, names, contacts or
+        ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+        `source`; `rated` — `score`, `resolvedBy`.
+      required: [data_layer, gtag, metrika_counter, goals]
+      properties:
+        data_layer:
+          type: boolean
+          description: 'Push `{event: <goal>, tolkovo: {...}}` to `window.dataLayer` (Google Tag Manager, GA4 through GTM).'
+        gtag:
+          type: boolean
+          description: 'Call `gtag("event", <goal>, {...})` (GA4 without GTM).'
+        metrika_counter:
+          type: [string, 'null']
+          pattern: '^[0-9]{1,12}$'
+          description: 'Yandex Metrica counter number: `ym(<counter>, "reachGoal", <goal>, {...})`; `null` — off.'
+        goals: { $ref: '#/components/schemas/WidgetGoals' }
+
+    WidgetGoals:
+      type: object
+      additionalProperties: false
+      description: Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`.
+      required: [chat_started, contact_collected, rated]
+      properties:
+        chat_started: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
+        contact_collected: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
+        rated: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
+
+    WidgetConversation:
+      type: object
+      description: The visitor's newest conversation as they see it.
+      required: [id, status, rating]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        status:
+          type: string
+          enum: [open, resolved]
+          description: '`resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.'
+        rating:
+          oneOf:
+            - $ref: '#/components/schemas/ConversationRating'
+            - type: 'null'
+
+    WidgetRatingRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id, score]
+      properties:
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 1000 }
+
     WidgetSession:
       type: object
-      required: [session_token, expires_at, identity, channel_name, operators_online]
+      required: [session_token, expires_at, identity, channel_name, operators_online, analytics]
       properties:
         session_token: { type: string, description: '`tk_wsess_…`; keep it and send it as `Authorization: Bearer`.' }
         expires_at: { type: string, format: date-time, description: 'Moves 30 days ahead with activity.' }
@@ -4419,11 +4570,17 @@ components:
           enum: [verified, unverified, none]
         channel_name: { type: string }
         operators_online: { type: boolean, description: As in `WidgetAvailability`. }
+        analytics: { $ref: '#/components/schemas/WidgetAnalytics' }
 
     WidgetMessages:
       type: object
-      required: [items, cursor, more]
+      required: [items, cursor, more, conversation]
       properties:
+        conversation:
+          description: The visitor's newest conversation; `null` before the first message.
+          oneOf:
+            - $ref: '#/components/schemas/WidgetConversation'
+            - type: 'null'
         items:
           type: array
           items: { $ref: '#/components/schemas/WidgetMessage' }

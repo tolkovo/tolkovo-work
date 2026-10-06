@@ -51,6 +51,9 @@ type VisitorMessages struct {
 	Cursor string
 	// More: more messages follow the page; ask again at once.
 	More bool
+	// Conversation is the visitor's newest conversation; nil before the
+	// first message.
+	Conversation *VisitorConversation
 }
 
 // VisitorMessages returns the visitor's chat after since, oldest first;
@@ -63,9 +66,13 @@ func (s *Service) VisitorMessages(ctx context.Context, workspaceID uuid.UUID, ch
 	var (
 		rows []store.Message
 		atts []store.Attachment
+		conv *VisitorConversation
 	)
 	err = s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
 		var err error
+		if conv, err = visitorConversation(ctx, q, workspaceID, chat); err != nil {
+			return err
+		}
 		if after == nil {
 			rows, err = q.VisitorMessagesLatest(ctx, store.VisitorMessagesLatestParams{
 				WorkspaceID: workspaceID, ChannelID: &chat.ChannelID, Thread: &chat.Thread, Lim: MaxVisitorMessages,
@@ -89,7 +96,7 @@ func (s *Service) VisitorMessages(ctx context.Context, workspaceID uuid.UUID, ch
 	if err != nil {
 		return VisitorMessages{}, wrap(err, "list visitor messages")
 	}
-	out := VisitorMessages{Cursor: since, Items: []VisitorMessage{}, More: after != nil && len(rows) > MaxVisitorMessages}
+	out := VisitorMessages{Cursor: since, Items: []VisitorMessage{}, More: after != nil && len(rows) > MaxVisitorMessages, Conversation: conv}
 	rows = rows[:min(len(rows), MaxVisitorMessages)]
 	byMessage := make(map[uuid.UUID][]store.Attachment, len(atts))
 	for _, a := range atts {

@@ -67,6 +67,7 @@ var (
 	connectsPerTarget = ratelimit.Rule{Limit: 30, Window: time.Minute}
 	introsPerSession  = ratelimit.Rule{Limit: 10, Window: time.Minute}
 	checksPerSession  = ratelimit.Rule{Limit: 60, Window: time.Minute}
+	ratingsPerSession = ratelimit.Rule{Limit: 10, Window: time.Minute}
 )
 
 // Errors of the module.
@@ -81,6 +82,10 @@ var (
 	ErrSessionEnded = errors.New("widget: session ended")
 	// ErrIdempotencyMismatch: the key was used with another text.
 	ErrIdempotencyMismatch = errors.New("widget: the Idempotency-Key was used with a different message")
+	// ErrNotFound: no such conversation in the visitor's chat.
+	ErrNotFound = errors.New("widget: not found")
+	// ErrConversationOpen: the conversation to rate is not resolved.
+	ErrConversationOpen = errors.New("widget: conversation is not resolved")
 )
 
 // RateLimitedError means a rate is used up.
@@ -105,6 +110,9 @@ type Inbox interface {
 	VisitorMessageByKey(ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, externalID string) (conversations.VisitorMessage, error)
 	MarkVisitorReceipt(ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, r conversations.VisitorReceipt) error
 	AttachedKeys(ctx context.Context, workspaceID uuid.UUID, storageKeys []string) ([]string, error)
+	RateVisitorConversation(
+		ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, id uuid.UUID, score int, comment string,
+	) (conversations.Rating, error)
 }
 
 // Presence tells whether someone takes conversations now (internal/routing).
@@ -186,6 +194,8 @@ type Session struct {
 	// OperatorsOnline: someone takes conversations now; without them the
 	// widget offers the offline form (W-02).
 	OperatorsOnline bool
+	// Analytics is where the widget reports its goals on the site (W-05).
+	Analytics channels.WidgetAnalytics
 }
 
 // Visitor is an authenticated session.
@@ -242,7 +252,7 @@ func (s *Service) Start(ctx context.Context, c Caller, in Start) (Session, error
 	if cur != nil && cur.ContactID != nil {
 		contact = *cur.ContactID
 	}
-	out := Session{ChannelName: w.Name, Identity: conversations.IdentityNone}
+	out := Session{ChannelName: w.Name, Identity: conversations.IdentityNone, Analytics: w.Analytics}
 	switch {
 	case identity.Verified || (contact != uuid.Nil && !in.User.empty()):
 		// A signed user, or a claim on a session that has a contact: the
@@ -744,6 +754,34 @@ func (s *Service) Receipt(ctx context.Context, c Caller, token string, r convers
 		return nil
 	}
 	return s.opts.Inbox.MarkVisitorReceipt(ctx, v.WorkspaceID, v.chat(), r)
+}
+
+// Rate stores the visitor's rating of a resolved conversation of their
+// chat (W-05).
+func (s *Service) Rate(ctx context.Context, c Caller, token string, conversationID uuid.UUID, score int, comment string) (conversations.Rating, error) {
+	if err := s.allow(ctx, "widget:ip:"+c.IP, requestsPerIP); err != nil {
+		return conversations.Rating{}, err
+	}
+	v, err := s.Authenticate(ctx, c, token)
+	if err != nil {
+		return conversations.Rating{}, err
+	}
+	if err := s.allow(ctx, "widget:ratings:"+v.SessionID.String(), ratingsPerSession); err != nil {
+		return conversations.Rating{}, err
+	}
+	if v.ContactID == uuid.Nil {
+		return conversations.Rating{}, ErrNotFound
+	}
+	r, err := s.opts.Inbox.RateVisitorConversation(ctx, v.WorkspaceID, v.chat(), conversationID, score, comment)
+	switch {
+	case errors.Is(err, conversations.ErrNotFound):
+		return conversations.Rating{}, ErrNotFound
+	case errors.Is(err, conversations.ErrConversationOpen):
+		return conversations.Rating{}, ErrConversationOpen
+	case errors.Is(err, conversations.ErrInvalid):
+		return conversations.Rating{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return r, err
 }
 
 // AllowConnect takes one realtime handshake of a client IP. A widget

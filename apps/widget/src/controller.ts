@@ -1,4 +1,5 @@
-import { WidgetApi, WidgetApiError, isSessionEnded, type WidgetContactRequest, type WidgetMessage } from "./api";
+import { type Goal, pagePath, report } from "./analytics";
+import { WidgetApi, WidgetApiError, isSessionEnded, type ConversationRating, type WidgetAnalytics, type WidgetContactRequest, type WidgetMessage } from "./api";
 import { MAX_FILE_SIZE, MAX_FILES, fileType, isImage } from "./files";
 import { Realtime, type SocketFactory } from "./realtime";
 import type { ChatMessage, EventName, Events, Handler, TokenStorage, User } from "./types";
@@ -50,6 +51,8 @@ export interface State {
   intro: boolean;
   /** Someone on the team takes conversations now; without them the UI offers the offline form. */
   operatorsOnline: boolean;
+  /** The visitor's newest conversation; resolved — the UI asks for a rating. Null before the first message. */
+  conversation: { id: string; resolved: boolean; rating: ConversationRating | null } | null;
 }
 
 const TYPING_MS = 6_000;
@@ -135,6 +138,7 @@ export class Controller {
   private renewTimer: ReturnType<typeof setTimeout> | undefined;
   private renewing: Promise<void> | null = null;
   private checkedAt = 0;
+  private analytics: WidgetAnalytics | null = null;
 
   constructor(private readonly o: ControllerOptions) {
     this.api = new WidgetApi(o.apiBase);
@@ -155,6 +159,7 @@ export class Controller {
       // Until the session says otherwise, a site with the form shows it.
       intro: o.prechat ?? false,
       operatorsOnline: true,
+      conversation: null,
     };
     this.realtime = new Realtime(
       this.api.realtimeUrl(),
@@ -192,6 +197,12 @@ export class Controller {
 
   off<E extends EventName>(event: E, handler: Handler<E>): void {
     this.handlers.get(event)?.delete(handler as Handler<EventName>);
+  }
+
+  /** A goal: the host's handlers and the site's analytics hear it. */
+  private goal<E extends Goal>(event: E, payload: Events[E]): void {
+    this.emit(event, payload);
+    report(this.analytics, event, payload);
   }
 
   private emit<E extends EventName>(event: E, payload: Events[E]): void {
@@ -253,6 +264,7 @@ export class Controller {
     // A visitor the site identified, or who filled in the form, is not asked again.
     const intro = !!this.o.prechat && session.identity === "none" && this.storageGet(this.introKey) !== mark(session.session_token);
     this.checkedAt = Date.now();
+    this.analytics = session.analytics;
     this.set({ channelName: session.channel_name, intro, operatorsOnline: session.operators_online });
   }
 
@@ -305,7 +317,7 @@ export class Controller {
       // Not kept: the server knows, the next session start says so.
     }
     this.set({ intro: false });
-    if (filled) this.emit("contactCollected", { source: "prechat" });
+    if (filled) this.goal("contactCollected", { source: "prechat" });
   }
 
   /**
@@ -333,7 +345,7 @@ export class Controller {
       // Not kept: the server knows, the next session start says so.
     }
     this.set({ intro: false });
-    this.emit("contactCollected", { source: "offline" });
+    this.goal("contactCollected", { source: "offline" });
     await this.send(text);
   }
 
@@ -357,7 +369,7 @@ export class Controller {
     this.cursor = "";
     this.delivered = this.read = "";
     if (!keepPending) for (const p of this.state.pending) revoke(p.files);
-    this.set({ messages: [], unread: 0, typing: false, ...(keepPending ? {} : { pending: [] }) });
+    this.set({ messages: [], unread: 0, typing: false, conversation: null, ...(keepPending ? {} : { pending: [] }) });
   }
 
   async identify(user: User): Promise<void> {
@@ -422,6 +434,8 @@ export class Controller {
       }
       more = page.more;
       this.cursor = page.cursor;
+      const c = page.conversation;
+      this.set({ conversation: c ? { id: c.id, resolved: c.status === "resolved", rating: c.rating } : null });
       this.merge(page.items.map(toChat));
     }
     this.sendReceipts();
@@ -509,13 +523,33 @@ export class Controller {
     }
     revoke(p.files);
     const firstMessage = !this.state.messages.some((m) => m.sender === "contact");
-    this.set({ pending: this.state.pending.filter((x) => x.key !== key) });
+    // A new conversation: the first one, or one after the last was closed. A resolved one reopens.
+    const started = this.state.conversation?.id !== sent.conversation_id;
+    this.set({
+      pending: this.state.pending.filter((x) => x.key !== key),
+      conversation: started ? { id: sent.conversation_id, resolved: false, rating: null } : { ...this.state.conversation!, resolved: false },
+    });
     this.merge([toChat(sent)]);
-    if (firstMessage) {
-      this.emit("chatStarted", undefined);
-      // The session has a contact now: its connection must follow it at once.
-      this.realtime.connect(this.token!);
+    if (started) this.goal("chatStarted", { channel: "widget", page: pagePath() });
+    // The session has a contact now: its connection must follow it at once.
+    if (firstMessage) this.realtime.connect(this.token!);
+  }
+
+  /** Rates the resolved conversation. Throws when the server did not take it; a conversation that reopened stops asking. */
+  async rate(score: number, comment: string): Promise<void> {
+    const c = this.state.conversation;
+    if (!this.token || !c) throw new WidgetApiError(0, "no_conversation", null);
+    const text = comment.trim();
+    let rating: ConversationRating;
+    try {
+      rating = await this.api.rate(this.token, { conversation_id: c.id, score, ...(text ? { comment: text } : {}) });
+    } catch (e) {
+      if (e instanceof WidgetApiError && e.code === "conversation_open") void this.refetch();
+      if (isSessionEnded(e)) void this.restart();
+      throw e;
     }
+    if (this.state.conversation?.id === c.id) this.set({ conversation: { ...this.state.conversation, rating } });
+    this.goal("rated", { score: rating.score, resolvedBy: rating.resolved_by });
   }
 
   /** Marks a message as not sent, with what the visitor can do about it. */

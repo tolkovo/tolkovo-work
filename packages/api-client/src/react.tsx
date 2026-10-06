@@ -64,6 +64,7 @@ import {
   resetPassword,
   rotateIdentitySecret,
   setAppLimits,
+  setWidgetAnalytics,
   setWidgetOrigins,
   revokeIngestKey,
   revokeInvitation,
@@ -82,6 +83,7 @@ import {
   verifyEmail,
   type AcceptInvitationRequest,
   type AppLimits,
+  type WidgetAnalytics,
   type UpdateGitHubIntegrationRequest,
   type ChangePasswordRequest,
   type ChannelList,
@@ -454,6 +456,10 @@ export function useConnectWidgetChannel() {
 
 export function useSetWidgetOrigins() {
   return useChannelMutation((client, { id, origins }: { id: string; origins: string[] }) => setWidgetOrigins(client, id, origins));
+}
+
+export function useSetWidgetAnalytics() {
+  return useChannelMutation((client, { id, analytics }: { id: string; analytics: WidgetAnalytics }) => setWidgetAnalytics(client, id, analytics));
 }
 
 /** The GitHub integration (GH-01). Every mutation refreshes it and its repositories. */

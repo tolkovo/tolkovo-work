@@ -16,6 +16,7 @@
     { "$ref": "#/$defs/conversationTagsChanged" },
     { "$ref": "#/$defs/conversationIssuesChanged" },
     { "$ref": "#/$defs/conversationRead" },
+    { "$ref": "#/$defs/conversationRated" },
     { "$ref": "#/$defs/messageCreated" },
     { "$ref": "#/$defs/messageDelivery" },
     { "$ref": "#/$defs/contactCreated" },
@@ -37,6 +38,7 @@
         "conversation.tags_changed",
         "conversation.issues_changed",
         "conversation.read",
+        "conversation.rated",
         "message.created",
         "message.delivery",
         "contact.created",
@@ -222,6 +224,20 @@
               "$ref": "#/$defs/nullableUuid",
               "description": "Who made the change; null for the system. Equal to assignee_id when a member took the conversation: the panel alerts only about conversations given to the member by someone else."
             }
+          }
+        }
+      }
+    },
+    "conversationRated": {
+      "description": "The customer rated the conversation or changed the rating; clients fetch it over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.rated" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" }
           }
         }
       }

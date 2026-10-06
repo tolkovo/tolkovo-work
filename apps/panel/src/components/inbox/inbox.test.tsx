@@ -234,6 +234,18 @@ describe("inbox", () => {
     expect(screen.getByRole("img", { name: "Анна Смирнова печатает…" })).toBeInTheDocument();
   });
 
+  it("shows the customer's rating of the resolved conversation", async () => {
+    const rated = conv("c1", {
+      status: "resolved",
+      rating: { score: 4, comment: "Быстро помогли", resolved_by: "human", rated_at: "2026-10-06T10:00:00Z" },
+    });
+    renderApp("/inbox/c1", { api: inboxApi({ "GET /conversations/c1": () => json(200, rated) }) });
+    const feed = await screen.findByRole("log", { name: "Сообщения диалога" });
+    expect(await within(feed).findByText("Клиент оценил диалог: 4 из 5")).toBeInTheDocument();
+    expect(within(feed).getByLabelText("Комментарий клиента")).toHaveTextContent("Быстро помогли");
+    expect(screen.getByText("Оценка 4 из 5")).toBeInTheDocument();
+  });
+
   it("says when a conversation does not exist", async () => {
     renderApp("/inbox/c9", { api: inboxApi({ "GET /conversations/c9": () => problem(404, "not_found") }) });
     expect(await screen.findByText("Диалог не найден или недоступен")).toBeInTheDocument();

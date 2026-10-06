@@ -886,6 +886,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels/{id}/widget-analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change which site analytics a widget reports goals to
+         * @description The widget sends `chatStarted`, `contactCollected` and `rated` to the counters the
+         *     site already has: Google Tag Manager or GA4 (`dataLayer`), GA4 without GTM (`gtag`)
+         *     and Yandex Metrica (`ym`, by counter number). It loads no counter itself and sends no
+         *     personal data. Pages pick up the change with their next session start. Requires
+         *     `channels.manage`.
+         */
+        put: operations["setWidgetAnalytics"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/github": {
         parameters: {
             query?: never;
@@ -1209,8 +1235,9 @@ export interface paths {
          * @description The visitor's own messages and the replies of operators and the bot, oldest first:
          *     no internal notes, no events, no names of staff. Without `since`, the newest 100;
          *     with it, what came after. Messages of the last few seconds may come again with the
-         *     next call — drop repeats by `id`. Fetch after `hello`, `widget.message` and
-         *     `resync_required` of the realtime connection. Rate: 60 a minute per session.
+         *     next call — drop repeats by `id`. Fetch after `hello`, `widget.message`,
+         *     `widget.conversation` and `resync_required` of the realtime connection. Rate: 60 a
+         *     minute per session.
          */
         get: operations["listWidgetMessages"];
         put?: never;
@@ -1324,6 +1351,29 @@ export interface paths {
          *     session.
          */
         post: operations["markWidgetReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/widget/rating": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The visitor rates a resolved conversation
+         * @description A score from 1 to 5 and an optional comment, for a conversation of the visitor's chat
+         *     that is resolved or closed (`conversation` of `GET /widget/messages`). Rating again
+         *     replaces the rating. The operator sees it in the conversation (`conversation.rated`).
+         *     Rate: 10 a minute per session.
+         */
+        post: operations["rateWidgetConversation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2136,6 +2186,23 @@ export interface components {
             last_read_message_id: string | null;
             /** @description Customer messages after the caller's read mark, counted up to 100. */
             unread_count: number;
+            /** @description The customer's rating of the resolved conversation; `null` until they rate it. */
+            rating: components["schemas"]["ConversationRating"] | null;
+        };
+        ConversationRating: {
+            score: number;
+            /** @description What the customer wrote with the score. */
+            comment: string | null;
+            /**
+             * @description `ai` when only the bot replied in the conversation, `human` otherwise.
+             * @enum {string}
+             */
+            resolved_by: "human" | "ai";
+            /**
+             * Format: date-time
+             * @description A later rating replaces the earlier one.
+             */
+            rated_at: string;
         };
         ConversationPreview: {
             /** @enum {string} */
@@ -2419,6 +2486,7 @@ export interface components {
             widget_key?: string;
             /** @description Widgets only: the pages that may embed it (see `WidgetOriginsRequest`). */
             allowed_origins?: string[];
+            analytics?: components["schemas"]["WidgetAnalytics"];
         };
         Channel: {
             id: string;
@@ -2862,6 +2930,42 @@ export interface components {
              */
             operators_online: boolean;
         };
+        /**
+         * @description Where the widget reports its goals on the site. Each way is on separately; a counter
+         *     the page does not have is skipped. Parameters never carry texts, names, contacts or
+         *     ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+         *     `source`; `rated` — `score`, `resolvedBy`.
+         */
+        WidgetAnalytics: {
+            /** @description Push `{event: <goal>, tolkovo: {...}}` to `window.dataLayer` (Google Tag Manager, GA4 through GTM). */
+            data_layer: boolean;
+            /** @description Call `gtag("event", <goal>, {...})` (GA4 without GTM). */
+            gtag: boolean;
+            /** @description Yandex Metrica counter number: `ym(<counter>, "reachGoal", <goal>, {...})`; `null` — off. */
+            metrika_counter: string | null;
+            goals: components["schemas"]["WidgetGoals"];
+        };
+        /** @description Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`. */
+        WidgetGoals: {
+            chat_started: string;
+            contact_collected: string;
+            rated: string;
+        };
+        /** @description The visitor's newest conversation as they see it. */
+        WidgetConversation: {
+            id: string;
+            /**
+             * @description `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
+             * @enum {string}
+             */
+            status: "open" | "resolved";
+            rating: components["schemas"]["ConversationRating"] | null;
+        };
+        WidgetRatingRequest: {
+            conversation_id: string;
+            score: number;
+            comment?: string;
+        };
         WidgetSession: {
             /** @description `tk_wsess_…`; keep it and send it as `Authorization: Bearer`. */
             session_token: string;
@@ -2875,8 +2979,11 @@ export interface components {
             channel_name: string;
             /** @description As in `WidgetAvailability`. */
             operators_online: boolean;
+            analytics: components["schemas"]["WidgetAnalytics"];
         };
         WidgetMessages: {
+            /** @description The visitor's newest conversation; `null` before the first message. */
+            conversation: components["schemas"]["WidgetConversation"] | null;
             items: components["schemas"]["WidgetMessage"][];
             /** @description Pass as `since` next time. */
             cursor: string;
@@ -4491,6 +4598,36 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    setWidgetAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetAnalytics"];
+            };
+        };
+        responses: {
+            /** @description The channel with the new settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getGitHubIntegration: {
         parameters: {
             query?: never;
@@ -5186,6 +5323,52 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["WidgetSessionEnded"];
             403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    rateWidgetConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetRatingRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRating"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            /** @description `not_found`: no such conversation in the visitor's chat. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `conversation_open`: the conversation is not resolved; it may have reopened. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             429: components["responses"]["WidgetLimited"];
         };
     };
