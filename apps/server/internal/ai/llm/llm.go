@@ -1,6 +1,6 @@
 // Package llm talks to language models (ADR-0008, docs/03 §3): Anthropic's
-// Messages API, OpenAI's Chat Completions and any OpenAI-compatible server
-// (Ollama, vLLM, LM Studio, OpenRouter). No SDK (owner's decision
+// Messages API, OpenAI's Chat Completions, DeepSeek and any OpenAI-compatible
+// server (Ollama, vLLM, LM Studio, OpenRouter). No SDK (owner's decision
 // 2026-10-06): a few JSON calls over net/http, through httpx.SafeClient.
 //
 // Phase 1 needs a plain answer and an answer as a JSON object of a given
@@ -27,6 +27,7 @@ import (
 const (
 	Anthropic        = "anthropic"
 	OpenAI           = "openai"
+	DeepSeek         = "deepseek"
 	OpenAICompatible = "openai_compatible"
 )
 
@@ -34,6 +35,7 @@ const (
 const (
 	AnthropicURL = "https://api.anthropic.com"
 	OpenAIURL    = "https://api.openai.com/v1"
+	DeepSeekURL  = "https://api.deepseek.com"
 )
 
 // Kinds of errors; every error of a call wraps one of them (see Error).
@@ -175,6 +177,8 @@ func New(cfg Config, hc HTTPClient) (Provider, error) {
 		return &anthropic{base: orDefault(cfg.BaseURL, AnthropicURL), key: cfg.Key, hc: hc}, nil
 	case OpenAI:
 		return &openai{name: OpenAI, base: orDefault(cfg.BaseURL, OpenAIURL), key: cfg.Key, hc: hc}, nil
+	case DeepSeek:
+		return &openai{name: DeepSeek, base: orDefault(cfg.BaseURL, DeepSeekURL), key: cfg.Key, hc: hc, compat: true, jsonObject: true}, nil
 	case OpenAICompatible:
 		if cfg.BaseURL == "" {
 			return nil, errors.New("llm: openai_compatible needs a base URL")

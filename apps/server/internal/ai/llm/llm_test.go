@@ -285,6 +285,66 @@ func TestOpenAICompatible(t *testing.T) {
 	}
 }
 
+// DeepSeek knows response_format json_object only: the schema goes into the
+// system prompt, the answer limit is max_tokens, cached tokens are
+// prompt_cache_hit_tokens.
+func TestDeepSeek(t *testing.T) {
+	srv, got, body := server(t, recorded{status: 200, body: `{
+		"id": "930c60df", "object": "chat.completion", "model": "deepseek-chat",
+		"choices": [{"index": 0, "message": {"role": "assistant", "content": "{\"title\": \"Crash on start\"}"}, "logprobs": null, "finish_reason": "stop"}],
+		"usage": {"prompt_tokens": 40, "completion_tokens": 9, "total_tokens": 49, "prompt_tokens_details": {"cached_tokens": 0},
+			"prompt_cache_hit_tokens": 32, "prompt_cache_miss_tokens": 8}
+	}`})
+	resp, err := provider(t, DeepSeek, srv.URL, testKey).Chat(context.Background(), ask(draftSchema))
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if string(resp.JSON) != `{"title": "Crash on start"}` || resp.Usage != (Usage{InputTokens: 40, OutputTokens: 9, CachedTokens: 32}) {
+		t.Fatalf("answer %+v", resp)
+	}
+	if got.URL.Path != "/chat/completions" || got.Header.Get("Authorization") != "Bearer "+testKey {
+		t.Fatalf("request %s %v", got.URL.Path, got.Header)
+	}
+	b := *body
+	rf, _ := b["response_format"].(map[string]any)
+	sys, _ := b["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if rf["type"] != "json_object" || rf["json_schema"] != nil || b["max_tokens"] != float64(256) || b["max_completion_tokens"] != nil {
+		t.Fatalf("body %v", b)
+	}
+	if !strings.Contains(sys, "JSON") || !strings.Contains(sys, `"required":["title"]`) {
+		t.Fatalf("system prompt %q", sys)
+	}
+	p, _ := New(Config{Provider: DeepSeek}, http.DefaultClient)
+	if p.(*openai).base != DeepSeekURL {
+		t.Fatalf("default base %q", p.(*openai).base)
+	}
+}
+
+func TestDeepSeek_Outcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rec  recorded
+		kind error
+		code string
+	}{
+		{"busy", recorded{status: 200, body: `{"choices":[{"message":{"content":"{\"ti"},"finish_reason":"insufficient_system_resource"}],"usage":{"prompt_tokens":5,"completion_tokens":3}}`}, ErrUnavailable, "insufficient_system_resource"},
+		{"out of balance", recorded{status: 402, body: `{"error":{"message":"Insufficient Balance","type":"unknown_error","param":null,"code":"invalid_request_error"}}`}, ErrRejected, "invalid_request_error"},
+		{"overloaded", recorded{status: 503, body: `{"error":{"message":"Server overloaded, please try again later","type":"service_unavailable_error"}}`}, ErrUnavailable, "service_unavailable_error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _, _ := server(t, tc.rec)
+			_, err := provider(t, DeepSeek, srv.URL, testKey).Chat(context.Background(), ask(draftSchema))
+			var e *Error
+			if !errors.Is(err, tc.kind) || !errors.As(err, &e) || e.Code != tc.code {
+				t.Fatalf("err %#v, want %v (%q)", err, tc.kind, tc.code)
+			}
+			if strings.Contains(err.Error(), "Balance") || strings.Contains(err.Error(), "overloaded") {
+				t.Fatalf("the provider's message leaked: %v", err)
+			}
+		})
+	}
+}
+
 func TestChat_TimeoutIsUnavailable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)

@@ -2,5 +2,7 @@
   { "provider": "anthropic", "model": "claude-haiku-4-5", "input_price_micros": 1000000, "output_price_micros": 5000000 },
   { "provider": "anthropic", "model": "claude-sonnet-4-5", "input_price_micros": 3000000, "output_price_micros": 15000000 },
   { "provider": "openai", "model": "gpt-4.1-mini", "input_price_micros": 400000, "output_price_micros": 1600000 },
-  { "provider": "openai", "model": "gpt-5-mini", "input_price_micros": 250000, "output_price_micros": 2000000 }
+  { "provider": "openai", "model": "gpt-5-mini", "input_price_micros": 250000, "output_price_micros": 2000000 },
+  { "provider": "deepseek", "model": "deepseek-chat", "input_price_micros": 280000, "output_price_micros": 420000 },
+  { "provider": "deepseek", "model": "deepseek-reasoner", "input_price_micros": 280000, "output_price_micros": 420000 }
 ]

@@ -2181,11 +2181,12 @@ export interface components {
             mode: "manual" | "round_robin";
         };
         /**
-         * @description `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
-         *     vLLM, LM Studio, OpenRouter and others at `base_url`).
+         * @description `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+         *     Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+         *     OpenRouter and others at `base_url`).
          * @enum {string}
          */
-        AIProvider: "anthropic" | "openai" | "openai_compatible";
+        AIProvider: "anthropic" | "openai" | "deepseek" | "openai_compatible";
         /** @description Prices of the model per million tokens, in millionths of a US dollar. */
         AIPrices: {
             /** Format: int64 */

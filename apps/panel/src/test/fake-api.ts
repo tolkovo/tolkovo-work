@@ -40,6 +40,7 @@ export const aiSettingsOff: AISettings = {
   models: [
     { provider: "anthropic", model: "claude-haiku-4-5", prices: { input_micros: 1_000_000, output_micros: 5_000_000 } },
     { provider: "openai", model: "gpt-4.1-mini", prices: { input_micros: 400_000, output_micros: 1_600_000 } },
+    { provider: "deepseek", model: "deepseek-chat", prices: { input_micros: 280_000, output_micros: 420_000 } },
   ],
   encryption_available: true,
 };

@@ -55,9 +55,10 @@ type Options struct {
 	// local server (TOLKOVO_EGRESS_ALLOW_PRIVATE); SafeClient enforces
 	// them again when dialling.
 	AllowPrivate []netip.Prefix
-	// AnthropicURL and OpenAIURL override the official endpoints (tests).
+	// AnthropicURL, OpenAIURL and DeepSeekURL override the official endpoints (tests).
 	AnthropicURL string
 	OpenAIURL    string
+	DeepSeekURL  string
 	// Timeout bounds one call with its retry; DefaultTimeout when zero.
 	Timeout time.Duration
 }

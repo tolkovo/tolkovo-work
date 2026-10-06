@@ -209,6 +209,8 @@ func (s *Service) provider(t target) (llm.Provider, error) {
 		cfg.BaseURL = s.opts.AnthropicURL
 	case llm.OpenAI:
 		cfg.BaseURL = s.opts.OpenAIURL
+	case llm.DeepSeek:
+		cfg.BaseURL = s.opts.DeepSeekURL
 	}
 	return llm.New(cfg, s.opts.HTTP)
 }

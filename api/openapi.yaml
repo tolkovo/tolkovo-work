@@ -3428,9 +3428,10 @@ components:
     AIProvider:
       type: string
       description: |
-        `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
-        vLLM, LM Studio, OpenRouter and others at `base_url`).
-      enum: [anthropic, openai, openai_compatible]
+        `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+        Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+        OpenRouter and others at `base_url`).
+      enum: [anthropic, openai, deepseek, openai_compatible]
 
     AIPrices:
       type: object

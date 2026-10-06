@@ -15,12 +15,17 @@ import (
 // all know, instead of max_completion_tokens, which OpenAI's reasoning
 // models require; and since some of them ignore response_format, the
 // schema is also put into the system prompt.
+//
+// jsonObject asks for response_format json_object instead of json_schema,
+// for DeepSeek, which knows only that; the schema is then in the system
+// prompt alone, which also carries the word "JSON" DeepSeek requires.
 type openai struct {
-	name   string
-	base   string
-	key    crypto.Secret
-	hc     HTTPClient
-	compat bool
+	name       string
+	base       string
+	key        crypto.Secret
+	hc         HTTPClient
+	compat     bool
+	jsonObject bool
 }
 
 type openaiRequest struct {
@@ -64,6 +69,8 @@ type openaiResponse struct {
 		PromptTokensDetails struct {
 			CachedTokens int `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
+		// PromptCacheHitTokens is DeepSeek's count of cached tokens.
+		PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"`
 	} `json:"usage"`
 }
 
@@ -86,7 +93,10 @@ func (o *openai) Chat(ctx context.Context, req Request) (Response, error) {
 	for _, m := range req.Messages {
 		body.Messages = append(body.Messages, openaiMessage{Role: string(m.Role), Content: m.Text})
 	}
-	if req.Schema != nil {
+	switch {
+	case req.Schema != nil && o.jsonObject:
+		body.ResponseFormat = &openaiFormat{Type: "json_object"}
+	case req.Schema != nil:
 		body.ResponseFormat = &openaiFormat{Type: "json_schema", JSONSchema: &openaiJSONSchema{
 			Name: req.Schema.Name, Description: req.Schema.Description, Schema: req.Schema.JSON, Strict: true,
 		}}
@@ -104,7 +114,7 @@ func (o *openai) Chat(ctx context.Context, req Request) (Response, error) {
 		Usage: Usage{
 			InputTokens:  out.Usage.PromptTokens,
 			OutputTokens: out.Usage.CompletionTokens,
-			CachedTokens: out.Usage.PromptTokensDetails.CachedTokens,
+			CachedTokens: max(out.Usage.PromptTokensDetails.CachedTokens, out.Usage.PromptCacheHitTokens),
 		},
 	}
 	if len(out.Choices) == 0 {
@@ -114,6 +124,9 @@ func (o *openai) Chat(ctx context.Context, req Request) (Response, error) {
 	switch {
 	case choice.FinishReason == "length":
 		return resp, &Error{Kind: ErrTruncated}
+	case choice.FinishReason == "insufficient_system_resource":
+		// DeepSeek stops a started answer when it runs out of capacity.
+		return resp, &Error{Kind: ErrUnavailable, Code: choice.FinishReason}
 	case choice.FinishReason == "content_filter", choice.Message.Refusal != nil && *choice.Message.Refusal != "":
 		return resp, &Error{Kind: ErrRefused}
 	}

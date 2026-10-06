@@ -17,6 +17,7 @@ import (
 // Defines values for AIProvider.
 const (
 	Anthropic        AIProvider = "anthropic"
+	Deepseek         AIProvider = "deepseek"
 	Openai           AIProvider = "openai"
 	OpenaiCompatible AIProvider = "openai_compatible"
 )
@@ -25,6 +26,8 @@ const (
 func (e AIProvider) Valid() bool {
 	switch e {
 	case Anthropic:
+		return true
+	case Deepseek:
 		return true
 	case Openai:
 		return true
@@ -836,8 +839,9 @@ type AIModel struct {
 	// Prices Prices of the model per million tokens, in millionths of a US dollar.
 	Prices AIPrices `json:"prices"`
 
-	// Provider `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
-	// vLLM, LM Studio, OpenRouter and others at `base_url`).
+	// Provider `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+	// Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+	// OpenRouter and others at `base_url`).
 	Provider AIProvider `json:"provider"`
 }
 
@@ -847,8 +851,9 @@ type AIPrices struct {
 	OutputMicros int64 `json:"output_micros"`
 }
 
-// AIProvider `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
-// vLLM, LM Studio, OpenRouter and others at `base_url`).
+// AIProvider `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+// Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+// OpenRouter and others at `base_url`).
 type AIProvider string
 
 // AISettings defines model for AISettings.

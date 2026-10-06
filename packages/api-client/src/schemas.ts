@@ -84,7 +84,7 @@ export const routingSettingsSchema = z.object({
   mode: z.enum(["manual", "round_robin"]),
 }) satisfies z.ZodType<Schemas["RoutingSettings"]>;
 
-const aiProviderSchema = z.enum(["anthropic", "openai", "openai_compatible"]) satisfies z.ZodType<Schemas["AIProvider"]>;
+const aiProviderSchema = z.enum(["anthropic", "openai", "deepseek", "openai_compatible"]) satisfies z.ZodType<Schemas["AIProvider"]>;
 const aiPricesSchema = z.object({
   input_micros: z.number(),
   output_micros: z.number(),

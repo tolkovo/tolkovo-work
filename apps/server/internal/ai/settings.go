@@ -210,9 +210,9 @@ func (s *Service) validate(in SettingsUpdate) error {
 		if in.Enabled || in.Model != "" || in.BaseURL != "" || in.Key != nil {
 			return fmt.Errorf("%w: choose a provider", ErrInvalid)
 		}
-	case llm.Anthropic, llm.OpenAI, llm.OpenAICompatible:
+	case llm.Anthropic, llm.OpenAI, llm.DeepSeek, llm.OpenAICompatible:
 	default:
-		return fmt.Errorf("%w: provider must be anthropic, openai or openai_compatible", ErrInvalid)
+		return fmt.Errorf("%w: provider must be anthropic, openai, deepseek or openai_compatible", ErrInvalid)
 	}
 	if in.Model != "" && !modelRE.MatchString(in.Model) {
 		return fmt.Errorf("%w: model must be a model id of up to 100 characters", ErrInvalid)

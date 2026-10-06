@@ -27,13 +27,14 @@ import (
 
 const anthropicKey = "sk-ant-api03-0123456789abcdef"
 
-// fakeProvider plays Anthropic and OpenAI: it answers with the next
-// recorded answer and keeps the request bodies.
+// fakeProvider plays Anthropic, OpenAI and DeepSeek: it answers with the
+// next recorded answer and keeps the requests.
 type fakeProvider struct {
 	mu       sync.Mutex
 	answers  []fakeAnswer
 	requests []map[string]any
 	headers  []http.Header
+	paths    []string
 }
 
 type fakeAnswer struct {
@@ -48,6 +49,7 @@ func (f *fakeProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.requests = append(f.requests, body)
 	f.headers = append(f.headers, r.Header.Clone())
+	f.paths = append(f.paths, r.URL.Path)
 	a := fakeAnswer{status: 500, body: `{}`}
 	if len(f.answers) > 0 {
 		a, f.answers = f.answers[0], f.answers[1:]
@@ -106,7 +108,7 @@ func setup(t *testing.T) *fixture {
 	srv := httptest.NewServer(fake)
 	t.Cleanup(srv.Close)
 	svc := New(app, Options{
-		Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: srv.URL, OpenAIURL: srv.URL + "/v1",
+		Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: srv.URL, OpenAIURL: srv.URL + "/v1", DeepSeekURL: srv.URL + "/deepseek",
 		AllowPrivate: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
 	})
 	svc.retryWait = 10 * time.Millisecond
@@ -247,6 +249,7 @@ func TestSettings_Validation(t *testing.T) {
 		{"on without model", SettingsUpdate{Enabled: true, Provider: llm.Anthropic, Key: key(anthropicKey)}},
 		{"bad model", SettingsUpdate{Provider: llm.Anthropic, Model: "claude haiku"}},
 		{"base_url for anthropic", SettingsUpdate{Provider: llm.Anthropic, Model: "m", BaseURL: "https://example.com"}},
+		{"base_url for deepseek", SettingsUpdate{Provider: llm.DeepSeek, Model: "deepseek-chat", BaseURL: "https://api.deepseek.com"}},
 		{"compatible without base_url", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m"}},
 		{"private base_url", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "http://10.0.0.5/v1"}},
 		{"metadata base_url", SettingsUpdate{Provider: llm.OpenAICompatible, Model: "m", BaseURL: "http://169.254.169.254/v1"}},
@@ -401,6 +404,40 @@ func TestComplete_OpenAIWithSchema(t *testing.T) {
 	}
 	if f.provider.headers[0].Get("Authorization") != "Bearer sk-proj-abcdefghijklmnop" {
 		t.Fatal("no bearer key")
+	}
+}
+
+func TestComplete_DeepSeek(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.UpdateSettings(f.ctx, f.ws, f.owner, SettingsUpdate{Enabled: true, Provider: llm.DeepSeek, Model: "deepseek-chat"}); !errors.Is(err, ErrKeyRequired) {
+		t.Fatalf("on without a key: %v", err)
+	}
+	got, err := f.svc.UpdateSettings(f.ctx, f.ws, f.owner, SettingsUpdate{
+		Enabled: true, Provider: llm.DeepSeek, Model: "deepseek-chat", Key: key("sk-0123456789abcdef0123456789abcdef"),
+		Prices: Prices{InputMicros: 280_000, OutputMicros: 420_000},
+	})
+	if err != nil {
+		t.Fatalf("settings: %v", err)
+	}
+	if got.Provider != llm.DeepSeek || got.KeyHint != "…cdef" {
+		t.Fatalf("settings %+v", got)
+	}
+	f.provider.answer(fakeAnswer{status: 200, body: `{"model":"deepseek-chat","choices":[{"message":{"content":"{\"title\":\"Вход не работает\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":100,"prompt_cache_hit_tokens":600,"prompt_cache_miss_tokens":400}}`})
+	call := ask("Не могу войти")
+	call.Schema = &llm.Schema{Name: "draft", JSON: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}`)}
+	res, err := f.svc.Complete(f.ctx, f.ws, call)
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	// 1000 × $0.28 + 100 × $0.42 per million; cached tokens at the full price.
+	if string(res.JSON) != `{"title":"Вход не работает"}` || res.CostMicros != 322 {
+		t.Fatalf("result %+v", res)
+	}
+	if f.provider.paths[0] != "/deepseek/chat/completions" || f.provider.headers[0].Get("Authorization") != "Bearer sk-0123456789abcdef0123456789abcdef" {
+		t.Fatalf("request %s %v", f.provider.paths[0], f.provider.headers[0])
+	}
+	if rf, _ := f.provider.requests[0]["response_format"].(map[string]any); rf["type"] != "json_object" {
+		t.Fatalf("response_format %v", f.provider.requests[0]["response_format"])
 	}
 }
 

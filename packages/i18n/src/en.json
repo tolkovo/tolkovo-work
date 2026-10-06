@@ -440,6 +440,8 @@
         "anthropicHint": "Claude models. Get a key in the Anthropic Console, API Keys.",
         "openai": "OpenAI",
         "openaiHint": "GPT models. Get a key in the OpenAI platform settings, API keys.",
+        "deepseek": "DeepSeek",
+        "deepseekHint": "DeepSeek models. Get a key at platform.deepseek.com, API keys. DeepSeek's servers are in China; keep that in mind for your customers' personal data.",
         "openai_compatible": "OpenAI-compatible",
         "openai_compatibleHint": "Your own server or a service with the same API: Ollama, vLLM, LM Studio, OpenRouter."
       },

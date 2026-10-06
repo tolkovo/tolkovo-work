@@ -93,6 +93,29 @@ describe("AI settings", () => {
     expect(api.calls.some((c) => c.method === "PUT")).toBe(false);
   });
 
+  it("sets up DeepSeek with a key and its list prices, and says where its servers are", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ session: admin, routes: { "PUT /ai/settings": async (r) => json(200, { ...aiSettingsOff, ...(await r.json()) }) } });
+    renderApp("/settings/ai", { api });
+    const radio = await screen.findByRole("radio", { name: "DeepSeek" });
+    expect(radio).toHaveAccessibleDescription(/Серверы DeepSeek в Китае/);
+    await user.click(radio);
+    expect(screen.queryByLabelText("Адрес сервера")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Ключ API"), "sk-0123456789abcdef");
+    await user.type(screen.getByLabelText("Модель"), "deepseek-chat");
+    expect(screen.getByLabelText("Входящие токены")).toHaveValue("0.28");
+    expect(screen.getByLabelText("Ответ модели")).toHaveValue("0.42");
+    await user.click(screen.getByRole("button", { name: "Сохранить" }));
+    await screen.findByText("Сохранено.");
+    expect(api.calls.find((c) => c.method === "PUT")?.body).toMatchObject({
+      provider: "deepseek",
+      model: "deepseek-chat",
+      base_url: null,
+      api_key: "sk-0123456789abcdef",
+      prices: { input_micros: 280_000, output_micros: 420_000 },
+    });
+  });
+
   it("asks an OpenAI-compatible server for its address, not a key", async () => {
     const user = userEvent.setup();
     const api = fakeApi({ session: admin, routes: { "PUT /ai/settings": async (r) => json(200, { ...aiSettingsOff, ...(await r.json()) }) } });

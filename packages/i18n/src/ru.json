@@ -440,6 +440,8 @@
         "anthropicHint": "Модели Claude. Ключ — в консоли Anthropic, раздел API Keys.",
         "openai": "OpenAI",
         "openaiHint": "Модели GPT. Ключ — в настройках платформы OpenAI, раздел API keys.",
+        "deepseek": "DeepSeek",
+        "deepseekHint": "Модели DeepSeek. Ключ — на platform.deepseek.com, раздел API keys. Серверы DeepSeek в Китае — учтите это для персональных данных клиентов.",
         "openai_compatible": "Совместимый с OpenAI",
         "openai_compatibleHint": "Свой сервер или сервис с тем же API: Ollama, vLLM, LM Studio, OpenRouter."
       },

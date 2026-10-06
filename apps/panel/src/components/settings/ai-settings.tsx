@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { describeApiError } from "../../lib/api-errors";
 import { FormMessage, TextField } from "../form/fields";
 
-const PROVIDERS: readonly AIProvider[] = ["anthropic", "openai", "openai_compatible"];
+const PROVIDERS: readonly AIProvider[] = ["anthropic", "openai", "deepseek", "openai_compatible"];
 
 /** Money in the API is millionths of a US dollar; the form speaks dollars. */
 const MICROS = 1_000_000;
