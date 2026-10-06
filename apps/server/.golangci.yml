@@ -43,6 +43,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ai
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -73,6 +75,8 @@ linters:
               desc: realtime gets the visitor from api as realtime.Visitor
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing
               desc: realtime reports open panels through Options.OnPresence
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ai
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
           files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**", "**/internal/widget/**", "**/internal/routing/**"]
@@ -88,10 +92,10 @@ linters:
             - pkg: github.com/coder/websocket
               desc: WebSocket lives in internal/realtime
         # channels talks to Telegram over HTTP and MTProto, integrations to
-        # GitHub (their adapters are clients), but serving HTTP stays in
-        # internal/api.
+        # GitHub, ai to model providers (their adapters are clients), but
+        # serving HTTP stays in internal/api.
         channels-without-http-layer:
-          files: ["**/internal/channels/**", "**/internal/integrations/**"]
+          files: ["**/internal/channels/**", "**/internal/integrations/**", "**/internal/ai/**"]
           deny:
             - pkg: github.com/go-chi/chi/v5
               desc: HTTP routes live in internal/api
@@ -137,6 +141,11 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/routing/store
               desc: use the routing facade, not its store
+        no-foreign-ai-store:
+          files: ["!**/internal/ai/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ai/store
+              desc: use the ai facade, not its store
         no-foreign-widget-store:
           files: ["!**/internal/widget/**", "$all"]
           deny:

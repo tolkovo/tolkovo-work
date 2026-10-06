@@ -64,6 +64,13 @@ tags:
       code), installs it on its repositories and picks the repository, labels and templates.
       The App's private key and webhook secret are encrypted and never returned. Requires
       `integrations.manage` (owner, admin).
+  - name: ai
+    description: |
+      The workspace's AI base: its own key (BYOK) to Anthropic, OpenAI or an
+      OpenAI-compatible server, one model, its prices and a monthly budget in US dollars.
+      Money is in millionths of a US dollar (`*_micros`). The key is encrypted and never
+      returned, only `…` and its last four characters. Personal data is masked before
+      anything goes to the model. Requires `ai.manage` (owner, admin).
   - name: ingest
     description: |
       Problem reports from company apps. Authenticated by an ingest key of
@@ -1206,6 +1213,114 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /ai/settings:
+    get:
+      tags: [ai]
+      operationId: getAISettings
+      summary: The workspace's AI settings and the month's spending
+      description: |
+        Off with no provider until set. `spent_micros` is the cost of every call since
+        `period_start`, the first day of the month in UTC. Requires `ai.manage`.
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AISettings' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [ai]
+      operationId: setAISettings
+      summary: Choose the provider, model, key, prices and budget
+      description: |
+        Replaces the settings. `api_key` left out keeps the saved key; a key belongs to its
+        provider, so choosing another provider without a new key forgets the old one.
+        Turning AI on needs a model and, except for `openai_compatible`, a key
+        (`422 ai_key_required`). `base_url` is only for `openai_compatible` and must be a
+        public address unless the server allows private ones
+        (`TOLKOVO_EGRESS_ALLOW_PRIVATE`). Requires `ai.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AISettingsUpdate' }
+      responses:
+        '200':
+          description: The settings now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AISettings' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          description: '`ai_key_required`: the provider needs an API key to turn AI on.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: '`encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, a key cannot be stored.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /ai/settings/check:
+    post:
+      tags: [ai]
+      operationId: checkAISettings
+      summary: Send a tiny request with the saved settings
+      description: |
+        Works whether AI is on or off, so the key and the model can be tried first. The call
+        costs a few tokens and counts toward the budget. Requires `ai.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The model answered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AICheck' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: |
+            `ai_not_configured` (no provider, model or key saved) or `ai_budget_exceeded`
+            (the month's budget is spent).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            `ai_key_refused` (the provider refused the key) or `ai_request_rejected` (the
+            provider refused the request: an unknown model, no credit; `detail` carries the
+            provider's error code).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502':
+          description: |
+            `ai_provider_unavailable` (unreachable, timed out or failing) or `ai_bad_answer`
+            (the model declined or answered something else).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: |
+            `ai_rate_limited` (the provider asks to wait; see `Retry-After` when it said how
+            long) or `encryption_unavailable`.
+          headers:
+            Retry-After:
+              description: Seconds the provider asked to wait.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /integrations/github:
     get:
@@ -3309,6 +3424,110 @@ components:
             `manual`: operators take conversations from the queue. `round_robin`: the server
             assigns them in turn to members who are `online`.
           enum: [manual, round_robin]
+
+    AIProvider:
+      type: string
+      description: |
+        `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
+        vLLM, LM Studio, OpenRouter and others at `base_url`).
+      enum: [anthropic, openai, openai_compatible]
+
+    AIPrices:
+      type: object
+      additionalProperties: false
+      description: Prices of the model per million tokens, in millionths of a US dollar.
+      required: [input_micros, output_micros]
+      properties:
+        input_micros: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        output_micros: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+
+    AISettings:
+      type: object
+      required:
+        - enabled
+        - provider
+        - model
+        - base_url
+        - key
+        - prices
+        - monthly_budget_micros
+        - spent_micros
+        - period_start
+        - models
+        - encryption_available
+      properties:
+        enabled: { type: boolean }
+        provider:
+          oneOf:
+            - $ref: '#/components/schemas/AIProvider'
+            - type: 'null'
+        model: { type: [string, 'null'] }
+        base_url: { type: [string, 'null'] }
+        key:
+          description: The saved key as `…` and its last four characters; `null` without one.
+          oneOf:
+            - type: object
+              required: [hint, set_at]
+              properties:
+                hint: { type: string, examples: ['…a1b2'] }
+                set_at: { type: string, format: date-time }
+            - type: 'null'
+        prices: { $ref: '#/components/schemas/AIPrices' }
+        monthly_budget_micros:
+          type: [integer, 'null']
+          format: int64
+          description: '`null`: no limit. With prices at zero nothing counts toward it.'
+        spent_micros: { type: integer, format: int64 }
+        period_start: { type: string, format: date-time }
+        models:
+          type: array
+          description: |
+            Models the panel suggests, with their list prices when this release was made;
+            any other model id may be typed.
+          items: { $ref: '#/components/schemas/AIModel' }
+        encryption_available:
+          type: boolean
+          description: '`false` when `TOLKOVO_MASTER_KEY` is not set: a key cannot be saved.'
+
+    AIModel:
+      type: object
+      required: [provider, model, prices]
+      properties:
+        provider: { $ref: '#/components/schemas/AIProvider' }
+        model: { type: string }
+        prices: { $ref: '#/components/schemas/AIPrices' }
+
+    AISettingsUpdate:
+      type: object
+      additionalProperties: false
+      required: [enabled, provider, model, base_url, prices, monthly_budget_micros]
+      properties:
+        enabled: { type: boolean }
+        provider:
+          oneOf:
+            - $ref: '#/components/schemas/AIProvider'
+            - type: 'null'
+        model: { type: [string, 'null'], maxLength: 100 }
+        base_url: { type: [string, 'null'], maxLength: 500 }
+        api_key:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 500
+          description: A new key; left out, the saved one stays.
+        prices: { $ref: '#/components/schemas/AIPrices' }
+        monthly_budget_micros:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+          maximum: 1000000000000
+
+    AICheck:
+      type: object
+      required: [model, latency_ms]
+      properties:
+        model: { type: string, description: The model that answered, as the provider names it. }
+        latency_ms: { type: integer }
 
     MemberList:
       type: object

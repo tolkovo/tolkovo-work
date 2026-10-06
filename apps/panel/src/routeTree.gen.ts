@@ -28,6 +28,7 @@ import { Route as LinkVerifyEmailRouteImport } from "./routes/_link/verify-email
 import { Route as AppInboxIndexRouteImport } from "./routes/_app/inbox/index"
 import { Route as AppInboxConversationIdRouteImport } from "./routes/_app/inbox/$conversationId"
 import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
+import { Route as AppSettingsAiRouteImport } from "./routes/_app/settings/ai"
 import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
 import { Route as AppSettingsChannelsRouteImport } from "./routes/_app/settings/channels"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
@@ -130,6 +131,11 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: "/",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsAiRoute = AppSettingsAiRouteImport.update({
+  id: "/ai",
+  path: "/ai",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
   id: "/appearance",
   path: "/appearance",
@@ -192,6 +198,7 @@ export interface FileRoutesByFullPath {
   "/reset-password": typeof LinkResetPasswordRoute
   "/verify-email": typeof LinkVerifyEmailRoute
   "/inbox/$conversationId": typeof AppInboxConversationIdRoute
+  "/settings/ai": typeof AppSettingsAiRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   "/reset-password": typeof LinkResetPasswordRoute
   "/verify-email": typeof LinkVerifyEmailRoute
   "/inbox/$conversationId": typeof AppInboxConversationIdRoute
+  "/settings/ai": typeof AppSettingsAiRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   "/_link/reset-password": typeof LinkResetPasswordRoute
   "/_link/verify-email": typeof LinkVerifyEmailRoute
   "/_app/inbox/$conversationId": typeof AppInboxConversationIdRoute
+  "/_app/settings/ai": typeof AppSettingsAiRoute
   "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
   "/_app/settings/channels": typeof AppSettingsChannelsRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | "/reset-password"
     | "/verify-email"
     | "/inbox/$conversationId"
+    | "/settings/ai"
     | "/settings/appearance"
     | "/settings/channels"
     | "/settings/general"
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | "/reset-password"
     | "/verify-email"
     | "/inbox/$conversationId"
+    | "/settings/ai"
     | "/settings/appearance"
     | "/settings/channels"
     | "/settings/general"
@@ -332,6 +343,7 @@ export interface FileRouteTypes {
     | "/_link/reset-password"
     | "/_link/verify-email"
     | "/_app/inbox/$conversationId"
+    | "/_app/settings/ai"
     | "/_app/settings/appearance"
     | "/_app/settings/channels"
     | "/_app/settings/general"
@@ -487,6 +499,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/ai": {
+      id: "/_app/settings/ai"
+      path: "/ai"
+      fullPath: "/settings/ai"
+      preLoaderRoute: typeof AppSettingsAiRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/appearance": {
       id: "/_app/settings/appearance"
       path: "/appearance"
@@ -568,6 +587,7 @@ const AppInboxRouteWithChildren = AppInboxRoute._addFileChildren(
 )
 
 interface AppSettingsRouteChildren {
+  AppSettingsAiRoute: typeof AppSettingsAiRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsChannelsRoute: typeof AppSettingsChannelsRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
@@ -581,6 +601,7 @@ interface AppSettingsRouteChildren {
 }
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAiRoute: AppSettingsAiRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsChannelsRoute: AppSettingsChannelsRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,

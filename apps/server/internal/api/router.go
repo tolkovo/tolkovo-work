@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -59,6 +60,9 @@ type Deps struct {
 	Widget *widget.Service
 	// Routing keeps the distribution mode and operator presence (Q-01, Q-02).
 	Routing *routing.Service
+	// AI keeps the workspace's provider, key and budget (AI-01); nil
+	// leaves its routes answering 404.
+	AI *ai.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -95,7 +99,7 @@ func NewRouter(d Deps) http.Handler {
 
 	srv := &server{
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations, notifications: d.Notifications, channels: d.Channels,
-		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget, routing: d.Routing,
+		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget, routing: d.Routing, ai: d.AI,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
 	}

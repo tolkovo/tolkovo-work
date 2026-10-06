@@ -28,6 +28,7 @@ import (
 	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -267,6 +268,8 @@ func startWorker(
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
 	river.AddWorker(workers, widget.NewPruneSessionsWorker(sys.Pool()))
+	// Masked texts of AI calls are kept 30 days (AI-01).
+	river.AddWorker(workers, ai.NewClearTextsWorker(sys.Pool()))
 	// Visitors' files no message took are deleted (W-02).
 	widget.New(pool, widget.Options{Inbox: convs, Files: store, Log: log}).AddWorkers(workers, sys.Pool())
 	chans.AddWorkers(workers)
@@ -276,7 +279,7 @@ func startWorker(
 	router.AddWorkers(workers, convs)
 	periodic := []*river.PeriodicJob{
 		outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic(), widget.PruneSessionsPeriodic(),
-		widget.CleanupUploadsPeriodic(),
+		widget.CleanupUploadsPeriodic(), ai.ClearTextsPeriodic(),
 	}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
@@ -407,6 +410,7 @@ func apiDeps(
 		// read their chat from convs (W-01).
 		Widget:        widget.New(pool, widgetOpts),
 		Routing:       router,
+		AI:            ai.New(pool, aiOptions(cfg, sealer)), // the workspace's model, key and budget (AI-01)
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -511,6 +515,18 @@ func integrationsOptions(
 		PanelURL:      cfg.PanelBaseURL(),
 		Conversations: convs,
 		Jobs:          jobs,
+	}
+}
+
+// aiOptions wires model providers into the ai module (AI-01). Requests go
+// through the SafeClient; a local Ollama or vLLM needs
+// TOLKOVO_EGRESS_ALLOW_PRIVATE.
+func aiOptions(cfg config.Config, sealer *crypto.Sealer) ai.Options {
+	allow := cfg.EgressAllowPrivatePrefixes()
+	return ai.Options{
+		Sealer:       sealer,
+		HTTP:         httpx.NewSafeClient(httpx.Options{Timeout: ai.DefaultTimeout, AllowPrivate: allow}),
+		AllowPrivate: allow,
 	}
 }
 

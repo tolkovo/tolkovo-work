@@ -19,6 +19,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -69,6 +70,52 @@ type env struct {
 	integrations *integrations.Service
 	widget       *widget.Service
 	routing      *routing.Service
+	// llm is the fake model provider behind the ai module: it plays both
+	// Anthropic and OpenAI.
+	llm *fakeLLM
+}
+
+// fakeLLM answers each request with the next queued answer; none queued
+// is a 500.
+type fakeLLM struct {
+	mu       sync.Mutex
+	answers  []fakeLLMAnswer
+	requests int
+}
+
+type fakeLLMAnswer struct {
+	status  int
+	headers map[string]string
+	body    string
+}
+
+func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	f.mu.Lock()
+	f.requests++
+	a := fakeLLMAnswer{status: http.StatusInternalServerError, body: `{}`}
+	if len(f.answers) > 0 {
+		a, f.answers = f.answers[0], f.answers[1:]
+	}
+	f.mu.Unlock()
+	for k, v := range a.headers {
+		w.Header().Set(k, v)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(a.status)
+	_, _ = io.WriteString(w, a.body)
+}
+
+func (f *fakeLLM) calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.requests
+}
+
+func (f *fakeLLM) answer(a ...fakeLLMAnswer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answers = append(f.answers, a...)
 }
 
 type envOptions struct {
@@ -179,12 +226,17 @@ func newEnv(t *testing.T, o envOptions) *env {
 		widgetOpts.Scanner = o.widgetScanner
 	}
 	widgets := widget.New(app, widgetOpts)
+	llm := &fakeLLM{}
+	llmSrv := httptest.NewServer(llm)
+	t.Cleanup(llmSrv.Close)
+	ais := ai.New(app, ai.Options{Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: llmSrv.URL, OpenAIURL: llmSrv.URL})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
 		Ingest: reports, Integrations: integ,
 		Widget:        widgets,
 		Routing:       router,
+		AI:            ais,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
@@ -196,7 +248,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
 		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
-		widget: widgets, routing: router,
+		widget: widgets, routing: router, llm: llm,
 	}
 }
 

@@ -61,6 +61,8 @@ const (
 
 	IntegrationsManage Permission = "integrations.manage" // connect GitHub, pick the repository, labels and templates
 	IssuesCreate       Permission = "issues.create"       // create a GitHub issue from a visible conversation or link it to one
+
+	AIManage Permission = "ai.manage" // choose the AI provider and model, the API key, prices and the budget
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
@@ -70,14 +72,14 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate,
+		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate,
+		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage,
 	},
 	RoleOperator: {
 		MembersView,

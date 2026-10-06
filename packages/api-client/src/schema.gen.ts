@@ -912,6 +912,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's AI settings and the month's spending
+         * @description Off with no provider until set. `spent_micros` is the cost of every call since
+         *     `period_start`, the first day of the month in UTC. Requires `ai.manage`.
+         */
+        get: operations["getAISettings"];
+        /**
+         * Choose the provider, model, key, prices and budget
+         * @description Replaces the settings. `api_key` left out keeps the saved key; a key belongs to its
+         *     provider, so choosing another provider without a new key forgets the old one.
+         *     Turning AI on needs a model and, except for `openai_compatible`, a key
+         *     (`422 ai_key_required`). `base_url` is only for `openai_compatible` and must be a
+         *     public address unless the server allows private ones
+         *     (`TOLKOVO_EGRESS_ALLOW_PRIVATE`). Requires `ai.manage`.
+         */
+        put: operations["setAISettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/settings/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a tiny request with the saved settings
+         * @description Works whether AI is on or off, so the key and the model can be tried first. The call
+         *     costs a few tokens and counts toward the budget. Requires `ai.manage`.
+         */
+        post: operations["checkAISettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/github": {
         parameters: {
             query?: never;
@@ -2128,6 +2179,70 @@ export interface components {
              * @enum {string}
              */
             mode: "manual" | "round_robin";
+        };
+        /**
+         * @description `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
+         *     vLLM, LM Studio, OpenRouter and others at `base_url`).
+         * @enum {string}
+         */
+        AIProvider: "anthropic" | "openai" | "openai_compatible";
+        /** @description Prices of the model per million tokens, in millionths of a US dollar. */
+        AIPrices: {
+            /** Format: int64 */
+            input_micros: number;
+            /** Format: int64 */
+            output_micros: number;
+        };
+        AISettings: {
+            enabled: boolean;
+            provider: components["schemas"]["AIProvider"] | null;
+            model: string | null;
+            base_url: string | null;
+            /** @description The saved key as `…` and its last four characters; `null` without one. */
+            key: {
+                /** @example …a1b2 */
+                hint: string;
+                /** Format: date-time */
+                set_at: string;
+            } | null;
+            prices: components["schemas"]["AIPrices"];
+            /**
+             * Format: int64
+             * @description `null`: no limit. With prices at zero nothing counts toward it.
+             */
+            monthly_budget_micros: number | null;
+            /** Format: int64 */
+            spent_micros: number;
+            /** Format: date-time */
+            period_start: string;
+            /**
+             * @description Models the panel suggests, with their list prices when this release was made;
+             *     any other model id may be typed.
+             */
+            models: components["schemas"]["AIModel"][];
+            /** @description `false` when `TOLKOVO_MASTER_KEY` is not set: a key cannot be saved. */
+            encryption_available: boolean;
+        };
+        AIModel: {
+            provider: components["schemas"]["AIProvider"];
+            model: string;
+            prices: components["schemas"]["AIPrices"];
+        };
+        AISettingsUpdate: {
+            enabled: boolean;
+            provider: components["schemas"]["AIProvider"] | null;
+            model: string | null;
+            base_url: string | null;
+            /** @description A new key; left out, the saved one stays. */
+            api_key?: string;
+            prices: components["schemas"]["AIPrices"];
+            /** Format: int64 */
+            monthly_budget_micros: number | null;
+        };
+        AICheck: {
+            /** @description The model that answered */
+            model: string;
+            latency_ms: number;
         };
         MemberList: {
             items: components["schemas"]["Member"][];
@@ -4626,6 +4741,146 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description The settings now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettings"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `ai_key_required`: the provider needs an API key to turn AI on. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, a key cannot be stored. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkAISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AICheck"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description `ai_not_configured` (no provider, model or key saved) or `ai_budget_exceeded`
+             *     (the month's budget is spent).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `ai_key_refused` (the provider refused the key) or `ai_request_rejected` (the
+             *     provider refused the request: an unknown model, no credit; `detail` carries the
+             *     provider's error code).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `ai_provider_unavailable` (unreachable, timed out or failing) or `ai_bad_answer`
+             *     (the model declined or answered something else).
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `ai_rate_limited` (the provider asks to wait; see `Retry-After` when it said how
+             *     long) or `encryption_unavailable`.
+             */
+            503: {
+                headers: {
+                    /** @description Seconds the provider asked to wait. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getGitHubIntegration: {

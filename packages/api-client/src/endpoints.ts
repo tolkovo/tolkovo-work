@@ -27,6 +27,8 @@ import {
   memberListSchema,
   myPresenceSchema,
   routingSettingsSchema,
+  aiCheckSchema,
+  aiSettingsSchema,
   messagePageSchema,
   messageSchema,
   openGitHubIssueListSchema,
@@ -78,6 +80,10 @@ export type MyPresence = Schemas["MyPresence"];
 export type OperatorStatus = MyPresence["status"];
 export type RoutingSettings = Schemas["RoutingSettings"];
 export type RoutingMode = RoutingSettings["mode"];
+export type AIProvider = Schemas["AIProvider"];
+export type AISettings = Schemas["AISettings"];
+export type AISettingsUpdate = Schemas["AISettingsUpdate"];
+export type AICheck = Schemas["AICheck"];
 export type Channel = Schemas["Channel"];
 export type ChannelList = Schemas["ChannelList"];
 export type TelegramLogin = Schemas["TelegramLogin"];
@@ -430,6 +436,21 @@ export async function fetchRouting(client: ApiClient): Promise<RoutingSettings> 
 
 export async function setRouting(client: ApiClient, mode: RoutingMode): Promise<RoutingSettings> {
   return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: { mode } })));
+}
+
+/** The workspace's AI: provider, model, key hint, prices, budget and the month's spending (AI-01). */
+export async function fetchAISettings(client: ApiClient): Promise<AISettings> {
+  return parseAnswer(aiSettingsSchema, await unwrap(client.GET("/ai/settings")));
+}
+
+/** Replaces the AI settings; `api_key` left out keeps the saved key. */
+export async function setAISettings(client: ApiClient, body: AISettingsUpdate): Promise<AISettings> {
+  return parseAnswer(aiSettingsSchema, await unwrap(client.PUT("/ai/settings", { body })));
+}
+
+/** Sends a tiny request with the saved settings. */
+export async function checkAISettings(client: ApiClient): Promise<AICheck> {
+  return parseAnswer(aiCheckSchema, await unwrap(client.POST("/ai/settings/check")));
 }
 
 /** Channels of the workspace and what this server can connect (docs/02 §11, ADR-0014). */

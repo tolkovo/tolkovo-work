@@ -33,6 +33,8 @@ import {
   fetchMembers,
   fetchMyPresence,
   fetchRouting,
+  fetchAISettings,
+  checkAISettings,
   fetchMessages,
   fetchMySessions,
   fetchGitHubIntegration,
@@ -78,6 +80,7 @@ import {
   updateNotificationSettings,
   setMyPresence,
   setRouting,
+  setAISettings,
   updateMe,
   updateWorkspace,
   verifyEmail,
@@ -92,6 +95,7 @@ import {
   type NotificationSettingsInput,
   type OperatorStatus,
   type RoutingMode,
+  type AISettingsUpdate,
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
@@ -132,6 +136,7 @@ export const queryKeys = {
   myNotifications: ["me", "notifications"] as const,
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
+  aiSettings: ["ai", "settings"] as const,
   channels: ["channels"] as const,
   ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
   githubIntegration: ["integrations", "github"] as const,
@@ -728,6 +733,31 @@ export function useSetRouting() {
   return useMutation({
     mutationFn: (mode: RoutingMode) => setRouting(client, mode),
     onSuccess: (settings) => queryClient.setQueryData(queryKeys.routing, settings),
+  });
+}
+
+/** The workspace's AI settings (AI-01). */
+export function useAISettings() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.aiSettings, queryFn: () => fetchAISettings(client) });
+}
+
+export function useSetAISettings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AISettingsUpdate) => setAISettings(client, body),
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.aiSettings, settings),
+  });
+}
+
+/** The check costs tokens, so the month's spending is read again afterwards. */
+export function useCheckAISettings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => checkAISettings(client),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.aiSettings }),
   });
 }
 

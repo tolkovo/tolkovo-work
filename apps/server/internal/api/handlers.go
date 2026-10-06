@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -29,6 +30,7 @@ type server struct {
 	integrations  *integrations.Service
 	widget        *widget.Service
 	routing       *routing.Service
+	ai            *ai.Service
 	cookies       sessionCookies
 	clients       clientIPs
 }

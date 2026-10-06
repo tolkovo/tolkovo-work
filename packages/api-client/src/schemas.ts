@@ -84,6 +84,33 @@ export const routingSettingsSchema = z.object({
   mode: z.enum(["manual", "round_robin"]),
 }) satisfies z.ZodType<Schemas["RoutingSettings"]>;
 
+const aiProviderSchema = z.enum(["anthropic", "openai", "openai_compatible"]) satisfies z.ZodType<Schemas["AIProvider"]>;
+const aiPricesSchema = z.object({
+  input_micros: z.number(),
+  output_micros: z.number(),
+}) satisfies z.ZodType<Schemas["AIPrices"]>;
+
+export const aiSettingsSchema = z.object({
+  enabled: z.boolean(),
+  provider: aiProviderSchema.nullable(),
+  model: z.string().nullable(),
+  base_url: z.string().nullable(),
+  key: z.object({ hint: z.string(), set_at: z.string() }).nullable(),
+  prices: aiPricesSchema,
+  monthly_budget_micros: z.number().nullable(),
+  spent_micros: z.number(),
+  period_start: z.string(),
+  models: z.array(
+    z.object({ provider: aiProviderSchema, model: z.string(), prices: aiPricesSchema }) satisfies z.ZodType<Schemas["AIModel"]>,
+  ),
+  encryption_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["AISettings"]>;
+
+export const aiCheckSchema = z.object({
+  model: z.string(),
+  latency_ms: z.number(),
+}) satisfies z.ZodType<Schemas["AICheck"]>;
+
 export const deviceSessionListSchema = z.object({
   items: z.array(
     z.object({

@@ -1,4 +1,4 @@
-import type { DeviceSession, Member, Session, UpdateMeRequest, WorkspaceSummary } from "@tolkovo/api-client";
+import type { AISettings, DeviceSession, Member, Session, UpdateMeRequest, WorkspaceSummary } from "@tolkovo/api-client";
 import { vi } from "vitest";
 
 /** Test fixtures shaped by the generated API types, so a contract change breaks the tests. */
@@ -24,6 +24,24 @@ export const operatorSession: Session = {
   role: "operator",
   permissions: ["members.view"],
   csrf_token: "csrf-operator",
+};
+
+/** AI never set up, as a new workspace has it. */
+export const aiSettingsOff: AISettings = {
+  enabled: false,
+  provider: null,
+  model: null,
+  base_url: null,
+  key: null,
+  prices: { input_micros: 0, output_micros: 0 },
+  monthly_budget_micros: null,
+  spent_micros: 0,
+  period_start: "2026-10-01T00:00:00Z",
+  models: [
+    { provider: "anthropic", model: "claude-haiku-4-5", prices: { input_micros: 1_000_000, output_micros: 5_000_000 } },
+    { provider: "openai", model: "gpt-4.1-mini", prices: { input_micros: 400_000, output_micros: 1_600_000 } },
+  ],
+  encryption_available: true,
 };
 
 export const members: Member[] = [
@@ -85,6 +103,7 @@ export function fakeApi(
     "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true }),
     "GET /me/presence": () => json(200, { status: "online" }),
     "GET /routing": () => json(200, { mode: "manual" }),
+    "GET /ai/settings": () => json(200, aiSettingsOff),
     "GET /tags": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.

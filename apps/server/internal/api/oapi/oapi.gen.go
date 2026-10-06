@@ -14,6 +14,27 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AIProvider.
+const (
+	Anthropic        AIProvider = "anthropic"
+	Openai           AIProvider = "openai"
+	OpenaiCompatible AIProvider = "openai_compatible"
+)
+
+// Valid indicates whether the value is a known member of the AIProvider enum.
+func (e AIProvider) Valid() bool {
+	switch e {
+	case Anthropic:
+		return true
+	case Openai:
+		return true
+	case OpenaiCompatible:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AttachmentStatus.
 const (
 	AttachmentStatusExpired   AttachmentStatus = "expired"
@@ -798,6 +819,80 @@ func (e WidgetSessionIdentity) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AICheck defines model for AICheck.
+type AICheck struct {
+	LatencyMs int `json:"latency_ms"`
+
+	// Model The model that answered
+	Model string `json:"model"`
+}
+
+// AIModel defines model for AIModel.
+type AIModel struct {
+	Model string `json:"model"`
+
+	// Prices Prices of the model per million tokens, in millionths of a US dollar.
+	Prices AIPrices `json:"prices"`
+
+	// Provider `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
+	// vLLM, LM Studio, OpenRouter and others at `base_url`).
+	Provider AIProvider `json:"provider"`
+}
+
+// AIPrices Prices of the model per million tokens, in millionths of a US dollar.
+type AIPrices struct {
+	InputMicros  int64 `json:"input_micros"`
+	OutputMicros int64 `json:"output_micros"`
+}
+
+// AIProvider `anthropic` (Messages API), `openai` (Chat Completions) or `openai_compatible` (Ollama,
+// vLLM, LM Studio, OpenRouter and others at `base_url`).
+type AIProvider string
+
+// AISettings defines model for AISettings.
+type AISettings struct {
+	BaseUrl *string `json:"base_url"`
+	Enabled bool    `json:"enabled"`
+
+	// EncryptionAvailable `false` when `TOLKOVO_MASTER_KEY` is not set: a key cannot be saved.
+	EncryptionAvailable bool `json:"encryption_available"`
+
+	// Key The saved key as `…` and its last four characters; `null` without one.
+	Key *struct {
+		// Hint Examples: …a1b2
+		Hint  string    `json:"hint"`
+		SetAt time.Time `json:"set_at"`
+	} `json:"key"`
+	Model *string `json:"model"`
+
+	// Models Models the panel suggests, with their list prices when this release was made;
+	// any other model id may be typed.
+	Models []AIModel `json:"models"`
+
+	// MonthlyBudgetMicros `null`: no limit. With prices at zero nothing counts toward it.
+	MonthlyBudgetMicros *int64    `json:"monthly_budget_micros"`
+	PeriodStart         time.Time `json:"period_start"`
+
+	// Prices Prices of the model per million tokens, in millionths of a US dollar.
+	Prices      AIPrices    `json:"prices"`
+	Provider    *AIProvider `json:"provider"`
+	SpentMicros int64       `json:"spent_micros"`
+}
+
+// AISettingsUpdate defines model for AISettingsUpdate.
+type AISettingsUpdate struct {
+	// ApiKey A new key; left out, the saved one stays.
+	ApiKey              *string `json:"api_key,omitempty"`
+	BaseUrl             *string `json:"base_url"`
+	Enabled             bool    `json:"enabled"`
+	Model               *string `json:"model"`
+	MonthlyBudgetMicros *int64  `json:"monthly_budget_micros"`
+
+	// Prices Prices of the model per million tokens, in millionths of a US dollar.
+	Prices   AIPrices    `json:"prices"`
+	Provider *AIProvider `json:"provider"`
 }
 
 // AcceptInvitationRequest defines model for AcceptInvitationRequest.
@@ -2432,6 +2527,9 @@ type SendWidgetMessageParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// SetAISettingsJSONRequestBody defines body for SetAISettings for application/json ContentType.
+type SetAISettingsJSONRequestBody = AISettingsUpdate
+
 // VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
 type VerifyEmailJSONRequestBody = TokenRequest
 
@@ -2584,6 +2682,15 @@ type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetAISettings The workspace's AI settings and the month's spending
+	// (GET /ai/settings)
+	GetAISettings(w http.ResponseWriter, r *http.Request)
+	// SetAISettings Choose the provider, model, key, prices and budget
+	// (PUT /ai/settings)
+	SetAISettings(w http.ResponseWriter, r *http.Request)
+	// CheckAISettings Send a tiny request with the saved settings
+	// (POST /ai/settings/check)
+	CheckAISettings(w http.ResponseWriter, r *http.Request)
 	// GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
 	// (GET /attachments/{id}/download-link)
 	GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
@@ -2865,6 +2972,24 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// GetAISettings The workspace's AI settings and the month's spending
+// (GET /ai/settings)
+func (_ Unimplemented) GetAISettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAISettings Choose the provider, model, key, prices and budget
+// (PUT /ai/settings)
+func (_ Unimplemented) SetAISettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CheckAISettings Send a tiny request with the saved settings
+// (POST /ai/settings/check)
+func (_ Unimplemented) CheckAISettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
 // (GET /attachments/{id}/download-link)
@@ -3426,6 +3551,48 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAISettings operation middleware
+func (siw *ServerInterfaceWrapper) GetAISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAISettings operation middleware
+func (siw *ServerInterfaceWrapper) SetAISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckAISettings operation middleware
+func (siw *ServerInterfaceWrapper) CheckAISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckAISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetAttachmentDownloadLink operation middleware
 func (siw *ServerInterfaceWrapper) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request) {
@@ -5766,6 +5933,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/channels/{id}/widget-analytics", wrapper.SetWidgetAnalytics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ai/settings", wrapper.GetAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/ai/settings", wrapper.SetAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/ai/settings/check", wrapper.CheckAISettings)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)

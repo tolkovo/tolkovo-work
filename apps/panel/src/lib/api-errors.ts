@@ -110,6 +110,22 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.issueNotFound") };
     case "issue_state":
       return { message: t("errors.issueState") };
+    case "ai_not_configured":
+      return { message: t("errors.aiNotConfigured") };
+    case "ai_budget_exceeded":
+      return { message: t("errors.aiBudgetExceeded") };
+    case "ai_key_required":
+      return { message: t("errors.aiKeyRequired"), ...(field ? { field } : {}) };
+    case "ai_key_refused":
+      return { message: t("errors.aiKeyRefused") };
+    case "ai_request_rejected":
+      return { message: t("errors.aiRequestRejected") };
+    case "ai_rate_limited":
+      return { message: t("errors.aiRateLimited") };
+    case "ai_provider_unavailable":
+      return { message: t("errors.aiProviderUnavailable") };
+    case "ai_bad_answer":
+      return { message: t("errors.aiBadAnswer") };
     default:
       return { message: t("errors.unknown") };
   }
