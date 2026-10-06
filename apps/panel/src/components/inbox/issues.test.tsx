@@ -18,6 +18,7 @@ const draft: IssueDraft = {
   body: "## Что происходит\nНе синхронизируется корзина\n\n## Диалог\nhttps://panel.test/inbox/c1\n",
   quote: "Корзина пустая после обновления",
   labels: ["bug"],
+  drafted_by: "template",
 };
 
 const link = (id: string, patch: Partial<IssueLink> = {}): IssueLink => ({
@@ -141,6 +142,36 @@ describe("GitHub issues in a conversation", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("region", { name: "Новый issue в GitHub" })).not.toBeInTheDocument();
     expect(screen.getByRole("log", { name: "Сообщения диалога" })).toBeInTheDocument();
+  });
+
+  it("says the AI wrote the draft, or why the template stood in", async () => {
+    const user = userEvent.setup();
+    const aiDraft: IssueDraft = {
+      ...draft,
+      repository: { ...desktop, private: true },
+      title: "Корзина очищается после обновления",
+      body: "## Шаги\n1. Добавить товар в корзину\n2. Обновить приложение\n",
+      drafted_by: "ai",
+    };
+    let answer = aiDraft;
+    const { api } = server(
+      { repository: { ...desktop, private: true }, items: [] },
+      { "GET /conversations/c1/issues/draft": () => json(200, answer) },
+    );
+    renderApp("/inbox/c1", { api });
+    await openMenuItem(user, "Создать issue");
+    let form = await screen.findByRole("region", { name: "Новый issue в GitHub" });
+    expect(within(form).getByRole("note")).toHaveTextContent("Черновик написал ИИ");
+    expect(within(form).getByLabelText("Заголовок")).toHaveValue(aiDraft.title);
+    expect(within(form).getByLabelText("Текст")).toHaveValue(aiDraft.body);
+    await user.click(within(form).getByRole("button", { name: "Отмена" }));
+
+    answer = { ...draft, repository: { ...desktop, private: true }, ai_fallback: "budget_exceeded" };
+    await openMenuItem(user, "Создать issue");
+    form = await screen.findByRole("region", { name: "Новый issue в GitHub" });
+    expect(within(form).getByRole("note")).toHaveTextContent("Месячный бюджет ИИ исчерпан");
+    expect(within(form).getByLabelText("Заголовок")).toHaveValue(draft.title);
+    expect(calls(api, "GET", "/conversations/c1/issues/draft")).toHaveLength(2);
   });
 
   it("links the conversation to an open issue", async () => {

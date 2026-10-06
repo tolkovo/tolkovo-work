@@ -354,6 +354,9 @@
         "placeholders": "Placeholders:",
         "placeholder": {
           "summary": "the problem",
+          "steps": "steps from the AI",
+          "expected": "what was expected, from the AI",
+          "actual": "what happened, from the AI",
           "app_name": "the app",
           "app_version": "its version",
           "os": "OS",
@@ -1046,7 +1049,13 @@
       "retry": "Try again",
       "dismiss": "Remove",
       "fixed": "Issue #{number} is fixed. Draft reply:",
-      "insertReply": "Insert into the reply"
+      "insertReply": "Insert into the reply",
+      "drafting": "Preparing the draft…",
+      "draftedByAi": "The AI wrote this draft from the customer's words. Check the steps and the wording before you send it.",
+      "aiFallback": {
+        "budget_exceeded": "The monthly AI budget is spent, so the draft comes from the template.",
+        "failed": "The AI could not prepare a draft, so it comes from the template."
+      }
     },
     "rating": {
       "short": "Rated {score} of 5",

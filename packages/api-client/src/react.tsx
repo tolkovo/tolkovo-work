@@ -535,6 +535,9 @@ export function useIssueDraft(conversationId: string, { enabled = true }: { enab
     queryFn: () => fetchIssueDraft(client, conversationId),
     enabled,
     gcTime: 0,
+    // The model may write the draft: every fetch is paid for, and the form keeps its own edits.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     retry: false,
   });
 }

@@ -10,3 +10,14 @@ import _ "embed"
 //
 //go:embed connection_check.txt
 var ConnectionCheck string
+
+// IssueDraft is the system prompt of the issue draft from a user's report
+// (docs/03 §8.1).
+//
+//go:embed issue_draft.txt
+var IssueDraft string
+
+// IssueDraftSchema is the JSON Schema of the issue draft's answer.
+//
+//go:embed issue_draft.schema.json
+var IssueDraftSchema []byte

@@ -118,7 +118,7 @@ func TestWidget_Rating(t *testing.T) {
 		t.Fatalf("rate: %d %s", rec.Code, rec.Body)
 	}
 	r := decode[oapi.ConversationRating](t, rec)
-	if r.Score != 4 || deref(r.Comment) != "Быстро помогли" || r.ResolvedBy != oapi.Human {
+	if r.Score != 4 || deref(r.Comment) != "Быстро помогли" || r.ResolvedBy != oapi.ConversationRatingResolvedByHuman {
 		t.Fatalf("rating: %+v", r)
 	}
 	// The panel is told with ids only and reads the rating over REST.

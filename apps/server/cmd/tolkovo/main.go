@@ -262,7 +262,7 @@ func startWorker(
 	if err != nil {
 		return err
 	}
-	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil))
+	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil, nil, log))
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
@@ -392,6 +392,7 @@ func apiDeps(
 	if cfg.ClamAVAddr != "" {
 		widgetOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
 	}
+	aiSvc := ai.New(pool, aiOptions(cfg, sealer))
 	deps := api.Deps{
 		Log: log, DB: pool, Version: version,
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
@@ -404,13 +405,14 @@ func apiDeps(
 		// module; complete queues ingest.process for the worker (AP-03); the
 		// app user reads replies and writes back through convs (AP-06).
 		// Issues are recorded here and created on GitHub by the worker (GH-02).
-		Ingest:       ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
-		Integrations: integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter)),
+		Ingest: ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
+		// Issue drafts come from the workspace's model when AI is on (AI-02).
+		Integrations: integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log)),
 		// Visitors of chat widgets write through the channels module and
 		// read their chat from convs (W-01).
 		Widget:        widget.New(pool, widgetOpts),
 		Routing:       router,
-		AI:            ai.New(pool, aiOptions(cfg, sealer)), // the workspace's model, key and budget (AI-01)
+		AI:            aiSvc, // the workspace's model, key and budget (AI-01)
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -506,6 +508,7 @@ func newSealer(cfg config.Config) (*crypto.Sealer, error) {
 // TOLKOVO_EGRESS_ALLOW_PRIVATE.
 func integrationsOptions(
 	cfg config.Config, sealer *crypto.Sealer, convs *conversations.Service, jobs integrations.Jobs,
+	drafter integrations.Drafter, log *slog.Logger,
 ) integrations.Options {
 	hc := httpx.NewSafeClient(httpx.Options{Timeout: 20 * time.Second, AllowPrivate: cfg.EgressAllowPrivatePrefixes()})
 	return integrations.Options{
@@ -515,6 +518,8 @@ func integrationsOptions(
 		PanelURL:      cfg.PanelBaseURL(),
 		Conversations: convs,
 		Jobs:          jobs,
+		Drafter:       drafter,
+		Log:           log,
 	}
 }
 

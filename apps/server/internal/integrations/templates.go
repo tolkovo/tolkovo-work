@@ -20,10 +20,15 @@ type Templates struct {
 }
 
 // IssuePlaceholders are the placeholders of the issue template, filled from
-// the conversation and the app report (GH-02). The user's own words are not
-// a placeholder: they go into a separate quote block the operator may turn
-// off.
-var IssuePlaceholders = []string{"summary", "app_name", "app_version", "os", "os_version", "conversation_url"}
+// the conversation and the app report (GH-02). {steps}, {expected} and
+// {actual} come from the AI draft (AI-02): without it they are "1. " and
+// empty, and {summary} is the subject or the first line of the user's
+// text. With it {summary} is the model's summary in the body and its title
+// in the title. The user's own words are not a placeholder: they go into a
+// separate quote block the operator may turn off.
+var IssuePlaceholders = []string{
+	"summary", "steps", "expected", "actual", "app_name", "app_version", "os", "os_version", "conversation_url",
+}
 
 // ReplyPlaceholders are the placeholders of the reply about a fix (GH-03).
 var ReplyPlaceholders = []string{"name", "issue_number"}
@@ -44,10 +49,10 @@ func DefaultTemplates(locale string) Templates {
 		ReplyEN:    "We have fixed it. The fix will be in the next update.",
 	}
 	if locale == "en" {
-		t.IssueBody = "## What happens\n{summary}\n\n## Steps\n1. \n\n## Expected\n\n## Environment\n" +
+		t.IssueBody = "## What happens\n{summary}\n\n## Steps\n{steps}\n\n## Expected\n{expected}\n\n## Actual\n{actual}\n\n## Environment\n" +
 			"- App: {app_name} {app_version}\n- OS: {os} {os_version}\n\n## Conversation\n{conversation_url}\n"
 	} else {
-		t.IssueBody = "## Что происходит\n{summary}\n\n## Шаги\n1. \n\n## Ожидалось\n\n## Окружение\n" +
+		t.IssueBody = "## Что происходит\n{summary}\n\n## Шаги\n{steps}\n\n## Ожидалось\n{expected}\n\n## Фактически\n{actual}\n\n## Окружение\n" +
 			"- Приложение: {app_name} {app_version}\n- ОС: {os} {os_version}\n\n## Диалог\n{conversation_url}\n"
 	}
 	return t

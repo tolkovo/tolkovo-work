@@ -1,9 +1,10 @@
 // Package ai is the AI base of phase 1 (docs/03 §8.1, ADR-0008, docs/06
-// AI-01): a workspace brings its own key (BYOK) to Anthropic, OpenAI or an
-// OpenAI-compatible server and picks one model; modules ask the model
+// AI-01): a workspace brings its own key (BYOK) to Anthropic, OpenAI,
+// DeepSeek or an OpenAI-compatible server and picks one model; modules ask the model
 // through Complete. Every call is checked against the monthly budget, has
 // its personal data masked (internal/ai/guard), runs with a timeout and
-// one retry, and is written to ai_calls with its tokens and cost.
+// one retry, and is written to ai_calls with its tokens and cost. The first
+// feature is the issue draft from a user's report (issues.go, AI-02).
 //
 // The key is sealed with internal/platform/crypto and opened only for the
 // call; it never leaves the module, and the panel sees only "…" and its

@@ -463,6 +463,8 @@ export const issueDraftSchema = z.object({
   body: z.string(),
   quote: z.string(),
   labels: z.array(z.string()),
+  drafted_by: z.enum(["ai", "template"]),
+  ai_fallback: z.enum(["budget_exceeded", "failed"]).optional(),
 }) satisfies z.ZodType<Schemas["IssueDraft"]>;
 
 export const openGitHubIssueListSchema = z.object({

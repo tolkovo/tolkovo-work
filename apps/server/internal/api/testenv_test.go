@@ -216,20 +216,20 @@ func newEnv(t *testing.T, o envOptions) *env {
 	router := routing.New(app, inserter)
 	convs.SetRouter(router)
 	reports := ingest.New(app, ingest.Options{Files: files, Keys: chans, Redis: rc, KeyPrefix: prefix, Jobs: inserter, Inbox: convs})
+	llm := &fakeLLM{}
+	llmSrv := httptest.NewServer(llm)
+	t.Cleanup(llmSrv.Close)
+	ais := ai.New(app, ai.Options{Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: llmSrv.URL, OpenAIURL: llmSrv.URL})
 	gh := &githubtest.GitHub{}
 	integ := integrations.New(app, integrations.Options{
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
-		Conversations: convs, Jobs: inserter,
+		Conversations: convs, Jobs: inserter, Drafter: ais, Log: quiet,
 	})
 	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
 	if o.widgetScanner != nil {
 		widgetOpts.Scanner = o.widgetScanner
 	}
 	widgets := widget.New(app, widgetOpts)
-	llm := &fakeLLM{}
-	llmSrv := httptest.NewServer(llm)
-	t.Cleanup(llmSrv.Close)
-	ais := ai.New(app, ai.Options{Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: llmSrv.URL, OpenAIURL: llmSrv.URL})
 	deps := Deps{
 		Log: quiet, DB: pinger{}, Version: "test", Files: files,
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,

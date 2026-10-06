@@ -1716,10 +1716,14 @@ export interface paths {
         };
         /**
          * The issue form filled from the templates
-         * @description The workspace's issue template with `{summary}` (the subject or the first line of the
-         *     customer's text), the app, its version and OS from the app report, and the link to the
-         *     conversation; `quote` is the customer's first message. The AI drafts it with AI-02.
-         *     Requires `issues.create`.
+         * @description The workspace's issue template with the app, its version and OS from the app report and
+         *     the link to the conversation; `quote` is the customer's first message. When the
+         *     workspace has AI on, its model reads the customer's first message and writes the title,
+         *     `{summary}`, `{steps}`, `{expected}` and `{actual}` (it may take a few seconds; the call
+         *     is counted in the AI budget). Without AI, or when the model cannot, `{summary}` is the
+         *     subject or the first line of the customer's text, `{steps}` is `1. ` and the rest is
+         *     empty; `ai_fallback` says why. No contact data goes to the model: personal data is
+         *     masked. Requires `issues.create`.
          */
         get: operations["getConversationIssueDraft"];
         put?: never;
@@ -2780,6 +2784,18 @@ export interface components {
             /** @description The customer's first message; empty when there is none. Off by default for a public repository. */
             quote: string;
             labels: string[];
+            /**
+             * @description `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+             *     and the actual result; `template` when the template was filled without it.
+             * @enum {string}
+             */
+            drafted_by: "ai" | "template";
+            /**
+             * @description Why the template was used although AI is on: the month's AI budget is spent, or the
+             *     provider failed, timed out or answered badly. Left out otherwise.
+             * @enum {string}
+             */
+            ai_fallback?: "budget_exceeded" | "failed";
         };
         CreateIssueRequest: {
             /** @description One line. */

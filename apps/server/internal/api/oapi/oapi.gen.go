@@ -193,16 +193,16 @@ func (e ConversationPreviewSenderType) Valid() bool {
 
 // Defines values for ConversationRatingResolvedBy.
 const (
-	Ai    ConversationRatingResolvedBy = "ai"
-	Human ConversationRatingResolvedBy = "human"
+	ConversationRatingResolvedByAi    ConversationRatingResolvedBy = "ai"
+	ConversationRatingResolvedByHuman ConversationRatingResolvedBy = "human"
 )
 
 // Valid indicates whether the value is a known member of the ConversationRatingResolvedBy enum.
 func (e ConversationRatingResolvedBy) Valid() bool {
 	switch e {
-	case Ai:
+	case ConversationRatingResolvedByAi:
 		return true
-	case Human:
+	case ConversationRatingResolvedByHuman:
 		return true
 	default:
 		return false
@@ -317,6 +317,42 @@ func (e IngestReplySender) Valid() bool {
 	case IngestReplySenderBot:
 		return true
 	case IngestReplySenderOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueDraftAiFallback.
+const (
+	IssueDraftAiFallbackBudgetExceeded IssueDraftAiFallback = "budget_exceeded"
+	IssueDraftAiFallbackFailed         IssueDraftAiFallback = "failed"
+)
+
+// Valid indicates whether the value is a known member of the IssueDraftAiFallback enum.
+func (e IssueDraftAiFallback) Valid() bool {
+	switch e {
+	case IssueDraftAiFallbackBudgetExceeded:
+		return true
+	case IssueDraftAiFallbackFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueDraftDraftedBy.
+const (
+	IssueDraftDraftedByAi       IssueDraftDraftedBy = "ai"
+	IssueDraftDraftedByTemplate IssueDraftDraftedBy = "template"
+)
+
+// Valid indicates whether the value is a known member of the IssueDraftDraftedBy enum.
+func (e IssueDraftDraftedBy) Valid() bool {
+	switch e {
+	case IssueDraftDraftedByAi:
+		return true
+	case IssueDraftDraftedByTemplate:
 		return true
 	default:
 		return false
@@ -1637,14 +1673,29 @@ type InvitationSent struct {
 
 // IssueDraft defines model for IssueDraft.
 type IssueDraft struct {
-	Body   string   `json:"body"`
-	Labels []string `json:"labels"`
+	// AiFallback Why the template was used although AI is on: the month's AI budget is spent, or the
+	// provider failed, timed out or answered badly. Left out otherwise.
+	AiFallback *IssueDraftAiFallback `json:"ai_fallback,omitempty"`
+	Body       string                `json:"body"`
+
+	// DraftedBy `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+	// and the actual result; `template` when the template was filled without it.
+	DraftedBy IssueDraftDraftedBy `json:"drafted_by"`
+	Labels    []string            `json:"labels"`
 
 	// Quote The customer's first message; empty when there is none. Off by default for a public repository.
 	Quote      string           `json:"quote"`
 	Repository GitHubRepository `json:"repository"`
 	Title      string           `json:"title"`
 }
+
+// IssueDraftAiFallback Why the template was used although AI is on: the month's AI budget is spent, or the
+// provider failed, timed out or answered badly. Left out otherwise.
+type IssueDraftAiFallback string
+
+// IssueDraftDraftedBy `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+// and the actual result; `template` when the template was filled without it.
+type IssueDraftDraftedBy string
 
 // IssueLink defines model for IssueLink.
 type IssueLink struct {
