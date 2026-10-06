@@ -217,6 +217,15 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
 		{http.MethodPatch, "/api/v1/workspace", map[string]any{"timezone": "Europe/Berlin"},
 			map[string]int{"owner": 200, "admin": 200, "operator": 403}},
+		// Tasks (ADR-0015): every member works on them, queues and settings are the admins'.
+		{http.MethodGet, "/api/v1/tasks", nil,
+			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
+		{http.MethodGet, "/api/v1/task-queues", nil,
+			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
+		{http.MethodPut, "/api/v1/task-settings", map[string]any{"enabled": true, "conversation_button": "both", "reply_ru": "", "reply_en": ""},
+			map[string]int{"owner": 200, "admin": 200, "operator": 403}},
+		{http.MethodPost, "/api/v1/task-queues", map[string]any{"name": "", "member_ids": []string{}},
+			map[string]int{"owner": 400, "admin": 400, "operator": 403}},
 	}
 	for _, tc := range tests {
 		for role, want := range tc.want {
@@ -236,6 +245,7 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 	if me.Role != oapi.RoleOperator || !slices.Equal(me.Permissions, []string{
 		"contacts.edit", "contacts.view", "conversations.note", "conversations.reply",
 		"conversations.tag", "conversations.take", "conversations.view", "issues.create", "members.view",
+		"tasks.edit", "tasks.view",
 	}) {
 		t.Fatalf("operator /me: %+v", me)
 	}

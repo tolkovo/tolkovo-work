@@ -1,6 +1,8 @@
 import type { Conversation, IssueDraft, IssueLink, MessageEvent } from "@tolkovo/api-client";
 import {
+  useCan,
   useConversationIssues,
+  useConversationTasks,
   useCreateConversationIssue,
   useDismissConversationIssue,
   useIssueDraft,
@@ -29,13 +31,17 @@ export type IssueMode = "create" | "link";
 
 /**
  * "Create issue" and "Link to an issue" for the ⋯ menu of the header: with `issues.create`, when
- * GitHub takes new issues (connected, a repository picked).
+ * GitHub takes new issues (connected, a repository picked) and the workspace did not keep only
+ * tasks in conversations.
  */
 export function useIssueMenuItems(c: Conversation, onOpen: (mode: IssueMode) => void): MenuItem[] {
   const { t } = useTranslation();
   const can = useAbilities(c);
   const issues = useConversationIssues(c.id, { enabled: can.issues });
-  if (!can.issues || !issues.data?.repository) return [];
+  // The workspace may keep only "Create task" in conversations (ADR-0015).
+  const tasks = useConversationTasks(c.id, { enabled: useCan("tasks.view") });
+  const tasksOnly = tasks.data?.settings.enabled === true && tasks.data.settings.conversation_button === "tasks";
+  if (!can.issues || !issues.data?.repository || tasksOnly) return [];
   return [
     { label: t("inbox.issues.create"), onSelect: () => onOpen("create") },
     { label: t("inbox.issues.link"), onSelect: () => onOpen("link") },

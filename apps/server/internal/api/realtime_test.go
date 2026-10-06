@@ -150,11 +150,17 @@ func TestRealtime_DeliversDomainEventsOfOwnWorkspaceWithinContract(t *testing.T)
 	if rec := owner.do(http.MethodPost, base+"/read", map[string]any{"up_to_message_id": reply.Id}); rec.Code != http.StatusNoContent {
 		t.Fatalf("read: %d %s", rec.Code, rec.Body)
 	}
+	// A task from the conversation (ADR-0015): its line, the conversation to pending.
+	if rec := owner.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Сертификат", "conversation_id": c.Id}); rec.Code != http.StatusCreated {
+		t.Fatalf("task: %d %s", rec.Code, rec.Body)
+	}
 
-	// message.created twice: the system line of the assignment and the reply.
+	// message.created three times: the system lines of the assignment and of
+	// the task (it carries the move to pending), and the reply.
 	want := map[string]int{
-		"contact.created": 1, "conversation.created": 1, "conversation.status_changed": 1,
-		"conversation.assigned": 1, "message.created": 2, "conversation.tags_changed": 1, "conversation.read": 1,
+		"contact.created": 1, "conversation.created": 1, "conversation.status_changed": 2,
+		"conversation.assigned": 1, "message.created": 3, "conversation.tags_changed": 1, "conversation.read": 1,
+		"conversation.tasks_changed": 1, "task.changed": 1,
 	}
 	var lastSeq float64
 	for len(want) > 0 {

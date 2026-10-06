@@ -11,6 +11,31 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import {
+  commentTask,
+  createTask,
+  createTaskQueue,
+  deleteTask,
+  deleteTaskQueue,
+  fetchConversationTasks,
+  fetchTask,
+  fetchTaskActivity,
+  fetchTaskDraft,
+  fetchTaskQueues,
+  fetchTasks,
+  fetchTaskSettings,
+  fetchTaskSummary,
+  linkTaskConversation,
+  unlinkTaskConversation,
+  updateTask,
+  updateTaskQueue,
+  updateTaskSettings,
+  type TaskCreate,
+  type TaskFilter,
+  type TaskQueueInput,
+  type TaskSettings,
+  type TaskUpdate,
+} from "./tasks";
+import {
   acceptInvitation,
   changePassword,
   connectAppChannel,
@@ -157,6 +182,17 @@ export const queryKeys = {
   /** GitHub issues of one conversation (GH-02). */
   conversationIssues: (id: string) => ["conversations", "issues", id] as const,
   issueDraft: (id: string) => ["conversations", "issue-draft", id] as const,
+  /** Tasks of one conversation and the task form drafted from it (ADR-0015). */
+  conversationTasks: (id: string) => ["conversations", "tasks", id] as const,
+  taskDraft: (id: string) => ["conversations", "task-draft", id] as const,
+  /** Root of the tasks section: task.changed invalidates everything under it. */
+  tasks: ["tasks"] as const,
+  taskList: (filter: TaskFilter) => ["tasks", "list", filter] as const,
+  task: (id: string) => ["tasks", "detail", id] as const,
+  taskActivity: (id: string) => ["tasks", "activity", id] as const,
+  taskSummary: ["tasks", "summary"] as const,
+  taskQueues: ["tasks", "queues"] as const,
+  taskSettings: ["tasks", "settings"] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
@@ -772,4 +808,128 @@ export function useUpdateNotificationSettings() {
     mutationFn: (body: NotificationSettingsInput) => updateNotificationSettings(client, body),
     onSuccess: (settings) => queryClient.setQueryData(queryKeys.myNotifications, settings),
   });
+}
+
+/** Pages of tasks for one filter, newest first (ADR-0015). */
+export function useTasks(filter: TaskFilter, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useInfiniteQuery({
+    queryKey: queryKeys.taskList(filter),
+    queryFn: ({ pageParam }) => fetchTasks(client, filter, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    enabled,
+  });
+}
+
+export function useTask(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.task(id), queryFn: () => fetchTask(client, id) });
+}
+
+export function useTaskActivity(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskActivity(id), queryFn: () => fetchTaskActivity(client, id) });
+}
+
+/** Open tasks assigned to the caller, for the counter in the rail. */
+export function useTaskSummary({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskSummary, queryFn: () => fetchTaskSummary(client), enabled });
+}
+
+export function useTaskQueues({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskQueues, queryFn: () => fetchTaskQueues(client), enabled });
+}
+
+export function useTaskSettings({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskSettings, queryFn: () => fetchTaskSettings(client), enabled });
+}
+
+/** Tasks of a conversation; conversation.tasks_changed refreshes it over the realtime connection. */
+export function useConversationTasks(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.conversationTasks(conversationId),
+    queryFn: () => fetchConversationTasks(client, conversationId),
+    enabled,
+  });
+}
+
+/** The task form drafted from a conversation; fetched anew every time the form opens. */
+export function useTaskDraft(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.taskDraft(conversationId),
+    queryFn: () => fetchTaskDraft(client, conversationId),
+    enabled,
+    gcTime: 0,
+    // The model may write the draft: every fetch is paid for, and the form keeps its own edits.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/**
+ * A task change refreshes the section and, when it touches conversations, their tasks, the
+ * conversations themselves (awaiting_fix, status) and their feeds.
+ */
+function useTaskMutation<TArgs, TResult>(fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
+      ]),
+  });
+}
+
+export function useCreateTask() {
+  return useTaskMutation((client, body: TaskCreate) => createTask(client, body));
+}
+
+export function useUpdateTask(id: string) {
+  return useTaskMutation((client, body: TaskUpdate) => updateTask(client, id, body));
+}
+
+export function useDeleteTask() {
+  return useTaskMutation((client, id: string) => deleteTask(client, id));
+}
+
+export function useCommentTask(id: string) {
+  return useTaskMutation((client, body: string) => commentTask(client, id, body));
+}
+
+export function useLinkTaskConversation() {
+  return useTaskMutation((client, { taskId, conversationId }: { taskId: string; conversationId: string }) =>
+    linkTaskConversation(client, taskId, conversationId),
+  );
+}
+
+export function useUnlinkTaskConversation() {
+  return useTaskMutation((client, { taskId, conversationId }: { taskId: string; conversationId: string }) =>
+    unlinkTaskConversation(client, taskId, conversationId),
+  );
+}
+
+export function useCreateTaskQueue() {
+  return useTaskMutation((client, body: TaskQueueInput) => createTaskQueue(client, body));
+}
+
+export function useUpdateTaskQueue() {
+  return useTaskMutation((client, { id, ...body }: TaskQueueInput & { id: string }) => updateTaskQueue(client, id, body));
+}
+
+export function useDeleteTaskQueue() {
+  return useTaskMutation((client, id: string) => deleteTaskQueue(client, id));
+}
+
+export function useUpdateTaskSettings() {
+  return useTaskMutation((client, body: TaskSettings) => updateTaskSettings(client, body));
 }

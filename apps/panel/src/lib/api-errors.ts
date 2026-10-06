@@ -110,6 +110,14 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.issueNotFound") };
     case "issue_state":
       return { message: t("errors.issueState") };
+    case "task_conflict":
+      return { message: t("errors.taskConflict") };
+    case "task_linked":
+      return { message: t("errors.taskLinked") };
+    case "queue_exists":
+      return { message: t("errors.queueExists"), ...(field ? { field } : {}) };
+    case "tasks_disabled":
+      return { message: t("errors.tasksDisabled") };
     case "ai_not_configured":
       return { message: t("errors.aiNotConfigured") };
     case "ai_budget_exceeded":

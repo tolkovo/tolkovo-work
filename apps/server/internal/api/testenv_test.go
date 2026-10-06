@@ -41,6 +41,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -225,6 +226,9 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
 		Conversations: convs, Jobs: inserter, Drafter: ais, Log: quiet,
 	})
+	taskSvc := tasks.New(app, tasks.Options{Conversations: convs, Drafter: ais, Log: quiet})
+	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
+	convs.AddFixWaiter(conversations.FixSourceTasks, taskSvc.HasOpenTask)
 	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
 	if o.widgetScanner != nil {
 		widgetOpts.Scanner = o.widgetScanner
@@ -237,6 +241,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Widget:        widgets,
 		Routing:       router,
 		AI:            ais,
+		Tasks:         taskSvc,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {

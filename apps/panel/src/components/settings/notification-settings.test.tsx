@@ -52,7 +52,7 @@ describe("notification settings", () => {
   it("keeps sounds and volume in this browser and sends a test notification", async () => {
     const user = userEvent.setup();
     const test = vi.fn();
-    installNotifier({ notify: vi.fn(), test });
+    installNotifier({ notify: vi.fn(), notifyTask: vi.fn(), test });
     renderApp("/settings/notifications");
     const queue = await screen.findByRole("checkbox", { name: "Новый диалог в очереди" });
     await user.click(queue);

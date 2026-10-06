@@ -559,6 +559,11 @@ const (
 	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
 	MessageEventTypeIssueReopened MessageEventType = "issue_reopened"
 	MessageEventTypeStatusChanged MessageEventType = "status_changed"
+	MessageEventTypeTaskClosed    MessageEventType = "task_closed"
+	MessageEventTypeTaskCreated   MessageEventType = "task_created"
+	MessageEventTypeTaskLinked    MessageEventType = "task_linked"
+	MessageEventTypeTaskReopened  MessageEventType = "task_reopened"
+	MessageEventTypeTaskUnlinked  MessageEventType = "task_unlinked"
 )
 
 // Valid indicates whether the value is a known member of the MessageEventType enum.
@@ -575,6 +580,16 @@ func (e MessageEventType) Valid() bool {
 	case MessageEventTypeIssueReopened:
 		return true
 	case MessageEventTypeStatusChanged:
+		return true
+	case MessageEventTypeTaskClosed:
+		return true
+	case MessageEventTypeTaskCreated:
+		return true
+	case MessageEventTypeTaskLinked:
+		return true
+	case MessageEventTypeTaskReopened:
+		return true
+	case MessageEventTypeTaskUnlinked:
 		return true
 	default:
 		return false
@@ -593,6 +608,24 @@ func (e MessageEventIssueReason) Valid() bool {
 	case Completed:
 		return true
 	case NotPlanned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MessageEventTaskReason.
+const (
+	MessageEventTaskReasonCanceled MessageEventTaskReason = "canceled"
+	MessageEventTaskReasonDone     MessageEventTaskReason = "done"
+)
+
+// Valid indicates whether the value is a known member of the MessageEventTaskReason enum.
+func (e MessageEventTaskReason) Valid() bool {
+	switch e {
+	case MessageEventTaskReasonCanceled:
+		return true
+	case MessageEventTaskReasonDone:
 		return true
 	default:
 		return false
@@ -737,6 +770,168 @@ func (e TagColor) Valid() bool {
 	}
 }
 
+// Defines values for TaskActivityFields.
+const (
+	Body  TaskActivityFields = "body"
+	Title TaskActivityFields = "title"
+)
+
+// Valid indicates whether the value is a known member of the TaskActivityFields enum.
+func (e TaskActivityFields) Valid() bool {
+	switch e {
+	case Body:
+		return true
+	case Title:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskActivityKind.
+const (
+	Assignee TaskActivityKind = "assignee"
+	Comment  TaskActivityKind = "comment"
+	Created  TaskActivityKind = "created"
+	Edited   TaskActivityKind = "edited"
+	Linked   TaskActivityKind = "linked"
+	Priority TaskActivityKind = "priority"
+	Queue    TaskActivityKind = "queue"
+	Status   TaskActivityKind = "status"
+	Unlinked TaskActivityKind = "unlinked"
+)
+
+// Valid indicates whether the value is a known member of the TaskActivityKind enum.
+func (e TaskActivityKind) Valid() bool {
+	switch e {
+	case Assignee:
+		return true
+	case Comment:
+		return true
+	case Created:
+		return true
+	case Edited:
+		return true
+	case Linked:
+		return true
+	case Priority:
+		return true
+	case Queue:
+		return true
+	case Status:
+		return true
+	case Unlinked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskButton.
+const (
+	Both   TaskButton = "both"
+	Github TaskButton = "github"
+	Tasks  TaskButton = "tasks"
+)
+
+// Valid indicates whether the value is a known member of the TaskButton enum.
+func (e TaskButton) Valid() bool {
+	switch e {
+	case Both:
+		return true
+	case Github:
+		return true
+	case Tasks:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskDraftAiFallback.
+const (
+	TaskDraftAiFallbackBudgetExceeded TaskDraftAiFallback = "budget_exceeded"
+	TaskDraftAiFallbackFailed         TaskDraftAiFallback = "failed"
+)
+
+// Valid indicates whether the value is a known member of the TaskDraftAiFallback enum.
+func (e TaskDraftAiFallback) Valid() bool {
+	switch e {
+	case TaskDraftAiFallbackBudgetExceeded:
+		return true
+	case TaskDraftAiFallbackFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskDraftDraftedBy.
+const (
+	TaskDraftDraftedByAi       TaskDraftDraftedBy = "ai"
+	TaskDraftDraftedByTemplate TaskDraftDraftedBy = "template"
+)
+
+// Valid indicates whether the value is a known member of the TaskDraftDraftedBy enum.
+func (e TaskDraftDraftedBy) Valid() bool {
+	switch e {
+	case TaskDraftDraftedByAi:
+		return true
+	case TaskDraftDraftedByTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskPriority.
+const (
+	High   TaskPriority = "high"
+	Low    TaskPriority = "low"
+	Normal TaskPriority = "normal"
+	Urgent TaskPriority = "urgent"
+)
+
+// Valid indicates whether the value is a known member of the TaskPriority enum.
+func (e TaskPriority) Valid() bool {
+	switch e {
+	case High:
+		return true
+	case Low:
+		return true
+	case Normal:
+		return true
+	case Urgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskStatus.
+const (
+	TaskStatusCanceled   TaskStatus = "canceled"
+	TaskStatusDone       TaskStatus = "done"
+	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusOpen       TaskStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the TaskStatus enum.
+func (e TaskStatus) Valid() bool {
+	switch e {
+	case TaskStatusCanceled:
+		return true
+	case TaskStatusDone:
+		return true
+	case TaskStatusInProgress:
+		return true
+	case TaskStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TelegramLoginCodeVia.
 const (
 	TelegramLoginCodeViaApp   TelegramLoginCodeVia = "app"
@@ -763,19 +958,19 @@ func (e TelegramLoginCodeVia) Valid() bool {
 
 // Defines values for TelegramLoginNext.
 const (
-	Code     TelegramLoginNext = "code"
-	Done     TelegramLoginNext = "done"
-	Password TelegramLoginNext = "password"
+	TelegramLoginNextCode     TelegramLoginNext = "code"
+	TelegramLoginNextDone     TelegramLoginNext = "done"
+	TelegramLoginNextPassword TelegramLoginNext = "password"
 )
 
 // Valid indicates whether the value is a known member of the TelegramLoginNext enum.
 func (e TelegramLoginNext) Valid() bool {
 	switch e {
-	case Code:
+	case TelegramLoginNextCode:
 		return true
-	case Done:
+	case TelegramLoginNextDone:
 		return true
-	case Password:
+	case TelegramLoginNextPassword:
 		return true
 	default:
 		return false
@@ -854,6 +1049,24 @@ func (e WidgetSessionIdentity) Valid() bool {
 	case WidgetSessionIdentityUnverified:
 		return true
 	case WidgetSessionIdentityVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTasksParamsState.
+const (
+	ListTasksParamsStateClosed ListTasksParamsState = "closed"
+	ListTasksParamsStateOpen   ListTasksParamsState = "open"
+)
+
+// Valid indicates whether the value is a known member of the ListTasksParamsState enum.
+func (e ListTasksParamsState) Valid() bool {
+	switch e {
+	case ListTasksParamsStateClosed:
+		return true
+	case ListTasksParamsStateOpen:
 		return true
 	default:
 		return false
@@ -1283,6 +1496,22 @@ type ConversationRatingResolvedBy string
 
 // ConversationStatus State of a conversation.
 type ConversationStatus string
+
+// ConversationTasks defines model for ConversationTasks.
+type ConversationTasks struct {
+	Items []Task `json:"items"`
+
+	// ReplyDraft The reply the operator may send once a task of the conversation is done; `null`
+	// otherwise and after an operator replied to the customer since. Tolkovo never sends
+	// it itself.
+	ReplyDraft *TaskReplyDraft `json:"reply_draft"`
+	Settings   struct {
+		// ConversationButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+		// connected) or both.
+		ConversationButton TaskButton `json:"conversation_button"`
+		Enabled            bool       `json:"enabled"`
+	} `json:"settings"`
+}
 
 // CreateConversationRequest defines model for CreateConversationRequest.
 type CreateConversationRequest struct {
@@ -1866,6 +2095,7 @@ type MessageEvent struct {
 	From               ConversationStatus `json:"from"`
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
+	Task               *MessageEventTask  `json:"task,omitempty"`
 
 	// To State of a conversation.
 	To ConversationStatus `json:"to"`
@@ -1876,7 +2106,9 @@ type MessageEvent struct {
 	// fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
 	// closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
 	// the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-	// reopened one put it to wait for the fix again.
+	// reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+	// tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+	// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 	Type MessageEventType `json:"type"`
 }
 
@@ -1886,7 +2118,9 @@ type MessageEvent struct {
 // fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
 // closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
 // the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-// reopened one put it to wait for the fix again.
+// reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+// tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
@@ -1904,6 +2138,18 @@ type MessageEventIssue struct {
 // MessageEventIssueReason Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
 // `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
 type MessageEventIssueReason string
+
+// MessageEventTask defines model for MessageEventTask.
+type MessageEventTask struct {
+	Number int64 `json:"number"`
+
+	// Reason Only with `task_closed`.
+	Reason *MessageEventTaskReason `json:"reason,omitempty"`
+	TaskId uuid.UUID               `json:"task_id"`
+}
+
+// MessageEventTaskReason Only with `task_closed`.
+type MessageEventTaskReason string
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {
@@ -2102,6 +2348,188 @@ type TagColor string
 // TagList defines model for TagList.
 type TagList struct {
 	Items []Tag `json:"items"`
+}
+
+// Task defines model for Task.
+type Task struct {
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+	Body       string     `json:"body"`
+	ClosedAt   *time.Time `json:"closed_at"`
+
+	// ConversationIds Linked conversations, oldest link first; empty in lists.
+	ConversationIds []uuid.UUID `json:"conversation_ids"`
+	CreatedAt       time.Time   `json:"created_at"`
+
+	// CreatedBy `null` when the author is no longer a member.
+	CreatedBy *uuid.UUID   `json:"created_by"`
+	Id        uuid.UUID    `json:"id"`
+	Number    int64        `json:"number"`
+	Priority  TaskPriority `json:"priority"`
+	QueueId   *uuid.UUID   `json:"queue_id"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	Status    TaskStatus `json:"status"`
+	Title     string     `json:"title"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Version   int32      `json:"version"`
+}
+
+// TaskActivity defines model for TaskActivity.
+type TaskActivity struct {
+	ActorId *uuid.UUID `json:"actor_id"`
+
+	// Body The text of a comment.
+	Body *string `json:"body,omitempty"`
+
+	// ConversationId On `linked` and `unlinked`.
+	ConversationId *uuid.UUID `json:"conversation_id,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+
+	// Fields What an edit changed.
+	Fields *[]TaskActivityFields `json:"fields,omitempty"`
+
+	// From The value a change moved from (a status, a priority, a member or queue id); empty for none.
+	From *string          `json:"from,omitempty"`
+	Id   uuid.UUID        `json:"id"`
+	Kind TaskActivityKind `json:"kind"`
+
+	// To The value a change moved to; empty for none.
+	To *string `json:"to,omitempty"`
+}
+
+// TaskActivityFields defines model for TaskActivity.Fields.
+type TaskActivityFields string
+
+// TaskActivityKind defines model for TaskActivity.Kind.
+type TaskActivityKind string
+
+// TaskActivityList defines model for TaskActivityList.
+type TaskActivityList struct {
+	Items []TaskActivity `json:"items"`
+}
+
+// TaskButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+// connected) or both.
+type TaskButton string
+
+// TaskComment defines model for TaskComment.
+type TaskComment struct {
+	Body string `json:"body"`
+}
+
+// TaskCreate defines model for TaskCreate.
+type TaskCreate struct {
+	AssigneeId *uuid.UUID `json:"assignee_id,omitempty"`
+	Body       *string    `json:"body,omitempty"`
+
+	// ConversationId The conversation the task is created from.
+	ConversationId *uuid.UUID    `json:"conversation_id,omitempty"`
+	Priority       *TaskPriority `json:"priority,omitempty"`
+	QueueId        *uuid.UUID    `json:"queue_id,omitempty"`
+	Title          string        `json:"title"`
+}
+
+// TaskDraft defines model for TaskDraft.
+type TaskDraft struct {
+	// AiFallback Why the AI did not write the draft although AI is on.
+	AiFallback *TaskDraftAiFallback `json:"ai_fallback,omitempty"`
+	Body       string               `json:"body"`
+	DraftedBy  TaskDraftDraftedBy   `json:"drafted_by"`
+	Title      string               `json:"title"`
+}
+
+// TaskDraftAiFallback Why the AI did not write the draft although AI is on.
+type TaskDraftAiFallback string
+
+// TaskDraftDraftedBy defines model for TaskDraft.DraftedBy.
+type TaskDraftDraftedBy string
+
+// TaskLinkRequest defines model for TaskLinkRequest.
+type TaskLinkRequest struct {
+	ConversationId uuid.UUID `json:"conversation_id"`
+}
+
+// TaskPage defines model for TaskPage.
+type TaskPage struct {
+	Items      []Task  `json:"items"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+// TaskPriority defines model for TaskPriority.
+type TaskPriority string
+
+// TaskQueue defines model for TaskQueue.
+type TaskQueue struct {
+	Id uuid.UUID `json:"id"`
+
+	// MemberIds Members told about new tasks without an assignee in the queue.
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+	OpenTasks int64       `json:"open_tasks"`
+}
+
+// TaskQueueInput defines model for TaskQueueInput.
+type TaskQueueInput struct {
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+}
+
+// TaskQueueList defines model for TaskQueueList.
+type TaskQueueList struct {
+	Items []TaskQueue `json:"items"`
+}
+
+// TaskReplyDraft defines model for TaskReplyDraft.
+type TaskReplyDraft struct {
+	Number int64     `json:"number"`
+	TaskId uuid.UUID `json:"task_id"`
+
+	// Text The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+	Text string `json:"text"`
+}
+
+// TaskSettings defines model for TaskSettings.
+type TaskSettings struct {
+	// ConversationButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+	// connected) or both.
+	ConversationButton TaskButton `json:"conversation_button"`
+
+	// Enabled Off hides the section and the button; tasks stay, new ones are refused.
+	Enabled bool   `json:"enabled"`
+	ReplyEn string `json:"reply_en"`
+	ReplyRu string `json:"reply_ru"`
+}
+
+// TaskSettingsView defines model for TaskSettingsView.
+type TaskSettingsView struct {
+	Defaults struct {
+		ReplyEn string `json:"reply_en"`
+		ReplyRu string `json:"reply_ru"`
+	} `json:"defaults"`
+	Placeholders []string     `json:"placeholders"`
+	Settings     TaskSettings `json:"settings"`
+}
+
+// TaskStatus `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+type TaskStatus string
+
+// TaskSummary defines model for TaskSummary.
+type TaskSummary struct {
+	// AssignedOpen Open tasks assigned to the caller.
+	AssignedOpen int64 `json:"assigned_open"`
+}
+
+// TaskUpdate defines model for TaskUpdate.
+type TaskUpdate struct {
+	AssigneeId *uuid.UUID   `json:"assignee_id"`
+	Body       string       `json:"body"`
+	Priority   TaskPriority `json:"priority"`
+	QueueId    *uuid.UUID   `json:"queue_id"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	Status  TaskStatus `json:"status"`
+	Title   string     `json:"title"`
+	Version int32      `json:"version"`
 }
 
 // TelegramCodeRequest defines model for TelegramCodeRequest.
@@ -2473,6 +2901,9 @@ type ReportLimited = Problem
 // ReportTooLarge RFC 9457 problem details.
 type ReportTooLarge = Problem
 
+// TaskConflict RFC 9457 problem details.
+type TaskConflict = Problem
+
 // TelegramLoginRejected RFC 9457 problem details.
 type TelegramLoginRejected = Problem
 
@@ -2569,6 +3000,31 @@ type ListIngestReportRepliesParams struct {
 	// XReportToken `report_token` from the answer that created the report.
 	XReportToken ReportToken `json:"X-Report-Token"`
 }
+
+// ListTasksParams defines parameters for ListTasks.
+type ListTasksParams struct {
+	// State `open` (new or in progress), `closed` (done or canceled); all when absent.
+	State  *ListTasksParamsState `form:"state,omitempty" json:"state,omitempty"`
+	Status *TaskStatus           `form:"status,omitempty" json:"status,omitempty"`
+
+	// Assignee `me`, `none` or a member id.
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// Queue `none` or a queue id.
+	Queue *string `form:"queue,omitempty" json:"queue,omitempty"`
+
+	// Q Part of the title, or the task number.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Cursor Opaque `next_cursor` of the previous page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size, 1–100; 50 when absent.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTasksParamsState defines parameters for ListTasks.
+type ListTasksParamsState string
 
 // ListWidgetMessagesParams defines parameters for ListWidgetMessages.
 type ListWidgetMessagesParams struct {
@@ -2714,6 +3170,27 @@ type SetRoutingJSONRequestBody = RoutingSettings
 
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
+
+// CreateTaskQueueJSONRequestBody defines body for CreateTaskQueue for application/json ContentType.
+type CreateTaskQueueJSONRequestBody = TaskQueueInput
+
+// UpdateTaskQueueJSONRequestBody defines body for UpdateTaskQueue for application/json ContentType.
+type UpdateTaskQueueJSONRequestBody = TaskQueueInput
+
+// UpdateTaskSettingsJSONRequestBody defines body for UpdateTaskSettings for application/json ContentType.
+type UpdateTaskSettingsJSONRequestBody = TaskSettings
+
+// CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
+type CreateTaskJSONRequestBody = TaskCreate
+
+// UpdateTaskJSONRequestBody defines body for UpdateTask for application/json ContentType.
+type UpdateTaskJSONRequestBody = TaskUpdate
+
+// CommentTaskJSONRequestBody defines body for CommentTask for application/json ContentType.
+type CommentTaskJSONRequestBody = TaskComment
+
+// LinkTaskConversationJSONRequestBody defines body for LinkTaskConversation for application/json ContentType.
+type LinkTaskConversationJSONRequestBody = TaskLinkRequest
 
 // SubmitWidgetContactJSONRequestBody defines body for SubmitWidgetContact for application/json ContentType.
 type SubmitWidgetContactJSONRequestBody = WidgetContactRequest
@@ -2894,6 +3371,12 @@ type ServerInterface interface {
 	// SetConversationTags Replace the tags of the conversation
 	// (PUT /conversations/{id}/tags)
 	SetConversationTags(w http.ResponseWriter, r *http.Request, id Id)
+	// ListConversationTasks Tasks of the conversation
+	// (GET /conversations/{id}/tasks)
+	ListConversationTasks(w http.ResponseWriter, r *http.Request, id Id)
+	// GetConversationTaskDraft The task form filled from the conversation
+	// (GET /conversations/{id}/tasks/draft)
+	GetConversationTaskDraft(w http.ResponseWriter, r *http.Request, id Id)
 	// CreateIngestReport Register a problem report and get upload links for its files
 	// (POST /ingest/reports)
 	CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams)
@@ -2993,6 +3476,54 @@ type ServerInterface interface {
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	// ListTaskQueues Queues of tasks, by name
+	// (GET /task-queues)
+	ListTaskQueues(w http.ResponseWriter, r *http.Request)
+	// CreateTaskQueue Add a queue
+	// (POST /task-queues)
+	CreateTaskQueue(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskQueue Delete a queue
+	// (DELETE /task-queues/{id})
+	DeleteTaskQueue(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTaskQueue Rename a queue and replace its members
+	// (PUT /task-queues/{id})
+	UpdateTaskQueue(w http.ResponseWriter, r *http.Request, id Id)
+	// GetTaskSettings Settings of the tasks section
+	// (GET /task-settings)
+	GetTaskSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTaskSettings Change the settings of the tasks section
+	// (PUT /task-settings)
+	UpdateTaskSettings(w http.ResponseWriter, r *http.Request)
+	// ListTasks Tasks, newest first
+	// (GET /tasks)
+	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
+	// CreateTask Create a task
+	// (POST /tasks)
+	CreateTask(w http.ResponseWriter, r *http.Request)
+	// GetTaskSummary The caller's open tasks, for the menu
+	// (GET /tasks/summary)
+	GetTaskSummary(w http.ResponseWriter, r *http.Request)
+	// DeleteTask Delete a task
+	// (DELETE /tasks/{id})
+	DeleteTask(w http.ResponseWriter, r *http.Request, id Id)
+	// GetTask A task with its linked conversations
+	// (GET /tasks/{id})
+	GetTask(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTask Change a task
+	// (PUT /tasks/{id})
+	UpdateTask(w http.ResponseWriter, r *http.Request, id Id)
+	// ListTaskActivity Comments and changes of a task, oldest first
+	// (GET /tasks/{id}/activity)
+	ListTaskActivity(w http.ResponseWriter, r *http.Request, id Id)
+	// CommentTask Comment a task
+	// (POST /tasks/{id}/activity)
+	CommentTask(w http.ResponseWriter, r *http.Request, id Id)
+	// LinkTaskConversation Link a conversation to the task
+	// (POST /tasks/{id}/conversations)
+	LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id)
+	// UnlinkTaskConversation Unlink a conversation from the task
+	// (DELETE /tasks/{id}/conversations/{conversation_id})
+	UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID)
 	// GetWidgetAvailability Whether someone takes conversations now
 	// (GET /widget/availability)
 	GetWidgetAvailability(w http.ResponseWriter, r *http.Request)
@@ -3341,6 +3872,18 @@ func (_ Unimplemented) SetConversationTags(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListConversationTasks Tasks of the conversation
+// (GET /conversations/{id}/tasks)
+func (_ Unimplemented) ListConversationTasks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetConversationTaskDraft The task form filled from the conversation
+// (GET /conversations/{id}/tasks/draft)
+func (_ Unimplemented) GetConversationTaskDraft(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CreateIngestReport Register a problem report and get upload links for its files
 // (POST /ingest/reports)
 func (_ Unimplemented) CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams) {
@@ -3536,6 +4079,102 @@ func (_ Unimplemented) ListTags(w http.ResponseWriter, r *http.Request) {
 // CreateTag Create a tag
 // (POST /tags)
 func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskQueues Queues of tasks, by name
+// (GET /task-queues)
+func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTaskQueue Add a queue
+// (POST /task-queues)
+func (_ Unimplemented) CreateTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskQueue Delete a queue
+// (DELETE /task-queues/{id})
+func (_ Unimplemented) DeleteTaskQueue(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskQueue Rename a queue and replace its members
+// (PUT /task-queues/{id})
+func (_ Unimplemented) UpdateTaskQueue(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskSettings Settings of the tasks section
+// (GET /task-settings)
+func (_ Unimplemented) GetTaskSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskSettings Change the settings of the tasks section
+// (PUT /task-settings)
+func (_ Unimplemented) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTasks Tasks, newest first
+// (GET /tasks)
+func (_ Unimplemented) ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTask Create a task
+// (POST /tasks)
+func (_ Unimplemented) CreateTask(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskSummary The caller's open tasks, for the menu
+// (GET /tasks/summary)
+func (_ Unimplemented) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTask Delete a task
+// (DELETE /tasks/{id})
+func (_ Unimplemented) DeleteTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTask A task with its linked conversations
+// (GET /tasks/{id})
+func (_ Unimplemented) GetTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTask Change a task
+// (PUT /tasks/{id})
+func (_ Unimplemented) UpdateTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskActivity Comments and changes of a task, oldest first
+// (GET /tasks/{id}/activity)
+func (_ Unimplemented) ListTaskActivity(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CommentTask Comment a task
+// (POST /tasks/{id}/activity)
+func (_ Unimplemented) CommentTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LinkTaskConversation Link a conversation to the task
+// (POST /tasks/{id}/conversations)
+func (_ Unimplemented) LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnlinkTaskConversation Unlink a conversation from the task
+// (DELETE /tasks/{id}/conversations/{conversation_id})
+func (_ Unimplemented) UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4876,6 +5515,58 @@ func (siw *ServerInterfaceWrapper) SetConversationTags(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListConversationTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListConversationTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConversationTasks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversationTaskDraft operation middleware
+func (siw *ServerInterfaceWrapper) GetConversationTaskDraft(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversationTaskDraft(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateIngestReport operation middleware
 func (siw *ServerInterfaceWrapper) CreateIngestReport(w http.ResponseWriter, r *http.Request) {
 
@@ -5553,6 +6244,444 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListTaskQueues operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskQueues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTaskQueue operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskQueue(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskQueue(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskQueue operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskQueue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskQueue operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskQueue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTasksParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "queue" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "queue", r.URL.Query(), &params.Queue, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "queue"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "queue", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTasks(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTask(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTask operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTask operation middleware
+func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTask operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTaskActivity operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CommentTask operation middleware
+func (siw *ServerInterfaceWrapper) CommentTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CommentTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LinkTaskConversation operation middleware
+func (siw *ServerInterfaceWrapper) LinkTaskConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LinkTaskConversation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnlinkTaskConversation operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkTaskConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "conversation_id" -------------
+	var conversationId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversation_id", chi.URLParam(r, "conversation_id"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkTaskConversation(w, r, id, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWidgetAvailability operation middleware
 func (siw *ServerInterfaceWrapper) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
 
@@ -6111,6 +7240,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/conversations/{id}/issues/{issue_id}", wrapper.DismissConversationIssue)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/tasks", wrapper.ListConversationTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/tasks/draft", wrapper.GetConversationTaskDraft)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/conversations/{id}/read", wrapper.MarkConversationRead)
 	})
 	r.Group(func(r chi.Router) {
@@ -6136,6 +7271,54 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/contacts/{id}", wrapper.UpdateContact)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks", wrapper.ListTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks", wrapper.CreateTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/summary", wrapper.GetTaskSummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}", wrapper.DeleteTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}", wrapper.GetTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/tasks/{id}", wrapper.UpdateTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}/activity", wrapper.ListTaskActivity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/activity", wrapper.CommentTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/conversations", wrapper.LinkTaskConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/conversations/{conversation_id}", wrapper.UnlinkTaskConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-queues", wrapper.ListTaskQueues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/task-queues", wrapper.CreateTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-queues/{id}", wrapper.DeleteTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-queues/{id}", wrapper.UpdateTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-settings", wrapper.GetTaskSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-settings", wrapper.UpdateTaskSettings)
 	})
 
 	return r

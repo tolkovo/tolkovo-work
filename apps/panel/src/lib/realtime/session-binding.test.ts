@@ -82,6 +82,7 @@ describe("bindRealtime", () => {
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
       queryKeys.conversations,
       queryKeys.contacts,
+      queryKeys.tasks,
     ]);
     unbind();
   });

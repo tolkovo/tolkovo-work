@@ -100,7 +100,10 @@ type Service struct {
 	router Router
 	// deliverer queues replies for channels (T-03); nil leaves them pending.
 	deliverer Deliverer
-	now       func() time.Time
+	// waiters are the other sources a conversation waits for a fix on
+	// (GitHub issues, tasks), by name.
+	waiters map[string]FixWaiter
+	now     func() time.Time
 }
 
 // New returns the conversations service.
@@ -113,6 +116,26 @@ func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
 
 // SetRouter connects the routing module; call it before serving.
 func (s *Service) SetRouter(r Router) { s.router = r }
+
+// FixWaiter reports, inside the caller's transaction, whether a source
+// keeps the conversation waiting for a fix (an open issue, an open task).
+type FixWaiter func(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) (bool, error)
+
+// Sources of waiting for a fix (AddFixWaiter).
+const (
+	FixSourceIssues = "issues"
+	FixSourceTasks  = "tasks"
+)
+
+// AddFixWaiter connects a source of waiting for a fix; call it before
+// serving. Recording an event of one source asks the others, so closing an
+// issue does not end waiting for an open task, and the other way round.
+func (s *Service) AddFixWaiter(source string, w FixWaiter) {
+	if s.waiters == nil {
+		s.waiters = map[string]FixWaiter{}
+	}
+	s.waiters[source] = w
+}
 
 // Page is one page of a cursor-paginated list. NextCursor is empty on the
 // last page.

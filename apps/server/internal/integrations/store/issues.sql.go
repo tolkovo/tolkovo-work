@@ -281,6 +281,26 @@ func (q *Queries) GetIssueLinkForUpdate(ctx context.Context, arg GetIssueLinkFor
 	return i, err
 }
 
+const hasOpenIssue = `-- name: HasOpenIssue :one
+SELECT EXISTS (
+    SELECT 1 FROM issue_links
+    WHERE workspace_id = $1 AND conversation_id = $2 AND status = 'open'
+)
+`
+
+type HasOpenIssueParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+}
+
+// Whether an open issue keeps the conversation waiting for the fix.
+func (q *Queries) HasOpenIssue(ctx context.Context, arg HasOpenIssueParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOpenIssue, arg.WorkspaceID, arg.ConversationID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const hasOtherOpenIssue = `-- name: HasOtherOpenIssue :one
 SELECT EXISTS (
     SELECT 1 FROM issue_links

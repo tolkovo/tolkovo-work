@@ -87,10 +87,11 @@ type IssueNote struct {
 //     they are no longer a member (presence, Q-02, will add "if online");
 //   - an issue closed as not planned only clears the mark.
 //
-// Recording the same event again does nothing, so a retried job or a
-// repeated webhook is safe. It runs inside the caller's tenant transaction
-// (tx), with the change of the issue link that caused it; it never calls
-// the network.
+// An open task of the tasks section keeps the conversation waiting too
+// (AddFixWaiter). Recording the same event again does nothing, so a
+// retried job or a repeated webhook is safe. It runs inside the caller's
+// tenant transaction (tx), with the change of the issue link that caused
+// it; it never calls the network.
 func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, n IssueNote) error {
 	switch n.Type {
 	case EventIssueCreated, EventIssueLinked, EventIssueReopened:
@@ -101,17 +102,101 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 	default:
 		return fmt.Errorf("%w: unknown issue event %q", ErrInvalid, n.Type)
 	}
+	key := n.Type + ":" + n.Issue.LinkID.String()
+	if n.Key != "" {
+		key += ":" + n.Key
+	}
+	issue := n.Issue
+	return s.recordFix(ctx, tx, workspaceID, conversationID, fixNote{
+		event: Event{Type: n.Type, Issue: &issue}, actorID: n.ActorID, awaiting: n.AwaitingFix, key: key,
+		source: FixSourceIssues, starts: n.Type != EventIssueClosed, fixed: n.Type == EventIssueClosed && n.Issue.Reason == IssueFixed,
+	})
+}
+
+// TaskNote is a task event for a conversation feed (ADR-0015).
+type TaskNote struct {
+	// Type is one of the EventTask… types.
+	Type string
+	Task TaskRef
+	// ActorID is the member who caused it; nil for the system.
+	ActorID *uuid.UUID
+	// AwaitingFix: a task of the conversation is open. The caller looks at
+	// every task of the conversation; open issues are asked separately.
+	AwaitingFix bool
+	// Key tells apart events of one task that may repeat (closed, reopened,
+	// closed again): the id of the task's activity line.
+	Key string
+}
+
+// RecordTask writes the feed line of a task event and keeps the
+// conversation waiting for the fix while a task is open, as RecordIssue
+// does for issues: a task done brings a pending conversation back to its
+// assignee, a task canceled only clears the mark. It runs inside the
+// caller's tenant transaction.
+func (s *Service) RecordTask(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, n TaskNote) error {
+	switch n.Type {
+	case EventTaskCreated, EventTaskLinked, EventTaskUnlinked, EventTaskReopened:
+	case EventTaskClosed:
+		if n.Task.Reason != TaskDone && n.Task.Reason != TaskCanceled {
+			return fmt.Errorf("%w: unknown close reason %q", ErrInvalid, n.Task.Reason)
+		}
+	default:
+		return fmt.Errorf("%w: unknown task event %q", ErrInvalid, n.Type)
+	}
+	key := n.Type + ":" + n.Task.TaskID.String()
+	if n.Key != "" {
+		key += ":" + n.Key
+	}
+	task := n.Task
+	return s.recordFix(ctx, tx, workspaceID, conversationID, fixNote{
+		event: Event{Type: n.Type, Task: &task}, actorID: n.ActorID, awaiting: n.AwaitingFix, key: key,
+		source: FixSourceTasks, starts: n.Type != EventTaskClosed && n.Type != EventTaskUnlinked, fixed: n.Type == EventTaskClosed && n.Task.Reason == TaskDone,
+	})
+}
+
+// fixNote is an event of a source the conversation may wait for a fix on.
+type fixNote struct {
+	event   Event
+	actorID *uuid.UUID
+	// awaiting: the source itself still keeps the conversation waiting.
+	awaiting bool
+	key      string
+	source   string
+	// starts: the event starts waiting (created, linked, reopened), so a
+	// conversation an operator works on goes to pending.
+	starts bool
+	// fixed: the event is the source's fix (an issue closed as completed,
+	// a task done), which brings the conversation back.
+	fixed bool
+}
+
+// recordFix writes the feed line and moves the conversation in or out of
+// waiting for the fix (RecordIssue).
+func (s *Service) recordFix(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, n fixNote) error {
 	q := store.New(tx)
 	row, err := q.LockConversation(ctx, store.LockConversationParams{WorkspaceID: workspaceID, ID: conversationID})
 	if err != nil {
-		return wrap(err, "record issue")
+		return wrap(err, "record "+n.source)
+	}
+	awaiting := n.awaiting
+	for src, w := range s.waiters {
+		if awaiting {
+			break
+		}
+		if src == n.source {
+			continue
+		}
+		if awaiting, err = w(ctx, tx, workspaceID, conversationID); err != nil {
+			return fmt.Errorf("ask %s: %w", src, err)
+		}
 	}
 	cur := state{Status: Status(row.Status), AssigneeID: row.AssigneeID, ResolvedAt: row.ResolvedAt, ClosedAt: row.ClosedAt}
-	next, err := s.issueState(ctx, q, tx, row, cur, n)
+	next, err := s.fixState(ctx, q, tx, row, cur, awaiting, n.starts, n.fixed)
 	if err != nil {
 		return err
 	}
-	ev := Event{Type: n.Type, From: cur.Status, To: next.Status, AssigneeID: next.AssigneeID, PreviousAssigneeID: cur.AssigneeID, Issue: &n.Issue}
+	ev := n.event
+	ev.From, ev.To, ev.AssigneeID, ev.PreviousAssigneeID = cur.Status, next.Status, next.AssigneeID, cur.AssigneeID
 	meta, err := json.Marshal(ev)
 	if err != nil {
 		return fmt.Errorf("encode event: %w", err)
@@ -120,23 +205,19 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 	if err != nil {
 		return err
 	}
-	key := n.Type + ":" + n.Issue.LinkID.String()
-	if n.Key != "" {
-		key += ":" + n.Key
-	}
 	ids, err := q.CreateKeyedEventMessage(ctx, store.CreateKeyedEventMessageParams{
-		ID: id, WorkspaceID: workspaceID, ConversationID: conversationID, SenderID: n.ActorID, Meta: meta,
-		IdempotencyKey: ptr(key), CreatedAt: s.now(),
+		ID: id, WorkspaceID: workspaceID, ConversationID: conversationID, SenderID: n.actorID, Meta: meta,
+		IdempotencyKey: ptr(n.key), CreatedAt: s.now(),
 	})
 	if err != nil {
-		return wrap(err, "record issue")
+		return wrap(err, "record "+n.source)
 	}
 	if len(ids) == 0 {
 		return nil // recorded before
 	}
 	if err := outbox.Add(ctx, tx, workspaceID, "message.created", map[string]any{
 		"conversation_id": conversationID, "message_id": id, "kind": KindEvent, "is_private": false,
-		"sender_type": SenderSystem, "sender_id": n.ActorID,
+		"sender_type": SenderSystem, "sender_id": n.actorID,
 	}); err != nil {
 		return err
 	}
@@ -155,21 +236,23 @@ func (s *Service) RecordIssue(ctx context.Context, tx pgx.Tx, workspaceID, conve
 			return err
 		}
 	}
-	if n.AwaitingFix != row.AwaitingFix {
-		if err := q.SetAwaitingFix(ctx, store.SetAwaitingFixParams{AwaitingFix: n.AwaitingFix, WorkspaceID: workspaceID, ID: conversationID}); err != nil {
+	if awaiting != row.AwaitingFix {
+		if err := q.SetAwaitingFix(ctx, store.SetAwaitingFixParams{AwaitingFix: awaiting, WorkspaceID: workspaceID, ID: conversationID}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// issueState is the state an issue event leaves the conversation in.
-func (s *Service) issueState(ctx context.Context, q *store.Queries, tx pgx.Tx, row store.Conversation, cur state, n IssueNote) (state, error) {
+// fixState is the state an event of waiting for a fix leaves the
+// conversation in.
+func (s *Service) fixState(
+	ctx context.Context, q *store.Queries, tx pgx.Tx, row store.Conversation, cur state, awaiting, starts, fixed bool,
+) (state, error) {
 	switch {
-	case n.AwaitingFix && cur.Status == StatusAssigned:
+	case awaiting && starts && cur.Status == StatusAssigned:
 		return transition(cur, StatusPending, s.now())
-	case !n.AwaitingFix && row.AwaitingFix && cur.Status == StatusPending &&
-		n.Type == EventIssueClosed && n.Issue.Reason == IssueFixed:
+	case !awaiting && row.AwaitingFix && cur.Status == StatusPending && fixed:
 		next, err := transition(cur, StatusAssigned, s.now())
 		if err != nil {
 			return state{}, err

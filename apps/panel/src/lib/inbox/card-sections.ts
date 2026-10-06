@@ -6,7 +6,7 @@ import { create } from "zustand";
  * convenience of this browser, so localStorage is enough; technical details start folded.
  */
 
-export const CARD_SECTIONS = ["who", "issues", "history", "tech"] as const;
+export const CARD_SECTIONS = ["who", "tasks", "issues", "history", "tech"] as const;
 export type CardSection = (typeof CARD_SECTIONS)[number];
 
 export const CARD_SECTIONS_KEY = "tolkovo.card.collapsed";

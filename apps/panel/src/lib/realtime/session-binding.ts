@@ -16,7 +16,7 @@ type BindOptions = {
   createConnection?: (options: ConnectionOptions) => Connection;
   sender?: SignalSender;
   /** Sounds and desktop notifications (I-05). */
-  notifier?: Pick<Notifier, "notify">;
+  notifier?: Pick<Notifier, "notify" | "notifyTask">;
 };
 
 /**
@@ -48,7 +48,7 @@ export function bindRealtime(
     if (key === (current?.key ?? null)) return;
     stopCurrent();
     if (!key) return;
-    const inbox = createInboxSync({ queryClient, api, onConversation: notifier?.notify });
+    const inbox = createInboxSync({ queryClient, api, onConversation: notifier?.notify, onTaskAssigned: notifier?.notifyTask });
     const connection = make({
       url,
       handlers: {

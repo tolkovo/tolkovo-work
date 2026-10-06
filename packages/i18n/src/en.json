@@ -7,10 +7,12 @@
   "nav": {
     "label": "Sections",
     "inbox": "Inbox",
+    "tasks": "Tasks",
     "monitor": "Monitor",
     "analytics": "Analytics",
     "kb": "Knowledge",
-    "settings": "Settings"
+    "settings": "Settings",
+    "myTasks": "{count, plural, one {# open task of mine} other {# open tasks of mine}}"
   },
   "topbar": {
     "theme": {
@@ -38,6 +40,9 @@
         "text": "Connect a Telegram bot or the website widget, and new customer conversations will show up here.",
         "action": "Connect a channel"
       }
+    },
+    "tasks": {
+      "title": "Tasks"
     },
     "monitor": {
       "title": "Monitor",
@@ -380,6 +385,38 @@
         "disconnected": "GitHub is disconnected. Delete the App in its settings on GitHub if you no longer need it."
       }
     },
+    "tasks": {
+      "title": "Tasks",
+      "enabled": "The tasks section is on",
+      "enabledHint": "Turned off, the section leaves the menu and no new tasks are created. Existing tasks stay.",
+      "button": "What conversations offer",
+      "buttons": {
+        "both": "A task and a GitHub issue",
+        "bothHint": "Both buttons in the conversation menu. \"Create issue\" appears once GitHub is connected.",
+        "tasks": "Only a task",
+        "tasksHint": "Tasks stay in Tolkovo. No GitHub needed.",
+        "github": "Only a GitHub issue",
+        "githubHint": "The tasks section stays for tasks made by hand."
+      },
+      "replyRu": "Reply to the customer about a done task — in Russian",
+      "replyEn": "Reply to the customer about a done task — in English",
+      "replyHint": "Placeholders: {placeholders}. An operator sends the reply; Tolkovo never writes to the customer itself.",
+      "reset": "Restore the default",
+      "save": "Save",
+      "saved": "Task settings saved.",
+      "queues": "Queues",
+      "queuesHint": "A queue groups tasks of one kind: development, infrastructure. Its members are notified about new tasks without an assignee.",
+      "addQueue": "Add queue",
+      "noQueues": "No queues yet. Tasks work without them too.",
+      "openTasks": "{count, plural, one {# open task} other {# open tasks}}",
+      "noMembers": "no members",
+      "editQueue": "Edit",
+      "deleteQueue": "Delete",
+      "queueName": "Queue name",
+      "queueNameRequired": "Write the queue name.",
+      "queueMembers": "Who to tell about new tasks",
+      "saveQueue": "Save queue"
+    },
     "team": {
       "title": "Team",
       "count": "{count, plural, one {# member} other {# members}}",
@@ -676,7 +713,11 @@
     "aiRequestRejected": "The provider rejected the request: check the model name and the account balance with the provider.",
     "aiRateLimited": "The provider asks to wait: too many requests. Try again later.",
     "aiProviderUnavailable": "The AI provider did not answer. Check the server address or try again later.",
-    "aiBadAnswer": "The model did not answer as expected. Try another model."
+    "aiBadAnswer": "The model did not answer as expected. Try another model.",
+    "taskConflict": "The task has just changed. Showing the fresh version — try again.",
+    "taskLinked": "The conversation is linked to this task already.",
+    "queueExists": "A queue with this name exists.",
+    "tasksDisabled": "The tasks section is turned off in the settings."
   },
   "error": {
     "title": "Something went wrong",
@@ -907,7 +948,13 @@
       "issueFixed": "Issue {number} closed as fixed",
       "issueNotPlanned": "Issue {number} closed as not planned",
       "backToAssignee": ", the conversation is back with its assignee",
-      "backToQueue": ", the conversation is back in the queue"
+      "backToQueue": ", the conversation is back in the queue",
+      "taskCreated": "Task {number} created",
+      "taskLinked": "Linked to task {number}",
+      "taskUnlinked": "Unlinked from task {number}",
+      "taskReopened": "Task {number} reopened",
+      "taskDone": "Task {number} done",
+      "taskCanceled": "Task {number} closed: won't do"
     },
     "card": {
       "label": "Customer card",
@@ -917,6 +964,7 @@
       "loadError": "Could not load the customer card.",
       "section": {
         "who": "Who this is",
+        "tasks": "Tasks",
         "history": "Conversation history",
         "tech": "Technical details",
         "issues": "GitHub issues"
@@ -1057,6 +1105,29 @@
         "failed": "The AI could not prepare a draft, so it comes from the template."
       }
     },
+    "tasks": {
+      "create": "Create task",
+      "link": "Link to a task",
+      "createTitle": "New task",
+      "linkTitle": "Link to a task",
+      "dataNote": "The task stays in Tolkovo and members of the workspace see it. The customer's words are in the description: remove what is not needed.",
+      "draftedByAi": "The AI wrote this draft from the customer's words. Check the steps and the wording.",
+      "aiFallback": {
+        "budget_exceeded": "The month's AI budget is spent, so the draft is the customer's words.",
+        "failed": "The AI could not write a draft, so it is the customer's words."
+      },
+      "created": "Task T-{number} created. The conversation waits until it is closed.",
+      "search": "Find a task",
+      "searchHint": "By title or number.",
+      "pickRequired": "Pick a task from the list.",
+      "noOpen": "No open tasks found.",
+      "openTasks": "Open tasks",
+      "linkSubmit": "Link",
+      "linked": "The conversation is linked to task T-{number}.",
+      "loadError": "Could not load the tasks.",
+      "none": "No tasks. Create one in the \"More actions\" menu.",
+      "done": "Task T-{number} is done. A draft reply:"
+    },
     "rating": {
       "short": "Rated {score} of 5",
       "line": "The customer rated the conversation {score} of 5",
@@ -1065,11 +1136,103 @@
     },
     "awaitingFix": "Waiting for a fix"
   },
+  "tasks": {
+    "listLabel": "Task list",
+    "new": "New",
+    "newTitle": "New task",
+    "views": {
+      "label": "Which tasks to show",
+      "mine": "Mine",
+      "open": "Open",
+      "unassigned": "Unassigned",
+      "closed": "Closed",
+      "all": "All"
+    },
+    "search": "Search tasks",
+    "searchPlaceholder": "Title or number",
+    "allQueues": "All queues",
+    "queueFilter": "Filter by queue",
+    "noQueue": "No queue",
+    "unassigned": "Unassigned",
+    "number": "T-{number}",
+    "status": {
+      "open": "New",
+      "in_progress": "In progress",
+      "done": "Done",
+      "canceled": "Won't do"
+    },
+    "priority": {
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "fields": {
+      "title": "Title",
+      "body": "Description",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "queue": "Queue"
+    },
+    "fieldsLabel": "Task fields",
+    "loadError": "Could not load the tasks.",
+    "empty": {
+      "mine": "You have no open tasks",
+      "open": "No open tasks",
+      "unassigned": "Every task has an assignee",
+      "closed": "No closed tasks yet",
+      "all": "No tasks yet",
+      "search": "Nothing found",
+      "hint": "Create a task here or from a conversation, in its \"More actions\" menu."
+    },
+    "pick": {
+      "title": "Pick a task",
+      "text": "The list is on the left. Tasks from conversations keep them waiting until they are closed."
+    },
+    "backToList": "Back to tasks",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "noBody": "No description.",
+    "take": "Take it",
+    "created": "Created",
+    "closed": "Closed",
+    "delete": "Delete task",
+    "deleteConfirm": "Delete the task? Its conversations stop waiting for it. This cannot be undone.",
+    "deleteSubmit": "Delete",
+    "titleRequired": "Write a title.",
+    "conversations": "Conversations",
+    "conversationHidden": "Conversation unavailable",
+    "unlink": "Unlink conversation",
+    "feed": "Comments and history",
+    "feedError": "Could not load the history.",
+    "activity": {
+      "created": "Task created",
+      "status": "Status: {to}",
+      "priority": "Priority: {to}",
+      "assignee": "Assignee: {name}",
+      "unassigned": "Assignee removed",
+      "queue": "Queue: {name}",
+      "edited": "Title or description changed",
+      "linked": "Conversation linked",
+      "unlinked": "Conversation unlinked"
+    },
+    "queueDeleted": "a deleted queue",
+    "comment": "Comment",
+    "commentPlaceholder": "A comment for the team. The customer won't see it.",
+    "commentSubmit": "Send",
+    "create": "Create task",
+    "creating": "Creating…",
+    "notifyAssignee": "The assignee is notified in the panel, and in Telegram if they linked it.",
+    "notifyQueue": "Without an assignee, the members of the queue are notified."
+  },
   "notifications": {
     "alert": {
       "assigned": "Conversation #{number} is yours",
       "message": "New message · #{number}",
-      "queued": "New conversation in the queue · #{number}"
+      "queued": "New conversation in the queue · #{number}",
+      "task": "Task T-{number} is assigned to you"
     },
     "test": {
       "title": "Tolkovo: test",

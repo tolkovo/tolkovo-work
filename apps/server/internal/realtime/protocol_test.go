@@ -16,7 +16,7 @@ import (
 )
 
 // samplePayloads are the outbox payloads the producers write today
-// (internal/conversations, internal/integrations); the integration test in internal/api checks
+// (internal/conversations, internal/integrations, internal/tasks); the integration test in internal/api checks
 // the real ones end to end.
 var samplePayloads = map[string]string{
 	"conversation.created":        `{"conversation_id":"%c","contact_id":"%k","number":7,"status":"queued"}`,
@@ -24,17 +24,19 @@ var samplePayloads = map[string]string{
 	"conversation.assigned":       `{"conversation_id":"%c","assignee_id":"%u","previous_assignee_id":null,"actor_id":"%u"}`,
 	"conversation.tags_changed":   `{"conversation_id":"%c"}`,
 	"conversation.issues_changed": `{"conversation_id":"%c"}`,
+	"conversation.tasks_changed":  `{"conversation_id":"%c"}`,
 	"conversation.read":           `{"conversation_id":"%c","reader_type":"operator","reader_id":"%u","up_to_message_id":"%m"}`,
 	"conversation.rated":          `{"conversation_id":"%c"}`,
 	"message.created":             `{"conversation_id":"%c","message_id":"%m","kind":"text","is_private":false,"sender_type":"operator","sender_id":"%u"}`,
 	"message.delivery":            `{"conversation_id":"%c","message_id":"%m","status":"failed","error":"blocked"}`,
 	"contact.created":             `{"contact_id":"%k"}`,
 	"contact.updated":             `{"contact_id":"%k"}`,
+	"task.changed":                `{"task_id":"%t","assignee_id":"%u","actor_id":"%u","assigned":true}`,
 }
 
 func samplePayload(topic string) []byte {
 	return []byte(strings.NewReplacer(
-		"%c", uuid.NewString(), "%k", uuid.NewString(), "%u", uuid.NewString(), "%m", uuid.NewString(),
+		"%c", uuid.NewString(), "%k", uuid.NewString(), "%u", uuid.NewString(), "%m", uuid.NewString(), "%t", uuid.NewString(),
 	).Replace(samplePayloads[topic]))
 }
 
@@ -229,7 +231,7 @@ func TestRoutes_FollowPermissions(t *testing.T) {
 	if _, ok := channelFor("test.thing.created"); ok {
 		t.Error("topics without a route must stay on the server")
 	}
-	if got := topicPatterns(authz.RoleOperator); !slices.Equal(got, []string{"conversation.%", "message.%", "contact.%"}) {
+	if got := topicPatterns(authz.RoleOperator); !slices.Equal(got, []string{"conversation.%", "message.%", "contact.%", "task.%"}) {
 		t.Errorf("operator patterns: %v", got)
 	}
 	if got := topicPatterns("nobody"); len(got) != 0 {

@@ -45,6 +45,8 @@ linters:
               desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ai
               desc: platform must not import business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tasks
+              desc: platform must not import business modules
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/realtime
               desc: platform must not import the realtime transport
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/api
@@ -77,9 +79,11 @@ linters:
               desc: realtime reports open panels through Options.OnPresence
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ai
               desc: realtime relays outbox events, it does not call business modules
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tasks
+              desc: realtime relays outbox events, it does not call business modules
         # Business modules do not know about HTTP.
         modules-without-http:
-          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**", "**/internal/widget/**", "**/internal/routing/**"]
+          files: ["**/internal/tenancy/**", "**/internal/auth/**", "**/internal/conversations/**", "**/internal/notifications/**", "**/internal/ingest/**", "**/internal/widget/**", "**/internal/routing/**", "**/internal/tasks/**"]
           deny:
             - pkg: net/http
               desc: HTTP lives in internal/api
@@ -146,6 +150,11 @@ linters:
           deny:
             - pkg: github.com/tolkovo/tolkovo/apps/server/internal/ai/store
               desc: use the ai facade, not its store
+        no-foreign-tasks-store:
+          files: ["!**/internal/tasks/**", "$all"]
+          deny:
+            - pkg: github.com/tolkovo/tolkovo/apps/server/internal/tasks/store
+              desc: use the tasks facade, not its store
         no-foreign-widget-store:
           files: ["!**/internal/widget/**", "$all"]
           deny:

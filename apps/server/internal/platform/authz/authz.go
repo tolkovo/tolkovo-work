@@ -63,6 +63,10 @@ const (
 	IssuesCreate       Permission = "issues.create"       // create a GitHub issue from a visible conversation or link it to one
 
 	AIManage Permission = "ai.manage" // choose the AI provider and model, the API key, prices and the budget
+
+	TasksView   Permission = "tasks.view"   // see the tasks section (ADR-0015)
+	TasksEdit   Permission = "tasks.edit"   // create, change and comment tasks, link them to visible conversations
+	TasksManage Permission = "tasks.manage" // queues, the section's settings and its Telegram bot, delete tasks
 )
 
 // rolePermissions is the phase 1 RBAC matrix (docs/04 §4.3).
@@ -73,6 +77,7 @@ var rolePermissions = map[string][]Permission{
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
 		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage,
+		TasksView, TasksEdit, TasksManage,
 	},
 	RoleAdmin: {
 		MembersView, MembersManage, WorkspaceManage,
@@ -80,11 +85,13 @@ var rolePermissions = map[string][]Permission{
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
 		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage,
+		TasksView, TasksEdit, TasksManage,
 	},
 	RoleOperator: {
 		MembersView,
 		ConversationsView, ConversationsReply, ConversationsNote, ConversationsTake, ConversationsTag,
 		ContactsView, ContactsEdit, IssuesCreate,
+		TasksView, TasksEdit,
 	},
 }
 

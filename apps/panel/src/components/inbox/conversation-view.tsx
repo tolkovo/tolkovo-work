@@ -14,6 +14,7 @@ import { Composer } from "./composer";
 import { ActionErrorLine, ConversationActions } from "./conversation-actions";
 import { CUSTOMER_CARD_ID, CustomerCard } from "./customer-card";
 import { IssueEventText, IssueForm, useIssueMenuItems, type IssueMode } from "./issues";
+import { ConversationTaskForm, TaskEventText, useTaskMenuItems, type TaskMode } from "./tasks";
 import { PresenceLine, useMemberNames } from "./presence";
 import { ConversationTags } from "./tags";
 
@@ -66,16 +67,24 @@ function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: Inb
   const card = useCardDrawer(cardToggle, cardHeading);
   // The issue form takes the place of the feed while it is open (GH-02).
   const [issueMode, setIssueMode] = useState<IssueMode | null>(null);
+  // The task form (ADR-0015) takes the same place.
+  const [taskMode, setTaskMode] = useState<TaskMode | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const issueItems = useIssueMenuItems(c, (mode) => {
     setNotice(null);
+    setTaskMode(null);
     setIssueMode(mode);
+  });
+  const taskItems = useTaskMenuItems(c, (mode) => {
+    setNotice(null);
+    setIssueMode(null);
+    setTaskMode(mode);
   });
   return (
     <>
       <section aria-labelledby="conversation-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header conversation={c} tab={tab}>
-          <ConversationActions conversation={c} change={change} extra={issueItems} />
+          <ConversationActions conversation={c} change={change} extra={[...taskItems, ...issueItems]} />
           <button
             ref={cardToggle}
             type="button"
@@ -91,7 +100,18 @@ function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: Inb
         {change.isError && <ActionErrorLine error={change.error} onDismiss={() => change.reset()} />}
         <NoticeLine message={notice} onDismiss={() => setNotice(null)} />
         <ConversationTags conversation={c} change={change} />
-        {issueMode ? (
+        {taskMode ? (
+          <ConversationTaskForm
+            conversation={c}
+            mode={taskMode}
+            onMode={setTaskMode}
+            onClose={() => setTaskMode(null)}
+            onDone={(message) => {
+              setTaskMode(null);
+              setNotice(message);
+            }}
+          />
+        ) : issueMode ? (
           <IssueForm
             conversation={c}
             mode={issueMode}
@@ -464,6 +484,7 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   const name = (id: string | null) => (id ? (names.get(id) ?? t("inbox.colleague")) : t("inbox.sender.system"));
   const by = actorId ? ` · ${name(actorId)}` : "";
   if (e.type.startsWith("issue_")) return <IssueEventText event={e} by={by} />;
+  if (e.type.startsWith("task_")) return <TaskEventText event={e} by={by} />;
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {

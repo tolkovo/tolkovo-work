@@ -44,7 +44,7 @@ func TestChannels_BotAndPersonalAccount(t *testing.T) {
 		t.Fatalf("start login: %d %s", rec.Code, rec.Body)
 	}
 	login := decode[oapi.TelegramLogin](t, rec)
-	if login.Next != oapi.Code || login.CodeVia == nil || *login.CodeVia != oapi.TelegramLoginCodeViaApp ||
+	if login.Next != oapi.TelegramLoginNextCode || login.CodeVia == nil || *login.CodeVia != oapi.TelegramLoginCodeViaApp ||
 		login.Channel.Status != oapi.ChannelStatusPending {
 		t.Fatalf("login: %+v", login)
 	}
@@ -60,7 +60,7 @@ func TestChannels_BotAndPersonalAccount(t *testing.T) {
 		t.Fatal("the full phone is returned")
 	}
 	done := decode[oapi.TelegramLogin](t, rec)
-	if done.Next != oapi.Done || done.Channel.Status != oapi.ChannelStatusActive || done.Channel.Name != "Марина Ковалёва" ||
+	if done.Next != oapi.TelegramLoginNextDone || done.Channel.Status != oapi.ChannelStatusActive || done.Channel.Name != "Марина Ковалёва" ||
 		deref(done.Channel.Details.PhoneMasked) != "+79•••••••67" {
 		t.Fatalf("done: %+v", done)
 	}

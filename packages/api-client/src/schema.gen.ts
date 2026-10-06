@@ -1806,6 +1806,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Tasks of the conversation
+         * @description Oldest link first, with the section's `settings` (whether it is on and which buttons
+         *     the conversation shows) and `reply_draft` once a task of the conversation is done.
+         *     Requires `tasks.view`.
+         */
+        get: operations["listConversationTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/tasks/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The task form filled from the conversation
+         * @description When the workspace has AI on, its model reads the customer's first message and writes
+         *     the title and a description with the steps, the expected and the actual result (it may
+         *     take a few seconds; the call is counted in the AI budget; personal data is masked).
+         *     Without AI, or when the model cannot, the title is the subject or the first line of
+         *     the customer's text; `ai_fallback` says why. The task stays in Tolkovo, so the
+         *     customer's first message is added to the description as it is. Requires `tasks.edit`.
+         */
+        get: operations["getConversationTaskDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations/{id}/read": {
         parameters: {
             query?: never;
@@ -1953,6 +2004,236 @@ export interface paths {
          *     `phone` or `locale` clears it.
          */
         patch: operations["updateContact"];
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tasks, newest first
+         * @description Requires `tasks.view`.
+         */
+        get: operations["listTasks"];
+        put?: never;
+        /**
+         * Create a task
+         * @description Requires `tasks.edit`. With `conversation_id` (a visible conversation) the task is
+         *     linked to it: a line appears in its feed and the conversation waits for the fix
+         *     (`awaiting_fix`; an assigned one goes to `pending`) until the task is closed. The
+         *     assignee, or the queue's members when there is none, are notified (in Telegram when
+         *     they linked it). `409 tasks_disabled` while the section is off.
+         */
+        post: operations["createTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's open tasks, for the menu
+         * @description Requires `tasks.view`.
+         */
+        get: operations["getTaskSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A task with its linked conversations
+         * @description Requires `tasks.view`.
+         */
+        get: operations["getTask"];
+        /**
+         * Change a task
+         * @description The whole changeable state, read at `version` (`409 task_conflict` when it changed
+         *     since). Putting a task `in_progress` without an assignee gives it to the caller.
+         *     Closing it (`done`, `canceled`) or reopening it writes a line in its conversations:
+         *     `done` brings a waiting conversation back to its assignee with a reply to send
+         *     (`ConversationTasks.reply_draft`). A new assignee is notified. Requires `tasks.edit`.
+         */
+        put: operations["updateTask"];
+        post?: never;
+        /**
+         * Delete a task
+         * @description Its conversations stop waiting for it. Requires `tasks.manage`.
+         */
+        delete: operations["deleteTask"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Comments and changes of a task, oldest first
+         * @description Up to 500 lines. Requires `tasks.view`.
+         */
+        get: operations["listTaskActivity"];
+        put?: never;
+        /**
+         * Comment a task
+         * @description Requires `tasks.edit`.
+         */
+        post: operations["commentTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link a conversation to the task
+         * @description One bug, many complaints. An open task puts the conversation to wait for the fix, as
+         *     a created one does. Requires `tasks.edit`.
+         */
+        post: operations["linkTaskConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink a conversation from the task
+         * @description The conversation stops waiting for it. Requires `tasks.edit`.
+         */
+        delete: operations["unlinkTaskConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queues of tasks, by name
+         * @description Requires `tasks.view`.
+         */
+        get: operations["listTaskQueues"];
+        put?: never;
+        /**
+         * Add a queue
+         * @description Up to 50 queues. Requires `tasks.manage`.
+         */
+        post: operations["createTaskQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-queues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a queue and replace its members
+         * @description Requires `tasks.manage`.
+         */
+        put: operations["updateTaskQueue"];
+        post?: never;
+        /**
+         * Delete a queue
+         * @description Its tasks stay without a queue. Requires `tasks.manage`.
+         */
+        delete: operations["deleteTaskQueue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Settings of the tasks section
+         * @description Requires `tasks.view`; the built-in replies are in `defaults`.
+         */
+        get: operations["getTaskSettings"];
+        /**
+         * Change the settings of the tasks section
+         * @description A reply equal to the built-in one is stored as none, so new versions may improve the
+         *     built-in text. Placeholders: `{name}`, `{task_number}`; an unknown one is `400`.
+         *     Requires `tasks.manage`.
+         */
+        put: operations["updateTaskSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -2461,15 +2742,18 @@ export interface components {
              *     fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
              *     closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
              *     the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-             *     reopened one put it to wait for the fix again.
+             *     reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+             *     tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+             *     conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
             previous_assignee_id: string | null;
             issue?: components["schemas"]["MessageEventIssue"];
+            task?: components["schemas"]["MessageEventTask"];
         };
         MessageEventIssue: {
             link_id: string;
@@ -2483,6 +2767,170 @@ export interface components {
              * @enum {string}
              */
             reason?: "completed" | "not_planned";
+        };
+        /**
+         * @description `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+         * @enum {string}
+         */
+        TaskStatus: "open" | "in_progress" | "done" | "canceled";
+        /**
+         * @description Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+         *     connected) or both.
+         * @enum {string}
+         */
+        TaskButton: "tasks" | "github" | "both";
+        /** @enum {string} */
+        TaskPriority: "low" | "normal" | "high" | "urgent";
+        Task: {
+            id: string;
+            /** Format: int64 */
+            number: number;
+            queue_id: string | null;
+            title: string;
+            body: string;
+            status: components["schemas"]["TaskStatus"];
+            priority: components["schemas"]["TaskPriority"];
+            assignee_id: string | null;
+            /** @description `null` when the author is no longer a member. */
+            created_by: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            closed_at: string | null;
+            /** Format: int32 */
+            version: number;
+            /** @description Linked conversations, oldest link first; empty in lists. */
+            conversation_ids: string[];
+        };
+        TaskPage: {
+            items: components["schemas"]["Task"][];
+            next_cursor: string | null;
+        };
+        TaskCreate: {
+            title: string;
+            body?: string;
+            queue_id?: string | null;
+            priority?: components["schemas"]["TaskPriority"];
+            assignee_id?: string | null;
+            /** @description The conversation the task is created from. */
+            conversation_id?: string | null;
+        };
+        TaskUpdate: {
+            /** Format: int32 */
+            version: number;
+            title: string;
+            body: string;
+            status: components["schemas"]["TaskStatus"];
+            priority: components["schemas"]["TaskPriority"];
+            queue_id: string | null;
+            assignee_id: string | null;
+        };
+        TaskSummary: {
+            /**
+             * Format: int64
+             * @description Open tasks assigned to the caller.
+             */
+            assigned_open: number;
+        };
+        TaskActivity: {
+            id: string;
+            actor_id: string | null;
+            /** @enum {string} */
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "edited" | "linked" | "unlinked";
+            /** @description The text of a comment. */
+            body?: string;
+            /** @description The value a change moved from (a status, a priority, a member or queue id); empty for none. */
+            from?: string;
+            /** @description The value a change moved to; empty for none. */
+            to?: string;
+            /** @description What an edit changed. */
+            fields?: ("title" | "body")[];
+            /** @description On `linked` and `unlinked`. */
+            conversation_id?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskActivityList: {
+            items: components["schemas"]["TaskActivity"][];
+        };
+        TaskComment: {
+            body: string;
+        };
+        TaskLinkRequest: {
+            conversation_id: string;
+        };
+        TaskQueue: {
+            id: string;
+            name: string;
+            /** @description Members told about new tasks without an assignee in the queue. */
+            member_ids: string[];
+            /** Format: int64 */
+            open_tasks: number;
+        };
+        TaskQueueList: {
+            items: components["schemas"]["TaskQueue"][];
+        };
+        TaskQueueInput: {
+            name: string;
+            member_ids: string[];
+        };
+        TaskSettings: {
+            /** @description Off hides the section and the button; tasks stay, new ones are refused. */
+            enabled: boolean;
+            conversation_button: components["schemas"]["TaskButton"];
+            reply_ru: string;
+            reply_en: string;
+        };
+        TaskSettingsView: {
+            settings: components["schemas"]["TaskSettings"];
+            defaults: {
+                reply_ru: string;
+                reply_en: string;
+            };
+            placeholders: string[];
+        };
+        ConversationTasks: {
+            items: components["schemas"]["Task"][];
+            settings: {
+                enabled: boolean;
+                conversation_button: components["schemas"]["TaskButton"];
+            };
+            /**
+             * @description The reply the operator may send once a task of the conversation is done; `null`
+             *     otherwise and after an operator replied to the customer since. Tolkovo never sends
+             *     it itself.
+             */
+            reply_draft: components["schemas"]["TaskReplyDraft"] | null;
+        };
+        TaskReplyDraft: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            /** @description The section's reply in the contact's language, `{name}` and `{task_number}` filled. */
+            text: string;
+        };
+        TaskDraft: {
+            title: string;
+            body: string;
+            /** @enum {string} */
+            drafted_by: "ai" | "template";
+            /**
+             * @description Why the AI did not write the draft although AI is on.
+             * @enum {string}
+             */
+            ai_fallback?: "budget_exceeded" | "failed";
+        };
+        MessageEventTask: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            /**
+             * @description Only with `task_closed`.
+             * @enum {string}
+             */
+            reason?: "done" | "canceled";
         };
         Tag: {
             id: string;
@@ -3412,6 +3860,19 @@ export interface components {
          *     (only a failed issue can be sent again or removed).
          */
         IssueConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `task_conflict` (the task changed since `version`), `task_linked` (the conversation
+         *     is linked to this task already), `queue_exists` (a queue has this name) or
+         *     `tasks_disabled` (the section is turned off).
+         */
+        TaskConflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -6270,6 +6731,56 @@ export interface operations {
             409: components["responses"]["IssueConflict"];
         };
     };
+    listConversationTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationTasks"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getConversationTaskDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDraft"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     markConversationRead: {
         parameters: {
             query?: never;
@@ -6520,6 +7031,436 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listTasks: {
+        parameters: {
+            query?: {
+                /** @description `open` (new or in progress), `closed` (done or canceled); all when absent. */
+                state?: "open" | "closed";
+                status?: components["schemas"]["TaskStatus"];
+                /** @description `me`, `none` or a member id. */
+                assignee?: string;
+                /** @description `none` or a queue id. */
+                queue?: string;
+                /** @description Part of the title, or the task number. */
+                q?: string;
+                /** @description Opaque `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size, 1–100; 50 when absent. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    getTaskSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description The changed task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    deleteTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTaskActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The feed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskActivityList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    commentTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskComment"];
+            };
+        };
+        responses: {
+            /** @description The comment. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskActivity"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    linkTaskConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Linked; the task. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    unlinkTaskConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTaskQueues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueueList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskQueueInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueue"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    updateTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskQueueInput"];
+            };
+        };
+        responses: {
+            /** @description The queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueue"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    deleteTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTaskSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSettingsView"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTaskSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskSettings"];
+            };
+        };
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSettingsView"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
 }

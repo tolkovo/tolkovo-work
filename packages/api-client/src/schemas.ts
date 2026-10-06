@@ -236,7 +236,19 @@ export const attachmentSchema = z.object({
 }) satisfies z.ZodType<Schemas["Attachment"]>;
 
 export const messageEventSchema = z.object({
-  type: z.enum(["status_changed", "assigned", "issue_created", "issue_linked", "issue_closed", "issue_reopened"]),
+  type: z.enum([
+    "status_changed",
+    "assigned",
+    "issue_created",
+    "issue_linked",
+    "issue_closed",
+    "issue_reopened",
+    "task_created",
+    "task_linked",
+    "task_unlinked",
+    "task_closed",
+    "task_reopened",
+  ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
   assignee_id: z.string().nullable(),
@@ -250,6 +262,9 @@ export const messageEventSchema = z.object({
       reason: z.enum(["completed", "not_planned"]).optional(),
     })
     .optional() satisfies z.ZodType<Schemas["MessageEventIssue"] | undefined>,
+  task: z
+    .object({ task_id: z.string(), number: z.number(), reason: z.enum(["done", "canceled"]).optional() })
+    .optional() satisfies z.ZodType<Schemas["MessageEventTask"] | undefined>,
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({
@@ -482,3 +497,81 @@ export const notificationSettingsSchema = z.object({
   email_delay_minutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
   email_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["NotificationSettings"]>;
+
+/** The tasks section (ADR-0015). */
+export const taskStatusSchema = z.enum(["open", "in_progress", "done", "canceled"]) satisfies z.ZodType<Schemas["TaskStatus"]>;
+export const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]) satisfies z.ZodType<Schemas["TaskPriority"]>;
+export const taskButtonSchema = z.enum(["tasks", "github", "both"]) satisfies z.ZodType<Schemas["TaskButton"]>;
+
+export const taskSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  queue_id: z.string().nullable(),
+  title: z.string(),
+  body: z.string(),
+  status: taskStatusSchema,
+  priority: taskPrioritySchema,
+  assignee_id: z.string().nullable(),
+  created_by: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  closed_at: z.string().nullable(),
+  version: z.number(),
+  conversation_ids: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["Task"]>;
+
+export const taskPageSchema = z.object({
+  items: z.array(taskSchema),
+  next_cursor: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["TaskPage"]>;
+
+export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfies z.ZodType<Schemas["TaskSummary"]>;
+
+export const taskActivitySchema = z.object({
+  id: z.string(),
+  actor_id: z.string().nullable(),
+  kind: z.enum(["comment", "created", "status", "assignee", "queue", "priority", "edited", "linked", "unlinked"]),
+  body: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  fields: z.array(z.enum(["title", "body"])).optional(),
+  conversation_id: z.string().optional(),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskActivity"]>;
+
+export const taskActivityListSchema = z.object({ items: z.array(taskActivitySchema) }) satisfies z.ZodType<Schemas["TaskActivityList"]>;
+
+export const taskQueueSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  member_ids: z.array(z.string()),
+  open_tasks: z.number(),
+}) satisfies z.ZodType<Schemas["TaskQueue"]>;
+
+export const taskQueueListSchema = z.object({ items: z.array(taskQueueSchema) }) satisfies z.ZodType<Schemas["TaskQueueList"]>;
+
+export const taskSettingsSchema = z.object({
+  enabled: z.boolean(),
+  conversation_button: taskButtonSchema,
+  reply_ru: z.string(),
+  reply_en: z.string(),
+}) satisfies z.ZodType<Schemas["TaskSettings"]>;
+
+export const taskSettingsViewSchema = z.object({
+  settings: taskSettingsSchema,
+  defaults: z.object({ reply_ru: z.string(), reply_en: z.string() }),
+  placeholders: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["TaskSettingsView"]>;
+
+export const conversationTasksSchema = z.object({
+  items: z.array(taskSchema),
+  settings: z.object({ enabled: z.boolean(), conversation_button: taskButtonSchema }),
+  reply_draft: z.object({ task_id: z.string(), number: z.number(), text: z.string() }).nullable(),
+}) satisfies z.ZodType<Schemas["ConversationTasks"]>;
+
+export const taskDraftSchema = z.object({
+  title: z.string(),
+  body: z.string(),
+  drafted_by: z.enum(["ai", "template"]),
+  ai_fallback: z.enum(["budget_exceeded", "failed"]).optional(),
+}) satisfies z.ZodType<Schemas["TaskDraft"]>;

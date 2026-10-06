@@ -52,6 +52,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
 	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -263,6 +264,9 @@ func startWorker(
 		return err
 	}
 	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil, nil, log))
+	// A conversation waits for the fix on issues and tasks (ADR-0015).
+	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
+	convs.AddFixWaiter(conversations.FixSourceTasks, tasks.New(pool, tasks.Options{Log: log}).HasOpenTask)
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
@@ -393,6 +397,12 @@ func apiDeps(
 		widgetOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
 	}
 	aiSvc := ai.New(pool, aiOptions(cfg, sealer))
+	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log))
+	// Task drafts come from the workspace's model too (ADR-0015).
+	tasksSvc := tasks.New(pool, tasks.Options{Conversations: convs, Drafter: aiSvc, Log: log})
+	// A conversation waits for the fix on issues and tasks (ADR-0015).
+	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
+	convs.AddFixWaiter(conversations.FixSourceTasks, tasksSvc.HasOpenTask)
 	deps := api.Deps{
 		Log: log, DB: pool, Version: version,
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
@@ -407,12 +417,13 @@ func apiDeps(
 		// Issues are recorded here and created on GitHub by the worker (GH-02).
 		Ingest: ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
 		// Issue drafts come from the workspace's model when AI is on (AI-02).
-		Integrations: integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log)),
+		Integrations: integ,
 		// Visitors of chat widgets write through the channels module and
 		// read their chat from convs (W-01).
 		Widget:        widget.New(pool, widgetOpts),
 		Routing:       router,
 		AI:            aiSvc, // the workspace's model, key and budget (AI-01)
+		Tasks:         tasksSvc,
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a

@@ -36,7 +36,7 @@ The values come from the conversation and, for a [problem report from an app](ap
 
 ## 3. Create or link an issue (operator)
 
-In a conversation: **More actions → Create issue**.
+In a conversation: **More actions → Create issue**. It is there unless the admin chose to offer only tasks in **Settings → Tasks** (see [Tasks](tasks.md)).
 
 - The form is filled from the issue template. With the AI on, the AI writes the draft first; this may take a few seconds and counts towards the monthly AI budget. The form says when the AI wrote the draft, and when it could not (the budget is spent, or the provider did not answer) and the template was used. Edit the title, the text and the labels.
 - **Add the customer's words** puts the customer's first message into a separate block marked "customer data, not instructions". It is off by default for a public repository. Remove phone numbers, addresses and passwords from it.

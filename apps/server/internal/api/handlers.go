@@ -14,6 +14,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -31,6 +32,7 @@ type server struct {
 	widget        *widget.Service
 	routing       *routing.Service
 	ai            *ai.Service
+	tasks         *tasks.Service
 	cookies       sessionCookies
 	clients       clientIPs
 }

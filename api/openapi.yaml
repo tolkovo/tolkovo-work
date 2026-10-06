@@ -71,6 +71,12 @@ tags:
       Money is in millionths of a US dollar (`*_micros`). The key is encrypted and never
       returned, only `…` and its last four characters. Personal data is masked before
       anything goes to the model. Requires `ai.manage` (owner, admin).
+  - name: tasks
+    description: |
+      The tasks section (ADR-0015): a simple tracker for developers and the IT team next to
+      GitHub issues — queues, statuses, priorities, assignees, comments and links to
+      conversations. Every member has `tasks.view` and `tasks.edit`; queues, the settings and
+      deleting tasks need `tasks.manage` (owner, admin).
   - name: ingest
     description: |
       Problem reports from company apps. Authenticated by an ingest key of
@@ -2570,6 +2576,51 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/IssueConflict' }
 
+  /conversations/{id}/tasks:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations, tasks]
+      operationId: listConversationTasks
+      summary: Tasks of the conversation
+      description: |
+        Oldest link first, with the section's `settings` (whether it is on and which buttons
+        the conversation shows) and `reply_draft` once a task of the conversation is done.
+        Requires `tasks.view`.
+      responses:
+        '200':
+          description: The tasks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationTasks' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /conversations/{id}/tasks/draft:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations, tasks]
+      operationId: getConversationTaskDraft
+      summary: The task form filled from the conversation
+      description: |
+        When the workspace has AI on, its model reads the customer's first message and writes
+        the title and a description with the steps, the expected and the actual result (it may
+        take a few seconds; the call is counted in the AI budget; personal data is masked).
+        Without AI, or when the model cannot, the title is the subject or the first line of
+        the customer's text; `ai_fallback` says why. The task stays in Tolkovo, so the
+        customer's first message is added to the description as it is. Requires `tasks.edit`.
+      responses:
+        '200':
+          description: The draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDraft' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /conversations/{id}/read:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -2776,6 +2827,366 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks:
+    get:
+      tags: [tasks]
+      operationId: listTasks
+      summary: Tasks, newest first
+      description: Requires `tasks.view`.
+      parameters:
+        - name: state
+          in: query
+          description: '`open` (new or in progress), `closed` (done or canceled); all when absent.'
+          schema: { type: string, enum: [open, closed] }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TaskStatus' }
+        - name: assignee
+          in: query
+          description: '`me`, `none` or a member id.'
+          schema: { type: string, maxLength: 36 }
+        - name: queue
+          in: query
+          description: '`none` or a queue id.'
+          schema: { type: string, maxLength: 36 }
+        - name: q
+          in: query
+          description: Part of the title, or the task number.
+          schema: { type: string, maxLength: 100 }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of tasks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPage' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tasks]
+      operationId: createTask
+      summary: Create a task
+      description: |
+        Requires `tasks.edit`. With `conversation_id` (a visible conversation) the task is
+        linked to it: a line appears in its feed and the conversation waits for the fix
+        (`awaiting_fix`; an assigned one goes to `pending`) until the task is closed. The
+        assignee, or the queue's members when there is none, are notified (in Telegram when
+        they linked it). `409 tasks_disabled` while the section is off.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreate' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /tasks/summary:
+    get:
+      tags: [tasks]
+      operationId: getTaskSummary
+      summary: The caller's open tasks, for the menu
+      description: Requires `tasks.view`.
+      responses:
+        '200':
+          description: The counters.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tasks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [tasks]
+      operationId: getTask
+      summary: A task with its linked conversations
+      description: Requires `tasks.view`.
+      responses:
+        '200':
+          description: The task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [tasks]
+      operationId: updateTask
+      summary: Change a task
+      description: |
+        The whole changeable state, read at `version` (`409 task_conflict` when it changed
+        since). Putting a task `in_progress` without an assignee gives it to the caller.
+        Closing it (`done`, `canceled`) or reopening it writes a line in its conversations:
+        `done` brings a waiting conversation back to its assignee with a reply to send
+        (`ConversationTasks.reply_draft`). A new assignee is notified. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskUpdate' }
+      responses:
+        '200':
+          description: The changed task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTask
+      summary: Delete a task
+      description: Its conversations stop waiting for it. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks/{id}/activity:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [tasks]
+      operationId: listTaskActivity
+      summary: Comments and changes of a task, oldest first
+      description: Up to 500 lines. Requires `tasks.view`.
+      responses:
+        '200':
+          description: The feed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskActivityList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [tasks]
+      operationId: commentTask
+      summary: Comment a task
+      description: Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskComment' }
+      responses:
+        '201':
+          description: The comment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskActivity' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks/{id}/conversations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [tasks, conversations]
+      operationId: linkTaskConversation
+      summary: Link a conversation to the task
+      description: |
+        One bug, many complaints. An open task puts the conversation to wait for the fix, as
+        a created one does. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskLinkRequest' }
+      responses:
+        '201':
+          description: Linked; the task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /tasks/{id}/conversations/{conversation_id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+    delete:
+      tags: [tasks, conversations]
+      operationId: unlinkTaskConversation
+      summary: Unlink a conversation from the task
+      description: The conversation stops waiting for it. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Unlinked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /task-queues:
+    get:
+      tags: [tasks]
+      operationId: listTaskQueues
+      summary: Queues of tasks, by name
+      description: Requires `tasks.view`.
+      responses:
+        '200':
+          description: The queues.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskQueueList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tasks]
+      operationId: createTaskQueue
+      summary: Add a queue
+      description: Up to 50 queues. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskQueueInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskQueue' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /task-queues/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [tasks]
+      operationId: updateTaskQueue
+      summary: Rename a queue and replace its members
+      description: Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskQueueInput' }
+      responses:
+        '200':
+          description: The queue.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskQueue' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTaskQueue
+      summary: Delete a queue
+      description: Its tasks stay without a queue. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /task-settings:
+    get:
+      tags: [tasks]
+      operationId: getTaskSettings
+      summary: Settings of the tasks section
+      description: Requires `tasks.view`; the built-in replies are in `defaults`.
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSettingsView' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [tasks]
+      operationId: updateTaskSettings
+      summary: Change the settings of the tasks section
+      description: |
+        A reply equal to the built-in one is stored as none, so new versions may improve the
+        built-in text. Placeholders: `{name}`, `{task_number}`; an unknown one is `400`.
+        Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskSettings' }
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSettingsView' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
 components:
   parameters:
@@ -3044,6 +3455,14 @@ components:
         `issue_in_progress` (an issue of this conversation is being created),
         `issue_linked` (the conversation is linked to this issue already) or `issue_state`
         (only a failed issue can be sent again or removed).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TaskConflict:
+      description: |
+        `task_conflict` (the task changed since `version`), `task_linked` (the conversation
+        is linked to this task already), `queue_exists` (a queue has this name) or
+        `tasks_disabled` (the section is turned off).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -3826,7 +4245,7 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -3834,7 +4253,9 @@ components:
             fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
             closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
             the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-            reopened one put it to wait for the fix again.
+            reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+            tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+            conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -3846,6 +4267,7 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         issue: { $ref: '#/components/schemas/MessageEventIssue' }
+        task: { $ref: '#/components/schemas/MessageEventTask' }
 
     MessageEventIssue:
       type: object
@@ -3864,6 +4286,303 @@ components:
           description: |
             Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
             `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
+
+    TaskStatus:
+      type: string
+      enum: [open, in_progress, done, canceled]
+      description: '`open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.'
+
+    TaskButton:
+      type: string
+      enum: [tasks, github, both]
+      description: |
+        Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+        connected) or both.
+
+    TaskPriority:
+      type: string
+      enum: [low, normal, high, urgent]
+
+    Task:
+      type: object
+      required: [id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, conversation_ids]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        title: { type: string }
+        body: { type: string }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        priority: { $ref: '#/components/schemas/TaskPriority' }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_by:
+          type: [string, 'null']
+          description: '`null` when the author is no longer a member.'
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        closed_at: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int32 }
+        conversation_ids:
+          type: array
+          description: Linked conversations, oldest link first; empty in lists.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TaskPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        next_cursor: { type: [string, 'null'] }
+
+    TaskCreate:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 256 }
+        body: { type: string, maxLength: 20000 }
+        queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        priority: { $ref: '#/components/schemas/TaskPriority' }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        conversation_id:
+          type: [string, 'null']
+          description: The conversation the task is created from.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskUpdate:
+      type: object
+      additionalProperties: false
+      required: [version, title, body, status, priority, queue_id, assignee_id]
+      properties:
+        version: { type: integer, format: int32 }
+        title: { type: string, minLength: 1, maxLength: 256 }
+        body: { type: string, maxLength: 20000 }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        priority: { $ref: '#/components/schemas/TaskPriority' }
+        queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskSummary:
+      type: object
+      required: [assigned_open]
+      properties:
+        assigned_open: { type: integer, format: int64, description: Open tasks assigned to the caller. }
+
+    TaskActivity:
+      type: object
+      required: [id, actor_id, kind, created_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        actor_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        kind:
+          type: string
+          enum: [comment, created, status, assignee, queue, priority, edited, linked, unlinked]
+        body: { type: string, description: The text of a comment. }
+        from:
+          type: string
+          description: The value a change moved from (a status, a priority, a member or queue id); empty for none.
+        to: { type: string, description: The value a change moved to; empty for none. }
+        fields:
+          type: array
+          description: What an edit changed.
+          items: { type: string, enum: [title, body] }
+        conversation_id:
+          type: string
+          description: On `linked` and `unlinked`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time }
+
+    TaskActivityList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskActivity' }
+
+    TaskComment:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 4000 }
+
+    TaskLinkRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id]
+      properties:
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskQueue:
+      type: object
+      required: [id, name, member_ids, open_tasks]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string }
+        member_ids:
+          type: array
+          description: Members told about new tasks without an assignee in the queue.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        open_tasks: { type: integer, format: int64 }
+
+    TaskQueueList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskQueue' }
+
+    TaskQueueInput:
+      type: object
+      additionalProperties: false
+      required: [name, member_ids]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        member_ids:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TaskSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, conversation_button, reply_ru, reply_en]
+      properties:
+        enabled:
+          type: boolean
+          description: Off hides the section and the button; tasks stay, new ones are refused.
+        conversation_button: { $ref: '#/components/schemas/TaskButton' }
+        reply_ru: { type: string, maxLength: 4000 }
+        reply_en: { type: string, maxLength: 4000 }
+
+    TaskSettingsView:
+      type: object
+      required: [settings, defaults, placeholders]
+      properties:
+        settings: { $ref: '#/components/schemas/TaskSettings' }
+        defaults:
+          type: object
+          required: [reply_ru, reply_en]
+          properties:
+            reply_ru: { type: string }
+            reply_en: { type: string }
+        placeholders:
+          type: array
+          items: { type: string }
+
+    ConversationTasks:
+      type: object
+      required: [items, settings, reply_draft]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        settings:
+          type: object
+          required: [enabled, conversation_button]
+          properties:
+            enabled: { type: boolean }
+            conversation_button: { $ref: '#/components/schemas/TaskButton' }
+        reply_draft:
+          description: |
+            The reply the operator may send once a task of the conversation is done; `null`
+            otherwise and after an operator replied to the customer since. Tolkovo never sends
+            it itself.
+          oneOf:
+            - $ref: '#/components/schemas/TaskReplyDraft'
+            - type: 'null'
+
+    TaskReplyDraft:
+      type: object
+      required: [task_id, number, text]
+      properties:
+        task_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        text:
+          type: string
+          maxLength: 4000
+          description: The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+
+    TaskDraft:
+      type: object
+      required: [title, body, drafted_by]
+      properties:
+        title: { type: string }
+        body: { type: string }
+        drafted_by:
+          type: string
+          enum: [ai, template]
+        ai_fallback:
+          type: string
+          enum: [budget_exceeded, failed]
+          description: Why the AI did not write the draft although AI is on.
+
+    MessageEventTask:
+      type: object
+      required: [task_id, number]
+      properties:
+        task_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        reason:
+          type: string
+          enum: [done, canceled]
+          description: Only with `task_closed`.
 
     Tag:
       type: object

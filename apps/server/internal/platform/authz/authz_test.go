@@ -35,6 +35,9 @@ func TestAllowed_Matrix(t *testing.T) {
 		RoutingManage:       {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 		IssuesCreate:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
 		AIManage:            {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		TasksView:           {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		TasksEdit:           {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
+		TasksManage:         {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
 	}
 	for role, perms := range rolePermissions {
 		for _, p := range perms {

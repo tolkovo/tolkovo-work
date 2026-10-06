@@ -34,7 +34,7 @@ var errBadRequest = errors.New("bad request")
 // writeError maps domain errors to problem+json. Unknown errors are logged
 // with the request id and answered with a generic 500.
 func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
-	if s.writeChannelError(w, r, err) || s.writeIntegrationError(w, r, err) || s.writeAIError(w, r, err) {
+	if s.writeChannelError(w, r, err) || s.writeIntegrationError(w, r, err) || s.writeAIError(w, r, err) || s.writeTaskError(w, r, err) {
 		return
 	}
 	var (

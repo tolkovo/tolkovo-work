@@ -4,6 +4,7 @@ export type SettingsPath =
   | "/settings/general"
   | "/settings/channels"
   | "/settings/integrations"
+  | "/settings/tasks"
   | "/settings/routing"
   | "/settings/ai"
   | "/settings/team"
@@ -18,6 +19,7 @@ type SettingsSection = {
     | "settings.general.title"
     | "settings.channels.title"
     | "settings.integrations.title"
+    | "settings.tasks.title"
     | "settings.routing.title"
     | "settings.ai.nav"
     | "settings.team.title"
@@ -49,6 +51,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/general", label: "settings.general.title", permission: "workspace.manage", landing: true },
       { to: "/settings/channels", label: "settings.channels.title", permission: "channels.view" },
       { to: "/settings/integrations", label: "settings.integrations.title", permission: "integrations.manage" },
+      { to: "/settings/tasks", label: "settings.tasks.title", permission: "tasks.manage" },
       { to: "/settings/team", label: "settings.team.title", permission: "members.view" },
       { to: "/settings/routing", label: "settings.routing.title", permission: "routing.manage" },
       { to: "/settings/ai", label: "settings.ai.nav", permission: "ai.manage" },

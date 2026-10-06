@@ -1,5 +1,5 @@
 import { hasPermission } from "@tolkovo/api-client";
-import { useSession } from "@tolkovo/api-client/react";
+import { useSession, useTaskSettings, useTaskSummary } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@tolkovo/ui";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,13 @@ import { navItems } from "./nav-items";
 export function Rail() {
   const { t } = useTranslation();
   const { data: session } = useSession();
-  const items = navItems.filter((item) => !item.permission || hasPermission(session, item.permission));
+  const tasksAllowed = hasPermission(session, "tasks.view");
+  const { data: taskSettings } = useTaskSettings({ enabled: tasksAllowed });
+  const { data: myTasks } = useTaskSummary({ enabled: tasksAllowed && taskSettings?.settings.enabled !== false });
+  const items = navItems.filter(
+    (item) =>
+      (!item.permission || hasPermission(session, item.permission)) && !(item.to === "/tasks" && taskSettings?.settings.enabled === false),
+  );
   return (
     <nav
       aria-label={t("nav.label")}
@@ -35,6 +41,12 @@ export function Rail() {
         >
           <Icon aria-hidden="true" className="size-[18px]" strokeWidth={1.7} />
           {t(label)}
+          {to === "/tasks" && (myTasks ?? 0) > 0 && (
+            <span className="absolute top-1 right-2 min-w-4 rounded-full bg-lamp px-1 font-mono text-[10px] leading-4 font-medium text-lamp-on tabular-nums">
+              <span className="sr-only">, {t("nav.myTasks", { count: myTasks })}</span>
+              <span aria-hidden="true">{myTasks}</span>
+            </span>
+          )}
         </Link>
       ))}
     </nav>

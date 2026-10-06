@@ -749,6 +749,12 @@ func (s *Service) lockLink(ctx context.Context, q *store.Queries, workspaceID, c
 	return link, err
 }
 
+// HasOpenIssue reports whether an open issue keeps the conversation waiting
+// for the fix; it is the module's conversations.FixWaiter.
+func (s *Service) HasOpenIssue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) (bool, error) {
+	return store.New(tx).HasOpenIssue(ctx, store.HasOpenIssueParams{WorkspaceID: workspaceID, ConversationID: conversationID})
+}
+
 // issuesChanged tells clients to fetch the conversation's issues again.
 func issuesChanged(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) error {
 	return outbox.Add(ctx, tx, workspaceID, "conversation.issues_changed", map[string]any{"conversation_id": conversationID})

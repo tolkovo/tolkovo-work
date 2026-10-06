@@ -25,6 +25,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -63,6 +64,8 @@ type Deps struct {
 	// AI keeps the workspace's provider, key and budget (AI-01); nil
 	// leaves its routes answering 404.
 	AI *ai.Service
+	// Tasks is the tasks section (ADR-0015).
+	Tasks *tasks.Service
 	// SecureCookies marks the session cookie Secure and names it with the
 	// __Host- prefix. Off only in development over plain HTTP.
 	SecureCookies bool
@@ -99,7 +102,7 @@ func NewRouter(d Deps) http.Handler {
 
 	srv := &server{
 		log: d.Log, tenancy: d.Tenancy, auth: d.Auth, conversations: d.Conversations, notifications: d.Notifications, channels: d.Channels,
-		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget, routing: d.Routing, ai: d.AI,
+		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget, routing: d.Routing, ai: d.AI, tasks: d.Tasks,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
 	}
