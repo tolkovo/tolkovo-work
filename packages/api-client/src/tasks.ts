@@ -11,6 +11,9 @@ import {
   taskSchema,
   taskSettingsViewSchema,
   taskSummarySchema,
+  myTelegramSchema,
+  telegramBotStateSchema,
+  telegramLinkStartSchema,
 } from "./schemas";
 
 /** The tasks section (ADR-0015): a tracker for developers and the IT team next to GitHub issues. */
@@ -31,6 +34,9 @@ export type TaskSettings = Schemas["TaskSettings"];
 export type TaskSettingsView = Schemas["TaskSettingsView"];
 export type ConversationTasks = Schemas["ConversationTasks"];
 export type TaskDraft = Schemas["TaskDraft"];
+export type MyTelegram = Schemas["MyTelegram"];
+export type TelegramLinkStart = Schemas["TelegramLinkStart"];
+export type TelegramBotState = Schemas["TelegramBotState"];
 
 /** Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` is `none` or a queue id. */
 export type TaskFilter = {
@@ -119,4 +125,35 @@ export async function fetchConversationTasks(client: ApiClient, conversationId: 
 export async function fetchTaskDraft(client: ApiClient, conversationId: string): Promise<TaskDraft> {
   const data = await unwrap(client.GET("/conversations/{id}/tasks/draft", { params: { path: { id: conversationId } } }));
   return parseAnswer(taskDraftSchema, data);
+}
+
+/** The workspace's Telegram bot for notifications (TK-02); the token is never returned. */
+export async function fetchTaskTelegramBot(client: ApiClient): Promise<TelegramBotState> {
+  return parseAnswer(telegramBotStateSchema, await unwrap(client.GET("/task-settings/telegram-bot")));
+}
+
+export async function setTaskTelegramBot(client: ApiClient, token: string): Promise<TelegramBotState> {
+  return parseAnswer(telegramBotStateSchema, await unwrap(client.PUT("/task-settings/telegram-bot", { body: { token } })));
+}
+
+export async function deleteTaskTelegramBot(client: ApiClient): Promise<void> {
+  await unwrap(client.DELETE("/task-settings/telegram-bot"));
+}
+
+/** The caller's link to the notifications bot. */
+export async function fetchMyTelegram(client: ApiClient): Promise<MyTelegram> {
+  return parseAnswer(myTelegramSchema, await unwrap(client.GET("/me/telegram")));
+}
+
+export async function startMyTelegramLink(client: ApiClient): Promise<TelegramLinkStart> {
+  return parseAnswer(telegramLinkStartSchema, await unwrap(client.POST("/me/telegram/link")), 201);
+}
+
+/** Reads the bot's new messages: links whoever pressed Start with their code. */
+export async function checkMyTelegramLink(client: ApiClient): Promise<MyTelegram> {
+  return parseAnswer(myTelegramSchema, await unwrap(client.POST("/me/telegram/check")));
+}
+
+export async function unlinkMyTelegram(client: ApiClient): Promise<void> {
+  await unwrap(client.DELETE("/me/telegram"));
 }

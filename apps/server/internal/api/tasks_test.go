@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +11,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels/channelstest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
+	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 )
 
 // taskUpdate is the whole state of t for PUT /tasks/{id}, changed by edit.
@@ -95,6 +101,15 @@ func TestTasks_Lifecycle(t *testing.T) {
 	if c := feed[4]; c.Body == nil || *c.Body != "Сертификат истекает в пятницу" || c.ActorId == nil || *c.ActorId != opID {
 		t.Fatalf("comment line: %+v", c)
 	}
+	// A long feed shows its latest 500 lines: 500 older comments go before
+	// the six lines above, and the last of those is still there.
+	e.ownerExec(`INSERT INTO task_activity (id, workspace_id, task_id, kind, body, created_at)
+		SELECT ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid, workspace_id, id, 'comment', 'старый', created_at
+		FROM tasks, generate_series(1, 500) n WHERE id = $1`, task.Id)
+	long := decode[oapi.TaskActivityList](t, op.do(http.MethodGet, base+"/activity", nil)).Items
+	if len(long) != 500 || long[len(long)-1].Kind != oapi.Status || long[0].Body == nil || *long[0].Body != "старый" {
+		t.Fatalf("long feed: %d lines, last %+v", len(long), long[len(long)-1])
+	}
 
 	// Filters: open, mine, the queue, the search.
 	other := decode[oapi.Task](t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Принтер на втором этаже", "assignee_id": opID}))
@@ -159,7 +174,7 @@ func TestTasks_FromConversation(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	a := e.connectApp("owner@example.test", "zerno")
 	c := a.owner
-	conv := e.reportConversation(a, "Не синхронизируется корзина\nПосле обновления до 2.4.1 корзина пустая")
+	conv := e.reportConversation(a, "Не синхронизируется корзина\nПосле обновления до 2.4.1 корзина пустая, ответьте на anna@example.com")
 	cbase := "/api/v1/conversations/" + conv.String()
 	if rec := c.do(http.MethodPut, cbase+"/assignee", map[string]any{"assignee_id": e.ownerID(a)}); rec.Code != http.StatusOK {
 		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
@@ -169,10 +184,12 @@ func TestTasks_FromConversation(t *testing.T) {
 		return e.ownerCount("SELECT count(*) FROM messages WHERE conversation_id = $1 AND kind = 'event' AND meta->>'type' = $2", conv, typ)
 	}
 
-	// Without AI the draft is the subject and the customer's words.
+	// Without AI the draft is the subject and the customer's words, their
+	// personal data masked: a task outlives the contact's data.
 	d := decode[oapi.TaskDraft](t, c.do(http.MethodGet, cbase+"/tasks/draft", nil))
 	if d.DraftedBy != oapi.TaskDraftDraftedByTemplate || d.Title != "Не синхронизируется корзина" ||
-		!strings.Contains(d.Body, "Сообщение клиента:\nНе синхронизируется корзина") || !strings.Contains(d.Body, "Приложение: Зерно 2.4.1") {
+		!strings.Contains(d.Body, "Сообщение клиента:\nНе синхронизируется корзина") || !strings.Contains(d.Body, "Приложение: Зерно 2.4.1") ||
+		!strings.Contains(d.Body, "ответьте на ⟨EMAIL_1⟩") || strings.Contains(d.Body, "anna@example.com") {
 		t.Fatalf("draft: %+v", d)
 	}
 
@@ -187,7 +204,7 @@ func TestTasks_FromConversation(t *testing.T) {
 	ad := decode[oapi.TaskDraft](t, c.do(http.MethodGet, cbase+"/tasks/draft", nil))
 	if ad.DraftedBy != oapi.TaskDraftDraftedByAi || ad.Title != "Корзина пустеет после обновления" ||
 		!strings.HasPrefix(ad.Body, "После обновления корзина пустая.\n\nШаги воспроизведения:\n1. Обновить приложение\n2. Открыть корзину\n\nОжидалось:\nТовары на месте\n\nФактически:\nКорзина пустая") ||
-		!strings.Contains(ad.Body, "Сообщение клиента:\nНе синхронизируется корзина") {
+		!strings.Contains(ad.Body, "Сообщение клиента:\nНе синхронизируется корзина") || strings.Contains(ad.Body, "anna@example.com") {
 		t.Fatalf("ai draft: %+v", ad)
 	}
 	if n := e.ownerCount(`SELECT count(*) FROM ai_calls WHERE conversation_id = $1 AND purpose = 'issue_draft' AND status = 'ok'`, conv); n != 1 {
@@ -242,6 +259,18 @@ func TestTasks_FromConversation(t *testing.T) {
 		t.Fatalf("reply draft: %+v", ct.ReplyDraft)
 	}
 
+	// The customer's words reach a draft with personal data masked: every
+	// member sees tasks, and a task outlives the contact's data (ADR-0015).
+	if rec := c.do(http.MethodPut, "/api/v1/ai/settings", haikuSettings(map[string]any{"enabled": false})); rec.Code != http.StatusOK {
+		t.Fatalf("ai off: %d %s", rec.Code, rec.Body)
+	}
+	pd := e.reportConversation(a, "Пишите на anna.k@example.test или +7 912 345-67-89")
+	md := decode[oapi.TaskDraft](t, c.do(http.MethodGet, "/api/v1/conversations/"+pd.String()+"/tasks/draft", nil))
+	if strings.Contains(md.Title+md.Body, "anna.k@example.test") || strings.Contains(md.Title+md.Body, "345-67-89") ||
+		!strings.Contains(md.Body, "⟨EMAIL_1⟩") {
+		t.Fatalf("unmasked draft: %+v", md)
+	}
+
 	// A second conversation linked and then unlinked stops waiting.
 	conv2 := e.reportConversation(a, "Корзина снова пустая")
 	other := decode[oapi.Task](t, c.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Вход", "conversation_id": conv2}))
@@ -266,5 +295,105 @@ func TestTasks_FromConversation(t *testing.T) {
 	if st.Settings.Enabled || st.Settings.ConversationButton != oapi.Github || st.Settings.ReplyRu != "{name}, готово: задача {task_number}." ||
 		st.Settings.ReplyEn != st.Defaults.ReplyEn {
 		t.Fatalf("settings: %+v", st)
+	}
+}
+
+// Telegram (TK-02): the admin adds a bot of its own, a member links their
+// Telegram with /start <code>, messages about tasks go there through a job
+// with the number, the title and the link only.
+func TestTasks_TelegramNotifications(t *testing.T) {
+	in := setupInbox(t)
+	e, owner, op := in.e, in.owner, in.op
+	ws, opID := in.so.Workspace.Id, in.sop.User.Id
+
+	// No bot yet: nothing to link to.
+	if me := decode[oapi.MyTelegram](t, op.do(http.MethodGet, "/api/v1/me/telegram", nil)); me.BotUsername != nil || me.Linked {
+		t.Fatalf("before a bot: %+v", me)
+	}
+	wantProblem(t, op.do(http.MethodPost, "/api/v1/me/telegram/link", nil), http.StatusConflict, "no_notify_bot")
+
+	// The bot is the admins'; a token Telegram does not know is refused.
+	wantProblem(t, op.do(http.MethodPut, "/api/v1/task-settings/telegram-bot", map[string]any{"token": channelstest.OtherBotToken}),
+		http.StatusForbidden, "forbidden")
+	wantProblem(t, owner.do(http.MethodPut, "/api/v1/task-settings/telegram-bot", map[string]any{"token": "111111111:AAH-unknown-token-000000000000000000000"}),
+		http.StatusUnprocessableEntity, "telegram_token_invalid")
+	st := decode[oapi.TelegramBotState](t, owner.do(http.MethodPut, "/api/v1/task-settings/telegram-bot", map[string]any{"token": channelstest.OtherBotToken}))
+	if st.Bot == nil || st.Bot.Username != "other_bot" || !st.EncryptionAvailable {
+		t.Fatalf("bot: %+v", st)
+	}
+	if n := e.ownerCount("SELECT count(*) FROM notify_bots WHERE workspace_id = $1 AND position($2 in encode(sealed, 'escape')) = 0", ws, channelstest.OtherBotToken); n != 1 {
+		t.Fatal("the token is not sealed")
+	}
+
+	// The member opens the link and presses Start; the check links the chat
+	// and greets it. Another code in the bot's updates links nobody.
+	link := decode[oapi.TelegramLinkStart](t, op.do(http.MethodPost, "/api/v1/me/telegram/link", nil))
+	code, ok := strings.CutPrefix(link.Url, "https://t.me/other_bot?start=")
+	if !ok || len(code) < 20 {
+		t.Fatalf("link: %s", link.Url)
+	}
+	if me := decode[oapi.MyTelegram](t, op.do(http.MethodGet, "/api/v1/me/telegram", nil)); !me.Pending || me.Linked {
+		t.Fatalf("pending: %+v", me)
+	}
+	e.bots.Push(
+		`{"message":{"message_id":1,"from":{"id":777,"first_name":"Мошенник"},"chat":{"id":777,"type":"private"},"text":"/start not-a-code"}}`,
+		`{"message":{"message_id":2,"from":{"id":555,"first_name":"Пётр","username":"petr"},"chat":{"id":555,"type":"private"},"text":"/start `+code+`"}}`,
+	)
+	me := decode[oapi.MyTelegram](t, op.do(http.MethodPost, "/api/v1/me/telegram/check", nil))
+	if !me.Linked || me.Pending || me.Name == nil || *me.Name != "Пётр @petr" {
+		t.Fatalf("linked: %+v", me)
+	}
+	sent := e.bots.SnapshotSent()
+	if len(sent) != 1 || sent[0].ChatID != 555 {
+		t.Fatalf("greeting: %+v", sent)
+	}
+	// The same code a second time does nothing.
+	if n := e.ownerCount("SELECT count(*) FROM telegram_links WHERE workspace_id = $1 AND chat_id IS NOT NULL", ws); n != 1 {
+		t.Fatalf("links: %d", n)
+	}
+
+	// The owner gives a task to the member: a job with ids only, then the
+	// message with the number, the title and the link.
+	task := decode[oapi.Task](t, owner.do(http.MethodPost, "/api/v1/tasks", map[string]any{
+		"title": "Обновить сертификат", "body": "секретная подробность", "assignee_id": opID,
+	}))
+	var args []byte
+	e.ownerScan(&args, "SELECT args FROM river.river_job WHERE kind = 'notifications.telegram_task' AND args->>'workspace_id' = $1", ws.String())
+	var job notifications.TaskMessageArgs
+	if err := json.Unmarshal(args, &job); err != nil || job.TaskID != task.Id || job.UserID != opID || job.About != tasks.NoticeAssigned {
+		t.Fatalf("job: %s %v", args, err)
+	}
+	worker := notifications.TelegramWorkerOptions{Service: e.notifications, Tasks: e.tasks, PanelURL: panelURL}
+	if err := notifications.SendTaskMessage(context.Background(), worker, job); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	sent = e.bots.SnapshotSent()
+	msg := sent[len(sent)-1]
+	if msg.ChatID != 555 || !strings.Contains(msg.Text, "З-1") || !strings.Contains(msg.Text, "Обновить сертификат") ||
+		!strings.Contains(msg.Text, panelURL+"/tasks/"+task.Id.String()) || strings.Contains(msg.Text, "секретная") {
+		t.Fatalf("message: %+v", msg)
+	}
+	// Assigning yourself tells nobody.
+	before := e.ownerCount("SELECT count(*) FROM river.river_job WHERE kind = 'notifications.telegram_task'")
+	decode[oapi.Task](t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Себе", "assignee_id": opID}))
+	if n := e.ownerCount("SELECT count(*) FROM river.river_job WHERE kind = 'notifications.telegram_task'"); n != before {
+		t.Fatalf("own task queued a message: %d → %d", before, n)
+	}
+
+	// The member blocked the bot: the next message unlinks them.
+	e.bots.FailNext(&telegram.UndeliverableError{Reason: telegram.ReasonBlocked, Detail: "Forbidden: bot was blocked by the user"})
+	if err := notifications.SendTaskMessage(context.Background(), worker, job); err != nil {
+		t.Fatalf("send to a blocked chat: %v", err)
+	}
+	if me := decode[oapi.MyTelegram](t, op.do(http.MethodGet, "/api/v1/me/telegram", nil)); me.Linked {
+		t.Fatalf("still linked after a block: %+v", me)
+	}
+
+	// Removing the bot forgets every link.
+	if rec := owner.do(http.MethodDelete, "/api/v1/task-settings/telegram-bot", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete bot: %d", rec.Code)
+	}
+	if n := e.ownerCount("SELECT count(*) FROM telegram_links WHERE workspace_id = $1", ws); n != 0 {
+		t.Fatalf("links kept: %d", n)
 	}
 }

@@ -3,3 +3,31 @@
 //   sqlc v1.31.1
 
 package store
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type NotifyBot struct {
+	WorkspaceID   uuid.UUID
+	ID            uuid.UUID
+	BotID         int64
+	Username      string
+	Sealed        []byte
+	UpdatesOffset int64
+	CreatedBy     pgtype.UUID
+	CreatedAt     time.Time
+}
+
+type TelegramLink struct {
+	WorkspaceID   uuid.UUID
+	UserID        uuid.UUID
+	ChatID        pgtype.Int8
+	TelegramName  pgtype.Text
+	LinkedAt      *time.Time
+	CodeHash      []byte
+	CodeExpiresAt *time.Time
+}

@@ -31,7 +31,7 @@ The form takes the place of the conversation and starts from a draft:
 - With the AI turned on in **Settings → AI**, the AI reads the customer's first message and writes the title, a short summary, the steps to reproduce, the expected and the actual result, in the workspace language. Personal data such as emails, phone numbers and card numbers is masked before anything goes to the model. The call counts toward the month's AI budget.
 - Without the AI, or when the budget is spent or the provider fails, the title is the conversation subject or the first line of the customer's message. The form says why.
 - For a [problem report from an app](app-reports.md), the app's name, version and OS are added.
-- The customer's first message is added to the description as is: the task stays in Tolkovo and only members of the workspace see it. Remove what is not needed.
+- The customer's first message is added to the description with personal data such as emails, phone numbers and card numbers masked: every member sees tasks, and a task stays when the customer's data is deleted. Remove what is not needed.
 
 Several customers often report the same problem. **More actions → Link to a task** links the conversation to an open task found by its title or number.
 
@@ -46,7 +46,7 @@ On a task:
 - **Take it** gives the task to you and puts it in progress.
 - Status, priority, assignee and queue are saved as soon as they are changed. If someone changed the task a moment before, the panel shows the fresh version and asks to try again.
 - **Edit** changes the title and the description.
-- Comments are for the team: the customer never sees them. The history below shows every change and who made it.
+- Comments are for the team: the customer never sees them. The history below shows every change and who made it, the latest 500 lines.
 - Linked conversations are listed with the customer's name, and can be unlinked.
 
 ## 6. When a task is done
@@ -61,8 +61,15 @@ Set the status to **Done**. In every linked conversation:
 
 ## 7. Notifications
 
-The assignee of a task hears a sound and gets a desktop notification in the panel when someone else gives them the task. The sound and desktop notifications follow **Settings → Notifications**.
+In the panel, the assignee of a task hears a sound and gets a desktop notification when someone else gives them the task. The sound and desktop notifications follow **Settings → Notifications**.
+
+In Telegram, members get a message when a task is assigned to them, and when a task without an assignee appears in a queue they are a member of. Nobody is told about a task they assigned to themselves.
+
+1. **The admin** creates a bot with [@BotFather](https://t.me/BotFather) just for notifications — not the bot of a support channel — and pastes its token in **Settings → Tasks → Telegram bot for notifications**. The token is stored encrypted (the server needs `TOLKOVO_MASTER_KEY`). Replacing the bot unlinks every member.
+2. **Each member** opens **Settings → Notifications → Telegram → Link Telegram**, opens the bot from the link and presses **Start**. The link works for 15 minutes. The panel notices the Start by itself: Tolkovo reads the bot's messages, so no webhook is needed and it works on a server behind NAT.
+3. **Unlink** stops the messages. A member who blocks the bot is unlinked automatically.
 
 ## 8. What leaves Tolkovo
 
-Nothing, unless the AI is turned on: then the customer's first message, with personal data masked, goes to the AI provider of the workspace to write the draft.
+- With the AI turned on, the customer's first message, with personal data masked, goes to the AI provider of the workspace to write the draft.
+- With a Telegram bot for notifications, Telegram gets the task's number, its title and a link to it in the panel. The description and customer data never go there.

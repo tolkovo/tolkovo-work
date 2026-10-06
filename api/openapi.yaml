@@ -550,6 +550,80 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /me/telegram:
+    get:
+      tags: [auth, tasks]
+      operationId: getMyTelegram
+      summary: The current user's Telegram link to the workspace's notifications bot
+      description: |
+        Messages about tasks (assigned to the user, a new one in their queue) go to the linked
+        Telegram chat (TK-02). `bot_username` is `null` while the workspace has no
+        notifications bot. Needs a session only.
+      responses:
+        '200':
+          description: The link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyTelegram' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    delete:
+      tags: [auth, tasks]
+      operationId: unlinkMyTelegram
+      summary: Stop messages to the current user's Telegram
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Unlinked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/telegram/link:
+    post:
+      tags: [auth, tasks]
+      operationId: startMyTelegramLink
+      summary: A link to press Start in the notifications bot
+      description: |
+        The link `https://t.me/<bot>?start=<code>` works for 15 minutes; only the code's hash is
+        stored. After Start, `POST /me/telegram/check` completes the link.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '201':
+          description: The link to open in Telegram.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramLinkStart' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: '`no_notify_bot`: the workspace has no notifications bot.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /me/telegram/check:
+    post:
+      tags: [auth, tasks]
+      operationId: checkMyTelegramLink
+      summary: Read the bot's new messages and complete links
+      description: |
+        The server reads the bot's updates (getUpdates, no webhook) and links every member whose
+        code came with `/start`; the answer is the caller's link. The panel asks every few
+        seconds while the link waits.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The caller's link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyTelegram' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { $ref: '#/components/responses/NotifyBotConflict' }
+        '502': { $ref: '#/components/responses/TelegramUnavailable' }
+
   /me/presence:
     get:
       tags: [auth]
@@ -2609,8 +2683,10 @@ paths:
         the title and a description with the steps, the expected and the actual result (it may
         take a few seconds; the call is counted in the AI budget; personal data is masked).
         Without AI, or when the model cannot, the title is the subject or the first line of
-        the customer's text; `ai_fallback` says why. The task stays in Tolkovo, so the
-        customer's first message is added to the description as it is. Requires `tasks.edit`.
+        the customer's text; `ai_fallback` says why. The customer's first message is added to
+        the description; the customer's words (the subject, the message) come with personal data
+        masked, since every member sees tasks and a task outlives the deletion of the contact's
+        data. Requires `tasks.edit`.
       responses:
         '200':
           description: The draft.
@@ -2978,7 +3054,7 @@ paths:
       tags: [tasks]
       operationId: listTaskActivity
       summary: Comments and changes of a task, oldest first
-      description: Up to 500 lines. Requires `tasks.view`.
+      description: The latest 500 lines at most. Requires `tasks.view`.
       responses:
         '200':
           description: The feed.
@@ -3147,6 +3223,72 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /task-settings/telegram-bot:
+    get:
+      tags: [tasks]
+      operationId: getTaskTelegramBot
+      summary: The workspace's Telegram bot for notifications
+      description: |
+        A bot of its own, not the bot of a support channel: members link their Telegram to it
+        and get messages about tasks there (TK-02). The token is encrypted and never returned.
+        Requires `tasks.manage`.
+      responses:
+        '200':
+          description: The bot; `bot` is `null` without one.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramBotState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [tasks]
+      operationId: setTaskTelegramBot
+      summary: Add or replace the notifications bot
+      description: |
+        Telegram is asked for the bot (getMe). Another bot replaces the old one and every member
+        links again. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TelegramBotInput' }
+      responses:
+        '200':
+          description: The bot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramBotState' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          description: '`telegram_token_invalid`: Telegram does not know the token.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/TelegramUnavailable' }
+        '503':
+          description: '`encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the token cannot be stored.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTaskTelegramBot
+      summary: Forget the notifications bot and every member's link to it
+      description: Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Forgotten.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /task-settings:
     get:
@@ -3455,6 +3597,14 @@ components:
         `issue_in_progress` (an issue of this conversation is being created),
         `issue_linked` (the conversation is linked to this issue already) or `issue_state`
         (only a failed issue can be sent again or removed).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotifyBotConflict:
+      description: |
+        `no_notify_bot` (the workspace has no notifications bot) or `notify_bot_busy` (the bot's
+        updates go to a webhook — it serves a support channel — or to another reader: use a bot of
+        its own).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -4286,6 +4436,56 @@ components:
           description: |
             Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
             `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
+
+    MyTelegram:
+      type: object
+      required: [bot_username, linked, name, linked_at, pending]
+      properties:
+        bot_username:
+          type: [string, 'null']
+          description: The workspace's notifications bot; `null` without one.
+        linked: { type: boolean }
+        name:
+          type: [string, 'null']
+          description: The user's name in Telegram, once linked.
+        linked_at: { type: [string, 'null'], format: date-time }
+        pending:
+          type: boolean
+          description: A link code waits for Start.
+
+    TelegramLinkStart:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url: { type: string, description: 'https://t.me/<bot>?start=<code>' }
+        expires_at: { type: string, format: date-time }
+
+    TelegramBotState:
+      type: object
+      required: [bot, encryption_available]
+      properties:
+        bot:
+          oneOf:
+            - type: object
+              required: [username]
+              properties:
+                username: { type: string }
+            - type: 'null'
+        encryption_available:
+          type: boolean
+          description: '`false` without `TOLKOVO_MASTER_KEY`: no bot can be added.'
+
+    TelegramBotInput:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 100
+          description: The bot token from @BotFather.
 
     TaskStatus:
       type: string

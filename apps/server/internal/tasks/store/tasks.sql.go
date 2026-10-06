@@ -464,10 +464,13 @@ func (q *Queries) LinkConversation(ctx context.Context, arg LinkConversationPara
 }
 
 const listActivity = `-- name: ListActivity :many
-SELECT id, workspace_id, task_id, actor_id, kind, body, meta, created_at FROM task_activity
-WHERE workspace_id = $1 AND task_id = $2
-ORDER BY id
-LIMIT 500
+SELECT a.id, a.workspace_id, a.task_id, a.actor_id, a.kind, a.body, a.meta, a.created_at FROM (
+    SELECT id, workspace_id, task_id, actor_id, kind, body, meta, created_at FROM task_activity
+    WHERE workspace_id = $1 AND task_id = $2
+    ORDER BY id DESC
+    LIMIT 500
+) a
+ORDER BY a.id
 `
 
 type ListActivityParams struct {
@@ -475,6 +478,7 @@ type ListActivityParams struct {
 	TaskID      uuid.UUID
 }
 
+// The latest 500 lines of the feed, oldest first.
 func (q *Queries) ListActivity(ctx context.Context, arg ListActivityParams) ([]TaskActivity, error) {
 	rows, err := q.db.Query(ctx, listActivity, arg.WorkspaceID, arg.TaskID)
 	if err != nil {

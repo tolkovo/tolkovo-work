@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai/guard"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tasks/store"
 )
@@ -240,9 +241,11 @@ type Draft struct {
 // Draft prepares a task from a conversation. With AI on, the workspace's
 // model writes the title, the summary, the steps, the expected and the
 // actual result, as for a GitHub issue (docs/03 §8.1); without it the
-// draft is the subject and the customer's first message. The task stays in
-// Tolkovo, so the customer's words go into the description as they are.
-// locale is the workspace language.
+// draft is the subject and the customer's first message. The customer's
+// words reach the draft with their personal data masked (guard): every
+// member sees tasks, and a task outlives the deletion of the contact's
+// data (ADR-0015). The AI's text comes masked already. locale is the
+// workspace language.
 func (s *Service) Draft(ctx context.Context, workspaceID, conversationID uuid.UUID, locale string) (Draft, error) {
 	if s.opts.Conversations == nil {
 		return Draft{}, errors.New("tasks: no conversations to draft from")
@@ -253,9 +256,10 @@ func (s *Service) Draft(ctx context.Context, workspaceID, conversationID uuid.UU
 	}
 	l := labelsFor(locale)
 	out := Draft{DraftedBy: DraftedByTemplate}
-	summary := strings.TrimSpace(src.Subject)
+	masker := guard.NewMasker()
+	summary := masker.Mask(strings.TrimSpace(src.Subject))
 	if summary == "" {
-		summary = firstLine(src.CustomerText, 120)
+		summary = firstLine(masker.Mask(src.CustomerText), 120)
 	}
 	var b strings.Builder
 	if text, fallback := s.aiDraft(ctx, workspaceID, conversationID, src, locale); text != nil {
@@ -282,7 +286,7 @@ func (s *Service) Draft(ctx context.Context, workspaceID, conversationID uuid.UU
 		fmt.Fprintf(&b, "\n%s %s, %s\n", l.app, app, osName)
 	}
 	if q := strings.TrimSpace(src.CustomerText); q != "" {
-		fmt.Fprintf(&b, "\n%s\n%s\n", l.quote, truncate(q, 4000))
+		fmt.Fprintf(&b, "\n%s\n%s\n", l.quote, truncate(masker.Mask(q), 4000))
 	}
 	out.Title = firstLine(out.Title, MaxTitle)
 	if out.Title == "" {

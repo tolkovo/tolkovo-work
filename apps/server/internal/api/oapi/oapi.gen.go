@@ -2184,6 +2184,20 @@ type MyPresence struct {
 // MyPresenceStatus What the user chose; `offline` follows from a closed panel.
 type MyPresenceStatus string
 
+// MyTelegram defines model for MyTelegram.
+type MyTelegram struct {
+	// BotUsername The workspace's notifications bot; `null` without one.
+	BotUsername *string    `json:"bot_username"`
+	Linked      bool       `json:"linked"`
+	LinkedAt    *time.Time `json:"linked_at"`
+
+	// Name The user's name in Telegram, once linked.
+	Name *string `json:"name"`
+
+	// Pending A link code waits for Start.
+	Pending bool `json:"pending"`
+}
+
 // NotificationSettings defines model for NotificationSettings.
 type NotificationSettings struct {
 	// EmailAvailable Outgoing email is configured on this server; without it nothing is sent.
@@ -2532,9 +2546,33 @@ type TaskUpdate struct {
 	Version int32      `json:"version"`
 }
 
+// TelegramBotInput defines model for TelegramBotInput.
+type TelegramBotInput struct {
+	// Token The bot token from @BotFather.
+	Token *string `json:"token,omitempty"`
+}
+
+// TelegramBotState defines model for TelegramBotState.
+type TelegramBotState struct {
+	Bot *struct {
+		Username string `json:"username"`
+	} `json:"bot"`
+
+	// EncryptionAvailable `false` without `TOLKOVO_MASTER_KEY`: no bot can be added.
+	EncryptionAvailable bool `json:"encryption_available"`
+}
+
 // TelegramCodeRequest defines model for TelegramCodeRequest.
 type TelegramCodeRequest struct {
 	Code string `json:"code"`
+}
+
+// TelegramLinkStart defines model for TelegramLinkStart.
+type TelegramLinkStart struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Url https://t.me/<bot>?start=<code>
+	Url string `json:"url"`
 }
 
 // TelegramLogin defines model for TelegramLogin.
@@ -2895,6 +2933,9 @@ type LoginStep = Problem
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
 
+// NotifyBotConflict RFC 9457 problem details.
+type NotifyBotConflict = Problem
+
 // ReportLimited RFC 9457 problem details.
 type ReportLimited = Problem
 
@@ -3180,6 +3221,9 @@ type UpdateTaskQueueJSONRequestBody = TaskQueueInput
 // UpdateTaskSettingsJSONRequestBody defines body for UpdateTaskSettings for application/json ContentType.
 type UpdateTaskSettingsJSONRequestBody = TaskSettings
 
+// SetTaskTelegramBotJSONRequestBody defines body for SetTaskTelegramBot for application/json ContentType.
+type SetTaskTelegramBotJSONRequestBody = TelegramBotInput
+
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = TaskCreate
 
@@ -3458,6 +3502,18 @@ type ServerInterface interface {
 	// RevokeSession End one session of the current user
 	// (DELETE /me/sessions/{id})
 	RevokeSession(w http.ResponseWriter, r *http.Request, id Id)
+	// UnlinkMyTelegram Stop messages to the current user's Telegram
+	// (DELETE /me/telegram)
+	UnlinkMyTelegram(w http.ResponseWriter, r *http.Request)
+	// GetMyTelegram The current user's Telegram link to the workspace's notifications bot
+	// (GET /me/telegram)
+	GetMyTelegram(w http.ResponseWriter, r *http.Request)
+	// CheckMyTelegramLink Read the bot's new messages and complete links
+	// (POST /me/telegram/check)
+	CheckMyTelegramLink(w http.ResponseWriter, r *http.Request)
+	// StartMyTelegramLink A link to press Start in the notifications bot
+	// (POST /me/telegram/link)
+	StartMyTelegramLink(w http.ResponseWriter, r *http.Request)
 	// ListMyWorkspaces Workspaces the current user is an active member of
 	// (GET /me/workspaces)
 	ListMyWorkspaces(w http.ResponseWriter, r *http.Request)
@@ -3494,6 +3550,15 @@ type ServerInterface interface {
 	// UpdateTaskSettings Change the settings of the tasks section
 	// (PUT /task-settings)
 	UpdateTaskSettings(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskTelegramBot Forget the notifications bot and every member's link to it
+	// (DELETE /task-settings/telegram-bot)
+	DeleteTaskTelegramBot(w http.ResponseWriter, r *http.Request)
+	// GetTaskTelegramBot The workspace's Telegram bot for notifications
+	// (GET /task-settings/telegram-bot)
+	GetTaskTelegramBot(w http.ResponseWriter, r *http.Request)
+	// SetTaskTelegramBot Add or replace the notifications bot
+	// (PUT /task-settings/telegram-bot)
+	SetTaskTelegramBot(w http.ResponseWriter, r *http.Request)
 	// ListTasks Tasks, newest first
 	// (GET /tasks)
 	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
@@ -4046,6 +4111,30 @@ func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// UnlinkMyTelegram Stop messages to the current user's Telegram
+// (DELETE /me/telegram)
+func (_ Unimplemented) UnlinkMyTelegram(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetMyTelegram The current user's Telegram link to the workspace's notifications bot
+// (GET /me/telegram)
+func (_ Unimplemented) GetMyTelegram(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CheckMyTelegramLink Read the bot's new messages and complete links
+// (POST /me/telegram/check)
+func (_ Unimplemented) CheckMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartMyTelegramLink A link to press Start in the notifications bot
+// (POST /me/telegram/link)
+func (_ Unimplemented) StartMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMyWorkspaces Workspaces the current user is an active member of
 // (GET /me/workspaces)
 func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) {
@@ -4115,6 +4204,24 @@ func (_ Unimplemented) GetTaskSettings(w http.ResponseWriter, r *http.Request) {
 // UpdateTaskSettings Change the settings of the tasks section
 // (PUT /task-settings)
 func (_ Unimplemented) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskTelegramBot Forget the notifications bot and every member's link to it
+// (DELETE /task-settings/telegram-bot)
+func (_ Unimplemented) DeleteTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskTelegramBot The workspace's Telegram bot for notifications
+// (GET /task-settings/telegram-bot)
+func (_ Unimplemented) GetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetTaskTelegramBot Add or replace the notifications bot
+// (PUT /task-settings/telegram-bot)
+func (_ Unimplemented) SetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6160,6 +6267,62 @@ func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// UnlinkMyTelegram operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkMyTelegram(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkMyTelegram(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyTelegram operation middleware
+func (siw *ServerInterfaceWrapper) GetMyTelegram(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyTelegram(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckMyTelegramLink operation middleware
+func (siw *ServerInterfaceWrapper) CheckMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckMyTelegramLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartMyTelegramLink operation middleware
+func (siw *ServerInterfaceWrapper) StartMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartMyTelegramLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyWorkspaces operation middleware
 func (siw *ServerInterfaceWrapper) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) {
 
@@ -6343,6 +6506,48 @@ func (siw *ServerInterfaceWrapper) UpdateTaskSettings(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTaskSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskTelegramBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskTelegramBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTaskTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) SetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTaskTelegramBot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7039,6 +7244,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/me/notifications", wrapper.UpdateMyNotificationSettings)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/me/telegram", wrapper.UnlinkMyTelegram)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/telegram", wrapper.GetMyTelegram)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/telegram/link", wrapper.StartMyTelegramLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/telegram/check", wrapper.CheckMyTelegramLink)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/presence", wrapper.GetMyPresence)
 	})
 	r.Group(func(r chi.Router) {
@@ -7313,6 +7530,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/task-queues/{id}", wrapper.UpdateTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-settings/telegram-bot", wrapper.DeleteTaskTelegramBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-settings/telegram-bot", wrapper.GetTaskTelegramBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-settings/telegram-bot", wrapper.SetTaskTelegramBot)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/task-settings", wrapper.GetTaskSettings)

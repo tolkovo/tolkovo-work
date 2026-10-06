@@ -226,6 +226,10 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 			map[string]int{"owner": 200, "admin": 200, "operator": 403}},
 		{http.MethodPost, "/api/v1/task-queues", map[string]any{"name": "", "member_ids": []string{}},
 			map[string]int{"owner": 400, "admin": 400, "operator": 403}},
+		{http.MethodGet, "/api/v1/task-settings/telegram-bot", nil,
+			map[string]int{"owner": 200, "admin": 200, "operator": 403}},
+		{http.MethodGet, "/api/v1/me/telegram", nil,
+			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
 	}
 	for _, tc := range tests {
 		for role, want := range tc.want {

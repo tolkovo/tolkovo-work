@@ -29,6 +29,13 @@ import {
   updateTask,
   updateTaskQueue,
   updateTaskSettings,
+  fetchTaskTelegramBot,
+  setTaskTelegramBot,
+  deleteTaskTelegramBot,
+  fetchMyTelegram,
+  startMyTelegramLink,
+  checkMyTelegramLink,
+  unlinkMyTelegram,
   type TaskCreate,
   type TaskFilter,
   type TaskQueueInput,
@@ -193,6 +200,8 @@ export const queryKeys = {
   taskSummary: ["tasks", "summary"] as const,
   taskQueues: ["tasks", "queues"] as const,
   taskSettings: ["tasks", "settings"] as const,
+  taskTelegramBot: ["tasks", "telegram-bot"] as const,
+  myTelegram: ["me", "telegram"] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
@@ -932,4 +941,67 @@ export function useDeleteTaskQueue() {
 
 export function useUpdateTaskSettings() {
   return useTaskMutation((client, body: TaskSettings) => updateTaskSettings(client, body));
+}
+
+/** The workspace's notifications bot (TK-02). */
+export function useTaskTelegramBot({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskTelegramBot, queryFn: () => fetchTaskTelegramBot(client), enabled });
+}
+
+function useBotMutation<TArgs, TResult>(fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.taskTelegramBot }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.myTelegram }),
+      ]),
+  });
+}
+
+export function useSetTaskTelegramBot() {
+  return useBotMutation((client, token: string) => setTaskTelegramBot(client, token));
+}
+
+export function useDeleteTaskTelegramBot() {
+  return useBotMutation((client, _: void) => deleteTaskTelegramBot(client));
+}
+
+/**
+ * The caller's Telegram link. While a link waits for Start the server is asked every three
+ * seconds to read the bot's messages, until the link is done or its code expires.
+ */
+export function useMyTelegram() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.myTelegram,
+    queryFn: () => fetchMyTelegram(client),
+  });
+}
+
+export function useCheckMyTelegram({ enabled }: { enabled: boolean }) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: [...queryKeys.myTelegram, "check"],
+    queryFn: async () => {
+      const me = await checkMyTelegramLink(client);
+      queryClient.setQueryData(queryKeys.myTelegram, me);
+      return me;
+    },
+    enabled,
+    refetchInterval: (q) => (q.state.data?.linked ? false : 3000),
+    retry: false,
+  });
+}
+
+export function useStartMyTelegramLink() {
+  return useBotMutation((client, _: void) => startMyTelegramLink(client));
+}
+
+export function useUnlinkMyTelegram() {
+  return useBotMutation((client, _: void) => unlinkMyTelegram(client));
 }

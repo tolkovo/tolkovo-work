@@ -387,6 +387,72 @@ export interface paths {
         patch: operations["updateMyNotificationSettings"];
         trace?: never;
     };
+    "/me/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The current user's Telegram link to the workspace's notifications bot
+         * @description Messages about tasks (assigned to the user, a new one in their queue) go to the linked
+         *     Telegram chat (TK-02). `bot_username` is `null` while the workspace has no
+         *     notifications bot. Needs a session only.
+         */
+        get: operations["getMyTelegram"];
+        put?: never;
+        post?: never;
+        /** Stop messages to the current user's Telegram */
+        delete: operations["unlinkMyTelegram"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/telegram/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A link to press Start in the notifications bot
+         * @description The link `https://t.me/<bot>?start=<code>` works for 15 minutes; only the code's hash is
+         *     stored. After Start, `POST /me/telegram/check` completes the link.
+         */
+        post: operations["startMyTelegramLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/telegram/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the bot's new messages and complete links
+         * @description The server reads the bot's updates (getUpdates, no webhook) and links every member whose
+         *     code came with `/start`; the answer is the caller's link. The panel asks every few
+         *     seconds while the link waits.
+         */
+        post: operations["checkMyTelegramLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/presence": {
         parameters: {
             query?: never;
@@ -1845,8 +1911,10 @@ export interface paths {
          *     the title and a description with the steps, the expected and the actual result (it may
          *     take a few seconds; the call is counted in the AI budget; personal data is masked).
          *     Without AI, or when the model cannot, the title is the subject or the first line of
-         *     the customer's text; `ai_fallback` says why. The task stays in Tolkovo, so the
-         *     customer's first message is added to the description as it is. Requires `tasks.edit`.
+         *     the customer's text; `ai_fallback` says why. The customer's first message is added to
+         *     the description; the customer's words (the subject, the message) come with personal data
+         *     masked, since every member sees tasks and a task outlives the deletion of the contact's
+         *     data. Requires `tasks.edit`.
          */
         get: operations["getConversationTaskDraft"];
         put?: never;
@@ -2099,7 +2167,7 @@ export interface paths {
         };
         /**
          * Comments and changes of a task, oldest first
-         * @description Up to 500 lines. Requires `tasks.view`.
+         * @description The latest 500 lines at most. Requires `tasks.view`.
          */
         get: operations["listTaskActivity"];
         put?: never;
@@ -2205,6 +2273,37 @@ export interface paths {
          * @description Its tasks stay without a queue. Requires `tasks.manage`.
          */
         delete: operations["deleteTaskQueue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-settings/telegram-bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's Telegram bot for notifications
+         * @description A bot of its own, not the bot of a support channel: members link their Telegram to it
+         *     and get messages about tasks there (TK-02). The token is encrypted and never returned.
+         *     Requires `tasks.manage`.
+         */
+        get: operations["getTaskTelegramBot"];
+        /**
+         * Add or replace the notifications bot
+         * @description Telegram is asked for the bot (getMe). Another bot replaces the old one and every member
+         *     links again. Requires `tasks.manage`.
+         */
+        put: operations["setTaskTelegramBot"];
+        post?: never;
+        /**
+         * Forget the notifications bot and every member's link to it
+         * @description Requires `tasks.manage`.
+         */
+        delete: operations["deleteTaskTelegramBot"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2767,6 +2866,34 @@ export interface components {
              * @enum {string}
              */
             reason?: "completed" | "not_planned";
+        };
+        MyTelegram: {
+            /** @description The workspace's notifications bot; `null` without one. */
+            bot_username: string | null;
+            linked: boolean;
+            /** @description The user's name in Telegram, once linked. */
+            name: string | null;
+            /** Format: date-time */
+            linked_at: string | null;
+            /** @description A link code waits for Start. */
+            pending: boolean;
+        };
+        TelegramLinkStart: {
+            /** @description https://t.me/<bot>?start=<code> */
+            url: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        TelegramBotState: {
+            bot: {
+                username: string;
+            } | null;
+            /** @description `false` without `TOLKOVO_MASTER_KEY`: no bot can be added. */
+            encryption_available: boolean;
+        };
+        TelegramBotInput: {
+            /** @description The bot token from @BotFather. */
+            token: string;
         };
         /**
          * @description `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
@@ -3868,6 +3995,19 @@ export interface components {
             };
         };
         /**
+         * @description `no_notify_bot` (the workspace has no notifications bot) or `notify_bot_busy` (the bot's
+         *     updates go to a webhook — it serves a support channel — or to another reader: use a bot of
+         *     its own).
+         */
+        NotifyBotConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
          * @description `task_conflict` (the task changed since `version`), `task_linked` (the conversation
          *     is linked to this task already), `queue_exists` (a queue has this name) or
          *     `tasks_disabled` (the section is turned off).
@@ -4470,6 +4610,99 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getMyTelegram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTelegram"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    unlinkMyTelegram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    startMyTelegramLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link to open in Telegram. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkStart"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `no_notify_bot`: the workspace has no notifications bot. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkMyTelegramLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTelegram"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            409: components["responses"]["NotifyBotConflict"];
+            502: components["responses"]["TelegramUnavailable"];
         };
     };
     getMyPresence: {
@@ -7412,6 +7645,94 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getTaskTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bot; `bot` is `null` without one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotState"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setTaskTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramBotInput"];
+            };
+        };
+        responses: {
+            /** @description The bot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotState"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `telegram_token_invalid`: Telegram does not know the token. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["TelegramUnavailable"];
+            /** @description `encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the token cannot be stored. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteTaskTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Forgotten. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getTaskSettings: {

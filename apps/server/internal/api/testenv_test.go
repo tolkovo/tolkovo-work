@@ -64,8 +64,10 @@ type env struct {
 	convs  *conversations.Service
 	ingest *ingest.Service
 	// rdb and prefix reach the rate counters of the test.
-	rdb    *redis.Client
-	prefix string
+	rdb           *redis.Client
+	prefix        string
+	notifications *notifications.Service
+	tasks         *tasks.Service
 	// github is the fake GitHub behind the integrations module.
 	github       *githubtest.GitHub
 	integrations *integrations.Service
@@ -227,6 +229,9 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Conversations: convs, Jobs: inserter, Drafter: ais, Log: quiet,
 	})
 	taskSvc := tasks.New(app, tasks.Options{Conversations: convs, Drafter: ais, Log: quiet})
+	// Messages about tasks go through the fake Bot API as well (TK-02).
+	notifs.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: bots, Jobs: inserter, Log: quiet})
+	taskSvc.SetNotifier(notifs)
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
 	convs.AddFixWaiter(conversations.FixSourceTasks, taskSvc.HasOpenTask)
 	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
@@ -253,7 +258,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
 		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
-		widget: widgets, routing: router, llm: llm,
+		widget: widgets, routing: router, llm: llm, notifications: notifs, tasks: taskSvc,
 	}
 }
 

@@ -95,10 +95,14 @@ INSERT INTO task_activity (id, workspace_id, task_id, actor_id, kind, body, meta
 VALUES (@id, @workspace_id, @task_id, sqlc.narg(actor_id), @kind, sqlc.narg(body), @meta, @created_at);
 
 -- name: ListActivity :many
-SELECT * FROM task_activity
-WHERE workspace_id = @workspace_id AND task_id = @task_id
-ORDER BY id
-LIMIT 500;
+-- The latest 500 lines of the feed, oldest first.
+SELECT a.* FROM (
+    SELECT * FROM task_activity
+    WHERE workspace_id = @workspace_id AND task_id = @task_id
+    ORDER BY id DESC
+    LIMIT 500
+) a
+ORDER BY a.id;
 
 -- name: LinkConversation :execrows
 INSERT INTO task_conversations (workspace_id, task_id, conversation_id, created_by, created_at)

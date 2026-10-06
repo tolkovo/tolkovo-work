@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
@@ -279,6 +280,11 @@ func startWorker(
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
 	integ.AddWorkers(workers)
+	// Messages about tasks go to members' Telegram through the workspace's
+	// notifications bot (TK-02).
+	if err := addTelegramWorkers(workers, cfg, pool, sealer, log); err != nil {
+		return err
+	}
 	// The queue is distributed among operators (Q-01).
 	router.AddWorkers(workers, convs)
 	periodic := []*river.PeriodicJob{
@@ -316,6 +322,25 @@ func startWorker(
 		return nil
 	})
 	return nil
+}
+
+// addTelegramWorkers registers the job that sends messages about tasks
+// through the notifications bots. Without TOLKOVO_MASTER_KEY no bot can be
+// stored, so there is nothing to send.
+func addTelegramWorkers(workers *river.Workers, cfg config.Config, pool *db.DB, sealer *crypto.Sealer, log *slog.Logger) error {
+	if sealer == nil {
+		return nil
+	}
+	svc := notifications.New(pool, nil)
+	svc.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Log: log})
+	tenants := tenancy.New(pool)
+	return notifications.AddTelegramWorkers(workers, notifications.TelegramWorkerOptions{
+		Service: svc, Tasks: tasks.New(pool, tasks.Options{Log: log}), PanelURL: cfg.PanelBaseURL(),
+		Locale: func(ctx context.Context, workspaceID, userID uuid.UUID) (string, error) {
+			m, err := tenants.Membership(ctx, workspaceID, userID)
+			return m.User.Locale, err
+		},
+	})
 }
 
 // addMailWorkers registers the auth emails (invitations, password reset,
@@ -400,6 +425,11 @@ func apiDeps(
 	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log))
 	// Task drafts come from the workspace's model too (ADR-0015).
 	tasksSvc := tasks.New(pool, tasks.Options{Conversations: convs, Drafter: aiSvc, Log: log})
+	// Messages about tasks are queued here and sent to Telegram by the worker (TK-02).
+	notifs.SetTelegram(notifications.TelegramOptions{
+		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Jobs: inserter, Log: log,
+	})
+	tasksSvc.SetNotifier(notifs)
 	// A conversation waits for the fix on issues and tasks (ADR-0015).
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
 	convs.AddFixWaiter(conversations.FixSourceTasks, tasksSvc.HasOpenTask)

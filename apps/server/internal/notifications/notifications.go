@@ -7,6 +7,9 @@
 // the change (a conversation given to a member). It queues one delayed job
 // per member and conversation; the job emails only if the conversation is
 // still the member's and still has messages they have not read.
+//
+// Messages about tasks go to members' Telegram through the workspace's
+// notifications bot (TK-02, telegram.go).
 package notifications
 
 import (
@@ -60,7 +63,9 @@ type Service struct {
 	// jobs queues the emails; nil when the server sends no email, and then
 	// NeedsAttention does nothing.
 	jobs *jobs.Client
-	now  func() time.Time
+	// tg connects Telegram (TK-02); zero sends nothing there.
+	tg  TelegramOptions
+	now func() time.Time
 }
 
 // New returns the notifications service. jobs may be nil: the server has

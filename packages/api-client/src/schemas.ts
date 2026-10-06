@@ -575,3 +575,21 @@ export const taskDraftSchema = z.object({
   drafted_by: z.enum(["ai", "template"]),
   ai_fallback: z.enum(["budget_exceeded", "failed"]).optional(),
 }) satisfies z.ZodType<Schemas["TaskDraft"]>;
+
+/** Telegram notifications of members (TK-02). */
+export const myTelegramSchema = z.object({
+  bot_username: z.string().nullable(),
+  linked: z.boolean(),
+  name: z.string().nullable(),
+  linked_at: z.string().nullable(),
+  pending: z.boolean(),
+}) satisfies z.ZodType<Schemas["MyTelegram"]>;
+
+export const telegramLinkStartSchema = z.object({ url: z.string(), expires_at: z.string() }) satisfies z.ZodType<
+  Schemas["TelegramLinkStart"]
+>;
+
+export const telegramBotStateSchema = z.object({
+  bot: z.object({ username: z.string() }).nullable(),
+  encryption_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["TelegramBotState"]>;

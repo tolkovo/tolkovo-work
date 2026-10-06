@@ -118,6 +118,10 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.queueExists"), ...(field ? { field } : {}) };
     case "tasks_disabled":
       return { message: t("errors.tasksDisabled") };
+    case "no_notify_bot":
+      return { message: t("errors.noNotifyBot") };
+    case "notify_bot_busy":
+      return { message: t("errors.notifyBotBusy") };
     case "ai_not_configured":
       return { message: t("errors.aiNotConfigured") };
     case "ai_budget_exceeded":

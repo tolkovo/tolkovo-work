@@ -1,5 +1,5 @@
 import type { EmailDelayMinutes, NotificationSettingsInput } from "@tolkovo/api-client";
-import { useNotificationSettings, useSession, useUpdateNotificationSettings } from "@tolkovo/api-client/react";
+import { useCan, useNotificationSettings, useSession, useUpdateNotificationSettings } from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { Link } from "@tanstack/react-router";
 import { Volume2 } from "lucide-react";
@@ -17,6 +17,7 @@ import {
 } from "../../lib/notifications/settings";
 import { createSoundPlayer } from "../../lib/notifications/sound";
 import { FormMessage, SelectField } from "../form/fields";
+import { TelegramLink } from "./telegram-link";
 
 const EMAIL_DELAYS: readonly EmailDelayMinutes[] = [5, 15, 30, 60];
 
@@ -263,12 +264,15 @@ function EmailSettings() {
 /** «Уведомления» of the personal settings (docs/07 §7, §8). */
 export function NotificationSettingsPage() {
   const { t } = useTranslation();
+  // Telegram carries messages about tasks: members who see the section (TK-02).
+  const tasks = useCan("tasks.view");
   return (
     <section aria-labelledby="settings-notifications-title" className="flex flex-col gap-6">
       <h2 id="settings-notifications-title" className="m-0 text-base font-semibold">
         {t("settings.notifications.title")}
       </h2>
       <DeviceSettings />
+      {tasks && <TelegramLink />}
       <EmailSettings />
     </section>
   );

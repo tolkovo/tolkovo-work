@@ -2,6 +2,9 @@ import type { TaskButton, TaskQueue, TaskSettingsView } from "@tolkovo/api-clien
 import {
   useCreateTaskQueue,
   useDeleteTaskQueue,
+  useDeleteTaskTelegramBot,
+  useSetTaskTelegramBot,
+  useTaskTelegramBot,
   useMembers,
   useTaskQueues,
   useTaskSettings,
@@ -44,6 +47,7 @@ export function TaskSettingsPage() {
         <>
           <SettingsForm view={query.data} />
           <Queues />
+          <TelegramBot />
         </>
       )}
     </section>
@@ -287,5 +291,95 @@ function QueueForm({ queue, onDone }: { queue?: TaskQueue; onDone: () => void })
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * The Telegram bot for notifications (TK-02): a bot of its own, not the bot of a support channel.
+ * Members link their Telegram to it in their notification settings.
+ */
+function TelegramBot() {
+  const { t } = useTranslation();
+  const bot = useTaskTelegramBot();
+  const set = useSetTaskTelegramBot();
+  const remove = useDeleteTaskTelegramBot();
+  const [token, setToken] = useState("");
+  const [replacing, setReplacing] = useState(false);
+  const [tokenError, setTokenError] = useState<string | undefined>();
+  const failure = set.error ?? remove.error;
+  const described = failure ? describeApiError(t, failure, { telegram_token_invalid: "token" }) : null;
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!token.trim()) {
+      setTokenError(t("settings.tasks.bot.tokenRequired"));
+      document.getElementById("task-bot-token")?.focus();
+      return;
+    }
+    setTokenError(undefined);
+    set.mutate(token.trim(), {
+      onSuccess: () => {
+        setToken("");
+        setReplacing(false);
+      },
+    });
+  };
+
+  return (
+    <section aria-labelledby="settings-task-bot-title" className="flex flex-col gap-3">
+      <h3 id="settings-task-bot-title" className="m-0 text-[14px] font-semibold">
+        {t("settings.tasks.bot.title")}
+      </h3>
+      <p className="m-0 text-[12.5px] text-ink-2">{t("settings.tasks.bot.lead")}</p>
+      {bot.isPending ? (
+        <Skeleton className="h-16" />
+      ) : bot.isError ? (
+        <p role="alert" className="m-0 text-[13px] text-ink-2">
+          {describeApiError(t, bot.error).message}
+        </p>
+      ) : !bot.data.encryption_available ? (
+        <p className="m-0 rounded-lg border border-line bg-paper px-3 py-2 text-[13px] text-ink-2">{t("settings.tasks.bot.noEncryption")}</p>
+      ) : (
+        <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 text-[13px]">
+          {bot.data.bot && !replacing ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="m-0 mr-auto">{t("settings.tasks.bot.connected", { bot: bot.data.bot.username })}</p>
+              <Button size="sm" onClick={() => setReplacing(true)}>
+                {t("settings.tasks.bot.replace")}
+              </Button>
+              <Button size="sm" variant="ghost" className="text-danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
+                {t("settings.tasks.bot.remove")}
+              </Button>
+            </div>
+          ) : (
+            <form noValidate onSubmit={submit} className="flex flex-col gap-3">
+              <p className="m-0 rounded-lg border border-note-line bg-note px-3 py-2 text-ink">{t("settings.tasks.bot.dataNote")}</p>
+              <TextField
+                id="task-bot-token"
+                name="token"
+                type="password"
+                autoComplete="off"
+                label={t("settings.tasks.bot.token")}
+                hint={t("settings.tasks.bot.tokenHint")}
+                value={token}
+                error={tokenError ?? (described?.field === "token" ? described.message : undefined)}
+                onChange={(e) => setToken(e.currentTarget.value)}
+              />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" variant="primary" disabled={set.isPending}>
+                  {t("settings.tasks.bot.save")}
+                </Button>
+                {replacing && (
+                  <Button type="button" size="sm" onClick={() => setReplacing(false)}>
+                    {t("tasks.cancel")}
+                  </Button>
+                )}
+              </div>
+            </form>
+          )}
+          <FormMessage tone="error" message={described && described.field !== "token" ? described.message : null} />
+        </div>
+      )}
+    </section>
   );
 }

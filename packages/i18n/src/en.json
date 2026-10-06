@@ -415,7 +415,20 @@
       "queueName": "Queue name",
       "queueNameRequired": "Write the queue name.",
       "queueMembers": "Who to tell about new tasks",
-      "saveQueue": "Save queue"
+      "saveQueue": "Save queue",
+      "bot": {
+        "title": "Telegram bot for notifications",
+        "lead": "A separate bot members get messages about tasks from. The bot of a support channel does not fit.",
+        "noEncryption": "TOLKOVO_MASTER_KEY is not set on the server: there is nowhere to keep the bot token safely. Ask the server administrator.",
+        "connected": "The bot @{bot} is connected. Members link their Telegram in \"Personal → Notifications\".",
+        "replace": "Replace the bot",
+        "remove": "Disconnect",
+        "dataNote": "Telegram gets the task number, its title and a link. The description and customer data stay here. A new bot unlinks every member: they link again.",
+        "token": "Bot token",
+        "tokenHint": "Create a bot with @BotFather and paste its token. The token is stored encrypted and never shown again.",
+        "tokenRequired": "Paste the bot token.",
+        "save": "Connect the bot"
+      }
     },
     "team": {
       "title": "Team",
@@ -591,6 +604,18 @@
         "unavailable": "Outgoing email is not set up on this server, so no emails are sent. Ask your administrator.",
         "unverified": "{email} is not confirmed: emails start once you confirm it.",
         "toProfile": "Confirm in your profile"
+      },
+      "telegram": {
+        "title": "Telegram",
+        "lead": "Messages about tasks: when a task is assigned to you and when a task without an assignee appears in your queue. A message has the number, the title and a link, never the description or customer data.",
+        "noBot": "An admin has not added a bot for notifications yet.",
+        "toSettings": "Add it in the task settings",
+        "link": "Link Telegram",
+        "steps": "Open the bot @{bot} and press Start. The link works for 15 minutes.",
+        "open": "Open @{bot}",
+        "waiting": "Waiting for you to press Start…",
+        "linked": "Telegram {name} is linked through @{bot}.",
+        "unlink": "Unlink"
       }
     },
     "security": {
@@ -717,7 +742,9 @@
     "taskConflict": "The task has just changed. Showing the fresh version — try again.",
     "taskLinked": "The conversation is linked to this task already.",
     "queueExists": "A queue with this name exists.",
-    "tasksDisabled": "The tasks section is turned off in the settings."
+    "tasksDisabled": "The tasks section is turned off in the settings.",
+    "noNotifyBot": "An admin has not added a bot for notifications yet.",
+    "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications."
   },
   "error": {
     "title": "Something went wrong",
@@ -1110,7 +1137,7 @@
       "link": "Link to a task",
       "createTitle": "New task",
       "linkTitle": "Link to a task",
-      "dataNote": "The task stays in Tolkovo and members of the workspace see it. The customer's words are in the description: remove what is not needed.",
+      "dataNote": "The task stays in Tolkovo and every member of the workspace sees it. The customer's words are in the description with emails, phone and card numbers masked. Remove what is not needed.",
       "draftedByAi": "The AI wrote this draft from the customer's words. Check the steps and the wording.",
       "aiFallback": {
         "budget_exceeded": "The month's AI budget is spent, so the draft is the customer's words.",

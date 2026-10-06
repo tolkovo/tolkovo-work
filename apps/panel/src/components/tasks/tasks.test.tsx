@@ -50,6 +50,9 @@ function server(session: Session, routes: FakeRoutes = {}) {
   return { api, state };
 }
 
+/** The first look at a page waits for its lazy route to load, slow under a full parallel run. */
+const firstLook = { timeout: 3000 };
+
 const calls = (api: ReturnType<typeof fakeApi>, method: string, path: string) => api.calls.filter((c) => c.method === method && c.path === path);
 
 describe("the tasks section", () => {
@@ -65,7 +68,7 @@ describe("the tasks section", () => {
       },
     });
     renderApp("/tasks?view=open", { api });
-    await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }));
+    await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }, firstLook));
     const heading = await screen.findByRole("heading", { name: /З-12.*Обновить сертификат на сервере/ });
     expect(heading).toHaveFocus();
     expect(screen.getByText("Истекает в пятницу")).toBeInTheDocument();
@@ -93,7 +96,7 @@ describe("the tasks section", () => {
       "POST /tasks": () => json(201, task("t1")),
     });
     renderApp("/tasks", { api });
-    await user.click(await screen.findByRole("link", { name: "Новая" }));
+    await user.click(await screen.findByRole("link", { name: "Новая" }, firstLook));
     await user.type(await screen.findByLabelText("Название"), "Принтер на втором этаже");
     await user.selectOptions(screen.getByLabelText("Очередь"), "q-dev");
     await user.selectOptions(screen.getByLabelText("Приоритет"), "high");
@@ -110,13 +113,51 @@ describe("the tasks section", () => {
     expect(await screen.findByRole("heading", { name: /З-12/ })).toBeInTheDocument();
   });
 
+  it("lets admins connect the Telegram bot for notifications", async () => {
+    const user = userEvent.setup();
+    const { api } = server(admin, {
+      "GET /task-settings/telegram-bot": () => json(200, { bot: null, encryption_available: true }),
+      "PUT /task-settings/telegram-bot": () => json(422, { type: "about:blank", title: "x", status: 422, code: "telegram_token_invalid" }),
+    });
+    renderApp("/settings/tasks", { api });
+    const token = await screen.findByLabelText("Токен бота", undefined, firstLook);
+    expect(screen.getByText(/В Telegram уйдут номер и название задачи/)).toBeInTheDocument();
+    await user.type(token, "111:bad");
+    await user.click(screen.getByRole("button", { name: "Подключить бота" }));
+    await waitFor(() => expect(calls(api, "PUT", "/task-settings/telegram-bot")).toHaveLength(1));
+    expect(calls(api, "PUT", "/task-settings/telegram-bot")[0]?.body).toEqual({ token: "111:bad" });
+    expect(await screen.findByText(/Telegram не знает такой токен/)).toBeInTheDocument();
+  });
+
+  it("links the member's Telegram with Start in the bot", async () => {
+    const user = userEvent.setup();
+    let linked = false;
+    let checks = 0;
+    const state = (l: boolean) => ({ bot_username: "zerno_notify_bot", linked: l, name: l ? "Пётр @petr" : null, linked_at: null, pending: !l });
+    const { api } = server(member, {
+      "GET /me/telegram": () => json(200, state(linked)),
+      "POST /me/telegram/link": () =>
+        json(201, { url: "https://t.me/zerno_notify_bot?start=abc", expires_at: new Date(Date.now() + 15 * 60_000).toISOString() }),
+      // Start is pressed between the first and the second check.
+      "POST /me/telegram/check": () => {
+        checks += 1;
+        linked = checks > 1;
+        return json(200, state(linked));
+      },
+    });
+    renderApp("/settings/notifications", { api });
+    await user.click(await screen.findByRole("button", { name: "Привязать Telegram" }, firstLook));
+    expect(await screen.findByRole("link", { name: "Открыть @zerno_notify_bot" })).toHaveAttribute("href", "https://t.me/zerno_notify_bot?start=abc");
+    expect(await screen.findByText("Привязан Telegram Пётр @petr через @zerno_notify_bot.", undefined, { timeout: 5000 })).toBeInTheDocument();
+  }, 10_000);
+
   it("lets admins add a queue in the settings", async () => {
     const user = userEvent.setup();
     const { api } = server(admin, {
       "POST /task-queues": () => json(201, { id: "q-it", name: "Инфраструктура", member_ids: [], open_tasks: 0 }),
     });
     renderApp("/settings/tasks", { api });
-    await user.click(await screen.findByRole("button", { name: "Добавить очередь" }));
+    await user.click(await screen.findByRole("button", { name: "Добавить очередь" }, firstLook));
     await user.type(screen.getByLabelText("Название очереди"), "Инфраструктура");
     await user.click(screen.getByRole("button", { name: "Сохранить очередь" }));
     await waitFor(() => expect(calls(api, "POST", "/task-queues")).toHaveLength(1));
@@ -156,7 +197,7 @@ describe("tasks in a conversation", () => {
     const user = userEvent.setup();
     const api = inbox({ items: [], settings, reply_draft: null }, { "POST /tasks": () => json(201, task("t1", { conversation_ids: ["c1"] })) });
     renderApp("/inbox/c1", { api });
-    await user.click(await screen.findByRole("button", { name: "Ещё действия" }));
+    await user.click(await screen.findByRole("button", { name: "Ещё действия" }, firstLook));
     await user.click(await screen.findByRole("menuitem", { name: "Создать задачу" }));
     const form = await screen.findByRole("region", { name: "Новая задача" });
     expect(await within(form).findByText(/Черновик написал ИИ/)).toBeInTheDocument();
@@ -183,7 +224,7 @@ describe("tasks in a conversation", () => {
       reply_draft: { task_id: "t1", number: 12, text: "Марина, задачу выполнили." },
     });
     renderApp("/inbox/c1", { api });
-    expect(await screen.findByText("Задача З-12 выполнена. Черновик ответа:")).toBeInTheDocument();
+    expect(await screen.findByText("Задача З-12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Вставить в ответ" }));
     expect(screen.getByLabelText("Ответ клиенту")).toHaveValue("Марина, задачу выполнили.");
     await user.click(screen.getByRole("button", { name: "Ещё действия" }));
