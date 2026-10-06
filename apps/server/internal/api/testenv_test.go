@@ -19,6 +19,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -39,6 +40,8 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -61,12 +64,61 @@ type env struct {
 	convs  *conversations.Service
 	ingest *ingest.Service
 	// rdb and prefix reach the rate counters of the test.
-	rdb    *redis.Client
-	prefix string
+	rdb           *redis.Client
+	prefix        string
+	notifications *notifications.Service
+	tasks         *tasks.Service
 	// github is the fake GitHub behind the integrations module.
 	github       *githubtest.GitHub
 	integrations *integrations.Service
 	widget       *widget.Service
+	routing      *routing.Service
+	// llm is the fake model provider behind the ai module: it plays both
+	// Anthropic and OpenAI.
+	llm *fakeLLM
+}
+
+// fakeLLM answers each request with the next queued answer; none queued
+// is a 500.
+type fakeLLM struct {
+	mu       sync.Mutex
+	answers  []fakeLLMAnswer
+	requests int
+}
+
+type fakeLLMAnswer struct {
+	status  int
+	headers map[string]string
+	body    string
+}
+
+func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	f.mu.Lock()
+	f.requests++
+	a := fakeLLMAnswer{status: http.StatusInternalServerError, body: `{}`}
+	if len(f.answers) > 0 {
+		a, f.answers = f.answers[0], f.answers[1:]
+	}
+	f.mu.Unlock()
+	for k, v := range a.headers {
+		w.Header().Set(k, v)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(a.status)
+	_, _ = io.WriteString(w, a.body)
+}
+
+func (f *fakeLLM) calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.requests
+}
+
+func (f *fakeLLM) answer(a ...fakeLLMAnswer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answers = append(f.answers, a...)
 }
 
 type envOptions struct {
@@ -163,13 +215,26 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Inbox: convs, Files: files, Jobs: inserter, Redis: rc,
 	})
 	convs.SetDeliverer(chans)
+	// The router's jobs are queued as in the api role; tests run Dispatch.
+	router := routing.New(app, inserter)
+	convs.SetRouter(router)
 	reports := ingest.New(app, ingest.Options{Files: files, Keys: chans, Redis: rc, KeyPrefix: prefix, Jobs: inserter, Inbox: convs})
+	llm := &fakeLLM{}
+	llmSrv := httptest.NewServer(llm)
+	t.Cleanup(llmSrv.Close)
+	ais := ai.New(app, ai.Options{Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: llmSrv.URL, OpenAIURL: llmSrv.URL})
 	gh := &githubtest.GitHub{}
 	integ := integrations.New(app, integrations.Options{
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
-		Conversations: convs, Jobs: inserter,
+		Conversations: convs, Jobs: inserter, Drafter: ais, Log: quiet,
 	})
-	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
+	taskSvc := tasks.New(app, tasks.Options{Conversations: convs, Drafter: ais, Log: quiet})
+	// Messages about tasks go through the fake Bot API as well (TK-02).
+	notifs.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: bots, Channels: chans, Jobs: inserter, Log: quiet})
+	taskSvc.SetNotifier(notifs)
+	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
+	convs.AddFixWaiter(conversations.FixSourceTasks, taskSvc.HasOpenTask)
+	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}
 	if o.widgetScanner != nil {
 		widgetOpts.Scanner = o.widgetScanner
 	}
@@ -179,15 +244,21 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Tenancy: ten, Auth: a, Conversations: convs, Notifications: notifs, Channels: chans,
 		Ingest: reports, Integrations: integ,
 		Widget:        widgets,
+		Routing:       router,
+		AI:            ais,
+		Tasks:         taskSvc,
 		SecureCookies: o.secure, SessionMaxAge: 24 * time.Hour, TrustedOrigins: o.trusted, TrustedProxies: o.proxies,
 	}
 	if o.withWS {
+		if o.realtime.OnPresence == nil {
+			o.realtime.OnPresence = router.Seen
+		}
 		deps.Realtime = startRealtime(t, d, app, rc, prefix, o)
 	}
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
 		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
-		widget: widgets,
+		widget: widgets, routing: router, llm: llm, notifications: notifs, tasks: taskSvc,
 	}
 }
 

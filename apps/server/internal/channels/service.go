@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -119,6 +120,9 @@ type Details struct {
 	AppLimits *AppLimits `json:"app_limits,omitempty"`
 	// AllowedOrigins of a widget channel (W-01): pages that may embed it.
 	AllowedOrigins []string `json:"allowed_origins,omitempty"`
+	// Analytics of a widget channel (W-05): where it reports goals. Always
+	// set on a widget's Details read from the database.
+	Analytics *WidgetAnalytics `json:"analytics,omitempty"`
 	// WidgetKey of a widget channel, derived from its ids, never stored.
 	WidgetKey string `json:"-"`
 }
@@ -222,6 +226,22 @@ func (s *Service) UserAccountsAvailable() bool { return s.opts.Users != nil && s
 
 // EncryptionAvailable reports whether secrets can be stored at all.
 func (s *Service) EncryptionAvailable() bool { return s.opts.Sealer != nil }
+
+// HasBot reports whether the Telegram bot botID is a channel of the
+// workspace; the notifications module refuses such a bot (TK-02).
+func (s *Service) HasBot(ctx context.Context, workspaceID uuid.UUID, botID int64) (bool, error) {
+	var ok bool
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		ext := strconv.FormatInt(botID, 10)
+		var err error
+		ok, err = store.New(tx).HasBot(ctx, store.HasBotParams{WorkspaceID: workspaceID, ExternalID: &ext})
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("channel bot: %w", err)
+	}
+	return ok, nil
+}
 
 // List returns the workspace's channels, oldest first.
 func (s *Service) List(ctx context.Context, workspaceID uuid.UUID) ([]Channel, error) {
@@ -382,6 +402,8 @@ func channelFrom(r store.Channel) Channel {
 	_ = json.Unmarshal(r.Config, &ch.Details) // written only by this module
 	if r.Type == TypeWidget {
 		ch.Details.WidgetKey = WidgetKey(r.WorkspaceID, r.ID)
+		a := widgetAnalytics(ch.Details)
+		ch.Details.Analytics = &a
 	}
 	return ch
 }

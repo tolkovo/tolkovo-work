@@ -64,9 +64,15 @@ func (s *server) GetConversationIssueDraft(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, oapi.IssueDraft{
+	out := oapi.IssueDraft{
 		Repository: repositoryBody(d.Repository), Title: d.Title, Body: d.Body, Quote: d.Quote, Labels: nonNil(d.Labels),
-	})
+		DraftedBy: oapi.IssueDraftDraftedBy(d.DraftedBy),
+	}
+	if d.AIFallback != "" {
+		f := oapi.IssueDraftAiFallback(d.AIFallback)
+		out.AiFallback = &f
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // CreateConversationIssue implements POST /conversations/{id}/issues.

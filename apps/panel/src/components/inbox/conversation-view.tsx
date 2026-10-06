@@ -1,4 +1,4 @@
-import { isApiError, type Conversation, type Message, type MessageEvent } from "@tolkovo/api-client";
+import { isApiError, type Conversation, type ConversationRating, type Message, type MessageEvent } from "@tolkovo/api-client";
 import { useConversation, useMessages, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
@@ -14,6 +14,7 @@ import { Composer } from "./composer";
 import { ActionErrorLine, ConversationActions } from "./conversation-actions";
 import { CUSTOMER_CARD_ID, CustomerCard } from "./customer-card";
 import { IssueEventText, IssueForm, useIssueMenuItems, type IssueMode } from "./issues";
+import { ConversationTaskForm, TaskEventText, useTaskMenuItems, type TaskMode } from "./tasks";
 import { PresenceLine, useMemberNames } from "./presence";
 import { ConversationTags } from "./tags";
 
@@ -66,16 +67,24 @@ function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: Inb
   const card = useCardDrawer(cardToggle, cardHeading);
   // The issue form takes the place of the feed while it is open (GH-02).
   const [issueMode, setIssueMode] = useState<IssueMode | null>(null);
+  // The task form (ADR-0015) takes the same place.
+  const [taskMode, setTaskMode] = useState<TaskMode | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const issueItems = useIssueMenuItems(c, (mode) => {
     setNotice(null);
+    setTaskMode(null);
     setIssueMode(mode);
+  });
+  const taskItems = useTaskMenuItems(c, (mode) => {
+    setNotice(null);
+    setIssueMode(null);
+    setTaskMode(mode);
   });
   return (
     <>
       <section aria-labelledby="conversation-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header conversation={c} tab={tab}>
-          <ConversationActions conversation={c} change={change} extra={issueItems} />
+          <ConversationActions conversation={c} change={change} extra={[...taskItems, ...issueItems]} />
           <button
             ref={cardToggle}
             type="button"
@@ -91,7 +100,18 @@ function Loaded({ conversation: c, tab }: { conversation: Conversation; tab: Inb
         {change.isError && <ActionErrorLine error={change.error} onDismiss={() => change.reset()} />}
         <NoticeLine message={notice} onDismiss={() => setNotice(null)} />
         <ConversationTags conversation={c} change={change} />
-        {issueMode ? (
+        {taskMode ? (
+          <ConversationTaskForm
+            conversation={c}
+            mode={taskMode}
+            onMode={setTaskMode}
+            onClose={() => setTaskMode(null)}
+            onDone={(message) => {
+              setTaskMode(null);
+              setNotice(message);
+            }}
+          />
+        ) : issueMode ? (
           <IssueForm
             conversation={c}
             mode={issueMode}
@@ -201,6 +221,7 @@ function Header({ conversation: c, tab, children }: { conversation: Conversation
         <p className="m-0 mt-0.5 flex flex-wrap gap-x-2.5 text-xs text-ink-3">
           <span>{t(`inbox.status.${c.status}`)}</span>
           {c.awaiting_fix && <span className="font-medium text-ink-2">{t("inbox.awaitingFix")}</span>}
+          {c.rating && <span className="font-medium text-ink-2">{t("inbox.rating.short", { score: c.rating.score })}</span>}
           <span>{assignee ? t("inbox.assignee", { name: assignee }) : t("inbox.unassigned")}</span>
           {c.subject && <span className="truncate">{c.subject}</span>}
         </p>
@@ -296,8 +317,31 @@ function Feed({ conversation, latestRequest }: { conversation: Conversation; lat
         m.id === firstNew && m.id !== items[0]?.id ? <NewMessagesLine key="new" /> : null,
         <MessageItem key={m.id} message={m} conversation={conversation} />,
       ])}
+      {conversation.rating && <RatingLine rating={conversation.rating} />}
       <PresenceLine conversationId={conversation.id} />
     </div>
+  );
+}
+
+/** The customer's rating of the resolved conversation, under the feed (docs/04 §5.4). */
+function RatingLine({ rating: r }: { rating: ConversationRating }) {
+  const { t } = useTranslation();
+  return (
+    <figure className="m-0 flex max-w-[80%] flex-col items-center gap-1 self-center rounded-lg border border-line bg-surface px-3 py-2 text-center text-xs text-ink-2">
+      <figcaption className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+        <span aria-hidden="true" className="tracking-[0.12em] text-teal">
+          {"★".repeat(r.score)}
+          <span className="text-line">{"★".repeat(5 - r.score)}</span>
+        </span>
+        <span className="font-medium text-ink">{t("inbox.rating.line", { score: r.score })}</span>
+        {r.resolved_by === "ai" && <span className="text-ink-3">{t("inbox.rating.byAi")}</span>}
+      </figcaption>
+      {r.comment && (
+        <blockquote aria-label={t("inbox.rating.comment")} className="m-0 text-[13px] break-words whitespace-pre-wrap text-ink">
+          {r.comment}
+        </blockquote>
+      )}
+    </figure>
   );
 }
 
@@ -440,14 +484,13 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   const name = (id: string | null) => (id ? (names.get(id) ?? t("inbox.colleague")) : t("inbox.sender.system"));
   const by = actorId ? ` · ${name(actorId)}` : "";
   if (e.type.startsWith("issue_")) return <IssueEventText event={e} by={by} />;
+  if (e.type.startsWith("task_")) return <TaskEventText event={e} by={by} />;
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {
-      return e.assignee_id === actorId ? (
-        <>{t("inbox.event.taken", { name: name(e.assignee_id) })}</>
-      ) : (
-        <>{t("inbox.event.assigned", { name: name(e.assignee_id) }) + by}</>
-      );
+      if (e.assignee_id === actorId) return <>{t("inbox.event.taken", { name: name(e.assignee_id) })}</>;
+      if (actorId === null) return <>{t("inbox.event.autoAssigned", { name: name(e.assignee_id) })}</>;
+      return <>{t("inbox.event.assigned", { name: name(e.assignee_id) }) + by}</>;
     }
     const transfer = t("inbox.event.transferred", { from: name(e.previous_assignee_id), to: name(e.assignee_id) });
     return <>{transfer + (actorId === e.previous_assignee_id ? "" : by)}</>;

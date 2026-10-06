@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,6 +15,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations/github"
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations/store"
@@ -20,8 +23,8 @@ import (
 )
 
 // Issues from conversations (GH-02, ADR-0012). The operator confirms the
-// text: the draft comes from the templates (from the AI with AI-02), the
-// operator edits it and decides whether the customer's words go along.
+// text: the draft comes from the templates, written by the workspace's
+// model when AI is on (AI-02); the operator edits it and decides whether the customer's words go along.
 // The request stores the link as 'creating' and queues github.create_issue
 // in the same transaction; the job calls GitHub, then records the issue in
 // the conversation and puts it to wait for the fix. No files and no contact
@@ -164,6 +167,29 @@ func (s *Service) ConversationIssues(ctx context.Context, workspaceID, conversat
 	return out, nil
 }
 
+// Who wrote an issue draft (IssueDraft.DraftedBy).
+const (
+	DraftedByTemplate = "template"
+	DraftedByAI       = "ai"
+)
+
+// Why the AI did not write a draft that was asked of it (IssueDraft.AIFallback).
+const (
+	// AIFallbackBudget: the month's AI budget is spent.
+	AIFallbackBudget = "budget_exceeded"
+	// AIFallbackFailed: the provider failed, timed out or answered badly.
+	AIFallbackFailed = "failed"
+)
+
+// draftTimeout bounds the AI draft: the operator waits for the form.
+const draftTimeout = 30 * time.Second
+
+// Drafter writes issue drafts with the workspace's model; *ai.Service
+// implements it. ai.ErrNotConfigured means AI is off.
+type Drafter interface {
+	DraftIssue(ctx context.Context, workspaceID uuid.UUID, in ai.IssueReport) (ai.IssueText, error)
+}
+
 // IssueDraft is what the issue form starts from.
 type IssueDraft struct {
 	Repository Repository
@@ -173,11 +199,19 @@ type IssueDraft struct {
 	// them; empty when there is no text.
 	Quote  string
 	Labels []string
+	// DraftedBy is DraftedByAI or DraftedByTemplate.
+	DraftedBy string
+	// AIFallback says why the template was used although AI is on
+	// (AIFallback…); empty otherwise.
+	AIFallback string
 }
 
 // IssueDraft fills the workspace's issue template from the conversation.
-// locale is the workspace language: the built-in template and the title
-// without a summary use it.
+// When the workspace has AI on, the model writes the title, the summary,
+// the steps, the expected and the actual result (AI-02); when it cannot,
+// the template is filled as without AI. locale is the workspace language:
+// the built-in template, the AI draft and the title without a summary use
+// it.
 func (s *Service) IssueDraft(ctx context.Context, workspaceID, conversationID uuid.UUID, locale string) (IssueDraft, error) {
 	cur, repo, err := s.readyIntegration(ctx, workspaceID)
 	if err != nil {
@@ -196,7 +230,8 @@ func (s *Service) IssueDraft(ctx context.Context, workspaceID, conversationID uu
 		summary = firstLine(src.CustomerText, summaryChars)
 	}
 	vars := map[string]string{
-		"summary":          summary,
+		"summary":          inert(summary),
+		"steps":            "1. ",
 		"conversation_url": strings.TrimRight(s.opts.PanelURL, "/") + "/inbox/" + conversationID.String(),
 	}
 	if src.App != nil {
@@ -208,14 +243,64 @@ func (s *Service) IssueDraft(ctx context.Context, workspaceID, conversationID uu
 			vars[k] = ""
 		}
 	}
-	title := firstLine(Render(tpl.IssueTitle, vars), maxIssueTitle)
-	if title == "" {
-		title = untitled(locale, src.Number)
+	out := IssueDraft{
+		Repository: *repo, Quote: truncate(strings.TrimSpace(src.CustomerText), maxQuote), Labels: cur.Labels,
+		DraftedBy: DraftedByTemplate,
 	}
-	return IssueDraft{
-		Repository: *repo, Title: title, Body: Render(tpl.IssueBody, vars),
-		Quote: truncate(strings.TrimSpace(src.CustomerText), maxQuote), Labels: cur.Labels,
-	}, nil
+	titleVars := vars
+	if text, fallback := s.aiDraft(ctx, workspaceID, conversationID, src, locale); text != nil {
+		out.DraftedBy = DraftedByAI
+		titleVars = maps.Clone(vars)
+		titleVars["summary"] = text.Title
+		if text.Summary != "" {
+			vars["summary"] = inert(text.Summary)
+		}
+		if len(text.Steps) > 0 {
+			steps := make([]string, len(text.Steps))
+			for i, st := range text.Steps {
+				steps[i] = fmt.Sprintf("%d. %s", i+1, inert(st))
+			}
+			vars["steps"] = strings.Join(steps, "\n")
+		}
+		vars["expected"], vars["actual"] = inert(text.Expected), inert(text.Actual)
+	} else {
+		out.AIFallback = fallback
+	}
+	out.Title = firstLine(Render(tpl.IssueTitle, titleVars), maxIssueTitle)
+	if out.Title == "" {
+		out.Title = untitled(locale, src.Number)
+	}
+	out.Body = Render(tpl.IssueBody, vars)
+	return out, nil
+}
+
+// aiDraft asks the model for the draft. A nil text with an empty fallback
+// means AI is off or there is nothing to draft from.
+func (s *Service) aiDraft(
+	ctx context.Context, workspaceID, conversationID uuid.UUID, src conversations.IssueSource, locale string,
+) (*ai.IssueText, string) {
+	if s.opts.Drafter == nil || strings.TrimSpace(src.CustomerText) == "" {
+		return nil, ""
+	}
+	in := ai.IssueReport{ConversationID: conversationID, Locale: locale, Subject: src.Subject, Text: src.CustomerText}
+	if src.App != nil {
+		in.App = ai.AppInfo{Name: src.App.Name, Version: src.App.Version, OS: src.App.OS, OSVersion: src.App.OSVersion, Locale: src.App.Locale}
+	}
+	ctx, cancel := context.WithTimeout(ctx, draftTimeout)
+	defer cancel()
+	text, err := s.opts.Drafter.DraftIssue(ctx, workspaceID, in)
+	switch {
+	case err == nil:
+		return &text, ""
+	case errors.Is(err, ai.ErrNotConfigured):
+		return nil, ""
+	case errors.Is(err, ai.ErrBudgetExceeded):
+		return nil, AIFallbackBudget
+	}
+	// The error names the kind of failure, never the provider's text.
+	s.log().WarnContext(ctx, "issue draft: the AI failed, the template is used",
+		"workspace_id", workspaceID, "conversation_id", conversationID, "error", err)
+	return nil, AIFallbackFailed
 }
 
 // NewIssue is the issue the operator confirmed.
@@ -665,6 +750,12 @@ func (s *Service) lockLink(ctx context.Context, q *store.Queries, workspaceID, c
 	return link, err
 }
 
+// HasOpenIssue reports whether an open issue keeps the conversation waiting
+// for the fix; it is the module's conversations.FixWaiter.
+func (s *Service) HasOpenIssue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) (bool, error) {
+	return store.New(tx).HasOpenIssue(ctx, store.HasOpenIssueParams{WorkspaceID: workspaceID, ConversationID: conversationID})
+}
+
 // issuesChanged tells clients to fetch the conversation's issues again.
 func issuesChanged(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) error {
 	return outbox.Add(ctx, tx, workspaceID, "conversation.issues_changed", map[string]any{"conversation_id": conversationID})
@@ -712,6 +803,24 @@ func closedAt(status string, now time.Time) *time.Time {
 		return &now
 	}
 	return nil
+}
+
+var (
+	// mentionRE: an @mention of a user or a team.
+	mentionRE = regexp.MustCompile("(^|[^\\w`])(@[A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9._-]+)?)")
+	// refRE: a reference to an issue or a pull request: #12, owner/repo#12, GH-12.
+	refRE = regexp.MustCompile("(^|[^\\w&`])((?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+|GH-[0-9]+)\\b")
+)
+
+// inert makes text from the customer or the model plain on GitHub: no
+// @mention notifies anyone, no #reference links an issue, no image or HTML
+// loads from elsewhere. Mentions and references stay readable in code
+// spans; an image becomes a link.
+func inert(s string) string {
+	s = strings.ReplaceAll(s, "![", "[")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = mentionRE.ReplaceAllString(s, "$1`$2`")
+	return refRE.ReplaceAllString(s, "$1`$2`")
 }
 
 // quoteBlock is the customer's text as a marked block: data, not

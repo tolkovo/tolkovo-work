@@ -38,6 +38,14 @@ type Bots struct {
 	updates []telegram.BotUpdate
 	nextID  int64
 	sentID  int64
+	reads   int
+}
+
+// Reads counts the GetUpdates calls.
+func (b *Bots) Reads() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.reads
 }
 
 // Sent is one message a fake sent: a text or a file.
@@ -48,6 +56,8 @@ type Sent struct {
 	Data     []byte
 	Photo    bool
 	RandomID int64 // personal accounts
+	// NoPreview: sent by SendNotice, link previews off.
+	NoPreview bool
 }
 
 // SnapshotSent returns a copy of what was sent so far.
@@ -85,6 +95,11 @@ func (b *Bots) send(token string, s Sent) (int64, error) {
 // SendMessage records the text.
 func (b *Bots) SendMessage(_ context.Context, token string, chatID int64, text string) (int64, error) {
 	return b.send(token, Sent{ChatID: chatID, Text: text})
+}
+
+// SendNotice records the text with link previews off.
+func (b *Bots) SendNotice(_ context.Context, token string, chatID int64, text string) (int64, error) {
+	return b.send(token, Sent{ChatID: chatID, Text: text, NoPreview: true})
 }
 
 // SendFile records the file with its bytes.
@@ -136,6 +151,9 @@ func (b *Bots) Push(updates ...string) {
 // GetUpdates returns the queued updates from offset, waiting briefly when
 // there are none.
 func (b *Bots) GetUpdates(ctx context.Context, token string, offset int64, _ int) ([]telegram.BotUpdate, error) {
+	b.mu.Lock()
+	b.reads++
+	b.mu.Unlock()
 	for i := 0; i < 20; i++ {
 		b.mu.Lock()
 		if b.revoked || (token != BotToken && token != OtherBotToken) {

@@ -24,10 +24,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -50,6 +52,8 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/rdb"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 	"github.com/tolkovo/tolkovo/apps/server/internal/realtime"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -201,6 +205,8 @@ func serve(ctx context.Context, args []string, stderr io.Writer) error {
 			gw = realtime.New(pool, redisClient, log, realtime.Options{
 				TrustedOrigins: deps.TrustedOrigins,
 				OnReplyTyping:  deps.Channels.ReplyTyping,
+				// Open panels are operator presence for the router (Q-02).
+				OnPresence: deps.Routing.Seen,
 			})
 			g.Go(func() error { return gw.Run(gctx) })
 			deps.Realtime = gw
@@ -235,7 +241,7 @@ func startWorker(
 
 	// Personal Telegram accounts and bots without a webhook (T-02), replies
 	// to every channel (T-03).
-	convs, err := conversationsService(cfg, log, pool, store)
+	convs, router, err := conversationsService(cfg, log, pool, store)
 	if err != nil {
 		return err
 	}
@@ -258,20 +264,32 @@ func startWorker(
 	if err != nil {
 		return err
 	}
-	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil))
+	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil, nil, log))
+	// A conversation waits for the fix on issues and tasks (ADR-0015).
+	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
+	convs.AddFixWaiter(conversations.FixSourceTasks, tasks.New(pool, tasks.Options{Log: log}).HasOpenTask)
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
 	river.AddWorker(workers, channels.NewPruneLoginsWorker(sys.Pool()))
 	river.AddWorker(workers, widget.NewPruneSessionsWorker(sys.Pool()))
+	// Masked texts of AI calls are kept 30 days (AI-01).
+	river.AddWorker(workers, ai.NewClearTextsWorker(sys.Pool()))
 	// Visitors' files no message took are deleted (W-02).
 	widget.New(pool, widget.Options{Inbox: convs, Files: store, Log: log}).AddWorkers(workers, sys.Pool())
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
 	integ.AddWorkers(workers)
+	// Messages about tasks go to members' Telegram through the workspace's
+	// notifications bot (TK-02).
+	if err := addTelegramWorkers(workers, cfg, pool, sealer, log); err != nil {
+		return err
+	}
+	// The queue is distributed among operators (Q-01).
+	router.AddWorkers(workers, convs)
 	periodic := []*river.PeriodicJob{
 		outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic(), widget.PruneSessionsPeriodic(),
-		widget.CleanupUploadsPeriodic(),
+		widget.CleanupUploadsPeriodic(), ai.ClearTextsPeriodic(),
 	}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
@@ -304,6 +322,25 @@ func startWorker(
 		return nil
 	})
 	return nil
+}
+
+// addTelegramWorkers registers the job that sends messages about tasks
+// through the notifications bots. Without TOLKOVO_MASTER_KEY no bot can be
+// stored, so there is nothing to send.
+func addTelegramWorkers(workers *river.Workers, cfg config.Config, pool *db.DB, sealer *crypto.Sealer, log *slog.Logger) error {
+	if sealer == nil {
+		return nil
+	}
+	svc := notifications.New(pool, nil)
+	svc.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Log: log})
+	tenants := tenancy.New(pool)
+	return notifications.AddTelegramWorkers(workers, notifications.TelegramWorkerOptions{
+		Service: svc, Tasks: tasks.New(pool, tasks.Options{Log: log}), PanelURL: cfg.PanelBaseURL(),
+		Locale: func(ctx context.Context, workspaceID, userID uuid.UUID) (string, error) {
+			m, err := tenants.Membership(ctx, workspaceID, userID)
+			return m.User.Locale, err
+		},
+	})
 }
 
 // addMailWorkers registers the auth emails (invitations, password reset,
@@ -365,6 +402,9 @@ func apiDeps(
 	notifs := notifications.New(pool, mailJobs)
 	convs := conversations.New(pool, store)
 	convs.SetNotifier(notifs)
+	// The router's job runs in the worker (Q-01).
+	router := routing.New(pool, inserter)
+	convs.SetRouter(router)
 	sealer, err := newSealer(cfg)
 	if err != nil {
 		return api.Deps{}, err
@@ -377,10 +417,22 @@ func apiDeps(
 	chans.SetJobs(inserter)
 	convs.SetDeliverer(chans)
 	// Visitors' files are checked when a message takes them (W-02).
-	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Redis: redisClient, Files: store, Log: log}
+	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: redisClient, Files: store, Log: log}
 	if cfg.ClamAVAddr != "" {
 		widgetOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
 	}
+	aiSvc := ai.New(pool, aiOptions(cfg, sealer))
+	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log))
+	// Task drafts come from the workspace's model too (ADR-0015).
+	tasksSvc := tasks.New(pool, tasks.Options{Conversations: convs, Drafter: aiSvc, Log: log})
+	// Messages about tasks are queued here and sent to Telegram by the worker (TK-02).
+	notifs.SetTelegram(notifications.TelegramOptions{
+		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Channels: chans, Jobs: inserter, Log: log,
+	})
+	tasksSvc.SetNotifier(notifs)
+	// A conversation waits for the fix on issues and tasks (ADR-0015).
+	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
+	convs.AddFixWaiter(conversations.FixSourceTasks, tasksSvc.HasOpenTask)
 	deps := api.Deps{
 		Log: log, DB: pool, Version: version,
 		Redis:         pingFunc(func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }),
@@ -393,11 +445,15 @@ func apiDeps(
 		// module; complete queues ingest.process for the worker (AP-03); the
 		// app user reads replies and writes back through convs (AP-06).
 		// Issues are recorded here and created on GitHub by the worker (GH-02).
-		Ingest:       ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
-		Integrations: integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter)),
+		Ingest: ingest.New(pool, ingest.Options{Files: store, Keys: chans, Redis: redisClient, Jobs: inserter, Inbox: convs}),
+		// Issue drafts come from the workspace's model when AI is on (AI-02).
+		Integrations: integ,
 		// Visitors of chat widgets write through the channels module and
 		// read their chat from convs (W-01).
 		Widget:        widget.New(pool, widgetOpts),
+		Routing:       router,
+		AI:            aiSvc, // the workspace's model, key and budget (AI-01)
+		Tasks:         tasksSvc,
 		SecureCookies: cfg.SecureCookies(),
 		SessionMaxAge: cfg.SessionMaxAge,
 		// The public URL is where browsers reach the api, also behind a
@@ -421,20 +477,25 @@ func apiDeps(
 }
 
 // conversationsService is the conversations module of the worker: it
-// stores received messages and the delivery of replies and, when email is
-// configured, queues the reminders about them (I-05).
-func conversationsService(cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage) (*conversations.Service, error) {
+// stores received messages and the delivery of replies, queues the router
+// for new conversations (Q-01) and, when email is configured, the
+// reminders about them (I-05).
+func conversationsService(
+	cfg config.Config, log *slog.Logger, pool *db.DB, store storage.Storage,
+) (*conversations.Service, *routing.Service, error) {
 	convs := conversations.New(pool, store)
+	inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
+	if err != nil {
+		return nil, nil, fmt.Errorf("jobs: %w", err)
+	}
 	var mailJobs *jobs.Client
 	if cfg.MailEnabled() {
-		inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
-		if err != nil {
-			return nil, fmt.Errorf("jobs: %w", err)
-		}
 		mailJobs = inserter
 	}
 	convs.SetNotifier(notifications.New(pool, mailJobs))
-	return convs, nil
+	router := routing.New(pool, inserter)
+	convs.SetRouter(router)
+	return convs, router, nil
 }
 
 // channelsService wires Telegram into the channels module (T-01–T-03,
@@ -488,6 +549,7 @@ func newSealer(cfg config.Config) (*crypto.Sealer, error) {
 // TOLKOVO_EGRESS_ALLOW_PRIVATE.
 func integrationsOptions(
 	cfg config.Config, sealer *crypto.Sealer, convs *conversations.Service, jobs integrations.Jobs,
+	drafter integrations.Drafter, log *slog.Logger,
 ) integrations.Options {
 	hc := httpx.NewSafeClient(httpx.Options{Timeout: 20 * time.Second, AllowPrivate: cfg.EgressAllowPrivatePrefixes()})
 	return integrations.Options{
@@ -497,6 +559,20 @@ func integrationsOptions(
 		PanelURL:      cfg.PanelBaseURL(),
 		Conversations: convs,
 		Jobs:          jobs,
+		Drafter:       drafter,
+		Log:           log,
+	}
+}
+
+// aiOptions wires model providers into the ai module (AI-01). Requests go
+// through the SafeClient; a local Ollama or vLLM needs
+// TOLKOVO_EGRESS_ALLOW_PRIVATE.
+func aiOptions(cfg config.Config, sealer *crypto.Sealer) ai.Options {
+	allow := cfg.EgressAllowPrivatePrefixes()
+	return ai.Options{
+		Sealer:       sealer,
+		HTTP:         httpx.NewSafeClient(httpx.Options{Timeout: ai.DefaultTimeout, AllowPrivate: allow}),
+		AllowPrivate: allow,
 	}
 }
 

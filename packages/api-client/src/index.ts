@@ -9,3 +9,4 @@ export { CSRF_HEADER, createApiClient, csrfMiddleware, parseAnswer, unwrap } fro
 export type { ApiClient, ApiClientOptions } from "./client";
 export { ApiError, isApiError, type ApiErrorCode } from "./errors";
 export * from "./endpoints";
+export * from "./tasks";

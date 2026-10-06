@@ -64,6 +64,19 @@ tags:
       code), installs it on its repositories and picks the repository, labels and templates.
       The App's private key and webhook secret are encrypted and never returned. Requires
       `integrations.manage` (owner, admin).
+  - name: ai
+    description: |
+      The workspace's AI base: its own key (BYOK) to Anthropic, OpenAI or an
+      OpenAI-compatible server, one model, its prices and a monthly budget in US dollars.
+      Money is in millionths of a US dollar (`*_micros`). The key is encrypted and never
+      returned, only `…` and its last four characters. Personal data is masked before
+      anything goes to the model. Requires `ai.manage` (owner, admin).
+  - name: tasks
+    description: |
+      The tasks section (ADR-0015): a simple tracker for developers and the IT team next to
+      GitHub issues — queues, statuses, priorities, assignees, comments and links to
+      conversations. Every member has `tasks.view` and `tasks.edit`; queues, the settings and
+      deleting tasks need `tasks.manage` (owner, admin).
   - name: ingest
     description: |
       Problem reports from company apps. Authenticated by an ingest key of
@@ -537,6 +550,122 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /me/telegram:
+    get:
+      tags: [auth, tasks]
+      operationId: getMyTelegram
+      summary: The current user's Telegram link to the workspace's notifications bot
+      description: |
+        Messages about tasks (assigned to the user, a new one in their queue) go to the linked
+        Telegram chat (TK-02). `bot_username` is `null` while the workspace has no
+        notifications bot. Needs a session only.
+      responses:
+        '200':
+          description: The link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyTelegram' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    delete:
+      tags: [auth, tasks]
+      operationId: unlinkMyTelegram
+      summary: Stop messages to the current user's Telegram
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Unlinked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/telegram/link:
+    post:
+      tags: [auth, tasks]
+      operationId: startMyTelegramLink
+      summary: A link to press Start in the notifications bot
+      description: |
+        The link `https://t.me/<bot>?start=<code>` works for 15 minutes; only the code's hash is
+        stored. After Start, `POST /me/telegram/check` completes the link.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '201':
+          description: The link to open in Telegram.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramLinkStart' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: '`no_notify_bot`: the workspace has no notifications bot.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /me/telegram/check:
+    post:
+      tags: [auth, tasks]
+      operationId: checkMyTelegramLink
+      summary: Read the bot's new messages and complete links
+      description: |
+        The server reads the bot's updates (getUpdates, no webhook) and links every member whose
+        code came with `/start`; the answer is the caller's link. The panel asks every few
+        seconds while the link waits. The bot is read only while the caller's code waits, and at
+        most once a second per workspace; otherwise the link is returned as it is. A chat already
+        linked to another member is not linked again.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The caller's link.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyTelegram' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { $ref: '#/components/responses/NotifyBotConflict' }
+        '502': { $ref: '#/components/responses/TelegramUnavailable' }
+
+  /me/presence:
+    get:
+      tags: [auth]
+      operationId: getMyPresence
+      summary: Whether the current user accepts conversations in this workspace
+      description: |
+        `online` until the user changes it. With automatic distribution the router gives
+        conversations only to members who are `online` and have the panel open.
+      responses:
+        '200':
+          description: The user's status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyPresence' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    put:
+      tags: [auth]
+      operationId: setMyPresence
+      summary: Accept conversations or step away
+      description: |
+        `away` stops new conversations from the router; those already assigned stay with
+        the user. Needs a session only, no permission.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MyPresence' }
+      responses:
+        '200':
+          description: The status now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyPresence' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /me/workspaces:
     get:
       tags: [auth]
@@ -586,6 +715,46 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MemberList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /routing:
+    get:
+      tags: [workspace]
+      operationId: getRouting
+      summary: How the workspace distributes its queue
+      description: Requires `members.view` (owner, admin, operator).
+      responses:
+        '200':
+          description: The settings; `manual` until changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutingSettings' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [workspace]
+      operationId: setRouting
+      summary: Change how the workspace distributes its queue
+      description: |
+        With `round_robin` the server assigns queued conversations at once and then each
+        new one, in turn, to the members who are `online` with the panel open. Requires
+        `routing.manage` (owner, admin).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoutingSettings' }
+      responses:
+        '200':
+          description: The settings now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutingSettings' }
+        '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -1095,6 +1264,149 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /channels/{id}/widget-analytics:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [channels]
+      operationId: setWidgetAnalytics
+      summary: Change which site analytics a widget reports goals to
+      description: |
+        The widget sends `chatStarted`, `contactCollected` and `rated` to the counters the
+        site already has: Google Tag Manager or GA4 (`dataLayer`), GA4 without GTM (`gtag`)
+        and Yandex Metrica (`ym`, by counter number). It loads no counter itself and sends no
+        personal data. Pages pick up the change with their next session start. Requires
+        `channels.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetAnalytics' }
+      responses:
+        '200':
+          description: The channel with the new settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Channel' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /ai/settings:
+    get:
+      tags: [ai]
+      operationId: getAISettings
+      summary: The workspace's AI settings and the month's spending
+      description: |
+        Off with no provider until set. `spent_micros` is the cost of every call since
+        `period_start`, the first day of the month in UTC. Requires `ai.manage`.
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AISettings' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [ai]
+      operationId: setAISettings
+      summary: Choose the provider, model, key, prices and budget
+      description: |
+        Replaces the settings. `api_key` left out keeps the saved key; a key belongs to its
+        provider and its server, so choosing another provider, or a `base_url` on another scheme
+        or host, without a new key forgets the old one.
+        Turning AI on needs a model and, except for `openai_compatible`, a key
+        (`422 ai_key_required`). `base_url` is only for `openai_compatible` and must be a
+        public address unless the server allows private ones
+        (`TOLKOVO_EGRESS_ALLOW_PRIVATE`); it is `https`, `http` only for a server inside the
+        network (a private address, `localhost`, a name without a dot, `.local`, `.internal`,
+        `.lan`). Requires `ai.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AISettingsUpdate' }
+      responses:
+        '200':
+          description: The settings now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AISettings' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          description: '`ai_key_required`: the provider needs an API key to turn AI on.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: '`encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, a key cannot be stored.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /ai/settings/check:
+    post:
+      tags: [ai]
+      operationId: checkAISettings
+      summary: Send a tiny request with the saved settings
+      description: |
+        Works whether AI is on or off, so the key and the model can be tried first. The call
+        costs a few tokens and counts toward the budget. Requires `ai.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The model answered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AICheck' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: |
+            `ai_not_configured` (no provider, model or key saved) or `ai_budget_exceeded`
+            (the month's budget is spent).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            `ai_key_refused` (the provider refused the key) or `ai_request_rejected` (the
+            provider refused the request: an unknown model, no credit; `detail` carries the
+            provider's error code).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502':
+          description: |
+            `ai_provider_unavailable` (unreachable, timed out or failing) or `ai_bad_answer`
+            (the model declined or answered something else).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: |
+            `ai_rate_limited` (the provider asks to wait; see `Retry-After` when it said how
+            long) or `encryption_unavailable`.
+          headers:
+            Retry-After:
+              description: Seconds the provider asked to wait.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
   /integrations/github:
     get:
       tags: [integrations]
@@ -1556,8 +1868,9 @@ paths:
         The visitor's own messages and the replies of operators and the bot, oldest first:
         no internal notes, no events, no names of staff. Without `since`, the newest 100;
         with it, what came after. Messages of the last few seconds may come again with the
-        next call — drop repeats by `id`. Fetch after `hello`, `widget.message` and
-        `resync_required` of the realtime connection. Rate: 60 a minute per session.
+        next call — drop repeats by `id`. Fetch after `hello`, `widget.message`,
+        `widget.conversation` and `resync_required` of the realtime connection. Rate: 60 a
+        minute per session.
       security:
         - widgetSession: []
       parameters:
@@ -1667,13 +1980,34 @@ paths:
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
+  /widget/availability:
+    get:
+      tags: [widget]
+      operationId: getWidgetAvailability
+      summary: Whether someone takes conversations now
+      description: |
+        The same `operators_online` as `POST /widget/session` gives, asked again when the
+        visitor opens the window a while later. Rate: 60 a minute per session.
+      security:
+        - widgetSession: []
+      responses:
+        '200':
+          description: Now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WidgetAvailability' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
   /widget/contact:
     post:
       tags: [widget]
       operationId: submitWidgetContact
-      summary: The visitor fills in the pre-chat form
+      summary: The visitor fills in the pre-chat or the offline form
       description: |
-        What the visitor typed about themselves (the widget's `prechat` option) and their
+        What the visitor typed about themselves (the widget's `prechat` option, or the
+        offline form shown while nobody takes conversations) and their
         consent to the processing of personal data. Which fields the form asks for and which
         are required is set in the widget's code; send only what was filled in. Before the
         first message the values wait in the session and go onto the contact with that
@@ -1720,6 +2054,44 @@ paths:
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/WidgetSessionEnded' }
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
+  /widget/rating:
+    post:
+      tags: [widget]
+      operationId: rateWidgetConversation
+      summary: The visitor rates a resolved conversation
+      description: |
+        A score from 1 to 5 and an optional comment, for a conversation of the visitor's chat
+        that is resolved or closed (`conversation` of `GET /widget/messages`). Rating again
+        replaces the rating. The operator sees it in the conversation (`conversation.rated`).
+        Rate: 10 a minute per session.
+      security:
+        - widgetSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetRatingRequest' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationRating' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '404':
+          description: '`not_found`: no such conversation in the visitor''s chat.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`conversation_open`: the conversation is not resolved; it may have reopened.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
   /files/{key}:
@@ -2185,10 +2557,14 @@ paths:
       operationId: getConversationIssueDraft
       summary: The issue form filled from the templates
       description: |
-        The workspace's issue template with `{summary}` (the subject or the first line of the
-        customer's text), the app, its version and OS from the app report, and the link to the
-        conversation; `quote` is the customer's first message. The AI drafts it with AI-02.
-        Requires `issues.create`.
+        The workspace's issue template with the app, its version and OS from the app report and
+        the link to the conversation; `quote` is the customer's first message. When the
+        workspace has AI on, its model reads the customer's first message and writes the title,
+        `{summary}`, `{steps}`, `{expected}` and `{actual}` (it may take a few seconds; the call
+        is counted in the AI budget). Without AI, or when the model cannot, `{summary}` is the
+        subject or the first line of the customer's text, `{steps}` is `1. ` and the rest is
+        empty; `ai_fallback` says why. No contact data goes to the model: personal data is
+        masked. Requires `issues.create`.
       responses:
         '200':
           description: The draft.
@@ -2278,6 +2654,53 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/IssueConflict' }
+
+  /conversations/{id}/tasks:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations, tasks]
+      operationId: listConversationTasks
+      summary: Tasks of the conversation
+      description: |
+        Oldest link first, with the section's `settings` (whether it is on and which buttons
+        the conversation shows) and `reply_draft` once a task of the conversation is done.
+        Requires `tasks.view`.
+      responses:
+        '200':
+          description: The tasks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationTasks' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /conversations/{id}/tasks/draft:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [conversations, tasks]
+      operationId: getConversationTaskDraft
+      summary: The task form filled from the conversation
+      description: |
+        When the workspace has AI on, its model reads the customer's first message and writes
+        the title and a description with the steps, the expected and the actual result (it may
+        take a few seconds; the call is counted in the AI budget; personal data is masked).
+        Without AI, or when the model cannot, the title is the subject or the first line of
+        the customer's text; `ai_fallback` says why. The customer's first message is added to
+        the description; the customer's words (the subject, the message) come with personal data
+        masked, since every member sees tasks and a task outlives the deletion of the contact's
+        data. Requires `tasks.edit`.
+      responses:
+        '200':
+          description: The draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDraft' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /conversations/{id}/read:
     parameters:
@@ -2485,6 +2908,438 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks:
+    get:
+      tags: [tasks]
+      operationId: listTasks
+      summary: Tasks, newest first
+      description: Requires `tasks.view`.
+      parameters:
+        - name: state
+          in: query
+          description: '`open` (new or in progress), `closed` (done or canceled); all when absent.'
+          schema: { type: string, enum: [open, closed] }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TaskStatus' }
+        - name: assignee
+          in: query
+          description: '`me`, `none` or a member id.'
+          schema: { type: string, maxLength: 36 }
+        - name: queue
+          in: query
+          description: '`none` or a queue id.'
+          schema: { type: string, maxLength: 36 }
+        - name: q
+          in: query
+          description: Part of the title, or the task number.
+          schema: { type: string, maxLength: 100 }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of tasks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPage' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tasks]
+      operationId: createTask
+      summary: Create a task
+      description: |
+        Requires `tasks.edit`. With `conversation_id` (a visible conversation) the task is
+        linked to it: a line appears in its feed and the conversation waits for the fix
+        (`awaiting_fix`; an assigned one goes to `pending`) until the task is closed. The
+        assignee, or the queue's members when there is none, are notified (in Telegram when
+        they linked it). `409 tasks_disabled` while the section is off.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreate' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /tasks/summary:
+    get:
+      tags: [tasks]
+      operationId: getTaskSummary
+      summary: The caller's open tasks, for the menu
+      description: Requires `tasks.view`.
+      responses:
+        '200':
+          description: The counters.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tasks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [tasks]
+      operationId: getTask
+      summary: A task with its linked conversations
+      description: Requires `tasks.view`.
+      responses:
+        '200':
+          description: The task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [tasks]
+      operationId: updateTask
+      summary: Change a task
+      description: |
+        The whole changeable state, read at `version` (`409 task_conflict` when it changed
+        since). Putting a task `in_progress` without an assignee gives it to the caller.
+        Closing it (`done`, `canceled`) or reopening it writes a line in its conversations:
+        `done` brings a waiting conversation back to its assignee with a reply to send
+        (`ConversationTasks.reply_draft`). A new assignee is notified. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskUpdate' }
+      responses:
+        '200':
+          description: The changed task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTask
+      summary: Delete a task
+      description: Its conversations stop waiting for it. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks/{id}/activity:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [tasks]
+      operationId: listTaskActivity
+      summary: Comments and changes of a task, oldest first
+      description: The latest 500 lines at most. Requires `tasks.view`.
+      responses:
+        '200':
+          description: The feed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskActivityList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [tasks]
+      operationId: commentTask
+      summary: Comment a task
+      description: Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskComment' }
+      responses:
+        '201':
+          description: The comment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskActivity' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks/{id}/conversations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [tasks, conversations]
+      operationId: linkTaskConversation
+      summary: Link a conversation to the task
+      description: |
+        One bug, many complaints. An open task puts the conversation to wait for the fix, as
+        a created one does. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskLinkRequest' }
+      responses:
+        '201':
+          description: Linked; the task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /tasks/{id}/conversations/{conversation_id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+    delete:
+      tags: [tasks, conversations]
+      operationId: unlinkTaskConversation
+      summary: Unlink a conversation from the task
+      description: The conversation stops waiting for it. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Unlinked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /task-queues:
+    get:
+      tags: [tasks]
+      operationId: listTaskQueues
+      summary: Queues of tasks, by name
+      description: Requires `tasks.view`.
+      responses:
+        '200':
+          description: The queues.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskQueueList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tasks]
+      operationId: createTaskQueue
+      summary: Add a queue
+      description: Up to 50 queues. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskQueueInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskQueue' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /task-queues/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [tasks]
+      operationId: updateTaskQueue
+      summary: Rename a queue and replace its members
+      description: Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskQueueInput' }
+      responses:
+        '200':
+          description: The queue.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskQueue' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTaskQueue
+      summary: Delete a queue
+      description: Its tasks stay without a queue. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /task-settings/telegram-bot:
+    get:
+      tags: [tasks]
+      operationId: getTaskTelegramBot
+      summary: The workspace's Telegram bot for notifications
+      description: |
+        A bot of its own, not the bot of a support channel: members link their Telegram to it
+        and get messages about tasks there (TK-02). The token is encrypted and never returned.
+        Requires `tasks.manage`.
+      responses:
+        '200':
+          description: The bot; `bot` is `null` without one.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramBotState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [tasks]
+      operationId: setTaskTelegramBot
+      summary: Add or replace the notifications bot
+      description: |
+        Telegram is asked for the bot (getMe). Another bot replaces the old one and every member
+        links again. A bot connected as a support channel of the workspace is refused: reading its
+        updates would take the customers' messages. Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TelegramBotInput' }
+      responses:
+        '200':
+          description: The bot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramBotState' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          description: '`telegram_token_invalid`: Telegram does not know the token.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`notify_bot_busy`: the bot is a support channel of the workspace.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/TelegramUnavailable' }
+        '503':
+          description: '`encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the token cannot be stored.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTaskTelegramBot
+      summary: Forget the notifications bot and every member's link to it
+      description: Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Forgotten.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /task-settings:
+    get:
+      tags: [tasks]
+      operationId: getTaskSettings
+      summary: Settings of the tasks section
+      description: Requires `tasks.view`; the built-in replies are in `defaults`.
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSettingsView' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [tasks]
+      operationId: updateTaskSettings
+      summary: Change the settings of the tasks section
+      description: |
+        A reply equal to the built-in one is stored as none, so new versions may improve the
+        built-in text. Placeholders: `{name}`, `{task_number}`; an unknown one is `400`.
+        Requires `tasks.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskSettings' }
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSettingsView' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
 components:
   parameters:
@@ -2753,6 +3608,23 @@ components:
         `issue_in_progress` (an issue of this conversation is being created),
         `issue_linked` (the conversation is linked to this issue already) or `issue_state`
         (only a failed issue can be sent again or removed).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotifyBotConflict:
+      description: |
+        `no_notify_bot` (the workspace has no notifications bot), `notify_bot_busy` (the bot's
+        updates go to a webhook — it serves a support channel — or to another reader: use a bot of
+        its own) or `notify_bot_revoked` (Telegram no longer knows the saved token: an admin
+        replaces the bot).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TaskConflict:
+      description: |
+        `task_conflict` (the task changed since `version`), `task_linked` (the conversation
+        is linked to this task already), `queue_exists` (a queue has this name) or
+        `tasks_disabled` (the section is turned off).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -3097,7 +3969,7 @@ components:
 
     Member:
       type: object
-      required: [user_id, email, name, role, active]
+      required: [user_id, email, name, role, active, presence]
       properties:
         user_id:
           type: string
@@ -3107,6 +3979,141 @@ components:
         name: { type: string }
         role: { $ref: '#/components/schemas/Role' }
         active: { type: boolean }
+        presence: { $ref: '#/components/schemas/Presence' }
+
+    Presence:
+      type: string
+      description: |
+        `online` accepts conversations, `away` does not; both with the panel open.
+        `offline`: the panel has not been open for about 90 seconds.
+      enum: [online, away, offline]
+
+    MyPresence:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: What the user chose; `offline` follows from a closed panel.
+          enum: [online, away]
+
+    RoutingSettings:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          description: |
+            `manual`: operators take conversations from the queue. `round_robin`: the server
+            assigns them in turn to members who are `online`.
+          enum: [manual, round_robin]
+
+    AIProvider:
+      type: string
+      description: |
+        `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+        Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+        OpenRouter and others at `base_url`).
+      enum: [anthropic, openai, deepseek, openai_compatible]
+
+    AIPrices:
+      type: object
+      additionalProperties: false
+      description: Prices of the model per million tokens, in millionths of a US dollar.
+      required: [input_micros, output_micros]
+      properties:
+        input_micros: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        output_micros: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+
+    AISettings:
+      type: object
+      required:
+        - enabled
+        - provider
+        - model
+        - base_url
+        - key
+        - prices
+        - monthly_budget_micros
+        - spent_micros
+        - period_start
+        - models
+        - encryption_available
+      properties:
+        enabled: { type: boolean }
+        provider:
+          oneOf:
+            - $ref: '#/components/schemas/AIProvider'
+            - type: 'null'
+        model: { type: [string, 'null'] }
+        base_url: { type: [string, 'null'] }
+        key:
+          description: The saved key as `…` and its last four characters; `null` without one.
+          oneOf:
+            - type: object
+              required: [hint, set_at]
+              properties:
+                hint: { type: string, examples: ['…a1b2'] }
+                set_at: { type: string, format: date-time }
+            - type: 'null'
+        prices: { $ref: '#/components/schemas/AIPrices' }
+        monthly_budget_micros:
+          type: [integer, 'null']
+          format: int64
+          description: '`null`: no limit. With prices at zero nothing counts toward it.'
+        spent_micros: { type: integer, format: int64 }
+        period_start: { type: string, format: date-time }
+        models:
+          type: array
+          description: |
+            Models the panel suggests, with their list prices when this release was made;
+            any other model id may be typed.
+          items: { $ref: '#/components/schemas/AIModel' }
+        encryption_available:
+          type: boolean
+          description: '`false` when `TOLKOVO_MASTER_KEY` is not set: a key cannot be saved.'
+
+    AIModel:
+      type: object
+      required: [provider, model, prices]
+      properties:
+        provider: { $ref: '#/components/schemas/AIProvider' }
+        model: { type: string }
+        prices: { $ref: '#/components/schemas/AIPrices' }
+
+    AISettingsUpdate:
+      type: object
+      additionalProperties: false
+      required: [enabled, provider, model, base_url, prices, monthly_budget_micros]
+      properties:
+        enabled: { type: boolean }
+        provider:
+          oneOf:
+            - $ref: '#/components/schemas/AIProvider'
+            - type: 'null'
+        model: { type: [string, 'null'], maxLength: 100 }
+        base_url: { type: [string, 'null'], maxLength: 500 }
+        api_key:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 500
+          description: A new key; left out, the saved one stays.
+        prices: { $ref: '#/components/schemas/AIPrices' }
+        monthly_budget_micros:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+          maximum: 1000000000000
+
+    AICheck:
+      type: object
+      required: [model, latency_ms]
+      properties:
+        model: { type: string, description: The model that answered, as the provider names it. }
+        latency_ms: { type: integer }
 
     MemberList:
       type: object
@@ -3135,7 +4142,7 @@ components:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
                  first_response_at, last_message_at, resolved_at, closed_at, awaiting_fix, version, created_at,
-                 updated_at, last_message, tag_ids, last_read_message_id, unread_count]
+                 updated_at, last_message, tag_ids, last_read_message_id, unread_count, rating]
       properties:
         id:
           type: string
@@ -3195,6 +4202,23 @@ components:
           minimum: 0
           maximum: 100
           description: Customer messages after the caller's read mark, counted up to 100.
+        rating:
+          description: The customer's rating of the resolved conversation; `null` until they rate it.
+          oneOf:
+            - $ref: '#/components/schemas/ConversationRating'
+            - type: 'null'
+
+    ConversationRating:
+      type: object
+      required: [score, comment, resolved_by, rated_at]
+      properties:
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: [string, 'null'], description: What the customer wrote with the score. }
+        resolved_by:
+          type: string
+          enum: [human, ai]
+          description: '`ai` when only the bot replied in the conversation, `human` otherwise.'
+        rated_at: { type: string, format: date-time, description: A later rating replaces the earlier one. }
 
     ConversationPreview:
       type: object
@@ -3383,7 +4407,7 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -3391,7 +4415,9 @@ components:
             fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
             closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
             the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-            reopened one put it to wait for the fix again.
+            reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+            tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+            conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -3403,6 +4429,7 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         issue: { $ref: '#/components/schemas/MessageEventIssue' }
+        task: { $ref: '#/components/schemas/MessageEventTask' }
 
     MessageEventIssue:
       type: object
@@ -3421,6 +4448,353 @@ components:
           description: |
             Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
             `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
+
+    MyTelegram:
+      type: object
+      required: [bot_username, linked, name, linked_at, pending]
+      properties:
+        bot_username:
+          type: [string, 'null']
+          description: The workspace's notifications bot; `null` without one.
+        linked: { type: boolean }
+        name:
+          type: [string, 'null']
+          description: The user's name in Telegram, once linked.
+        linked_at: { type: [string, 'null'], format: date-time }
+        pending:
+          type: boolean
+          description: A link code waits for Start.
+
+    TelegramLinkStart:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url: { type: string, description: 'https://t.me/<bot>?start=<code>' }
+        expires_at: { type: string, format: date-time }
+
+    TelegramBotState:
+      type: object
+      required: [bot, encryption_available]
+      properties:
+        bot:
+          oneOf:
+            - type: object
+              required: [username]
+              properties:
+                username: { type: string }
+            - type: 'null'
+        encryption_available:
+          type: boolean
+          description: '`false` without `TOLKOVO_MASTER_KEY`: no bot can be added.'
+
+    TelegramBotInput:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 100
+          description: The bot token from @BotFather.
+
+    TaskStatus:
+      type: string
+      enum: [open, in_progress, done, canceled]
+      description: '`open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.'
+
+    TaskButton:
+      type: string
+      enum: [tasks, github, both]
+      description: |
+        Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+        connected) or both.
+
+    TaskPriority:
+      type: string
+      enum: [low, normal, high, urgent]
+
+    Task:
+      type: object
+      required: [id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, conversation_ids]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        title: { type: string }
+        body: { type: string }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        priority: { $ref: '#/components/schemas/TaskPriority' }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_by:
+          type: [string, 'null']
+          description: '`null` when the author is no longer a member.'
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        closed_at: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int32 }
+        conversation_ids:
+          type: array
+          description: Linked conversations, oldest link first; empty in lists.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TaskPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        next_cursor: { type: [string, 'null'] }
+
+    TaskCreate:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 256 }
+        body: { type: string, maxLength: 20000 }
+        queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        priority: { $ref: '#/components/schemas/TaskPriority' }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        conversation_id:
+          type: [string, 'null']
+          description: The conversation the task is created from.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskUpdate:
+      type: object
+      additionalProperties: false
+      required: [version, title, body, status, priority, queue_id, assignee_id]
+      properties:
+        version: { type: integer, format: int32 }
+        title: { type: string, minLength: 1, maxLength: 256 }
+        body: { type: string, maxLength: 20000 }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        priority: { $ref: '#/components/schemas/TaskPriority' }
+        queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        assignee_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskSummary:
+      type: object
+      required: [assigned_open]
+      properties:
+        assigned_open: { type: integer, format: int64, description: Open tasks assigned to the caller. }
+
+    TaskActivity:
+      type: object
+      required: [id, actor_id, kind, created_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        actor_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        kind:
+          type: string
+          enum: [comment, created, status, assignee, queue, priority, edited, linked, unlinked]
+        body: { type: string, description: The text of a comment. }
+        from:
+          type: string
+          description: The value a change moved from (a status, a priority, a member or queue id); empty for none.
+        to: { type: string, description: The value a change moved to; empty for none. }
+        fields:
+          type: array
+          description: What an edit changed.
+          items: { type: string, enum: [title, body] }
+        conversation_id:
+          type: string
+          description: On `linked` and `unlinked`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time }
+
+    TaskActivityList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskActivity' }
+
+    TaskComment:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 4000 }
+
+    TaskLinkRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id]
+      properties:
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskQueue:
+      type: object
+      required: [id, name, member_ids, open_tasks]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string }
+        member_ids:
+          type: array
+          description: Members told about new tasks without an assignee in the queue.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        open_tasks: { type: integer, format: int64 }
+
+    TaskQueueList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskQueue' }
+
+    TaskQueueInput:
+      type: object
+      additionalProperties: false
+      required: [name, member_ids]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        member_ids:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TaskSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, conversation_button, reply_ru, reply_en]
+      properties:
+        enabled:
+          type: boolean
+          description: Off hides the section and the button; tasks stay, new ones are refused.
+        conversation_button: { $ref: '#/components/schemas/TaskButton' }
+        reply_ru: { type: string, maxLength: 4000 }
+        reply_en: { type: string, maxLength: 4000 }
+
+    TaskSettingsView:
+      type: object
+      required: [settings, defaults, placeholders]
+      properties:
+        settings: { $ref: '#/components/schemas/TaskSettings' }
+        defaults:
+          type: object
+          required: [reply_ru, reply_en]
+          properties:
+            reply_ru: { type: string }
+            reply_en: { type: string }
+        placeholders:
+          type: array
+          items: { type: string }
+
+    ConversationTasks:
+      type: object
+      required: [items, settings, reply_draft]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        settings:
+          type: object
+          required: [enabled, conversation_button]
+          properties:
+            enabled: { type: boolean }
+            conversation_button: { $ref: '#/components/schemas/TaskButton' }
+        reply_draft:
+          description: |
+            The reply the operator may send once a task of the conversation is done; `null`
+            otherwise and after an operator replied to the customer since. Tolkovo never sends
+            it itself.
+          oneOf:
+            - $ref: '#/components/schemas/TaskReplyDraft'
+            - type: 'null'
+
+    TaskReplyDraft:
+      type: object
+      required: [task_id, number, text]
+      properties:
+        task_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        text:
+          type: string
+          maxLength: 4000
+          description: The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+
+    TaskDraft:
+      type: object
+      required: [title, body, drafted_by]
+      properties:
+        title: { type: string }
+        body: { type: string }
+        drafted_by:
+          type: string
+          enum: [ai, template]
+        ai_fallback:
+          type: string
+          enum: [budget_exceeded, failed]
+          description: Why the AI did not write the draft although AI is on.
+
+    MessageEventTask:
+      type: object
+      required: [task_id, number]
+      properties:
+        task_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        reason:
+          type: string
+          enum: [done, canceled]
+          description: Only with `task_closed`.
 
     Tag:
       type: object
@@ -3626,6 +5000,7 @@ components:
           type: array
           description: 'Widgets only: the pages that may embed it (see `WidgetOriginsRequest`).'
           items: { type: string }
+        analytics: { $ref: '#/components/schemas/WidgetAnalytics' }
 
     Channel:
       type: object
@@ -3871,7 +5246,7 @@ components:
 
     IssueDraft:
       type: object
-      required: [repository, title, body, quote, labels]
+      required: [repository, title, body, quote, labels, drafted_by]
       properties:
         repository: { $ref: '#/components/schemas/GitHubRepository' }
         title: { type: string, maxLength: 256 }
@@ -3884,6 +5259,18 @@ components:
           type: array
           maxItems: 10
           items: { type: string }
+        drafted_by:
+          type: string
+          enum: [ai, template]
+          description: |
+            `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+            and the actual result; `template` when the template was filled without it.
+        ai_fallback:
+          type: string
+          enum: [budget_exceeded, failed]
+          description: |
+            Why the template was used although AI is on: the month's AI budget is spent, or the
+            provider failed, timed out or answered badly. Left out otherwise.
 
     CreateIssueRequest:
       type: object
@@ -4260,10 +5647,88 @@ components:
           description: The visitor ticked the consent shown with a link to this policy.
           properties:
             policy_url: { type: string, format: uri, maxLength: 2048, description: An http(s) URL. }
+        form:
+          type: string
+          enum: [prechat, offline]
+          default: prechat
+          description: Which form it was; the consent is stored with it.
+
+    WidgetAvailability:
+      type: object
+      required: [operators_online]
+      properties:
+        operators_online:
+          type: boolean
+          description: |
+            Someone on the team takes conversations now: the status «online» and the panel
+            open. Without them the widget offers the offline form to a visitor who has not
+            written yet.
+
+    WidgetAnalytics:
+      type: object
+      additionalProperties: false
+      description: |
+        Where the widget reports its goals on the site. Each way is on separately; a counter
+        the page does not have is skipped. Parameters never carry texts, names, contacts or
+        ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+        `source`; `rated` — `score`, `resolvedBy`.
+      required: [data_layer, gtag, metrika_counter, goals]
+      properties:
+        data_layer:
+          type: boolean
+          description: 'Push `{event: <goal>, tolkovo: {...}}` to `window.dataLayer` (Google Tag Manager, GA4 through GTM).'
+        gtag:
+          type: boolean
+          description: 'Call `gtag("event", <goal>, {...})` (GA4 without GTM).'
+        metrika_counter:
+          type: [string, 'null']
+          pattern: '^[0-9]{1,12}$'
+          description: 'Yandex Metrica counter number: `ym(<counter>, "reachGoal", <goal>, {...})`; `null` — off.'
+        goals: { $ref: '#/components/schemas/WidgetGoals' }
+
+    WidgetGoals:
+      type: object
+      additionalProperties: false
+      description: Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`.
+      required: [chat_started, contact_collected, rated]
+      properties:
+        chat_started: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
+        contact_collected: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
+        rated: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
+
+    WidgetConversation:
+      type: object
+      description: The visitor's newest conversation as they see it.
+      required: [id, status, rating]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        status:
+          type: string
+          enum: [open, resolved]
+          description: '`resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.'
+        rating:
+          oneOf:
+            - $ref: '#/components/schemas/ConversationRating'
+            - type: 'null'
+
+    WidgetRatingRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id, score]
+      properties:
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 1000 }
 
     WidgetSession:
       type: object
-      required: [session_token, expires_at, identity, channel_name]
+      required: [session_token, expires_at, identity, channel_name, operators_online, analytics]
       properties:
         session_token: { type: string, description: '`tk_wsess_…`; keep it and send it as `Authorization: Bearer`.' }
         expires_at: { type: string, format: date-time, description: 'Moves 30 days ahead with activity.' }
@@ -4271,11 +5736,18 @@ components:
           type: string
           enum: [verified, unverified, none]
         channel_name: { type: string }
+        operators_online: { type: boolean, description: As in `WidgetAvailability`. }
+        analytics: { $ref: '#/components/schemas/WidgetAnalytics' }
 
     WidgetMessages:
       type: object
-      required: [items, cursor, more]
+      required: [items, cursor, more, conversation]
       properties:
+        conversation:
+          description: The visitor's newest conversation; `null` before the first message.
+          oneOf:
+            - $ref: '#/components/schemas/WidgetConversation'
+            - type: 'null'
         items:
           type: array
           items: { $ref: '#/components/schemas/WidgetMessage' }

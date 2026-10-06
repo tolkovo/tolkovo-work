@@ -11,6 +11,38 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import {
+  commentTask,
+  createTask,
+  createTaskQueue,
+  deleteTask,
+  deleteTaskQueue,
+  fetchConversationTasks,
+  fetchTask,
+  fetchTaskActivity,
+  fetchTaskDraft,
+  fetchTaskQueues,
+  fetchTasks,
+  fetchTaskSettings,
+  fetchTaskSummary,
+  linkTaskConversation,
+  unlinkTaskConversation,
+  updateTask,
+  updateTaskQueue,
+  updateTaskSettings,
+  fetchTaskTelegramBot,
+  setTaskTelegramBot,
+  deleteTaskTelegramBot,
+  fetchMyTelegram,
+  startMyTelegramLink,
+  checkMyTelegramLink,
+  unlinkMyTelegram,
+  type TaskCreate,
+  type TaskFilter,
+  type TaskQueueInput,
+  type TaskSettings,
+  type TaskUpdate,
+} from "./tasks";
+import {
   acceptInvitation,
   changePassword,
   connectAppChannel,
@@ -31,6 +63,10 @@ import {
   fetchNotificationSettings,
   fetchInvitations,
   fetchMembers,
+  fetchMyPresence,
+  fetchRouting,
+  fetchAISettings,
+  checkAISettings,
   fetchMessages,
   fetchMySessions,
   fetchGitHubIntegration,
@@ -62,6 +98,7 @@ import {
   resetPassword,
   rotateIdentitySecret,
   setAppLimits,
+  setWidgetAnalytics,
   setWidgetOrigins,
   revokeIngestKey,
   revokeInvitation,
@@ -73,17 +110,24 @@ import {
   switchWorkspace,
   updateContact,
   updateNotificationSettings,
+  setMyPresence,
+  setRouting,
+  setAISettings,
   updateMe,
   updateWorkspace,
   verifyEmail,
   type AcceptInvitationRequest,
   type AppLimits,
+  type WidgetAnalytics,
   type UpdateGitHubIntegrationRequest,
   type ChangePasswordRequest,
   type ChannelList,
   type ConnectTelegramBotRequest,
   type Contact,
   type NotificationSettingsInput,
+  type OperatorStatus,
+  type RoutingMode,
+  type AISettingsUpdate,
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
@@ -122,6 +166,9 @@ export const queryKeys = {
   invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
   myNotifications: ["me", "notifications"] as const,
+  myPresence: ["me", "presence"] as const,
+  routing: ["routing"] as const,
+  aiSettings: ["ai", "settings"] as const,
   channels: ["channels"] as const,
   ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
   githubIntegration: ["integrations", "github"] as const,
@@ -142,6 +189,19 @@ export const queryKeys = {
   /** GitHub issues of one conversation (GH-02). */
   conversationIssues: (id: string) => ["conversations", "issues", id] as const,
   issueDraft: (id: string) => ["conversations", "issue-draft", id] as const,
+  /** Tasks of one conversation and the task form drafted from it (ADR-0015). */
+  conversationTasks: (id: string) => ["conversations", "tasks", id] as const,
+  taskDraft: (id: string) => ["conversations", "task-draft", id] as const,
+  /** Root of the tasks section: task.changed invalidates everything under it. */
+  tasks: ["tasks"] as const,
+  taskList: (filter: TaskFilter) => ["tasks", "list", filter] as const,
+  task: (id: string) => ["tasks", "detail", id] as const,
+  taskActivity: (id: string) => ["tasks", "activity", id] as const,
+  taskSummary: ["tasks", "summary"] as const,
+  taskQueues: ["tasks", "queues"] as const,
+  taskSettings: ["tasks", "settings"] as const,
+  taskTelegramBot: ["tasks", "telegram-bot"] as const,
+  myTelegram: ["me", "telegram"] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
@@ -448,6 +508,10 @@ export function useSetWidgetOrigins() {
   return useChannelMutation((client, { id, origins }: { id: string; origins: string[] }) => setWidgetOrigins(client, id, origins));
 }
 
+export function useSetWidgetAnalytics() {
+  return useChannelMutation((client, { id, analytics }: { id: string; analytics: WidgetAnalytics }) => setWidgetAnalytics(client, id, analytics));
+}
+
 /** The GitHub integration (GH-01). Every mutation refreshes it and its repositories. */
 export function useGitHubIntegration({ enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
@@ -516,6 +580,9 @@ export function useIssueDraft(conversationId: string, { enabled = true }: { enab
     queryFn: () => fetchIssueDraft(client, conversationId),
     enabled,
     gcTime: 0,
+    // The model may write the draft: every fetch is paid for, and the form keeps its own edits.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     retry: false,
   });
 }
@@ -683,6 +750,65 @@ export function useNotificationSettings() {
   return useQuery({ queryKey: queryKeys.myNotifications, queryFn: () => fetchNotificationSettings(client) });
 }
 
+/** Whether the signed-in user accepts conversations in this workspace (Q-02). */
+export function useMyPresence() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.myPresence, queryFn: () => fetchMyPresence(client) });
+}
+
+/** Accept conversations or step away; colleagues see it in the member list. */
+export function useSetMyPresence() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (status: OperatorStatus) => setMyPresence(client, status),
+    onSuccess: (presence) => {
+      queryClient.setQueryData(queryKeys.myPresence, presence);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.members });
+    },
+  });
+}
+
+/** How the workspace distributes its queue (Q-01). */
+export function useRouting() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.routing, queryFn: () => fetchRouting(client) });
+}
+
+export function useSetRouting() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: RoutingMode) => setRouting(client, mode),
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.routing, settings),
+  });
+}
+
+/** The workspace's AI settings (AI-01). */
+export function useAISettings() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.aiSettings, queryFn: () => fetchAISettings(client) });
+}
+
+export function useSetAISettings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AISettingsUpdate) => setAISettings(client, body),
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.aiSettings, settings),
+  });
+}
+
+/** The check costs tokens, so the month's spending is read again afterwards. */
+export function useCheckAISettings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => checkAISettings(client),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.aiSettings }),
+  });
+}
+
 /** Saves the given fields; the answer replaces the cached settings. */
 export function useUpdateNotificationSettings() {
   const client = useApiClient();
@@ -691,4 +817,191 @@ export function useUpdateNotificationSettings() {
     mutationFn: (body: NotificationSettingsInput) => updateNotificationSettings(client, body),
     onSuccess: (settings) => queryClient.setQueryData(queryKeys.myNotifications, settings),
   });
+}
+
+/** Pages of tasks for one filter, newest first (ADR-0015). */
+export function useTasks(filter: TaskFilter, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useInfiniteQuery({
+    queryKey: queryKeys.taskList(filter),
+    queryFn: ({ pageParam }) => fetchTasks(client, filter, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    enabled,
+  });
+}
+
+export function useTask(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.task(id), queryFn: () => fetchTask(client, id) });
+}
+
+export function useTaskActivity(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskActivity(id), queryFn: () => fetchTaskActivity(client, id) });
+}
+
+/** Open tasks assigned to the caller, for the counter in the rail. */
+export function useTaskSummary({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskSummary, queryFn: () => fetchTaskSummary(client), enabled });
+}
+
+export function useTaskQueues({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskQueues, queryFn: () => fetchTaskQueues(client), enabled });
+}
+
+export function useTaskSettings({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskSettings, queryFn: () => fetchTaskSettings(client), enabled });
+}
+
+/** Tasks of a conversation; conversation.tasks_changed refreshes it over the realtime connection. */
+export function useConversationTasks(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.conversationTasks(conversationId),
+    queryFn: () => fetchConversationTasks(client, conversationId),
+    enabled,
+  });
+}
+
+/** The task form drafted from a conversation; fetched anew every time the form opens. */
+export function useTaskDraft(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.taskDraft(conversationId),
+    queryFn: () => fetchTaskDraft(client, conversationId),
+    enabled,
+    gcTime: 0,
+    // The model may write the draft: every fetch is paid for, and the form keeps its own edits.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/**
+ * A task change refreshes the section and, when it touches conversations, their tasks, the
+ * conversations themselves (awaiting_fix, status) and their feeds.
+ */
+function useTaskMutation<TArgs, TResult>(fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.tasks }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
+      ]),
+  });
+}
+
+export function useCreateTask() {
+  return useTaskMutation((client, body: TaskCreate) => createTask(client, body));
+}
+
+export function useUpdateTask(id: string) {
+  return useTaskMutation((client, body: TaskUpdate) => updateTask(client, id, body));
+}
+
+export function useDeleteTask() {
+  return useTaskMutation((client, id: string) => deleteTask(client, id));
+}
+
+export function useCommentTask(id: string) {
+  return useTaskMutation((client, body: string) => commentTask(client, id, body));
+}
+
+export function useLinkTaskConversation() {
+  return useTaskMutation((client, { taskId, conversationId }: { taskId: string; conversationId: string }) =>
+    linkTaskConversation(client, taskId, conversationId),
+  );
+}
+
+export function useUnlinkTaskConversation() {
+  return useTaskMutation((client, { taskId, conversationId }: { taskId: string; conversationId: string }) =>
+    unlinkTaskConversation(client, taskId, conversationId),
+  );
+}
+
+export function useCreateTaskQueue() {
+  return useTaskMutation((client, body: TaskQueueInput) => createTaskQueue(client, body));
+}
+
+export function useUpdateTaskQueue() {
+  return useTaskMutation((client, { id, ...body }: TaskQueueInput & { id: string }) => updateTaskQueue(client, id, body));
+}
+
+export function useDeleteTaskQueue() {
+  return useTaskMutation((client, id: string) => deleteTaskQueue(client, id));
+}
+
+export function useUpdateTaskSettings() {
+  return useTaskMutation((client, body: TaskSettings) => updateTaskSettings(client, body));
+}
+
+/** The workspace's notifications bot (TK-02). */
+export function useTaskTelegramBot({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskTelegramBot, queryFn: () => fetchTaskTelegramBot(client), enabled });
+}
+
+function useBotMutation<TArgs, TResult>(fn: (client: ApiClient, args: TArgs) => Promise<TResult>) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: TArgs) => fn(client, args),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.taskTelegramBot }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.myTelegram }),
+      ]),
+  });
+}
+
+export function useSetTaskTelegramBot() {
+  return useBotMutation((client, token: string) => setTaskTelegramBot(client, token));
+}
+
+export function useDeleteTaskTelegramBot() {
+  return useBotMutation((client, _: void) => deleteTaskTelegramBot(client));
+}
+
+/**
+ * The caller's Telegram link. While a link waits for Start the server is asked every three
+ * seconds to read the bot's messages, until the link is done or its code expires.
+ */
+export function useMyTelegram() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.myTelegram,
+    queryFn: () => fetchMyTelegram(client),
+  });
+}
+
+export function useCheckMyTelegram({ enabled }: { enabled: boolean }) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: [...queryKeys.myTelegram, "check"],
+    queryFn: async () => {
+      const me = await checkMyTelegramLink(client);
+      queryClient.setQueryData(queryKeys.myTelegram, me);
+      return me;
+    },
+    enabled,
+    refetchInterval: (q) => (q.state.data?.linked ? false : 3000),
+    retry: false,
+  });
+}
+
+export function useStartMyTelegramLink() {
+  return useBotMutation((client, _: void) => startMyTelegramLink(client));
+}
+
+export function useUnlinkMyTelegram() {
+  return useBotMutation((client, _: void) => unlinkMyTelegram(client));
 }

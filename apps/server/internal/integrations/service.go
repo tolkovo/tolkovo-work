@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strings"
@@ -109,6 +110,10 @@ type Options struct {
 	Conversations Conversations
 	// Jobs queues github.create_issue (role api); nil refuses to create issues.
 	Jobs Jobs
+	// Drafter writes issue drafts with the workspace's model (AI-02); nil
+	// leaves drafts to the templates.
+	Drafter Drafter
+	Log     *slog.Logger
 }
 
 // Service is the facade of the module.
@@ -125,6 +130,13 @@ func New(database *db.DB, opts Options) *Service {
 
 // EncryptionAvailable reports whether the App's key can be stored.
 func (s *Service) EncryptionAvailable() bool { return s.opts.Sealer != nil }
+
+func (s *Service) log() *slog.Logger {
+	if s.opts.Log != nil {
+		return s.opts.Log
+	}
+	return slog.Default()
+}
 
 // GitHubApp is the workspace's GitHub App.
 type GitHubApp struct {

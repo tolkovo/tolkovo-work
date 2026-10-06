@@ -61,6 +61,8 @@ export const workspaceListSchema = z.object({
   ),
 }) satisfies z.ZodType<Schemas["WorkspaceList"]>;
 
+export const presenceSchema = z.enum(["online", "away", "offline"]) satisfies z.ZodType<Schemas["Presence"]>;
+
 export const memberListSchema = z.object({
   items: z.array(
     z.object({
@@ -69,9 +71,45 @@ export const memberListSchema = z.object({
       name: z.string(),
       role: roleSchema,
       active: z.boolean(),
+      presence: presenceSchema,
     }) satisfies z.ZodType<Schemas["Member"]>,
   ),
 }) satisfies z.ZodType<Schemas["MemberList"]>;
+
+export const myPresenceSchema = z.object({
+  status: z.enum(["online", "away"]),
+}) satisfies z.ZodType<Schemas["MyPresence"]>;
+
+export const routingSettingsSchema = z.object({
+  mode: z.enum(["manual", "round_robin"]),
+}) satisfies z.ZodType<Schemas["RoutingSettings"]>;
+
+const aiProviderSchema = z.enum(["anthropic", "openai", "deepseek", "openai_compatible"]) satisfies z.ZodType<Schemas["AIProvider"]>;
+const aiPricesSchema = z.object({
+  input_micros: z.number(),
+  output_micros: z.number(),
+}) satisfies z.ZodType<Schemas["AIPrices"]>;
+
+export const aiSettingsSchema = z.object({
+  enabled: z.boolean(),
+  provider: aiProviderSchema.nullable(),
+  model: z.string().nullable(),
+  base_url: z.string().nullable(),
+  key: z.object({ hint: z.string(), set_at: z.string() }).nullable(),
+  prices: aiPricesSchema,
+  monthly_budget_micros: z.number().nullable(),
+  spent_micros: z.number(),
+  period_start: z.string(),
+  models: z.array(
+    z.object({ provider: aiProviderSchema, model: z.string(), prices: aiPricesSchema }) satisfies z.ZodType<Schemas["AIModel"]>,
+  ),
+  encryption_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["AISettings"]>;
+
+export const aiCheckSchema = z.object({
+  model: z.string(),
+  latency_ms: z.number(),
+}) satisfies z.ZodType<Schemas["AICheck"]>;
 
 export const deviceSessionListSchema = z.object({
   items: z.array(
@@ -133,6 +171,13 @@ export const conversationPreviewSchema = z.object({
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["ConversationPreview"]>;
 
+export const conversationRatingSchema = z.object({
+  score: z.number(),
+  comment: z.string().nullable(),
+  resolved_by: z.enum(["human", "ai"]),
+  rated_at: z.string(),
+}) satisfies z.ZodType<Schemas["ConversationRating"]>;
+
 export const conversationSchema = z.object({
   id: z.string(),
   number: z.number(),
@@ -155,6 +200,7 @@ export const conversationSchema = z.object({
   tag_ids: z.array(z.string()),
   last_read_message_id: z.string().nullable(),
   unread_count: z.number(),
+  rating: conversationRatingSchema.nullable(),
 }) satisfies z.ZodType<Schemas["Conversation"]>;
 
 export const contactSchema = z.object({
@@ -190,7 +236,19 @@ export const attachmentSchema = z.object({
 }) satisfies z.ZodType<Schemas["Attachment"]>;
 
 export const messageEventSchema = z.object({
-  type: z.enum(["status_changed", "assigned", "issue_created", "issue_linked", "issue_closed", "issue_reopened"]),
+  type: z.enum([
+    "status_changed",
+    "assigned",
+    "issue_created",
+    "issue_linked",
+    "issue_closed",
+    "issue_reopened",
+    "task_created",
+    "task_linked",
+    "task_unlinked",
+    "task_closed",
+    "task_reopened",
+  ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
   assignee_id: z.string().nullable(),
@@ -204,6 +262,9 @@ export const messageEventSchema = z.object({
       reason: z.enum(["completed", "not_planned"]).optional(),
     })
     .optional() satisfies z.ZodType<Schemas["MessageEventIssue"] | undefined>,
+  task: z
+    .object({ task_id: z.string(), number: z.number(), reason: z.enum(["done", "canceled"]).optional() })
+    .optional() satisfies z.ZodType<Schemas["MessageEventTask"] | undefined>,
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({
@@ -274,6 +335,13 @@ export const appLimitsSchema = z.object({
   daily_mb: z.number(),
 }) satisfies z.ZodType<Schemas["AppLimits"]>;
 
+export const widgetAnalyticsSchema = z.object({
+  data_layer: z.boolean(),
+  gtag: z.boolean(),
+  metrika_counter: z.string().nullable(),
+  goals: z.object({ chat_started: z.string(), contact_collected: z.string(), rated: z.string() }) satisfies z.ZodType<Schemas["WidgetGoals"]>,
+}) satisfies z.ZodType<Schemas["WidgetAnalytics"]>;
+
 export const channelSchema = z.object({
   id: z.string(),
   type: z.enum(["telegram_bot", "telegram_user", "app", "widget"]),
@@ -288,6 +356,7 @@ export const channelSchema = z.object({
     app_limits: appLimitsSchema.optional(),
     widget_key: z.string().optional(),
     allowed_origins: z.array(z.string()).optional(),
+    analytics: widgetAnalyticsSchema.optional(),
   }),
   last_inbound_at: z.string().nullable(),
   created_at: z.string(),
@@ -409,6 +478,8 @@ export const issueDraftSchema = z.object({
   body: z.string(),
   quote: z.string(),
   labels: z.array(z.string()),
+  drafted_by: z.enum(["ai", "template"]),
+  ai_fallback: z.enum(["budget_exceeded", "failed"]).optional(),
 }) satisfies z.ZodType<Schemas["IssueDraft"]>;
 
 export const openGitHubIssueListSchema = z.object({
@@ -426,3 +497,99 @@ export const notificationSettingsSchema = z.object({
   email_delay_minutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
   email_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["NotificationSettings"]>;
+
+/** The tasks section (ADR-0015). */
+export const taskStatusSchema = z.enum(["open", "in_progress", "done", "canceled"]) satisfies z.ZodType<Schemas["TaskStatus"]>;
+export const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]) satisfies z.ZodType<Schemas["TaskPriority"]>;
+export const taskButtonSchema = z.enum(["tasks", "github", "both"]) satisfies z.ZodType<Schemas["TaskButton"]>;
+
+export const taskSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  queue_id: z.string().nullable(),
+  title: z.string(),
+  body: z.string(),
+  status: taskStatusSchema,
+  priority: taskPrioritySchema,
+  assignee_id: z.string().nullable(),
+  created_by: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  closed_at: z.string().nullable(),
+  version: z.number(),
+  conversation_ids: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["Task"]>;
+
+export const taskPageSchema = z.object({
+  items: z.array(taskSchema),
+  next_cursor: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["TaskPage"]>;
+
+export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfies z.ZodType<Schemas["TaskSummary"]>;
+
+export const taskActivitySchema = z.object({
+  id: z.string(),
+  actor_id: z.string().nullable(),
+  kind: z.enum(["comment", "created", "status", "assignee", "queue", "priority", "edited", "linked", "unlinked"]),
+  body: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  fields: z.array(z.enum(["title", "body"])).optional(),
+  conversation_id: z.string().optional(),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskActivity"]>;
+
+export const taskActivityListSchema = z.object({ items: z.array(taskActivitySchema) }) satisfies z.ZodType<Schemas["TaskActivityList"]>;
+
+export const taskQueueSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  member_ids: z.array(z.string()),
+  open_tasks: z.number(),
+}) satisfies z.ZodType<Schemas["TaskQueue"]>;
+
+export const taskQueueListSchema = z.object({ items: z.array(taskQueueSchema) }) satisfies z.ZodType<Schemas["TaskQueueList"]>;
+
+export const taskSettingsSchema = z.object({
+  enabled: z.boolean(),
+  conversation_button: taskButtonSchema,
+  reply_ru: z.string(),
+  reply_en: z.string(),
+}) satisfies z.ZodType<Schemas["TaskSettings"]>;
+
+export const taskSettingsViewSchema = z.object({
+  settings: taskSettingsSchema,
+  defaults: z.object({ reply_ru: z.string(), reply_en: z.string() }),
+  placeholders: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["TaskSettingsView"]>;
+
+export const conversationTasksSchema = z.object({
+  items: z.array(taskSchema),
+  settings: z.object({ enabled: z.boolean(), conversation_button: taskButtonSchema }),
+  reply_draft: z.object({ task_id: z.string(), number: z.number(), text: z.string() }).nullable(),
+}) satisfies z.ZodType<Schemas["ConversationTasks"]>;
+
+export const taskDraftSchema = z.object({
+  title: z.string(),
+  body: z.string(),
+  drafted_by: z.enum(["ai", "template"]),
+  ai_fallback: z.enum(["budget_exceeded", "failed"]).optional(),
+}) satisfies z.ZodType<Schemas["TaskDraft"]>;
+
+/** Telegram notifications of members (TK-02). */
+export const myTelegramSchema = z.object({
+  bot_username: z.string().nullable(),
+  linked: z.boolean(),
+  name: z.string().nullable(),
+  linked_at: z.string().nullable(),
+  pending: z.boolean(),
+}) satisfies z.ZodType<Schemas["MyTelegram"]>;
+
+export const telegramLinkStartSchema = z.object({ url: z.string(), expires_at: z.string() }) satisfies z.ZodType<
+  Schemas["TelegramLinkStart"]
+>;
+
+export const telegramBotStateSchema = z.object({
+  bot: z.object({ username: z.string() }).nullable(),
+  encryption_available: z.boolean(),
+}) satisfies z.ZodType<Schemas["TelegramBotState"]>;

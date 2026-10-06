@@ -248,7 +248,7 @@ describe("conversation actions", () => {
     renderApp("/inbox/c1", { api });
     await user.click(await screen.findByRole("button", { name: "Передать" }));
     const menu = screen.getByRole("menu", { name: "Передать" });
-    expect(within(menu).getByRole("menuitem", { name: "Анна Смирнова" })).toHaveFocus();
+    expect(within(menu).getByRole("menuitem", { name: "Анна Смирнова, Онлайн" })).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Передать" })).toHaveFocus();
@@ -259,7 +259,7 @@ describe("conversation actions", () => {
     await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "Передать" }));
-    await user.click(screen.getByRole("menuitem", { name: "Анна Смирнова" }));
+    await user.click(screen.getByRole("menuitem", { name: "Анна Смирнова, Онлайн" }));
     await waitFor(() =>
       expect(calls(api, "PUT", "/conversations/c1/assignee")[0]?.body).toEqual({ assignee_id: "u-anna", version: 1 }),
     );
@@ -353,12 +353,20 @@ describe("feed", () => {
         sender_id: "u-anna",
         event: { type: "status_changed", from: "assigned", to: "resolved", assignee_id: "u-anna", previous_assignee_id: "u-anna" },
       }),
+      msg("m5", {
+        kind: "event",
+        sender_type: "system",
+        sender_id: null,
+        event: { type: "assigned", from: "queued", to: "assigned", assignee_id: "u-anna", previous_assignee_id: null },
+      }),
     ];
     renderApp("/inbox/c1", { api: server({ feed }).api });
     const log = await screen.findByRole("log", { name: "Сообщения диалога" });
     expect(await within(log).findByText(/Взят в работу: Пётр Иванов/)).toBeInTheDocument();
     expect(within(log).getByText(/Передан: Пётр Иванов → Анна Смирнова/)).toBeInTheDocument();
     expect(within(log).getByText(/Решён · Анна Смирнова/)).toBeInTheDocument();
+    // The router assigned it: nobody did it by hand.
+    expect(within(log).getByText(/Назначен автоматически: Анна Смирнова/)).toBeInTheDocument();
   });
 
   it("marks the conversation read up to the newest message and divides the new ones", async () => {

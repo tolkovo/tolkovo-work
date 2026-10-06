@@ -57,6 +57,8 @@ export class FakeServer {
   messages: FakeMessage[] = [];
   tokens = new Set<string>();
   identity: "verified" | "unverified" | "none" = "none";
+  /** Someone on the team takes conversations. */
+  operatorsOnline = true;
   /** The next answers of a route, before the normal behaviour. */
   failNext: { route: string; status: number; code: string }[] = [];
   uploads = new Map<string, FakeUpload>();
@@ -64,6 +66,12 @@ export class FakeServer {
   reject = new Set<string>();
   /** Bumped by tests to hand out new links of files. */
   linkVersion = 1;
+  /** Where the widget reports goals (the panel's settings). */
+  analytics = { data_layer: false, gtag: false, metrika_counter: null as string | null, goals: { chat_started: "tolkovo.chatStarted", contact_collected: "tolkovo.contactCollected", rated: "tolkovo.rated" } };
+  /** The visitor's conversation: a new id after it was closed, resolved by the operator, rated by the visitor. */
+  conversationId = "conv-1";
+  resolved = false;
+  rating: { score: number; comment: string | null; resolved_by: "human" | "ai"; rated_at: string } | null = null;
   private issued = 0;
 
   install(): void {
@@ -74,7 +82,7 @@ export class FakeServer {
   }
 
   reply(body: string, sender: "operator" | "bot" = "operator"): FakeMessage {
-    const m: FakeMessage = { id: nextId(), conversation_id: "conv-1", sender, body, created_at: "2026-10-05T10:00:00Z", files: [] };
+    const m: FakeMessage = { id: nextId(), conversation_id: this.conversationId, sender, body, created_at: "2026-10-05T10:00:00Z", files: [] };
     this.messages.push(m);
     return m;
   }
@@ -113,7 +121,14 @@ export class FakeServer {
           this.tokens.add(t);
         }
         if (req.user) this.identity = "verified";
-        return json(200, { session_token: t, expires_at: "2026-11-04T10:00:00Z", identity: this.identity, channel_name: "Поддержка Зерна" });
+        return json(200, {
+          session_token: t,
+          expires_at: "2026-11-04T10:00:00Z",
+          identity: this.identity,
+          channel_name: "Поддержка Зерна",
+          operators_online: this.operatorsOnline,
+          analytics: this.analytics,
+        });
       }
       case "DELETE /session":
         this.tokens.delete(token);
@@ -123,7 +138,8 @@ export class FakeServer {
         const fresh = (m: FakeMessage) => ({ ...m, files: m.files.map((f) => ({ ...f, download: { ...f.download, url: f.download.url.replace(/v=\d+/, `v=${this.linkVersion}`), expires_at: this.linkVersion > 1 ? "2099-01-01T00:00:00Z" : f.download.expires_at } })) });
         const items = (since ? this.messages.filter((m) => m.id > since) : this.messages.slice(-100)).map(fresh);
         const last = items.at(-1)?.id ?? since;
-        return json(200, { items, cursor: last, more: false });
+        const conversation = this.messages.length ? { id: this.conversationId, status: this.resolved ? "resolved" : "open", rating: this.rating } : null;
+        return json(200, { items, cursor: last, more: false, conversation });
       }
       case "POST /uploads": {
         const req = body as { file_name: string; content_type: string; size: number };
@@ -144,9 +160,11 @@ export class FakeServer {
           }
           files.push(fakeFile(up.name, up.type, up.size));
         }
+        // A message reopens a resolved conversation.
+        this.resolved = false;
         const m: FakeMessage = {
           id: nextId(),
-          conversation_id: "conv-1",
+          conversation_id: this.conversationId,
           sender: "contact",
           body: req.message ?? "",
           created_at: "2026-10-05T10:00:00Z",
@@ -162,6 +180,15 @@ export class FakeServer {
       }
       case "POST /receipts":
         return new Response(null, { status: 204 });
+      case "GET /availability":
+        return json(200, { operators_online: this.operatorsOnline });
+      case "POST /rating": {
+        const req = body as { conversation_id: string; score: number; comment?: string };
+        if (req.conversation_id !== this.conversationId) return json(404, { code: "not_found" });
+        if (!this.resolved) return json(409, { code: "conversation_open" });
+        this.rating = { score: req.score, comment: req.comment ?? null, resolved_by: "human", rated_at: "2026-10-06T10:00:00Z" };
+        return json(200, this.rating);
+      }
     }
     return json(404, { code: "not_found" });
   }

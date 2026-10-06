@@ -365,6 +365,11 @@ a.tk-file:hover .tk-file-name {
   font-size: 12.5px;
 }
 
+.tk-notice[data-kind="away"] {
+  background: var(--tk-sunk);
+  color: var(--tk-ink-2);
+}
+
 .tk-composer {
   display: flex;
   flex-wrap: wrap;
@@ -573,6 +578,14 @@ a.tk-file:hover .tk-file-name {
   font-size: 14px;
 }
 
+.tk-textarea {
+  height: auto;
+  min-height: 72px;
+  max-height: 160px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
 .tk-text:focus {
   border-color: var(--tk-accent);
   outline: 1px solid var(--tk-accent);
@@ -631,6 +644,85 @@ a.tk-file:hover .tk-file-name {
 .tk-consent a:focus-visible {
   outline: 2px solid var(--tk-accent);
   outline-offset: 2px;
+}
+
+/* The rating of a resolved conversation: a card under the last message. */
+.tk-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--tk-line);
+  border-radius: var(--tk-radius);
+  background: var(--tk-surface);
+  text-align: center;
+}
+
+.tk-rate-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.tk-rate-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.tk-stars {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
+.tk-star {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--tk-line);
+  cursor: pointer;
+}
+
+span.tk-star {
+  width: 22px;
+  height: 22px;
+  cursor: default;
+}
+
+.tk-star svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: var(--tk-ink-2);
+}
+
+span.tk-star svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tk-star[data-on] svg {
+  fill: var(--tk-accent);
+  stroke: var(--tk-accent);
+}
+
+.tk-star:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 0;
+}
+
+.tk-star:disabled {
+  cursor: default;
 }
 
 .tk-composer:focus-within {

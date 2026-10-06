@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "title": { "type": "string", "description": "One line, at most 80 characters." },
+    "summary": { "type": "string", "description": "Two or three sentences on what goes wrong." },
+    "steps": { "type": "array", "items": { "type": "string" }, "description": "Steps to reproduce, in order; empty when the report gives none." },
+    "expected": { "type": "string", "description": "What the user expected; empty when unknown." },
+    "actual": { "type": "string", "description": "What actually happens; empty when unclear." }
+  },
+  "required": ["title", "summary", "steps", "expected", "actual"],
+  "additionalProperties": false
+}

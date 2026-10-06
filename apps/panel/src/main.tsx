@@ -35,6 +35,7 @@ const notifier = createNotifier({
   openConversationId: () => /^\/inbox\/([^/]+)/.exec(router.state.location.pathname)?.[1],
   openConversation: (id) =>
     void router.navigate({ to: "/inbox/$conversationId", params: { conversationId: id }, search: { tab: "mine" } }),
+  openTask: (id) => void router.navigate({ to: "/tasks/$taskId", params: { taskId: id } }),
 });
 installNotifier(notifier);
 // Live updates for the signed-in session; lives as long as the page.

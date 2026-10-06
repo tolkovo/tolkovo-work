@@ -387,6 +387,100 @@ export interface paths {
         patch: operations["updateMyNotificationSettings"];
         trace?: never;
     };
+    "/me/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The current user's Telegram link to the workspace's notifications bot
+         * @description Messages about tasks (assigned to the user, a new one in their queue) go to the linked
+         *     Telegram chat (TK-02). `bot_username` is `null` while the workspace has no
+         *     notifications bot. Needs a session only.
+         */
+        get: operations["getMyTelegram"];
+        put?: never;
+        post?: never;
+        /** Stop messages to the current user's Telegram */
+        delete: operations["unlinkMyTelegram"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/telegram/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A link to press Start in the notifications bot
+         * @description The link `https://t.me/<bot>?start=<code>` works for 15 minutes; only the code's hash is
+         *     stored. After Start, `POST /me/telegram/check` completes the link.
+         */
+        post: operations["startMyTelegramLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/telegram/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the bot's new messages and complete links
+         * @description The server reads the bot's updates (getUpdates, no webhook) and links every member whose
+         *     code came with `/start`; the answer is the caller's link. The panel asks every few
+         *     seconds while the link waits. The bot is read only while the caller's code waits, and at
+         *     most once a second per workspace; otherwise the link is returned as it is. A chat already
+         *     linked to another member is not linked again.
+         */
+        post: operations["checkMyTelegramLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the current user accepts conversations in this workspace
+         * @description `online` until the user changes it. With automatic distribution the router gives
+         *     conversations only to members who are `online` and have the panel open.
+         */
+        get: operations["getMyPresence"];
+        /**
+         * Accept conversations or step away
+         * @description `away` stops new conversations from the router; those already assigned stay with
+         *     the user. Needs a session only, no permission.
+         */
+        put: operations["setMyPresence"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/workspaces": {
         parameters: {
             query?: never;
@@ -437,6 +531,32 @@ export interface paths {
          */
         get: operations["listMembers"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How the workspace distributes its queue
+         * @description Requires `members.view` (owner, admin, operator).
+         */
+        get: operations["getRouting"];
+        /**
+         * Change how the workspace distributes its queue
+         * @description With `round_robin` the server assigns queued conversations at once and then each
+         *     new one, in turn, to the members who are `online` with the panel open. Requires
+         *     `routing.manage` (owner, admin).
+         */
+        put: operations["setRouting"];
         post?: never;
         delete?: never;
         options?: never;
@@ -834,6 +954,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels/{id}/widget-analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change which site analytics a widget reports goals to
+         * @description The widget sends `chatStarted`, `contactCollected` and `rated` to the counters the
+         *     site already has: Google Tag Manager or GA4 (`dataLayer`), GA4 without GTM (`gtag`)
+         *     and Yandex Metrica (`ym`, by counter number). It loads no counter itself and sends no
+         *     personal data. Pages pick up the change with their next session start. Requires
+         *     `channels.manage`.
+         */
+        put: operations["setWidgetAnalytics"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's AI settings and the month's spending
+         * @description Off with no provider until set. `spent_micros` is the cost of every call since
+         *     `period_start`, the first day of the month in UTC. Requires `ai.manage`.
+         */
+        get: operations["getAISettings"];
+        /**
+         * Choose the provider, model, key, prices and budget
+         * @description Replaces the settings. `api_key` left out keeps the saved key; a key belongs to its
+         *     provider and its server, so choosing another provider, or a `base_url` on another scheme
+         *     or host, without a new key forgets the old one.
+         *     Turning AI on needs a model and, except for `openai_compatible`, a key
+         *     (`422 ai_key_required`). `base_url` is only for `openai_compatible` and must be a
+         *     public address unless the server allows private ones
+         *     (`TOLKOVO_EGRESS_ALLOW_PRIVATE`); it is `https`, `http` only for a server inside the
+         *     network (a private address, `localhost`, a name without a dot, `.local`, `.internal`,
+         *     `.lan`). Requires `ai.manage`.
+         */
+        put: operations["setAISettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/settings/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a tiny request with the saved settings
+         * @description Works whether AI is on or off, so the key and the model can be tried first. The call
+         *     costs a few tokens and counts toward the budget. Requires `ai.manage`.
+         */
+        post: operations["checkAISettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/github": {
         parameters: {
             query?: never;
@@ -1157,8 +1357,9 @@ export interface paths {
          * @description The visitor's own messages and the replies of operators and the bot, oldest first:
          *     no internal notes, no events, no names of staff. Without `since`, the newest 100;
          *     with it, what came after. Messages of the last few seconds may come again with the
-         *     next call — drop repeats by `id`. Fetch after `hello`, `widget.message` and
-         *     `resync_required` of the realtime connection. Rate: 60 a minute per session.
+         *     next call — drop repeats by `id`. Fetch after `hello`, `widget.message`,
+         *     `widget.conversation` and `resync_required` of the realtime connection. Rate: 60 a
+         *     minute per session.
          */
         get: operations["listWidgetMessages"];
         put?: never;
@@ -1205,6 +1406,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/widget/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether someone takes conversations now
+         * @description The same `operators_online` as `POST /widget/session` gives, asked again when the
+         *     visitor opens the window a while later. Rate: 60 a minute per session.
+         */
+        get: operations["getWidgetAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/widget/contact": {
         parameters: {
             query?: never;
@@ -1215,8 +1437,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * The visitor fills in the pre-chat form
-         * @description What the visitor typed about themselves (the widget's `prechat` option) and their
+         * The visitor fills in the pre-chat or the offline form
+         * @description What the visitor typed about themselves (the widget's `prechat` option, or the
+         *     offline form shown while nobody takes conversations) and their
          *     consent to the processing of personal data. Which fields the form asks for and which
          *     are required is set in the widget's code; send only what was filled in. Before the
          *     first message the values wait in the session and go onto the contact with that
@@ -1250,6 +1473,29 @@ export interface paths {
          *     session.
          */
         post: operations["markWidgetReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/widget/rating": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The visitor rates a resolved conversation
+         * @description A score from 1 to 5 and an optional comment, for a conversation of the visitor's chat
+         *     that is resolved or closed (`conversation` of `GET /widget/messages`). Rating again
+         *     replaces the rating. The operator sees it in the conversation (`conversation.rated`).
+         *     Rate: 10 a minute per session.
+         */
+        post: operations["rateWidgetConversation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1541,10 +1787,14 @@ export interface paths {
         };
         /**
          * The issue form filled from the templates
-         * @description The workspace's issue template with `{summary}` (the subject or the first line of the
-         *     customer's text), the app, its version and OS from the app report, and the link to the
-         *     conversation; `quote` is the customer's first message. The AI drafts it with AI-02.
-         *     Requires `issues.create`.
+         * @description The workspace's issue template with the app, its version and OS from the app report and
+         *     the link to the conversation; `quote` is the customer's first message. When the
+         *     workspace has AI on, its model reads the customer's first message and writes the title,
+         *     `{summary}`, `{steps}`, `{expected}` and `{actual}` (it may take a few seconds; the call
+         *     is counted in the AI budget). Without AI, or when the model cannot, `{summary}` is the
+         *     subject or the first line of the customer's text, `{steps}` is `1. ` and the rest is
+         *     empty; `ai_fallback` says why. No contact data goes to the model: personal data is
+         *     masked. Requires `issues.create`.
          */
         get: operations["getConversationIssueDraft"];
         put?: never;
@@ -1622,6 +1872,59 @@ export interface paths {
          * @description Only a `failed` issue (`409 issue_state` otherwise). Requires `issues.create`.
          */
         delete: operations["dismissConversationIssue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Tasks of the conversation
+         * @description Oldest link first, with the section's `settings` (whether it is on and which buttons
+         *     the conversation shows) and `reply_draft` once a task of the conversation is done.
+         *     Requires `tasks.view`.
+         */
+        get: operations["listConversationTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/tasks/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The task form filled from the conversation
+         * @description When the workspace has AI on, its model reads the customer's first message and writes
+         *     the title and a description with the steps, the expected and the actual result (it may
+         *     take a few seconds; the call is counted in the AI budget; personal data is masked).
+         *     Without AI, or when the model cannot, the title is the subject or the first line of
+         *     the customer's text; `ai_fallback` says why. The customer's first message is added to
+         *     the description; the customer's words (the subject, the message) come with personal data
+         *     masked, since every member sees tasks and a task outlives the deletion of the contact's
+         *     data. Requires `tasks.edit`.
+         */
+        get: operations["getConversationTaskDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1774,6 +2077,268 @@ export interface paths {
          *     `phone` or `locale` clears it.
          */
         patch: operations["updateContact"];
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tasks, newest first
+         * @description Requires `tasks.view`.
+         */
+        get: operations["listTasks"];
+        put?: never;
+        /**
+         * Create a task
+         * @description Requires `tasks.edit`. With `conversation_id` (a visible conversation) the task is
+         *     linked to it: a line appears in its feed and the conversation waits for the fix
+         *     (`awaiting_fix`; an assigned one goes to `pending`) until the task is closed. The
+         *     assignee, or the queue's members when there is none, are notified (in Telegram when
+         *     they linked it). `409 tasks_disabled` while the section is off.
+         */
+        post: operations["createTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's open tasks, for the menu
+         * @description Requires `tasks.view`.
+         */
+        get: operations["getTaskSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A task with its linked conversations
+         * @description Requires `tasks.view`.
+         */
+        get: operations["getTask"];
+        /**
+         * Change a task
+         * @description The whole changeable state, read at `version` (`409 task_conflict` when it changed
+         *     since). Putting a task `in_progress` without an assignee gives it to the caller.
+         *     Closing it (`done`, `canceled`) or reopening it writes a line in its conversations:
+         *     `done` brings a waiting conversation back to its assignee with a reply to send
+         *     (`ConversationTasks.reply_draft`). A new assignee is notified. Requires `tasks.edit`.
+         */
+        put: operations["updateTask"];
+        post?: never;
+        /**
+         * Delete a task
+         * @description Its conversations stop waiting for it. Requires `tasks.manage`.
+         */
+        delete: operations["deleteTask"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Comments and changes of a task, oldest first
+         * @description The latest 500 lines at most. Requires `tasks.view`.
+         */
+        get: operations["listTaskActivity"];
+        put?: never;
+        /**
+         * Comment a task
+         * @description Requires `tasks.edit`.
+         */
+        post: operations["commentTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link a conversation to the task
+         * @description One bug, many complaints. An open task puts the conversation to wait for the fix, as
+         *     a created one does. Requires `tasks.edit`.
+         */
+        post: operations["linkTaskConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink a conversation from the task
+         * @description The conversation stops waiting for it. Requires `tasks.edit`.
+         */
+        delete: operations["unlinkTaskConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queues of tasks, by name
+         * @description Requires `tasks.view`.
+         */
+        get: operations["listTaskQueues"];
+        put?: never;
+        /**
+         * Add a queue
+         * @description Up to 50 queues. Requires `tasks.manage`.
+         */
+        post: operations["createTaskQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-queues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a queue and replace its members
+         * @description Requires `tasks.manage`.
+         */
+        put: operations["updateTaskQueue"];
+        post?: never;
+        /**
+         * Delete a queue
+         * @description Its tasks stay without a queue. Requires `tasks.manage`.
+         */
+        delete: operations["deleteTaskQueue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-settings/telegram-bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's Telegram bot for notifications
+         * @description A bot of its own, not the bot of a support channel: members link their Telegram to it
+         *     and get messages about tasks there (TK-02). The token is encrypted and never returned.
+         *     Requires `tasks.manage`.
+         */
+        get: operations["getTaskTelegramBot"];
+        /**
+         * Add or replace the notifications bot
+         * @description Telegram is asked for the bot (getMe). Another bot replaces the old one and every member
+         *     links again. A bot connected as a support channel of the workspace is refused: reading its
+         *     updates would take the customers' messages. Requires `tasks.manage`.
+         */
+        put: operations["setTaskTelegramBot"];
+        post?: never;
+        /**
+         * Forget the notifications bot and every member's link to it
+         * @description Requires `tasks.manage`.
+         */
+        delete: operations["deleteTaskTelegramBot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Settings of the tasks section
+         * @description Requires `tasks.view`; the built-in replies are in `defaults`.
+         */
+        get: operations["getTaskSettings"];
+        /**
+         * Change the settings of the tasks section
+         * @description A reply equal to the built-in one is stored as none, so new versions may improve the
+         *     built-in text. Placeholders: `{name}`, `{task_number}`; an unknown one is `400`.
+         *     Requires `tasks.manage`.
+         */
+        put: operations["updateTaskSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -1982,6 +2547,93 @@ export interface components {
             name: string;
             role: components["schemas"]["Role"];
             active: boolean;
+            presence: components["schemas"]["Presence"];
+        };
+        /**
+         * @description `online` accepts conversations, `away` does not; both with the panel open.
+         *     `offline`: the panel has not been open for about 90 seconds.
+         * @enum {string}
+         */
+        Presence: "online" | "away" | "offline";
+        MyPresence: {
+            /**
+             * @description What the user chose; `offline` follows from a closed panel.
+             * @enum {string}
+             */
+            status: "online" | "away";
+        };
+        RoutingSettings: {
+            /**
+             * @description `manual`: operators take conversations from the queue. `round_robin`: the server
+             *     assigns them in turn to members who are `online`.
+             * @enum {string}
+             */
+            mode: "manual" | "round_robin";
+        };
+        /**
+         * @description `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+         *     Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+         *     OpenRouter and others at `base_url`).
+         * @enum {string}
+         */
+        AIProvider: "anthropic" | "openai" | "deepseek" | "openai_compatible";
+        /** @description Prices of the model per million tokens, in millionths of a US dollar. */
+        AIPrices: {
+            /** Format: int64 */
+            input_micros: number;
+            /** Format: int64 */
+            output_micros: number;
+        };
+        AISettings: {
+            enabled: boolean;
+            provider: components["schemas"]["AIProvider"] | null;
+            model: string | null;
+            base_url: string | null;
+            /** @description The saved key as `…` and its last four characters; `null` without one. */
+            key: {
+                /** @example …a1b2 */
+                hint: string;
+                /** Format: date-time */
+                set_at: string;
+            } | null;
+            prices: components["schemas"]["AIPrices"];
+            /**
+             * Format: int64
+             * @description `null`: no limit. With prices at zero nothing counts toward it.
+             */
+            monthly_budget_micros: number | null;
+            /** Format: int64 */
+            spent_micros: number;
+            /** Format: date-time */
+            period_start: string;
+            /**
+             * @description Models the panel suggests, with their list prices when this release was made;
+             *     any other model id may be typed.
+             */
+            models: components["schemas"]["AIModel"][];
+            /** @description `false` when `TOLKOVO_MASTER_KEY` is not set: a key cannot be saved. */
+            encryption_available: boolean;
+        };
+        AIModel: {
+            provider: components["schemas"]["AIProvider"];
+            model: string;
+            prices: components["schemas"]["AIPrices"];
+        };
+        AISettingsUpdate: {
+            enabled: boolean;
+            provider: components["schemas"]["AIProvider"] | null;
+            model: string | null;
+            base_url: string | null;
+            /** @description A new key; left out, the saved one stays. */
+            api_key?: string;
+            prices: components["schemas"]["AIPrices"];
+            /** Format: int64 */
+            monthly_budget_micros: number | null;
+        };
+        AICheck: {
+            /** @description The model that answered */
+            model: string;
+            latency_ms: number;
         };
         MemberList: {
             items: components["schemas"]["Member"][];
@@ -2040,6 +2692,23 @@ export interface components {
             last_read_message_id: string | null;
             /** @description Customer messages after the caller's read mark, counted up to 100. */
             unread_count: number;
+            /** @description The customer's rating of the resolved conversation; `null` until they rate it. */
+            rating: components["schemas"]["ConversationRating"] | null;
+        };
+        ConversationRating: {
+            score: number;
+            /** @description What the customer wrote with the score. */
+            comment: string | null;
+            /**
+             * @description `ai` when only the bot replied in the conversation, `human` otherwise.
+             * @enum {string}
+             */
+            resolved_by: "human" | "ai";
+            /**
+             * Format: date-time
+             * @description A later rating replaces the earlier one.
+             */
+            rated_at: string;
         };
         ConversationPreview: {
             /** @enum {string} */
@@ -2178,15 +2847,18 @@ export interface components {
              *     fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
              *     closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
              *     the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-             *     reopened one put it to wait for the fix again.
+             *     reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+             *     tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+             *     conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
             previous_assignee_id: string | null;
             issue?: components["schemas"]["MessageEventIssue"];
+            task?: components["schemas"]["MessageEventTask"];
         };
         MessageEventIssue: {
             link_id: string;
@@ -2200,6 +2872,198 @@ export interface components {
              * @enum {string}
              */
             reason?: "completed" | "not_planned";
+        };
+        MyTelegram: {
+            /** @description The workspace's notifications bot; `null` without one. */
+            bot_username: string | null;
+            linked: boolean;
+            /** @description The user's name in Telegram, once linked. */
+            name: string | null;
+            /** Format: date-time */
+            linked_at: string | null;
+            /** @description A link code waits for Start. */
+            pending: boolean;
+        };
+        TelegramLinkStart: {
+            /** @description https://t.me/<bot>?start=<code> */
+            url: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        TelegramBotState: {
+            bot: {
+                username: string;
+            } | null;
+            /** @description `false` without `TOLKOVO_MASTER_KEY`: no bot can be added. */
+            encryption_available: boolean;
+        };
+        TelegramBotInput: {
+            /** @description The bot token from @BotFather. */
+            token: string;
+        };
+        /**
+         * @description `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+         * @enum {string}
+         */
+        TaskStatus: "open" | "in_progress" | "done" | "canceled";
+        /**
+         * @description Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+         *     connected) or both.
+         * @enum {string}
+         */
+        TaskButton: "tasks" | "github" | "both";
+        /** @enum {string} */
+        TaskPriority: "low" | "normal" | "high" | "urgent";
+        Task: {
+            id: string;
+            /** Format: int64 */
+            number: number;
+            queue_id: string | null;
+            title: string;
+            body: string;
+            status: components["schemas"]["TaskStatus"];
+            priority: components["schemas"]["TaskPriority"];
+            assignee_id: string | null;
+            /** @description `null` when the author is no longer a member. */
+            created_by: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            closed_at: string | null;
+            /** Format: int32 */
+            version: number;
+            /** @description Linked conversations, oldest link first; empty in lists. */
+            conversation_ids: string[];
+        };
+        TaskPage: {
+            items: components["schemas"]["Task"][];
+            next_cursor: string | null;
+        };
+        TaskCreate: {
+            title: string;
+            body?: string;
+            queue_id?: string | null;
+            priority?: components["schemas"]["TaskPriority"];
+            assignee_id?: string | null;
+            /** @description The conversation the task is created from. */
+            conversation_id?: string | null;
+        };
+        TaskUpdate: {
+            /** Format: int32 */
+            version: number;
+            title: string;
+            body: string;
+            status: components["schemas"]["TaskStatus"];
+            priority: components["schemas"]["TaskPriority"];
+            queue_id: string | null;
+            assignee_id: string | null;
+        };
+        TaskSummary: {
+            /**
+             * Format: int64
+             * @description Open tasks assigned to the caller.
+             */
+            assigned_open: number;
+        };
+        TaskActivity: {
+            id: string;
+            actor_id: string | null;
+            /** @enum {string} */
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "edited" | "linked" | "unlinked";
+            /** @description The text of a comment. */
+            body?: string;
+            /** @description The value a change moved from (a status, a priority, a member or queue id); empty for none. */
+            from?: string;
+            /** @description The value a change moved to; empty for none. */
+            to?: string;
+            /** @description What an edit changed. */
+            fields?: ("title" | "body")[];
+            /** @description On `linked` and `unlinked`. */
+            conversation_id?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskActivityList: {
+            items: components["schemas"]["TaskActivity"][];
+        };
+        TaskComment: {
+            body: string;
+        };
+        TaskLinkRequest: {
+            conversation_id: string;
+        };
+        TaskQueue: {
+            id: string;
+            name: string;
+            /** @description Members told about new tasks without an assignee in the queue. */
+            member_ids: string[];
+            /** Format: int64 */
+            open_tasks: number;
+        };
+        TaskQueueList: {
+            items: components["schemas"]["TaskQueue"][];
+        };
+        TaskQueueInput: {
+            name: string;
+            member_ids: string[];
+        };
+        TaskSettings: {
+            /** @description Off hides the section and the button; tasks stay, new ones are refused. */
+            enabled: boolean;
+            conversation_button: components["schemas"]["TaskButton"];
+            reply_ru: string;
+            reply_en: string;
+        };
+        TaskSettingsView: {
+            settings: components["schemas"]["TaskSettings"];
+            defaults: {
+                reply_ru: string;
+                reply_en: string;
+            };
+            placeholders: string[];
+        };
+        ConversationTasks: {
+            items: components["schemas"]["Task"][];
+            settings: {
+                enabled: boolean;
+                conversation_button: components["schemas"]["TaskButton"];
+            };
+            /**
+             * @description The reply the operator may send once a task of the conversation is done; `null`
+             *     otherwise and after an operator replied to the customer since. Tolkovo never sends
+             *     it itself.
+             */
+            reply_draft: components["schemas"]["TaskReplyDraft"] | null;
+        };
+        TaskReplyDraft: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            /** @description The section's reply in the contact's language, `{name}` and `{task_number}` filled. */
+            text: string;
+        };
+        TaskDraft: {
+            title: string;
+            body: string;
+            /** @enum {string} */
+            drafted_by: "ai" | "template";
+            /**
+             * @description Why the AI did not write the draft although AI is on.
+             * @enum {string}
+             */
+            ai_fallback?: "budget_exceeded" | "failed";
+        };
+        MessageEventTask: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            /**
+             * @description Only with `task_closed`.
+             * @enum {string}
+             */
+            reason?: "done" | "canceled";
         };
         Tag: {
             id: string;
@@ -2323,6 +3187,7 @@ export interface components {
             widget_key?: string;
             /** @description Widgets only: the pages that may embed it (see `WidgetOriginsRequest`). */
             allowed_origins?: string[];
+            analytics?: components["schemas"]["WidgetAnalytics"];
         };
         Channel: {
             id: string;
@@ -2500,6 +3365,18 @@ export interface components {
             /** @description The customer's first message; empty when there is none. Off by default for a public repository. */
             quote: string;
             labels: string[];
+            /**
+             * @description `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+             *     and the actual result; `template` when the template was filled without it.
+             * @enum {string}
+             */
+            drafted_by: "ai" | "template";
+            /**
+             * @description Why the template was used although AI is on: the month's AI budget is spent, or the
+             *     provider failed, timed out or answered badly. Left out otherwise.
+             * @enum {string}
+             */
+            ai_fallback?: "budget_exceeded" | "failed";
         };
         CreateIssueRequest: {
             /** @description One line. */
@@ -2751,6 +3628,56 @@ export interface components {
                  */
                 policy_url: string;
             };
+            /**
+             * @description Which form it was; the consent is stored with it.
+             * @default prechat
+             * @enum {string}
+             */
+            form: "prechat" | "offline";
+        };
+        WidgetAvailability: {
+            /**
+             * @description Someone on the team takes conversations now: the status «online» and the panel
+             *     open. Without them the widget offers the offline form to a visitor who has not
+             *     written yet.
+             */
+            operators_online: boolean;
+        };
+        /**
+         * @description Where the widget reports its goals on the site. Each way is on separately; a counter
+         *     the page does not have is skipped. Parameters never carry texts, names, contacts or
+         *     ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+         *     `source`; `rated` — `score`, `resolvedBy`.
+         */
+        WidgetAnalytics: {
+            /** @description Push `{event: <goal>, tolkovo: {...}}` to `window.dataLayer` (Google Tag Manager, GA4 through GTM). */
+            data_layer: boolean;
+            /** @description Call `gtag("event", <goal>, {...})` (GA4 without GTM). */
+            gtag: boolean;
+            /** @description Yandex Metrica counter number: `ym(<counter>, "reachGoal", <goal>, {...})`; `null` — off. */
+            metrika_counter: string | null;
+            goals: components["schemas"]["WidgetGoals"];
+        };
+        /** @description Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`. */
+        WidgetGoals: {
+            chat_started: string;
+            contact_collected: string;
+            rated: string;
+        };
+        /** @description The visitor's newest conversation as they see it. */
+        WidgetConversation: {
+            id: string;
+            /**
+             * @description `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
+             * @enum {string}
+             */
+            status: "open" | "resolved";
+            rating: components["schemas"]["ConversationRating"] | null;
+        };
+        WidgetRatingRequest: {
+            conversation_id: string;
+            score: number;
+            comment?: string;
         };
         WidgetSession: {
             /** @description `tk_wsess_…`; keep it and send it as `Authorization: Bearer`. */
@@ -2763,8 +3690,13 @@ export interface components {
             /** @enum {string} */
             identity: "verified" | "unverified" | "none";
             channel_name: string;
+            /** @description As in `WidgetAvailability`. */
+            operators_online: boolean;
+            analytics: components["schemas"]["WidgetAnalytics"];
         };
         WidgetMessages: {
+            /** @description The visitor's newest conversation; `null` before the first message. */
+            conversation: components["schemas"]["WidgetConversation"] | null;
             items: components["schemas"]["WidgetMessage"][];
             /** @description Pass as `since` next time. */
             cursor: string;
@@ -3061,6 +3993,33 @@ export interface components {
          *     (only a failed issue can be sent again or removed).
          */
         IssueConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `no_notify_bot` (the workspace has no notifications bot), `notify_bot_busy` (the bot's
+         *     updates go to a webhook — it serves a support channel — or to another reader: use a bot of
+         *     its own) or `notify_bot_revoked` (Telegram no longer knows the saved token: an admin
+         *     replaces the bot).
+         */
+        NotifyBotConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `task_conflict` (the task changed since `version`), `task_linked` (the conversation
+         *     is linked to this task already), `queue_exists` (a queue has this name) or
+         *     `tasks_disabled` (the section is turned off).
+         */
+        TaskConflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -3660,6 +4619,147 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getMyTelegram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTelegram"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    unlinkMyTelegram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    startMyTelegramLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link to open in Telegram. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkStart"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `no_notify_bot`: the workspace has no notifications bot. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkMyTelegramLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTelegram"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            409: components["responses"]["NotifyBotConflict"];
+            502: components["responses"]["TelegramUnavailable"];
+        };
+    };
+    getMyPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyPresence"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    setMyPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyPresence"];
+            };
+        };
+        responses: {
+            /** @description The status now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyPresence"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listMyWorkspaces: {
         parameters: {
             query?: never;
@@ -3726,6 +4826,55 @@ export interface operations {
                     "application/json": components["schemas"]["MemberList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings; `manual` until changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingSettings"];
+            };
+        };
+        responses: {
+            /** @description The settings now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingSettings"];
+                };
+            };
+            400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
         };
@@ -4280,6 +5429,176 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    setWidgetAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetAnalytics"];
+            };
+        };
+        responses: {
+            /** @description The channel with the new settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description The settings now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettings"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `ai_key_required`: the provider needs an API key to turn AI on. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, a key cannot be stored. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkAISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AICheck"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description `ai_not_configured` (no provider, model or key saved) or `ai_budget_exceeded`
+             *     (the month's budget is spent).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `ai_key_refused` (the provider refused the key) or `ai_request_rejected` (the
+             *     provider refused the request: an unknown model, no credit; `detail` carries the
+             *     provider's error code).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `ai_provider_unavailable` (unreachable, timed out or failing) or `ai_bad_answer`
+             *     (the model declined or answered something else).
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `ai_rate_limited` (the provider asks to wait; see `Retry-After` when it said how
+             *     long) or `encryption_unavailable`.
+             */
+            503: {
+                headers: {
+                    /** @description Seconds the provider asked to wait. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getGitHubIntegration: {
@@ -4905,6 +6224,29 @@ export interface operations {
             429: components["responses"]["WidgetLimited"];
         };
     };
+    getWidgetAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetAvailability"];
+                };
+            };
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
     submitWidgetContact: {
         parameters: {
             query?: never;
@@ -4954,6 +6296,52 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["WidgetSessionEnded"];
             403: components["responses"]["WidgetOriginNotAllowed"];
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
+    rateWidgetConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetRatingRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRating"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            /** @description `not_found`: no such conversation in the visitor's chat. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `conversation_open`: the conversation is not resolved; it may have reopened. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             429: components["responses"]["WidgetLimited"];
         };
     };
@@ -5583,6 +6971,56 @@ export interface operations {
             409: components["responses"]["IssueConflict"];
         };
     };
+    listConversationTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationTasks"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getConversationTaskDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDraft"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     markConversationRead: {
         parameters: {
             query?: never;
@@ -5833,6 +7271,533 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listTasks: {
+        parameters: {
+            query?: {
+                /** @description `open` (new or in progress), `closed` (done or canceled); all when absent. */
+                state?: "open" | "closed";
+                status?: components["schemas"]["TaskStatus"];
+                /** @description `me`, `none` or a member id. */
+                assignee?: string;
+                /** @description `none` or a queue id. */
+                queue?: string;
+                /** @description Part of the title, or the task number. */
+                q?: string;
+                /** @description Opaque `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size, 1–100; 50 when absent. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPage"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    getTaskSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description The changed task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    deleteTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTaskActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The feed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskActivityList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    commentTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskComment"];
+            };
+        };
+        responses: {
+            /** @description The comment. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskActivity"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    linkTaskConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Linked; the task. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    unlinkTaskConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTaskQueues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueueList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskQueueInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueue"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    updateTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskQueueInput"];
+            };
+        };
+        responses: {
+            /** @description The queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueue"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    deleteTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTaskTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bot; `bot` is `null` without one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotState"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setTaskTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramBotInput"];
+            };
+        };
+        responses: {
+            /** @description The bot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotState"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `notify_bot_busy`: the bot is a support channel of the workspace. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `telegram_token_invalid`: Telegram does not know the token. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["TelegramUnavailable"];
+            /** @description `encryption_unavailable`: `TOLKOVO_MASTER_KEY` is not set, the token cannot be stored. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteTaskTelegramBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Forgotten. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTaskSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSettingsView"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTaskSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskSettings"];
+            };
+        };
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSettingsView"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
 }

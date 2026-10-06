@@ -30,12 +30,26 @@ const (
 	// the conversation came back from waiting for the fix or went to wait again.
 	EventIssueClosed   = "issue_closed"
 	EventIssueReopened = "issue_reopened"
+	// Task events (ADR-0015): a task of the tasks section was created from
+	// the conversation, linked to it or unlinked, closed (TaskRef.Reason)
+	// or reopened. From and To are set as for the issue events.
+	EventTaskCreated  = "task_created"
+	EventTaskLinked   = "task_linked"
+	EventTaskUnlinked = "task_unlinked"
+	EventTaskClosed   = "task_closed"
+	EventTaskReopened = "task_reopened"
 )
 
 // Why GitHub closed an issue (IssueRef.Reason).
 const (
 	IssueFixed      = "completed"
 	IssueNotPlanned = "not_planned"
+)
+
+// How a task was closed (TaskRef.Reason).
+const (
+	TaskDone     = "done"
+	TaskCanceled = "canceled"
 )
 
 // Event is what a system message records. It holds ids and statuses only:
@@ -48,6 +62,8 @@ type Event struct {
 	PreviousAssigneeID *uuid.UUID `json:"previous_assignee_id"`
 	// Issue is set on the issue events.
 	Issue *IssueRef `json:"issue,omitempty"`
+	// Task is set on the task events.
+	Task *TaskRef `json:"task,omitempty"`
 }
 
 // IssueRef names an issue in a feed line: no title, the panel links to it.
@@ -57,6 +73,14 @@ type IssueRef struct {
 	Number     int64     `json:"number"`
 	URL        string    `json:"url"`
 	// Reason is set on EventIssueClosed: IssueFixed or IssueNotPlanned.
+	Reason string `json:"reason,omitempty"`
+}
+
+// TaskRef names a task in a feed line: no title, the panel links to it.
+type TaskRef struct {
+	TaskID uuid.UUID `json:"task_id"`
+	Number int64     `json:"number"`
+	// Reason is set on EventTaskClosed: TaskDone or TaskCanceled.
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -107,6 +131,10 @@ func eventFrom(kind string, meta []byte) *Event {
 	case EventStatusChanged, EventAssigned:
 	case EventIssueCreated, EventIssueLinked, EventIssueClosed, EventIssueReopened:
 		if ev.Issue == nil {
+			return nil
+		}
+	case EventTaskCreated, EventTaskLinked, EventTaskUnlinked, EventTaskClosed, EventTaskReopened:
+		if ev.Task == nil {
 			return nil
 		}
 	default:

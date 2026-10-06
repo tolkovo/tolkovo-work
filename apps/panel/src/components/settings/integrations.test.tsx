@@ -14,7 +14,7 @@ const defaults = {
 };
 
 const placeholders = {
-  issue: ["summary", "app_name", "app_version", "os", "os_version", "conversation_url"],
+  issue: ["summary", "steps", "expected", "actual", "app_name", "app_version", "os", "os_version", "conversation_url"],
   reply: ["name", "issue_number"],
 };
 

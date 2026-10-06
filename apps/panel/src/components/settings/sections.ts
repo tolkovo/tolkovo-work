@@ -4,6 +4,9 @@ export type SettingsPath =
   | "/settings/general"
   | "/settings/channels"
   | "/settings/integrations"
+  | "/settings/tasks"
+  | "/settings/routing"
+  | "/settings/ai"
   | "/settings/team"
   | "/settings/profile"
   | "/settings/appearance"
@@ -16,6 +19,9 @@ type SettingsSection = {
     | "settings.general.title"
     | "settings.channels.title"
     | "settings.integrations.title"
+    | "settings.tasks.title"
+    | "settings.routing.title"
+    | "settings.ai.nav"
     | "settings.team.title"
     | "settings.profile.title"
     | "settings.appearance.title"
@@ -34,9 +40,9 @@ export type SettingsGroup = {
 
 /**
  * Settings tree (docs/07 §7): workspace sections by permission, then the personal ones every
- * user has. More sections join with their features: the operator status joins «Уведомления»
- * with presence (Q-02), «Горячие клавиши» come with the inbox shortcuts. Hiding is a UI hint:
- * the server checks again.
+ * user has. More sections join with their features: «Горячие клавиши» come with the inbox
+ * shortcuts. The operator's status lives in the top bar. Hiding is a UI hint: the server
+ * checks again.
  */
 export const settingsGroups: readonly SettingsGroup[] = [
   {
@@ -45,7 +51,10 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/general", label: "settings.general.title", permission: "workspace.manage", landing: true },
       { to: "/settings/channels", label: "settings.channels.title", permission: "channels.view" },
       { to: "/settings/integrations", label: "settings.integrations.title", permission: "integrations.manage" },
+      { to: "/settings/tasks", label: "settings.tasks.title", permission: "tasks.manage" },
       { to: "/settings/team", label: "settings.team.title", permission: "members.view" },
+      { to: "/settings/routing", label: "settings.routing.title", permission: "routing.manage" },
+      { to: "/settings/ai", label: "settings.ai.nav", permission: "ai.manage" },
     ],
   },
   {

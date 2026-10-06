@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
@@ -12,6 +13,8 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 	"github.com/tolkovo/tolkovo/apps/server/internal/widget"
 )
@@ -27,6 +30,9 @@ type server struct {
 	ingest        *ingest.Service
 	integrations  *integrations.Service
 	widget        *widget.Service
+	routing       *routing.Service
+	ai            *ai.Service
+	tasks         *tasks.Service
 	cookies       sessionCookies
 	clients       clientIPs
 }
@@ -169,9 +175,20 @@ func (s *server) ListMembers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	presences, err := s.routing.Presences(r.Context(), p.WorkspaceID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	items := make([]oapi.Member, 0, len(members))
 	for _, m := range members {
-		items = append(items, oapi.Member{UserId: m.UserID, Email: m.Email, Name: m.Name, Role: oapi.Role(m.Role), Active: m.Active})
+		presence := oapi.PresenceOffline
+		if v, ok := presences[m.UserID]; ok && m.Active {
+			presence = oapi.Presence(v)
+		}
+		items = append(items, oapi.Member{
+			UserId: m.UserID, Email: m.Email, Name: m.Name, Role: oapi.Role(m.Role), Active: m.Active, Presence: presence,
+		})
 	}
 	writeJSON(w, http.StatusOK, oapi.MemberList{Items: items})
 }

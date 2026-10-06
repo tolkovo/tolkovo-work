@@ -494,7 +494,16 @@ func conversationBody(c conversations.Conversation) oapi.Conversation {
 		Subject: c.Subject, FirstResponseAt: c.FirstResponseAt, LastMessageAt: c.LastMessageAt,
 		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix, Version: c.Version,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs),
-		LastReadMessageId: c.LastReadMessageID, UnreadCount: c.UnreadCount,
+		LastReadMessageId: c.LastReadMessageID, UnreadCount: c.UnreadCount, Rating: ratingBody(c.Rating),
+	}
+}
+
+func ratingBody(r *conversations.Rating) *oapi.ConversationRating {
+	if r == nil {
+		return nil
+	}
+	return &oapi.ConversationRating{
+		Score: r.Score, Comment: r.Comment, ResolvedBy: oapi.ConversationRatingResolvedBy(r.ResolvedBy), RatedAt: r.RatedAt,
 	}
 }
 

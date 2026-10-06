@@ -19,6 +19,7 @@ import { Route as AppKbRouteImport } from "./routes/_app/kb"
 import { Route as AppMonitorRouteImport } from "./routes/_app/monitor"
 import { Route as AppOnboardingRouteImport } from "./routes/_app/onboarding"
 import { Route as AppSettingsRouteImport } from "./routes/_app/settings"
+import { Route as AppTasksRouteImport } from "./routes/_app/tasks"
 import { Route as AuthForgotPasswordRouteImport } from "./routes/_auth/forgot-password"
 import { Route as AuthLoginRouteImport } from "./routes/_auth/login"
 import { Route as AuthRegisterRouteImport } from "./routes/_auth/register"
@@ -28,14 +29,20 @@ import { Route as LinkVerifyEmailRouteImport } from "./routes/_link/verify-email
 import { Route as AppInboxIndexRouteImport } from "./routes/_app/inbox/index"
 import { Route as AppInboxConversationIdRouteImport } from "./routes/_app/inbox/$conversationId"
 import { Route as AppSettingsIndexRouteImport } from "./routes/_app/settings/index"
+import { Route as AppSettingsAiRouteImport } from "./routes/_app/settings/ai"
 import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/settings/appearance"
 import { Route as AppSettingsChannelsRouteImport } from "./routes/_app/settings/channels"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
 import { Route as AppSettingsIntegrationsRouteImport } from "./routes/_app/settings/integrations"
 import { Route as AppSettingsNotificationsRouteImport } from "./routes/_app/settings/notifications"
 import { Route as AppSettingsProfileRouteImport } from "./routes/_app/settings/profile"
+import { Route as AppSettingsRoutingRouteImport } from "./routes/_app/settings/routing"
 import { Route as AppSettingsSecurityRouteImport } from "./routes/_app/settings/security"
+import { Route as AppSettingsTasksRouteImport } from "./routes/_app/settings/tasks"
 import { Route as AppSettingsTeamRouteImport } from "./routes/_app/settings/team"
+import { Route as AppTasksIndexRouteImport } from "./routes/_app/tasks/index"
+import { Route as AppTasksTaskIdRouteImport } from "./routes/_app/tasks/$taskId"
+import { Route as AppTasksNewRouteImport } from "./routes/_app/tasks/new"
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -84,6 +91,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: "/settings",
   getParentRoute: () => AppRoute,
 } as any)
+const AppTasksRoute = AppTasksRouteImport.update({
+  id: "/tasks",
+  path: "/tasks",
+  getParentRoute: () => AppRoute,
+} as any)
 const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
   id: "/forgot-password",
   path: "/forgot-password",
@@ -129,6 +141,11 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: "/",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsAiRoute = AppSettingsAiRouteImport.update({
+  id: "/ai",
+  path: "/ai",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
   id: "/appearance",
   path: "/appearance",
@@ -160,15 +177,40 @@ const AppSettingsProfileRoute = AppSettingsProfileRouteImport.update({
   path: "/profile",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsRoutingRoute = AppSettingsRoutingRouteImport.update({
+  id: "/routing",
+  path: "/routing",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsSecurityRoute = AppSettingsSecurityRouteImport.update({
   id: "/security",
   path: "/security",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsTasksRoute = AppSettingsTasksRouteImport.update({
+  id: "/tasks",
+  path: "/tasks",
   getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsTeamRoute = AppSettingsTeamRouteImport.update({
   id: "/team",
   path: "/team",
   getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppTasksIndexRoute = AppTasksIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => AppTasksRoute,
+} as any)
+const AppTasksTaskIdRoute = AppTasksTaskIdRouteImport.update({
+  id: "/$taskId",
+  path: "/$taskId",
+  getParentRoute: () => AppTasksRoute,
+} as any)
+const AppTasksNewRoute = AppTasksNewRouteImport.update({
+  id: "/new",
+  path: "/new",
+  getParentRoute: () => AppTasksRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -179,6 +221,7 @@ export interface FileRoutesByFullPath {
   "/monitor": typeof AppMonitorRoute
   "/onboarding": typeof AppOnboardingRoute
   "/settings": typeof AppSettingsRouteWithChildren
+  "/tasks": typeof AppTasksRouteWithChildren
   "/forgot-password": typeof AuthForgotPasswordRoute
   "/login": typeof AuthLoginRoute
   "/register": typeof AuthRegisterRoute
@@ -186,16 +229,22 @@ export interface FileRoutesByFullPath {
   "/reset-password": typeof LinkResetPasswordRoute
   "/verify-email": typeof LinkVerifyEmailRoute
   "/inbox/$conversationId": typeof AppInboxConversationIdRoute
+  "/settings/ai": typeof AppSettingsAiRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/integrations": typeof AppSettingsIntegrationsRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
+  "/settings/routing": typeof AppSettingsRoutingRoute
   "/settings/security": typeof AppSettingsSecurityRoute
+  "/settings/tasks": typeof AppSettingsTasksRoute
   "/settings/team": typeof AppSettingsTeamRoute
+  "/tasks/$taskId": typeof AppTasksTaskIdRoute
+  "/tasks/new": typeof AppTasksNewRoute
   "/inbox/": typeof AppInboxIndexRoute
   "/settings/": typeof AppSettingsIndexRoute
+  "/tasks/": typeof AppTasksIndexRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
@@ -210,16 +259,22 @@ export interface FileRoutesByTo {
   "/reset-password": typeof LinkResetPasswordRoute
   "/verify-email": typeof LinkVerifyEmailRoute
   "/inbox/$conversationId": typeof AppInboxConversationIdRoute
+  "/settings/ai": typeof AppSettingsAiRoute
   "/settings/appearance": typeof AppSettingsAppearanceRoute
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/integrations": typeof AppSettingsIntegrationsRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
+  "/settings/routing": typeof AppSettingsRoutingRoute
   "/settings/security": typeof AppSettingsSecurityRoute
+  "/settings/tasks": typeof AppSettingsTasksRoute
   "/settings/team": typeof AppSettingsTeamRoute
+  "/tasks/$taskId": typeof AppTasksTaskIdRoute
+  "/tasks/new": typeof AppTasksNewRoute
   "/inbox": typeof AppInboxIndexRoute
   "/settings": typeof AppSettingsIndexRoute
+  "/tasks": typeof AppTasksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -233,6 +288,7 @@ export interface FileRoutesById {
   "/_app/monitor": typeof AppMonitorRoute
   "/_app/onboarding": typeof AppOnboardingRoute
   "/_app/settings": typeof AppSettingsRouteWithChildren
+  "/_app/tasks": typeof AppTasksRouteWithChildren
   "/_auth/forgot-password": typeof AuthForgotPasswordRoute
   "/_auth/login": typeof AuthLoginRoute
   "/_auth/register": typeof AuthRegisterRoute
@@ -240,16 +296,22 @@ export interface FileRoutesById {
   "/_link/reset-password": typeof LinkResetPasswordRoute
   "/_link/verify-email": typeof LinkVerifyEmailRoute
   "/_app/inbox/$conversationId": typeof AppInboxConversationIdRoute
+  "/_app/settings/ai": typeof AppSettingsAiRoute
   "/_app/settings/appearance": typeof AppSettingsAppearanceRoute
   "/_app/settings/channels": typeof AppSettingsChannelsRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
   "/_app/settings/integrations": typeof AppSettingsIntegrationsRoute
   "/_app/settings/notifications": typeof AppSettingsNotificationsRoute
   "/_app/settings/profile": typeof AppSettingsProfileRoute
+  "/_app/settings/routing": typeof AppSettingsRoutingRoute
   "/_app/settings/security": typeof AppSettingsSecurityRoute
+  "/_app/settings/tasks": typeof AppSettingsTasksRoute
   "/_app/settings/team": typeof AppSettingsTeamRoute
+  "/_app/tasks/$taskId": typeof AppTasksTaskIdRoute
+  "/_app/tasks/new": typeof AppTasksNewRoute
   "/_app/inbox/": typeof AppInboxIndexRoute
   "/_app/settings/": typeof AppSettingsIndexRoute
+  "/_app/tasks/": typeof AppTasksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -261,6 +323,7 @@ export interface FileRouteTypes {
     | "/monitor"
     | "/onboarding"
     | "/settings"
+    | "/tasks"
     | "/forgot-password"
     | "/login"
     | "/register"
@@ -268,16 +331,22 @@ export interface FileRouteTypes {
     | "/reset-password"
     | "/verify-email"
     | "/inbox/$conversationId"
+    | "/settings/ai"
     | "/settings/appearance"
     | "/settings/channels"
     | "/settings/general"
     | "/settings/integrations"
     | "/settings/notifications"
     | "/settings/profile"
+    | "/settings/routing"
     | "/settings/security"
+    | "/settings/tasks"
     | "/settings/team"
+    | "/tasks/$taskId"
+    | "/tasks/new"
     | "/inbox/"
     | "/settings/"
+    | "/tasks/"
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
@@ -292,16 +361,22 @@ export interface FileRouteTypes {
     | "/reset-password"
     | "/verify-email"
     | "/inbox/$conversationId"
+    | "/settings/ai"
     | "/settings/appearance"
     | "/settings/channels"
     | "/settings/general"
     | "/settings/integrations"
     | "/settings/notifications"
     | "/settings/profile"
+    | "/settings/routing"
     | "/settings/security"
+    | "/settings/tasks"
     | "/settings/team"
+    | "/tasks/$taskId"
+    | "/tasks/new"
     | "/inbox"
     | "/settings"
+    | "/tasks"
   id:
     | "__root__"
     | "/"
@@ -314,6 +389,7 @@ export interface FileRouteTypes {
     | "/_app/monitor"
     | "/_app/onboarding"
     | "/_app/settings"
+    | "/_app/tasks"
     | "/_auth/forgot-password"
     | "/_auth/login"
     | "/_auth/register"
@@ -321,16 +397,22 @@ export interface FileRouteTypes {
     | "/_link/reset-password"
     | "/_link/verify-email"
     | "/_app/inbox/$conversationId"
+    | "/_app/settings/ai"
     | "/_app/settings/appearance"
     | "/_app/settings/channels"
     | "/_app/settings/general"
     | "/_app/settings/integrations"
     | "/_app/settings/notifications"
     | "/_app/settings/profile"
+    | "/_app/settings/routing"
     | "/_app/settings/security"
+    | "/_app/settings/tasks"
     | "/_app/settings/team"
+    | "/_app/tasks/$taskId"
+    | "/_app/tasks/new"
     | "/_app/inbox/"
     | "/_app/settings/"
+    | "/_app/tasks/"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -412,6 +494,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    "/_app/tasks": {
+      id: "/_app/tasks"
+      path: "/tasks"
+      fullPath: "/tasks"
+      preLoaderRoute: typeof AppTasksRouteImport
+      parentRoute: typeof AppRoute
+    }
     "/_auth/forgot-password": {
       id: "/_auth/forgot-password"
       path: "/forgot-password"
@@ -475,6 +564,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/ai": {
+      id: "/_app/settings/ai"
+      path: "/ai"
+      fullPath: "/settings/ai"
+      preLoaderRoute: typeof AppSettingsAiRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/appearance": {
       id: "/_app/settings/appearance"
       path: "/appearance"
@@ -517,11 +613,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsProfileRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/routing": {
+      id: "/_app/settings/routing"
+      path: "/routing"
+      fullPath: "/settings/routing"
+      preLoaderRoute: typeof AppSettingsRoutingRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/security": {
       id: "/_app/settings/security"
       path: "/security"
       fullPath: "/settings/security"
       preLoaderRoute: typeof AppSettingsSecurityRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    "/_app/settings/tasks": {
+      id: "/_app/settings/tasks"
+      path: "/tasks"
+      fullPath: "/settings/tasks"
+      preLoaderRoute: typeof AppSettingsTasksRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     "/_app/settings/team": {
@@ -530,6 +640,27 @@ declare module "@tanstack/react-router" {
       fullPath: "/settings/team"
       preLoaderRoute: typeof AppSettingsTeamRouteImport
       parentRoute: typeof AppSettingsRoute
+    }
+    "/_app/tasks/": {
+      id: "/_app/tasks/"
+      path: "/"
+      fullPath: "/tasks/"
+      preLoaderRoute: typeof AppTasksIndexRouteImport
+      parentRoute: typeof AppTasksRoute
+    }
+    "/_app/tasks/$taskId": {
+      id: "/_app/tasks/$taskId"
+      path: "/$taskId"
+      fullPath: "/tasks/$taskId"
+      preLoaderRoute: typeof AppTasksTaskIdRouteImport
+      parentRoute: typeof AppTasksRoute
+    }
+    "/_app/tasks/new": {
+      id: "/_app/tasks/new"
+      path: "/new"
+      fullPath: "/tasks/new"
+      preLoaderRoute: typeof AppTasksNewRouteImport
+      parentRoute: typeof AppTasksRoute
     }
   }
 }
@@ -549,31 +680,53 @@ const AppInboxRouteWithChildren = AppInboxRoute._addFileChildren(
 )
 
 interface AppSettingsRouteChildren {
+  AppSettingsAiRoute: typeof AppSettingsAiRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsChannelsRoute: typeof AppSettingsChannelsRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
   AppSettingsIntegrationsRoute: typeof AppSettingsIntegrationsRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
+  AppSettingsRoutingRoute: typeof AppSettingsRoutingRoute
   AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
+  AppSettingsTasksRoute: typeof AppSettingsTasksRoute
   AppSettingsTeamRoute: typeof AppSettingsTeamRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAiRoute: AppSettingsAiRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsChannelsRoute: AppSettingsChannelsRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,
   AppSettingsIntegrationsRoute: AppSettingsIntegrationsRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
+  AppSettingsRoutingRoute: AppSettingsRoutingRoute,
   AppSettingsSecurityRoute: AppSettingsSecurityRoute,
+  AppSettingsTasksRoute: AppSettingsTasksRoute,
   AppSettingsTeamRoute: AppSettingsTeamRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 
 const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
   AppSettingsRouteChildren,
+)
+
+interface AppTasksRouteChildren {
+  AppTasksTaskIdRoute: typeof AppTasksTaskIdRoute
+  AppTasksNewRoute: typeof AppTasksNewRoute
+  AppTasksIndexRoute: typeof AppTasksIndexRoute
+}
+
+const AppTasksRouteChildren: AppTasksRouteChildren = {
+  AppTasksTaskIdRoute: AppTasksTaskIdRoute,
+  AppTasksNewRoute: AppTasksNewRoute,
+  AppTasksIndexRoute: AppTasksIndexRoute,
+}
+
+const AppTasksRouteWithChildren = AppTasksRoute._addFileChildren(
+  AppTasksRouteChildren,
 )
 
 interface AppRouteChildren {
@@ -583,6 +736,7 @@ interface AppRouteChildren {
   AppMonitorRoute: typeof AppMonitorRoute
   AppOnboardingRoute: typeof AppOnboardingRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
+  AppTasksRoute: typeof AppTasksRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -592,6 +746,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMonitorRoute: AppMonitorRoute,
   AppOnboardingRoute: AppOnboardingRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
+  AppTasksRoute: AppTasksRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

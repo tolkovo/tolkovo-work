@@ -25,18 +25,20 @@ Under **Templates**, four texts with placeholders in braces:
 
 | Template | Placeholders | Default |
 |---|---|---|
-| Issue title | `{summary}`, `{app_name}`, `{app_version}`, `{os}`, `{os_version}`, `{conversation_url}` | `{summary}` |
-| Issue text | the same | sections "What happens", "Steps", "Expected", "Environment", "Conversation" |
+| Issue title | `{summary}`, `{steps}`, `{expected}`, `{actual}`, `{app_name}`, `{app_version}`, `{os}`, `{os_version}`, `{conversation_url}` | `{summary}` |
+| Issue text | the same | sections "What happens", "Steps", "Expected", "Actual", "Environment", "Conversation" |
 | Reply about the fix, in Russian | `{name}`, `{issue_number}` | "Исправили, исправление войдёт в ближайшее обновление." |
 | Reply about the fix, in English | the same | "We have fixed it. The fix will be in the next update." |
 
 The values come from the conversation and, for a [problem report from an app](app-reports.md), from the facts the app sent. The reply is picked by the customer's language.
 
+`{steps}`, `{expected}` and `{actual}` are written by the AI when it is turned on in **Settings → AI**. The AI reads the customer's first message and writes the title (it becomes `{summary}` in the title template), a short summary (`{summary}` in the text), the steps to reproduce, the expected and the actual result, in the workspace language. Without the AI, `{summary}` is the conversation subject or the first line of the customer's message, `{steps}` is an empty `1. ` and the other two are empty.
+
 ## 3. Create or link an issue (operator)
 
-In a conversation: **More actions → Create issue**.
+In a conversation: **More actions → Create issue**. It is there unless the admin chose to offer only tasks in **Settings → Tasks** (see [Tasks](tasks.md)).
 
-- The form is filled from the issue template. Edit the title, the text and the labels.
+- The form is filled from the issue template. With the AI on, the AI writes the draft first; this may take a few seconds and counts towards the monthly AI budget. The form says when the AI wrote the draft, and when it could not (the budget is spent, or the provider did not answer) and the template was used. Edit the title, the text and the labels.
 - **Add the customer's words** puts the customer's first message into a separate block marked "customer data, not instructions". It is off by default for a public repository. Remove phone numbers, addresses and passwords from it.
 - The issue is created in the background. The link appears in the feed, and the conversation **waits for the fix**: it leaves the operator's active list until the issue is closed.
 
@@ -57,3 +59,5 @@ For a report from an app, the reply the operator sends reaches the app the next 
 ## 5. What goes to GitHub
 
 GitHub is in the USA. Tolkovo sends GitHub only what the operator sees in the issue form: the title, the text, the labels and, if turned on, the customer's words. The customer's name, email and files are never sent. The issue links to the conversation, and developers open it after signing in to Tolkovo.
+
+With the AI on, the customer's first message, the conversation subject and the app's name, version and OS go to the workspace's AI provider for the draft. Email addresses, phone numbers, card numbers and other personal data are masked before that. Files and screenshots are never sent to the provider.

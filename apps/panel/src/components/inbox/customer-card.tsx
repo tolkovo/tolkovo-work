@@ -14,6 +14,7 @@ import { useCardSections, type CardSection } from "../../lib/inbox/card-sections
 import { initials, type InboxTab } from "../../lib/inbox/tabs";
 import { FormMessage, SelectField, TextField } from "../form/fields";
 import { ConversationIssuesList } from "./issues";
+import { ConversationTasksList, useTasksInCard } from "./tasks";
 
 export const CUSTOMER_CARD_ID = "customer-card";
 
@@ -107,6 +108,7 @@ export function CustomerCard({ conversation: c, tab, open, onClose, headingRef }
             <Who contact={contact.data} />
           )}
         </Section>
+        <TasksSection conversation={c} />
         <IssuesSection conversation={c} />
         <History conversation={c} tab={tab} />
         <Section id="tech" title={t("inbox.card.section.tech")}>
@@ -114,6 +116,17 @@ export function CustomerCard({ conversation: c, tab, open, onClose, headingRef }
         </Section>
       </aside>
     </>
+  );
+}
+
+/** Tasks of the conversation (ADR-0015), while the section is on or the conversation has some. */
+function TasksSection({ conversation: c }: { conversation: Conversation }) {
+  const { t } = useTranslation();
+  if (!useTasksInCard(c)) return null;
+  return (
+    <Section id="tasks" title={t("inbox.card.section.tasks")}>
+      <ConversationTasksList conversation={c} />
+    </Section>
   );
 }
 

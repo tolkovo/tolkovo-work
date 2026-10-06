@@ -192,6 +192,26 @@ func (h *hub) unregister(c subscriber) {
 	}
 }
 
+// panelUsers returns the members with an open panel on this replica, by
+// workspace; widget visitors are not members.
+func (h *hub) panelUsers() map[uuid.UUID][]uuid.UUID {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := map[uuid.UUID][]uuid.UUID{}
+	for ws, set := range h.conns {
+		seen := map[uuid.UUID]bool{}
+		for s := range set {
+			c, ok := s.(*conn)
+			if !ok || seen[c.userID] {
+				continue
+			}
+			seen[c.userID] = true
+			out[ws] = append(out[ws], c.userID)
+		}
+	}
+	return out
+}
+
 // all returns a snapshot of local connections, for shutdown.
 func (h *hub) all() []subscriber {
 	h.mu.RLock()

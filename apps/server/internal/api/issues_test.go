@@ -57,6 +57,80 @@ func (e *env) createIssueJob(ws, link uuid.UUID, last bool) error {
 	return e.integrations.CreateQueuedIssue(context.Background(), integrations.CreateIssueArgs{WorkspaceID: ws, LinkID: link}, last)
 }
 
+// The AI draft (AI-02): with AI on, the model writes the parts of the
+// issue into the template; without a budget or with the provider down the
+// template stands in and says why.
+func TestConversationIssues_AIDraft(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	a := e.connectApp("owner@example.test", "zerno")
+	c := a.owner
+	ws := e.workspaceOf(a)
+	conv := e.reportConversation(a, "Не синхронизируется корзина\nПосле обновления до 2.4.1 корзина пустая. Пишите на anna@example.test")
+	base := "/api/v1/conversations/" + conv.String() + "/issues/draft"
+	e.connectGitHub(c, true)
+
+	// AI off: the template, nothing asked of a model.
+	d := decode[oapi.IssueDraft](t, c.do(http.MethodGet, base, nil))
+	if d.DraftedBy != oapi.IssueDraftDraftedByTemplate || d.AiFallback != nil || !strings.Contains(d.Body, "## Шаги\n1. \n\n## Ожидалось\n\n") {
+		t.Fatalf("template draft: %+v", d)
+	}
+	if e.llm.calls() != 0 {
+		t.Fatalf("a model was asked with AI off: %d", e.llm.calls())
+	}
+
+	if rec := c.do(http.MethodPut, "/api/v1/ai/settings", haikuSettings(map[string]any{"api_key": aiTestKey})); rec.Code != http.StatusOK {
+		t.Fatalf("ai settings: %d %s", rec.Code, rec.Body)
+	}
+	e.llm.answer(fakeLLMAnswer{status: 200, body: `{"model":"claude-haiku-4-5-20251001","stop_reason":"tool_use","content":[{"type":"tool_use","id":"t1","name":"issue_draft","input":{
+		"title":"Корзина пустеет после обновления до 2.4.1","summary":"После обновления корзина пользователя пустая.",
+		"steps":["Добавить товары в корзину","Обновить приложение до 2.4.1","Открыть корзину"],
+		"expected":"Товары остаются в корзине","actual":"Корзина пустая"}}],"usage":{"input_tokens":900,"output_tokens":120}}`})
+	d = decode[oapi.IssueDraft](t, c.do(http.MethodGet, base, nil))
+	if d.DraftedBy != oapi.IssueDraftDraftedByAi || d.AiFallback != nil || d.Title != "Корзина пустеет после обновления до 2.4.1" {
+		t.Fatalf("ai draft: %+v", d)
+	}
+	for _, want := range []string{
+		"## Что происходит\nПосле обновления корзина пользователя пустая.",
+		"## Шаги\n1. Добавить товары в корзину\n2. Обновить приложение до 2.4.1\n3. Открыть корзину",
+		"## Ожидалось\nТовары остаются в корзине", "## Фактически\nКорзина пустая",
+		"Зерно 2.4.1", panelURL + "/inbox/" + conv.String(),
+	} {
+		if !strings.Contains(d.Body, want) {
+			t.Errorf("the body lacks %q:\n%s", want, d.Body)
+		}
+	}
+	// The customer's words stay a separate quote the operator decides on.
+	if !strings.HasPrefix(d.Quote, "Не синхронизируется корзина") {
+		t.Fatalf("quote: %q", d.Quote)
+	}
+	// The call is logged against the conversation, with the email masked.
+	if n := e.ownerCount(`SELECT count(*) FROM ai_calls WHERE workspace_id = $1 AND conversation_id = $2 AND purpose = 'issue_draft'
+		AND status = 'ok' AND request_redacted::text NOT LIKE '%anna@example.test%'`, ws, conv); n != 1 {
+		t.Fatalf("logged calls: %d", n)
+	}
+
+	// The provider fails through its retry: the template, with the reason.
+	e.llm.answer(fakeLLMAnswer{status: 500, body: `{}`}, fakeLLMAnswer{status: 500, body: `{}`})
+	d = decode[oapi.IssueDraft](t, c.do(http.MethodGet, base, nil))
+	if d.DraftedBy != oapi.IssueDraftDraftedByTemplate || d.AiFallback == nil || *d.AiFallback != oapi.IssueDraftAiFallbackFailed ||
+		d.Title != "Не синхронизируется корзина" {
+		t.Fatalf("failed draft: %+v", d)
+	}
+
+	// The month's budget is spent: no call, the template, the reason.
+	if rec := c.do(http.MethodPut, "/api/v1/ai/settings", haikuSettings(map[string]any{"monthly_budget_micros": 1})); rec.Code != http.StatusOK {
+		t.Fatalf("budget: %d %s", rec.Code, rec.Body)
+	}
+	before := e.llm.calls()
+	d = decode[oapi.IssueDraft](t, c.do(http.MethodGet, base, nil))
+	if d.DraftedBy != oapi.IssueDraftDraftedByTemplate || d.AiFallback == nil || *d.AiFallback != oapi.IssueDraftAiFallbackBudgetExceeded {
+		t.Fatalf("draft over budget: %+v", d)
+	}
+	if e.llm.calls() != before {
+		t.Fatal("a model was asked over the budget")
+	}
+}
+
 // Issues from conversations (GH-02): the draft from the templates, the job
 // that creates the issue, waiting for the fix, GitHub's refusals, linking
 // more conversations to one issue.

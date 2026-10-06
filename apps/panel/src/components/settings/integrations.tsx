@@ -415,7 +415,7 @@ function Placeholders({ names }: { names: string[] }) {
   );
 }
 
-const placeholderNames = ["summary", "app_name", "app_version", "os", "os_version", "conversation_url", "name", "issue_number"] as const;
+const placeholderNames = ["summary", "steps", "expected", "actual", "app_name", "app_version", "os", "os_version", "conversation_url", "name", "issue_number"] as const;
 type PlaceholderName = (typeof placeholderNames)[number];
 function knownPlaceholder(n: string): n is PlaceholderName {
   return (placeholderNames as readonly string[]).includes(n);

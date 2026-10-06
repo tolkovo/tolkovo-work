@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/auth"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels"
 	"github.com/tolkovo/tolkovo/apps/server/internal/channels/telegram"
@@ -20,6 +21,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/integrations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
+	"github.com/tolkovo/tolkovo/apps/server/internal/routing"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -32,7 +34,7 @@ var errBadRequest = errors.New("bad request")
 // writeError maps domain errors to problem+json. Unknown errors are logged
 // with the request id and answered with a generic 500.
 func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
-	if s.writeChannelError(w, r, err) || s.writeIntegrationError(w, r, err) {
+	if s.writeChannelError(w, r, err) || s.writeIntegrationError(w, r, err) || s.writeAIError(w, r, err) || s.writeTaskError(w, r, err) || s.writeNotifyError(w, r, err) {
 		return
 	}
 	var (
@@ -134,7 +136,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, errBadRequest), errors.Is(err, auth.ErrInvalid), errors.Is(err, tenancy.ErrInvalid),
 		errors.Is(err, conversations.ErrInvalid), errors.Is(err, notifications.ErrInvalid), errors.Is(err, channels.ErrInvalid),
-		errors.Is(err, integrations.ErrInvalid):
+		errors.Is(err, integrations.ErrInvalid), errors.Is(err, routing.ErrInvalid), errors.Is(err, ai.ErrInvalid):
 		writeProblem(w, r, Problem{
 			Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err),
 		})
@@ -152,7 +154,7 @@ func detail(err error) string {
 	msg := err.Error()
 	for _, sentinel := range []error{
 		errBadRequest, auth.ErrInvalid, tenancy.ErrInvalid, conversations.ErrInvalid, conversations.ErrTransition,
-		notifications.ErrInvalid, channels.ErrInvalid, integrations.ErrInvalid,
+		notifications.ErrInvalid, channels.ErrInvalid, integrations.ErrInvalid, routing.ErrInvalid, ai.ErrInvalid,
 	} {
 		if after, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
 			return after

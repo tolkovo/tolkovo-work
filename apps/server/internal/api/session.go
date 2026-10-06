@@ -41,13 +41,15 @@ var publicOperations = map[string]bool{
 	"POST /api/v1/ingest/reports/{id}/messages": true,
 	// The widget authenticates with its session token, checked by the
 	// handler (widget.go).
-	"POST /api/v1/widget/session":   true,
-	"DELETE /api/v1/widget/session": true,
-	"GET /api/v1/widget/messages":   true,
-	"POST /api/v1/widget/messages":  true,
-	"POST /api/v1/widget/receipts":  true,
-	"POST /api/v1/widget/uploads":   true,
-	"POST /api/v1/widget/contact":   true,
+	"POST /api/v1/widget/session":     true,
+	"DELETE /api/v1/widget/session":   true,
+	"GET /api/v1/widget/messages":     true,
+	"POST /api/v1/widget/messages":    true,
+	"POST /api/v1/widget/receipts":    true,
+	"POST /api/v1/widget/uploads":     true,
+	"POST /api/v1/widget/contact":     true,
+	"GET /api/v1/widget/availability": true,
+	"POST /api/v1/widget/rating":      true,
 }
 
 // sessionCookies writes and reads the session cookie.

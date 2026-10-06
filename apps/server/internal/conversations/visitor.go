@@ -57,7 +57,7 @@ type Consent struct {
 	// PolicyURL is the policy the visitor was shown.
 	PolicyURL string    `json:"policy_url"`
 	GivenAt   time.Time `json:"given_at"`
-	// Source is where it was given: "widget_prechat".
+	// Source is where it was given: "widget_prechat" or "widget_offline".
 	Source string `json:"source"`
 }
 

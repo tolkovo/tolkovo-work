@@ -1,4 +1,4 @@
-import type { Conversation } from "@tolkovo/api-client";
+import type { Conversation, Task } from "@tolkovo/api-client";
 import type { TFunction } from "i18next";
 
 import type { RealtimeEvent } from "../realtime/protocol";
@@ -65,16 +65,20 @@ export type NotifierOptions = {
   openConversationId: () => string | undefined;
   /** Opens a conversation when its desktop notification is clicked. */
   openConversation: (id: string) => void;
+  /** Opens a task when its desktop notification is clicked. */
+  openTask?: (id: string) => void;
 };
 
 export type Notifier = {
   /** The conversation after a batch of its events, freshly fetched. */
   notify: (events: readonly RealtimeEvent[], c: Conversation, meId: string | undefined) => void;
+  /** A task someone else gave to the member (ADR-0015): critical, like an assigned conversation. */
+  notifyTask: (task: Task) => void;
   /** «Отправить тестовое уведомление»: a sound and a desktop notification, here and now. */
   test: () => void;
 };
 
-export function createNotifier({ sound, leader, t, openConversationId, openConversation }: NotifierOptions): Notifier {
+export function createNotifier({ sound, leader, t, openConversationId, openConversation, openTask }: NotifierOptions): Notifier {
   const showDesktop = (title: string, body: string, tag: string, onClick?: () => void) => {
     if (desktopPermission() !== "granted") return;
     try {
@@ -100,6 +104,14 @@ export function createNotifier({ sound, leader, t, openConversationId, openConve
         showDesktop(t(`notifications.alert.${kind}`, { number: c.number }), c.contact.name, `conversation-${c.id}`, () =>
           openConversation(c.id),
         );
+      }
+    },
+    notifyTask(task) {
+      if (!leader.isLeader()) return;
+      const settings = useNotifySettings.getState();
+      if (settings.sounds.assigned) sound.play("assigned", settings.volume);
+      if (settings.desktop) {
+        showDesktop(t("notifications.alert.task", { number: task.number }), task.title, `task-${task.id}`, () => openTask?.(task.id));
       }
     },
     test() {

@@ -1,4 +1,4 @@
-import type { DeviceSession, Member, Session, UpdateMeRequest, WorkspaceSummary } from "@tolkovo/api-client";
+import type { AISettings, DeviceSession, Member, Session, UpdateMeRequest, WorkspaceSummary } from "@tolkovo/api-client";
 import { vi } from "vitest";
 
 /** Test fixtures shaped by the generated API types, so a contract change breaks the tests. */
@@ -26,9 +26,28 @@ export const operatorSession: Session = {
   csrf_token: "csrf-operator",
 };
 
+/** AI never set up, as a new workspace has it. */
+export const aiSettingsOff: AISettings = {
+  enabled: false,
+  provider: null,
+  model: null,
+  base_url: null,
+  key: null,
+  prices: { input_micros: 0, output_micros: 0 },
+  monthly_budget_micros: null,
+  spent_micros: 0,
+  period_start: "2026-10-01T00:00:00Z",
+  models: [
+    { provider: "anthropic", model: "claude-haiku-4-5", prices: { input_micros: 1_000_000, output_micros: 5_000_000 } },
+    { provider: "openai", model: "gpt-4.1-mini", prices: { input_micros: 400_000, output_micros: 1_600_000 } },
+    { provider: "deepseek", model: "deepseek-chat", prices: { input_micros: 280_000, output_micros: 420_000 } },
+  ],
+  encryption_available: true,
+};
+
 export const members: Member[] = [
-  { user_id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", role: "owner", active: true },
-  { user_id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", role: "operator", active: false },
+  { user_id: "u-anna", email: "anna@zerno.test", name: "Анна Смирнова", role: "owner", active: true, presence: "online" },
+  { user_id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", role: "operator", active: false, presence: "offline" },
 ];
 
 export const workspaces: WorkspaceSummary[] = [{ id: "w-zerno", slug: "zerno", name: "Зерно", role: "owner" }];
@@ -83,6 +102,9 @@ export function fakeApi(
     "GET /conversations": () => json(200, { items: [], next_cursor: null }),
     "GET /conversations/counts": () => json(200, { mine: 0, mine_unread: 0, unassigned: 0, open: 0 }),
     "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true }),
+    "GET /me/presence": () => json(200, { status: "online" }),
+    "GET /routing": () => json(200, { mode: "manual" }),
+    "GET /ai/settings": () => json(200, aiSettingsOff),
     "GET /tags": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.

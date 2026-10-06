@@ -7,9 +7,87 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const conversationRepliers = `-- name: ConversationRepliers :one
+SELECT
+    EXISTS (SELECT 1 FROM messages m WHERE m.workspace_id = $1 AND m.conversation_id = $2
+            AND m.sender_type = 'operator' AND m.deleted_at IS NULL) AS operator,
+    EXISTS (SELECT 1 FROM messages m WHERE m.workspace_id = $1 AND m.conversation_id = $2
+            AND m.sender_type = 'bot' AND m.deleted_at IS NULL) AS bot
+`
+
+type ConversationRepliersParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+}
+
+type ConversationRepliersRow struct {
+	Operator bool
+	Bot      bool
+}
+
+// Who replied in a conversation: operators, the bot, or both.
+func (q *Queries) ConversationRepliers(ctx context.Context, arg ConversationRepliersParams) (ConversationRepliersRow, error) {
+	row := q.db.QueryRow(ctx, conversationRepliers, arg.WorkspaceID, arg.ConversationID)
+	var i ConversationRepliersRow
+	err := row.Scan(&i.Operator, &i.Bot)
+	return i, err
+}
+
+const lockVisitorConversation = `-- name: LockVisitorConversation :one
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+WHERE workspace_id = $1 AND id = $2 AND channel_id = $3 AND external_thread_id = $4
+FOR UPDATE
+`
+
+type LockVisitorConversationParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	ChannelID   *uuid.UUID
+	Thread      *string
+}
+
+// A conversation of the visitor's chat, locked for their rating; none for
+// a conversation of anyone else.
+func (q *Queries) LockVisitorConversation(ctx context.Context, arg LockVisitorConversationParams) (Conversation, error) {
+	row := q.db.QueryRow(ctx, lockVisitorConversation,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.ChannelID,
+		arg.Thread,
+	)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Number,
+		&i.ContactID,
+		&i.ChannelID,
+		&i.ExternalThreadID,
+		&i.Status,
+		&i.Priority,
+		&i.LineLevel,
+		&i.AssigneeID,
+		&i.Subject,
+		&i.FirstResponseAt,
+		&i.LastMessageAt,
+		&i.ResolvedAt,
+		&i.ClosedAt,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AwaitingFix,
+		&i.Rating,
+		&i.RatingComment,
+		&i.RatingResolvedBy,
+		&i.RatedAt,
+	)
+	return i, err
+}
 
 const markVisitorReceipt = `-- name: MarkVisitorReceipt :many
 UPDATE messages m
@@ -64,6 +142,80 @@ func (q *Queries) MarkVisitorReceipt(ctx context.Context, arg MarkVisitorReceipt
 		return nil, err
 	}
 	return items, nil
+}
+
+const setConversationRating = `-- name: SetConversationRating :exec
+UPDATE conversations
+SET rating = $1::smallint, rating_comment = $2, rating_resolved_by = $3::text,
+    rated_at = $4::timestamptz, updated_at = $4::timestamptz
+WHERE workspace_id = $5 AND id = $6
+`
+
+type SetConversationRatingParams struct {
+	Rating      int16
+	Comment     *string
+	ResolvedBy  string
+	RatedAt     time.Time
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) SetConversationRating(ctx context.Context, arg SetConversationRatingParams) error {
+	_, err := q.db.Exec(ctx, setConversationRating,
+		arg.Rating,
+		arg.Comment,
+		arg.ResolvedBy,
+		arg.RatedAt,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	return err
+}
+
+const visitorConversation = `-- name: VisitorConversation :one
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+WHERE workspace_id = $1 AND channel_id = $2 AND external_thread_id = $3
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type VisitorConversationParams struct {
+	WorkspaceID uuid.UUID
+	ChannelID   *uuid.UUID
+	Thread      *string
+}
+
+// The newest conversation of the visitor's chat: whether to ask for a
+// rating.
+func (q *Queries) VisitorConversation(ctx context.Context, arg VisitorConversationParams) (Conversation, error) {
+	row := q.db.QueryRow(ctx, visitorConversation, arg.WorkspaceID, arg.ChannelID, arg.Thread)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Number,
+		&i.ContactID,
+		&i.ChannelID,
+		&i.ExternalThreadID,
+		&i.Status,
+		&i.Priority,
+		&i.LineLevel,
+		&i.AssigneeID,
+		&i.Subject,
+		&i.FirstResponseAt,
+		&i.LastMessageAt,
+		&i.ResolvedAt,
+		&i.ClosedAt,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AwaitingFix,
+		&i.Rating,
+		&i.RatingComment,
+		&i.RatingResolvedBy,
+		&i.RatedAt,
+	)
+	return i, err
 }
 
 const visitorMessageByExternalID = `-- name: VisitorMessageByExternalID :one

@@ -25,6 +25,10 @@ import {
   invitationPreviewSchema,
   invitationSentSchema,
   memberListSchema,
+  myPresenceSchema,
+  routingSettingsSchema,
+  aiCheckSchema,
+  aiSettingsSchema,
   messagePageSchema,
   messageSchema,
   openGitHubIssueListSchema,
@@ -71,11 +75,22 @@ export type InboxCounts = Schemas["InboxCounts"];
 export type NotificationSettings = Schemas["NotificationSettings"];
 export type NotificationSettingsInput = Schemas["UpdateNotificationSettingsRequest"];
 export type EmailDelayMinutes = Schemas["EmailDelayMinutes"];
+export type Presence = Schemas["Presence"];
+export type MyPresence = Schemas["MyPresence"];
+export type OperatorStatus = MyPresence["status"];
+export type RoutingSettings = Schemas["RoutingSettings"];
+export type RoutingMode = RoutingSettings["mode"];
+export type AIProvider = Schemas["AIProvider"];
+export type AISettings = Schemas["AISettings"];
+export type AISettingsUpdate = Schemas["AISettingsUpdate"];
+export type AICheck = Schemas["AICheck"];
 export type Channel = Schemas["Channel"];
 export type ChannelList = Schemas["ChannelList"];
 export type TelegramLogin = Schemas["TelegramLogin"];
 export type ConnectTelegramBotRequest = Schemas["ConnectTelegramBotRequest"];
 export type AppLimits = Schemas["AppLimits"];
+export type WidgetAnalytics = Schemas["WidgetAnalytics"];
+export type ConversationRating = Schemas["ConversationRating"];
 export type AppChannelCreated = Schemas["AppChannelCreated"];
 export type WidgetChannelCreated = Schemas["WidgetChannelCreated"];
 export type IngestKey = Schemas["IngestKey"];
@@ -405,6 +420,39 @@ export async function updateNotificationSettings(
   return parseAnswer(notificationSettingsSchema, await unwrap(client.PATCH("/me/notifications", { body })));
 }
 
+/** Whether the caller accepts conversations in this workspace (Q-02). */
+export async function fetchMyPresence(client: ApiClient): Promise<MyPresence> {
+  return parseAnswer(myPresenceSchema, await unwrap(client.GET("/me/presence")));
+}
+
+export async function setMyPresence(client: ApiClient, status: OperatorStatus): Promise<MyPresence> {
+  return parseAnswer(myPresenceSchema, await unwrap(client.PUT("/me/presence", { body: { status } })));
+}
+
+/** How the workspace distributes its queue (Q-01). */
+export async function fetchRouting(client: ApiClient): Promise<RoutingSettings> {
+  return parseAnswer(routingSettingsSchema, await unwrap(client.GET("/routing")));
+}
+
+export async function setRouting(client: ApiClient, mode: RoutingMode): Promise<RoutingSettings> {
+  return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: { mode } })));
+}
+
+/** The workspace's AI: provider, model, key hint, prices, budget and the month's spending (AI-01). */
+export async function fetchAISettings(client: ApiClient): Promise<AISettings> {
+  return parseAnswer(aiSettingsSchema, await unwrap(client.GET("/ai/settings")));
+}
+
+/** Replaces the AI settings; `api_key` left out keeps the saved key. */
+export async function setAISettings(client: ApiClient, body: AISettingsUpdate): Promise<AISettings> {
+  return parseAnswer(aiSettingsSchema, await unwrap(client.PUT("/ai/settings", { body })));
+}
+
+/** Sends a tiny request with the saved settings. */
+export async function checkAISettings(client: ApiClient): Promise<AICheck> {
+  return parseAnswer(aiCheckSchema, await unwrap(client.POST("/ai/settings/check")));
+}
+
 /** Channels of the workspace and what this server can connect (docs/02 §11, ADR-0014). */
 export async function fetchChannels(client: ApiClient): Promise<ChannelList> {
   return parseAnswer(channelListSchema, await unwrap(client.GET("/channels")));
@@ -494,6 +542,14 @@ export async function setWidgetOrigins(client: ApiClient, id: string, origins: s
   return parseAnswer(
     channelSchema,
     await unwrap(client.PUT("/channels/{id}/widget-origins", { params: { path: { id } }, body: { allowed_origins: origins } })),
+  );
+}
+
+/** Changes which site analytics a widget reports goals to (docs/04 §6.6). */
+export async function setWidgetAnalytics(client: ApiClient, id: string, analytics: WidgetAnalytics): Promise<Channel> {
+  return parseAnswer(
+    channelSchema,
+    await unwrap(client.PUT("/channels/{id}/widget-analytics", { params: { path: { id } }, body: analytics })),
   );
 }
 

@@ -5,7 +5,7 @@ import { ACCEPT, MAX_FILE_SIZE, MAX_FILES, fileType, formatSize, isImage } from 
 import type { Translate } from "../i18n";
 import type { ChatFile, ChatMessage, Locale, PrechatField } from "../types";
 
-/** The pre-chat form from Tolkovo.init(), checked (widget.tsx). */
+/** The pre-chat or the offline form from Tolkovo.init(), checked (widget.tsx). */
 export interface PrechatView {
   fields: PrechatField[];
   required: PrechatField[];
@@ -24,6 +24,7 @@ export interface View {
   logo: string | undefined;
   position: "bottom-right" | "bottom-left";
   prechat: PrechatView | undefined;
+  offline: PrechatView | undefined;
 }
 
 function useStore(c: Controller): State {
@@ -63,6 +64,12 @@ const FileIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
     <path d="M14 3v5h5" />
+  </svg>
+);
+
+const StarIcon = () => (
+  <svg viewBox="0 0 24 24" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <path d="m12 3.2 2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6-4.3-4.2 6-.9Z" />
   </svg>
 );
 
@@ -146,8 +153,11 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
   const logo = safeImage(view.logo);
   const draft = useDraftFiles(t);
   const [dragging, setDragging] = useState(false);
-  const asking = s.intro && !!view.prechat && s.status !== "unavailable";
-  const canAttach = s.status !== "unavailable" && !asking;
+  // Nobody is there and the visitor has not written: a message and a contact instead of the chat.
+  const leaving =
+    !!view.offline && s.status === "ready" && !s.operatorsOnline && s.pending.length === 0 && !s.messages.some((m) => m.sender === "contact");
+  const asking = !leaving && s.intro && !!view.prechat && s.status !== "unavailable";
+  const canAttach = s.status !== "unavailable" && !asking && !leaving;
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
   return (
     <section
@@ -196,8 +206,18 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
         <p class="tk-notice" role="status">
           {t("offline")}
         </p>
+      ) : s.status === "ready" && !s.operatorsOnline && !leaving ? (
+        <p class="tk-notice" data-kind="away" role="status">
+          {t("away")}
+        </p>
       ) : null}
-      {asking ? <PrechatForm c={c} view={view} form={view.prechat!} /> : <Composer c={c} view={view} draft={draft} disabled={!canAttach} />}
+      {leaving ? (
+        <ContactForm key="offline" c={c} view={view} form={view.offline!} offline />
+      ) : asking ? (
+        <ContactForm key="prechat" c={c} view={view} form={view.prechat!} />
+      ) : (
+        <Composer c={c} view={view} draft={draft} disabled={!canAttach} />
+      )}
     </section>
   );
 }
@@ -211,7 +231,9 @@ function Log({ c, s, view }: { c: Controller; s: State; view: View }) {
   const { t } = view;
   const time = useTime(view.locale);
   const logRef = useRef<HTMLOListElement>(null);
-  const count = s.messages.length + s.pending.length + (s.typing ? 1 : 0);
+  // A resolved conversation asks for a rating under the last message.
+  const rating = s.conversation?.resolved && s.pending.length === 0 ? s.conversation : null;
+  const count = s.messages.length + s.pending.length + (s.typing ? 1 : 0) + (rating ? 1 : 0);
 
   // New messages scroll into view.
   useLayoutEffect(() => {
@@ -251,6 +273,7 @@ function Log({ c, s, view }: { c: Controller; s: State; view: View }) {
           )}
         </li>
       ))}
+      {rating ? <Rating key={rating.id} c={c} score={rating.rating?.score ?? 0} view={view} /> : null}
       {s.typing ? <li class="tk-typing">{t("typing")}</li> : null}
     </ol>
   );
@@ -264,6 +287,124 @@ function Message({ m, time, view, onBroken }: { m: ChatMessage; time: string; vi
       {m.files.length > 0 ? <Files files={m.files} view={view} onBroken={onBroken} /> : null}
       {m.body ? <div class="tk-bubble">{m.body}</div> : null}
       <span class="tk-meta">{time}</span>
+    </li>
+  );
+}
+
+const SCORES = [1, 2, 3, 4, 5];
+
+/** Stars from 1 to 5 and a comment; once rated, thanks and the score. */
+function Rating({ c, score: rated, view }: { c: Controller; score: number; view: View }) {
+  const { t } = view;
+  const [score, setScore] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const groupRef = useRef<HTMLDivElement>(null);
+
+  if (rated > 0) {
+    return (
+      <li class="tk-rate">
+        <p class="tk-rate-title">{t("rateThanks")}</p>
+        <span class="tk-stars" role="img" aria-label={t("rateYours", { n: rated })}>
+          {SCORES.map((n) => (
+            <span key={n} class="tk-star" data-on={n <= rated ? "" : undefined}>
+              <StarIcon />
+            </span>
+          ))}
+        </span>
+      </li>
+    );
+  }
+
+  // One tab stop for the stars; the arrows move between them, as in any radio group.
+  const choose = (n: number, focus = false) => {
+    setScore(n);
+    if (focus) groupRef.current?.querySelectorAll<HTMLButtonElement>("button")[n - 1]?.focus();
+  };
+  const submit = async () => {
+    if (!score || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await c.rate(score, comment);
+    } catch {
+      setFailed(true);
+      setBusy(false);
+    }
+  };
+  const shown = hover || score;
+  return (
+    <li class="tk-rate">
+      <form
+        class="tk-rate-form"
+        aria-busy={busy || undefined}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <p id="tk-rate-title" class="tk-rate-title">
+          {t("rateTitle")}
+        </p>
+        <div
+          ref={groupRef}
+          class="tk-stars"
+          role="radiogroup"
+          aria-labelledby="tk-rate-title"
+          onMouseLeave={() => setHover(0)}
+          onKeyDown={(e) => {
+            const step = e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : 0;
+            if (!step) return;
+            e.preventDefault();
+            choose(Math.min(5, Math.max(1, (score || 0) + step)), true);
+          }}
+        >
+          {SCORES.map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              class="tk-star"
+              aria-checked={score === n}
+              aria-label={t("rateStar", { n })}
+              tabIndex={(score || 1) === n ? 0 : -1}
+              data-on={n <= shown ? "" : undefined}
+              disabled={busy}
+              onMouseEnter={() => setHover(n)}
+              onClick={() => choose(n)}
+            >
+              <StarIcon />
+            </button>
+          ))}
+        </div>
+        {score > 0 ? (
+          <>
+            <label class="tk-sr" for="tk-rate-comment">
+              {t("rateComment")}
+            </label>
+            <textarea
+              id="tk-rate-comment"
+              class="tk-text tk-textarea"
+              rows={2}
+              maxLength={1000}
+              placeholder={t("rateComment")}
+              value={comment}
+              disabled={busy}
+              onInput={(e) => setComment(e.currentTarget.value)}
+            />
+            {failed ? (
+              <p class="tk-file-error" role="alert">
+                {t("prechatFailed")}
+              </p>
+            ) : null}
+            <button type="submit" class="tk-start" disabled={busy}>
+              {t("rateSend")}
+            </button>
+          </>
+        ) : null}
+      </form>
     </li>
   );
 }
@@ -442,12 +583,16 @@ const INPUT: Record<PrechatField, { type: "text" | "email" | "tel"; autocomplete
   phone: { type: "tel", autocomplete: "tel" },
 };
 
-type FormErrors = Partial<Record<PrechatField | "consent", string>>;
+type FormErrors = Partial<Record<PrechatField | "consent" | "message", string>>;
 
-/** Who the visitor is, asked before the first message instead of the message field. */
-function PrechatForm({ c, view, form }: { c: Controller; view: View; form: PrechatView }) {
+/**
+ * Who the visitor is, instead of the message field: before the first message (the pre-chat form),
+ * or with the message itself while nobody is there (offline), when the email or the phone is a must.
+ */
+function ContactForm({ c, view, form, offline = false }: { c: Controller; view: View; form: PrechatView; offline?: boolean }) {
   const { t } = view;
   const [values, setValues] = useState<Record<PrechatField, string>>({ name: "", email: "", phone: "" });
+  const [message, setMessage] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [busy, setBusy] = useState(false);
@@ -467,16 +612,23 @@ function PrechatForm({ c, view, form }: { c: Controller; view: View; form: Prech
       } else if (f === "email" && !EMAIL.test(v)) e[f] = t("badEmail");
       else if (f === "phone" && (!PHONE.test(v) || v.length < 3)) e[f] = t("badPhone");
     }
-    if (form.consent && !agreed) e.consent = t("needConsent");
+    if (offline) {
+      const reach = form.fields.filter((f) => f !== "name");
+      if (!reach.some((f) => values[f].trim()) && !reach.some((f) => e[f])) e[reach[0]!] = t("needReach");
+      if (!message.trim()) e.message = t("required");
+      else if (message.length > 10_000) e.message = t("tooLong");
+    }
+    if (form.consent && !agreed) e.consent = t(offline ? "needConsentToSend" : "needConsent");
     return e;
   };
 
   const submit = async () => {
     const e = check();
     setErrors(e);
-    const first = Object.keys(e)[0];
+    // The first field in the form's order with a problem takes the focus.
+    const first = [...form.fields, "message", "consent"].find((f) => e[f as keyof FormErrors]);
     if (first) {
-      formRef.current?.querySelector<HTMLInputElement>(`#tk-pre-${first}`)?.focus();
+      formRef.current?.querySelector<HTMLElement>(`#tk-pre-${first}`)?.focus();
       return;
     }
     const body: Record<string, unknown> = {};
@@ -485,7 +637,7 @@ function PrechatForm({ c, view, form }: { c: Controller; view: View; form: Prech
     setBusy(true);
     setFailed(false);
     try {
-      await c.introduce(body);
+      await (offline ? c.leaveMessage(body, message) : c.introduce(body));
     } catch {
       setFailed(true);
       setBusy(false);
@@ -503,7 +655,7 @@ function PrechatForm({ c, view, form }: { c: Controller; view: View; form: Prech
         void submit();
       }}
     >
-      <p class="tk-prechat-intro">{form.intro ?? t("prechatIntro")}</p>
+      <p class="tk-prechat-intro">{form.intro ?? t(offline ? "offlineIntro" : "prechatIntro")}</p>
       {form.fields.map((f) => {
         const required = form.required.includes(f);
         return (
@@ -536,6 +688,30 @@ function PrechatForm({ c, view, form }: { c: Controller; view: View; form: Prech
           </div>
         );
       })}
+      {offline ? (
+        <div class="tk-field">
+          <label for="tk-pre-message">
+            {t("message")}
+            <span aria-hidden="true"> *</span>
+          </label>
+          <textarea
+            id="tk-pre-message"
+            class="tk-text tk-textarea"
+            rows={3}
+            required
+            value={message}
+            disabled={busy}
+            aria-invalid={errors.message ? true : undefined}
+            aria-describedby={errors.message ? "tk-pre-message-error" : undefined}
+            onInput={(e) => setMessage(e.currentTarget.value)}
+          />
+          {errors.message ? (
+            <span id="tk-pre-message-error" class="tk-field-error">
+              {errors.message}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {form.consent ? (
         <div class="tk-field">
           <label class="tk-consent">
@@ -569,7 +745,7 @@ function PrechatForm({ c, view, form }: { c: Controller; view: View; form: Prech
         </p>
       ) : null}
       <button type="submit" class="tk-start" disabled={busy}>
-        {t("start")}
+        {t(offline ? "leave" : "start")}
       </button>
     </form>
   );

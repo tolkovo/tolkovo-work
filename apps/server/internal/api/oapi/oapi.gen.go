@@ -14,6 +14,30 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AIProvider.
+const (
+	Anthropic        AIProvider = "anthropic"
+	Deepseek         AIProvider = "deepseek"
+	Openai           AIProvider = "openai"
+	OpenaiCompatible AIProvider = "openai_compatible"
+)
+
+// Valid indicates whether the value is a known member of the AIProvider enum.
+func (e AIProvider) Valid() bool {
+	switch e {
+	case Anthropic:
+		return true
+	case Deepseek:
+		return true
+	case Openai:
+		return true
+	case OpenaiCompatible:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AttachmentStatus.
 const (
 	AttachmentStatusExpired   AttachmentStatus = "expired"
@@ -167,6 +191,24 @@ func (e ConversationPreviewSenderType) Valid() bool {
 	}
 }
 
+// Defines values for ConversationRatingResolvedBy.
+const (
+	ConversationRatingResolvedByAi    ConversationRatingResolvedBy = "ai"
+	ConversationRatingResolvedByHuman ConversationRatingResolvedBy = "human"
+)
+
+// Valid indicates whether the value is a known member of the ConversationRatingResolvedBy enum.
+func (e ConversationRatingResolvedBy) Valid() bool {
+	switch e {
+	case ConversationRatingResolvedByAi:
+		return true
+	case ConversationRatingResolvedByHuman:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationStatus.
 const (
 	ConversationStatusAssigned ConversationStatus = "assigned"
@@ -275,6 +317,42 @@ func (e IngestReplySender) Valid() bool {
 	case IngestReplySenderBot:
 		return true
 	case IngestReplySenderOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueDraftAiFallback.
+const (
+	IssueDraftAiFallbackBudgetExceeded IssueDraftAiFallback = "budget_exceeded"
+	IssueDraftAiFallbackFailed         IssueDraftAiFallback = "failed"
+)
+
+// Valid indicates whether the value is a known member of the IssueDraftAiFallback enum.
+func (e IssueDraftAiFallback) Valid() bool {
+	switch e {
+	case IssueDraftAiFallbackBudgetExceeded:
+		return true
+	case IssueDraftAiFallbackFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueDraftDraftedBy.
+const (
+	IssueDraftDraftedByAi       IssueDraftDraftedBy = "ai"
+	IssueDraftDraftedByTemplate IssueDraftDraftedBy = "template"
+)
+
+// Valid indicates whether the value is a known member of the IssueDraftDraftedBy enum.
+func (e IssueDraftDraftedBy) Valid() bool {
+	switch e {
+	case IssueDraftDraftedByAi:
+		return true
+	case IssueDraftDraftedByTemplate:
 		return true
 	default:
 		return false
@@ -481,6 +559,11 @@ const (
 	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
 	MessageEventTypeIssueReopened MessageEventType = "issue_reopened"
 	MessageEventTypeStatusChanged MessageEventType = "status_changed"
+	MessageEventTypeTaskClosed    MessageEventType = "task_closed"
+	MessageEventTypeTaskCreated   MessageEventType = "task_created"
+	MessageEventTypeTaskLinked    MessageEventType = "task_linked"
+	MessageEventTypeTaskReopened  MessageEventType = "task_reopened"
+	MessageEventTypeTaskUnlinked  MessageEventType = "task_unlinked"
 )
 
 // Valid indicates whether the value is a known member of the MessageEventType enum.
@@ -497,6 +580,16 @@ func (e MessageEventType) Valid() bool {
 	case MessageEventTypeIssueReopened:
 		return true
 	case MessageEventTypeStatusChanged:
+		return true
+	case MessageEventTypeTaskClosed:
+		return true
+	case MessageEventTypeTaskCreated:
+		return true
+	case MessageEventTypeTaskLinked:
+		return true
+	case MessageEventTypeTaskReopened:
+		return true
+	case MessageEventTypeTaskUnlinked:
 		return true
 	default:
 		return false
@@ -515,6 +608,24 @@ func (e MessageEventIssueReason) Valid() bool {
 	case Completed:
 		return true
 	case NotPlanned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MessageEventTaskReason.
+const (
+	MessageEventTaskReasonCanceled MessageEventTaskReason = "canceled"
+	MessageEventTaskReasonDone     MessageEventTaskReason = "done"
+)
+
+// Valid indicates whether the value is a known member of the MessageEventTaskReason enum.
+func (e MessageEventTaskReason) Valid() bool {
+	switch e {
+	case MessageEventTaskReasonCanceled:
+		return true
+	case MessageEventTaskReasonDone:
 		return true
 	default:
 		return false
@@ -548,6 +659,45 @@ func (e MessageReportFiles) Valid() bool {
 	}
 }
 
+// Defines values for MyPresenceStatus.
+const (
+	MyPresenceStatusAway   MyPresenceStatus = "away"
+	MyPresenceStatusOnline MyPresenceStatus = "online"
+)
+
+// Valid indicates whether the value is a known member of the MyPresenceStatus enum.
+func (e MyPresenceStatus) Valid() bool {
+	switch e {
+	case MyPresenceStatusAway:
+		return true
+	case MyPresenceStatusOnline:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Presence.
+const (
+	PresenceAway    Presence = "away"
+	PresenceOffline Presence = "offline"
+	PresenceOnline  Presence = "online"
+)
+
+// Valid indicates whether the value is a known member of the Presence enum.
+func (e Presence) Valid() bool {
+	switch e {
+	case PresenceAway:
+		return true
+	case PresenceOffline:
+		return true
+	case PresenceOnline:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	RoleAdmin    Role = "admin"
@@ -563,6 +713,24 @@ func (e Role) Valid() bool {
 	case RoleOperator:
 		return true
 	case RoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoutingSettingsMode.
+const (
+	Manual     RoutingSettingsMode = "manual"
+	RoundRobin RoutingSettingsMode = "round_robin"
+)
+
+// Valid indicates whether the value is a known member of the RoutingSettingsMode enum.
+func (e RoutingSettingsMode) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case RoundRobin:
 		return true
 	default:
 		return false
@@ -602,6 +770,168 @@ func (e TagColor) Valid() bool {
 	}
 }
 
+// Defines values for TaskActivityFields.
+const (
+	Body  TaskActivityFields = "body"
+	Title TaskActivityFields = "title"
+)
+
+// Valid indicates whether the value is a known member of the TaskActivityFields enum.
+func (e TaskActivityFields) Valid() bool {
+	switch e {
+	case Body:
+		return true
+	case Title:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskActivityKind.
+const (
+	Assignee TaskActivityKind = "assignee"
+	Comment  TaskActivityKind = "comment"
+	Created  TaskActivityKind = "created"
+	Edited   TaskActivityKind = "edited"
+	Linked   TaskActivityKind = "linked"
+	Priority TaskActivityKind = "priority"
+	Queue    TaskActivityKind = "queue"
+	Status   TaskActivityKind = "status"
+	Unlinked TaskActivityKind = "unlinked"
+)
+
+// Valid indicates whether the value is a known member of the TaskActivityKind enum.
+func (e TaskActivityKind) Valid() bool {
+	switch e {
+	case Assignee:
+		return true
+	case Comment:
+		return true
+	case Created:
+		return true
+	case Edited:
+		return true
+	case Linked:
+		return true
+	case Priority:
+		return true
+	case Queue:
+		return true
+	case Status:
+		return true
+	case Unlinked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskButton.
+const (
+	Both   TaskButton = "both"
+	Github TaskButton = "github"
+	Tasks  TaskButton = "tasks"
+)
+
+// Valid indicates whether the value is a known member of the TaskButton enum.
+func (e TaskButton) Valid() bool {
+	switch e {
+	case Both:
+		return true
+	case Github:
+		return true
+	case Tasks:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskDraftAiFallback.
+const (
+	TaskDraftAiFallbackBudgetExceeded TaskDraftAiFallback = "budget_exceeded"
+	TaskDraftAiFallbackFailed         TaskDraftAiFallback = "failed"
+)
+
+// Valid indicates whether the value is a known member of the TaskDraftAiFallback enum.
+func (e TaskDraftAiFallback) Valid() bool {
+	switch e {
+	case TaskDraftAiFallbackBudgetExceeded:
+		return true
+	case TaskDraftAiFallbackFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskDraftDraftedBy.
+const (
+	TaskDraftDraftedByAi       TaskDraftDraftedBy = "ai"
+	TaskDraftDraftedByTemplate TaskDraftDraftedBy = "template"
+)
+
+// Valid indicates whether the value is a known member of the TaskDraftDraftedBy enum.
+func (e TaskDraftDraftedBy) Valid() bool {
+	switch e {
+	case TaskDraftDraftedByAi:
+		return true
+	case TaskDraftDraftedByTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskPriority.
+const (
+	High   TaskPriority = "high"
+	Low    TaskPriority = "low"
+	Normal TaskPriority = "normal"
+	Urgent TaskPriority = "urgent"
+)
+
+// Valid indicates whether the value is a known member of the TaskPriority enum.
+func (e TaskPriority) Valid() bool {
+	switch e {
+	case High:
+		return true
+	case Low:
+		return true
+	case Normal:
+		return true
+	case Urgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskStatus.
+const (
+	TaskStatusCanceled   TaskStatus = "canceled"
+	TaskStatusDone       TaskStatus = "done"
+	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusOpen       TaskStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the TaskStatus enum.
+func (e TaskStatus) Valid() bool {
+	switch e {
+	case TaskStatusCanceled:
+		return true
+	case TaskStatusDone:
+		return true
+	case TaskStatusInProgress:
+		return true
+	case TaskStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TelegramLoginCodeVia.
 const (
 	TelegramLoginCodeViaApp   TelegramLoginCodeVia = "app"
@@ -628,19 +958,55 @@ func (e TelegramLoginCodeVia) Valid() bool {
 
 // Defines values for TelegramLoginNext.
 const (
-	Code     TelegramLoginNext = "code"
-	Done     TelegramLoginNext = "done"
-	Password TelegramLoginNext = "password"
+	TelegramLoginNextCode     TelegramLoginNext = "code"
+	TelegramLoginNextDone     TelegramLoginNext = "done"
+	TelegramLoginNextPassword TelegramLoginNext = "password"
 )
 
 // Valid indicates whether the value is a known member of the TelegramLoginNext enum.
 func (e TelegramLoginNext) Valid() bool {
 	switch e {
-	case Code:
+	case TelegramLoginNextCode:
 		return true
-	case Done:
+	case TelegramLoginNextDone:
 		return true
-	case Password:
+	case TelegramLoginNextPassword:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WidgetContactRequestForm.
+const (
+	WidgetContactRequestFormOffline WidgetContactRequestForm = "offline"
+	WidgetContactRequestFormPrechat WidgetContactRequestForm = "prechat"
+)
+
+// Valid indicates whether the value is a known member of the WidgetContactRequestForm enum.
+func (e WidgetContactRequestForm) Valid() bool {
+	switch e {
+	case WidgetContactRequestFormOffline:
+		return true
+	case WidgetContactRequestFormPrechat:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WidgetConversationStatus.
+const (
+	WidgetConversationStatusOpen     WidgetConversationStatus = "open"
+	WidgetConversationStatusResolved WidgetConversationStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the WidgetConversationStatus enum.
+func (e WidgetConversationStatus) Valid() bool {
+	switch e {
+	case WidgetConversationStatusOpen:
+		return true
+	case WidgetConversationStatusResolved:
 		return true
 	default:
 		return false
@@ -687,6 +1053,100 @@ func (e WidgetSessionIdentity) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Defines values for ListTasksParamsState.
+const (
+	ListTasksParamsStateClosed ListTasksParamsState = "closed"
+	ListTasksParamsStateOpen   ListTasksParamsState = "open"
+)
+
+// Valid indicates whether the value is a known member of the ListTasksParamsState enum.
+func (e ListTasksParamsState) Valid() bool {
+	switch e {
+	case ListTasksParamsStateClosed:
+		return true
+	case ListTasksParamsStateOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// AICheck defines model for AICheck.
+type AICheck struct {
+	LatencyMs int `json:"latency_ms"`
+
+	// Model The model that answered
+	Model string `json:"model"`
+}
+
+// AIModel defines model for AIModel.
+type AIModel struct {
+	Model string `json:"model"`
+
+	// Prices Prices of the model per million tokens, in millionths of a US dollar.
+	Prices AIPrices `json:"prices"`
+
+	// Provider `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+	// Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+	// OpenRouter and others at `base_url`).
+	Provider AIProvider `json:"provider"`
+}
+
+// AIPrices Prices of the model per million tokens, in millionths of a US dollar.
+type AIPrices struct {
+	InputMicros  int64 `json:"input_micros"`
+	OutputMicros int64 `json:"output_micros"`
+}
+
+// AIProvider `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
+// Chat Completions at api.deepseek.com) or `openai_compatible` (Ollama, vLLM, LM Studio,
+// OpenRouter and others at `base_url`).
+type AIProvider string
+
+// AISettings defines model for AISettings.
+type AISettings struct {
+	BaseUrl *string `json:"base_url"`
+	Enabled bool    `json:"enabled"`
+
+	// EncryptionAvailable `false` when `TOLKOVO_MASTER_KEY` is not set: a key cannot be saved.
+	EncryptionAvailable bool `json:"encryption_available"`
+
+	// Key The saved key as `…` and its last four characters; `null` without one.
+	Key *struct {
+		// Hint Examples: …a1b2
+		Hint  string    `json:"hint"`
+		SetAt time.Time `json:"set_at"`
+	} `json:"key"`
+	Model *string `json:"model"`
+
+	// Models Models the panel suggests, with their list prices when this release was made;
+	// any other model id may be typed.
+	Models []AIModel `json:"models"`
+
+	// MonthlyBudgetMicros `null`: no limit. With prices at zero nothing counts toward it.
+	MonthlyBudgetMicros *int64    `json:"monthly_budget_micros"`
+	PeriodStart         time.Time `json:"period_start"`
+
+	// Prices Prices of the model per million tokens, in millionths of a US dollar.
+	Prices      AIPrices    `json:"prices"`
+	Provider    *AIProvider `json:"provider"`
+	SpentMicros int64       `json:"spent_micros"`
+}
+
+// AISettingsUpdate defines model for AISettingsUpdate.
+type AISettingsUpdate struct {
+	// ApiKey A new key; left out, the saved one stays.
+	ApiKey              *string `json:"api_key,omitempty"`
+	BaseUrl             *string `json:"base_url"`
+	Enabled             bool    `json:"enabled"`
+	Model               *string `json:"model"`
+	MonthlyBudgetMicros *int64  `json:"monthly_budget_micros"`
+
+	// Prices Prices of the model per million tokens, in millionths of a US dollar.
+	Prices   AIPrices    `json:"prices"`
+	Provider *AIProvider `json:"provider"`
 }
 
 // AcceptInvitationRequest defines model for AcceptInvitationRequest.
@@ -803,6 +1263,12 @@ type Channel struct {
 type ChannelDetails struct {
 	// AllowedOrigins Widgets only: the pages that may embed it (see `WidgetOriginsRequest`).
 	AllowedOrigins *[]string `json:"allowed_origins,omitempty"`
+
+	// Analytics Where the widget reports its goals on the site. Each way is on separately; a counter
+	// the page does not have is skipped. Parameters never carry texts, names, contacts or
+	// ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+	// `source`; `rated` — `score`, `resolvedBy`.
+	Analytics *WidgetAnalytics `json:"analytics,omitempty"`
 
 	// AppLimits Limits of an app channel (`details.app_limits`).
 	AppLimits *AppLimits `json:"app_limits,omitempty"`
@@ -951,9 +1417,12 @@ type Conversation struct {
 	LineLevel         int        `json:"line_level"`
 
 	// Number Human-readable number inside the workspace.
-	Number     int64      `json:"number"`
-	Priority   int        `json:"priority"`
-	ResolvedAt *time.Time `json:"resolved_at"`
+	Number   int64 `json:"number"`
+	Priority int   `json:"priority"`
+
+	// Rating The customer's rating of the resolved conversation; `null` until they rate it.
+	Rating     *ConversationRating `json:"rating"`
+	ResolvedAt *time.Time          `json:"resolved_at"`
 
 	// Status State of a conversation.
 	Status  ConversationStatus `json:"status"`
@@ -1009,8 +1478,40 @@ type ConversationPreviewKind string
 // ConversationPreviewSenderType defines model for ConversationPreview.SenderType.
 type ConversationPreviewSenderType string
 
+// ConversationRating defines model for ConversationRating.
+type ConversationRating struct {
+	// Comment What the customer wrote with the score.
+	Comment *string `json:"comment"`
+
+	// RatedAt A later rating replaces the earlier one.
+	RatedAt time.Time `json:"rated_at"`
+
+	// ResolvedBy `ai` when only the bot replied in the conversation, `human` otherwise.
+	ResolvedBy ConversationRatingResolvedBy `json:"resolved_by"`
+	Score      int                          `json:"score"`
+}
+
+// ConversationRatingResolvedBy `ai` when only the bot replied in the conversation, `human` otherwise.
+type ConversationRatingResolvedBy string
+
 // ConversationStatus State of a conversation.
 type ConversationStatus string
+
+// ConversationTasks defines model for ConversationTasks.
+type ConversationTasks struct {
+	Items []Task `json:"items"`
+
+	// ReplyDraft The reply the operator may send once a task of the conversation is done; `null`
+	// otherwise and after an operator replied to the customer since. Tolkovo never sends
+	// it itself.
+	ReplyDraft *TaskReplyDraft `json:"reply_draft"`
+	Settings   struct {
+		// ConversationButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+		// connected) or both.
+		ConversationButton TaskButton `json:"conversation_button"`
+		Enabled            bool       `json:"enabled"`
+	} `json:"settings"`
+}
 
 // CreateConversationRequest defines model for CreateConversationRequest.
 type CreateConversationRequest struct {
@@ -1401,14 +1902,29 @@ type InvitationSent struct {
 
 // IssueDraft defines model for IssueDraft.
 type IssueDraft struct {
-	Body   string   `json:"body"`
-	Labels []string `json:"labels"`
+	// AiFallback Why the template was used although AI is on: the month's AI budget is spent, or the
+	// provider failed, timed out or answered badly. Left out otherwise.
+	AiFallback *IssueDraftAiFallback `json:"ai_fallback,omitempty"`
+	Body       string                `json:"body"`
+
+	// DraftedBy `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+	// and the actual result; `template` when the template was filled without it.
+	DraftedBy IssueDraftDraftedBy `json:"drafted_by"`
+	Labels    []string            `json:"labels"`
 
 	// Quote The customer's first message; empty when there is none. Off by default for a public repository.
 	Quote      string           `json:"quote"`
 	Repository GitHubRepository `json:"repository"`
 	Title      string           `json:"title"`
 }
+
+// IssueDraftAiFallback Why the template was used although AI is on: the month's AI budget is spent, or the
+// provider failed, timed out or answered badly. Left out otherwise.
+type IssueDraftAiFallback string
+
+// IssueDraftDraftedBy `ai` when the workspace's model wrote the title, the summary, the steps, the expected
+// and the actual result; `template` when the template was filled without it.
+type IssueDraftDraftedBy string
 
 // IssueLink defines model for IssueLink.
 type IssueLink struct {
@@ -1484,6 +2000,10 @@ type Member struct {
 	Active bool   `json:"active"`
 	Email  string `json:"email"`
 	Name   string `json:"name"`
+
+	// Presence `online` accepts conversations, `away` does not; both with the panel open.
+	// `offline`: the panel has not been open for about 90 seconds.
+	Presence Presence `json:"presence"`
 
 	// Role System role in phase 1.
 	Role   Role      `json:"role"`
@@ -1575,6 +2095,7 @@ type MessageEvent struct {
 	From               ConversationStatus `json:"from"`
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
+	Task               *MessageEventTask  `json:"task,omitempty"`
 
 	// To State of a conversation.
 	To ConversationStatus `json:"to"`
@@ -1585,7 +2106,9 @@ type MessageEvent struct {
 	// fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
 	// closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
 	// the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-	// reopened one put it to wait for the fix again.
+	// reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+	// tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+	// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 	Type MessageEventType `json:"type"`
 }
 
@@ -1595,7 +2118,9 @@ type MessageEvent struct {
 // fix with it. `issue_closed` (with `issue.reason`) and `issue_reopened`: GitHub
 // closed or reopened a linked issue; `from` and `to` differ when a fixed issue brought
 // the conversation back to its assignee (`pending → assigned`) or to the queue, or a
-// reopened one put it to wait for the fix again.
+// reopened one put it to wait for the fix again. `task_*`: the same for a task of the
+// tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
+// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
@@ -1613,6 +2138,18 @@ type MessageEventIssue struct {
 // MessageEventIssueReason Only with `issue_closed`: `completed` (fixed; the reply about the fix is drafted,
 // `ConversationIssues.reply_draft`) or `not_planned` (won't be fixed, a duplicate).
 type MessageEventIssueReason string
+
+// MessageEventTask defines model for MessageEventTask.
+type MessageEventTask struct {
+	Number int64 `json:"number"`
+
+	// Reason Only with `task_closed`.
+	Reason *MessageEventTaskReason `json:"reason,omitempty"`
+	TaskId uuid.UUID               `json:"task_id"`
+}
+
+// MessageEventTaskReason Only with `task_closed`.
+type MessageEventTaskReason string
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {
@@ -1637,6 +2174,29 @@ type MessageReport struct {
 
 // MessageReportFiles defines model for MessageReport.Files.
 type MessageReportFiles string
+
+// MyPresence defines model for MyPresence.
+type MyPresence struct {
+	// Status What the user chose; `offline` follows from a closed panel.
+	Status MyPresenceStatus `json:"status"`
+}
+
+// MyPresenceStatus What the user chose; `offline` follows from a closed panel.
+type MyPresenceStatus string
+
+// MyTelegram defines model for MyTelegram.
+type MyTelegram struct {
+	// BotUsername The workspace's notifications bot; `null` without one.
+	BotUsername *string    `json:"bot_username"`
+	Linked      bool       `json:"linked"`
+	LinkedAt    *time.Time `json:"linked_at"`
+
+	// Name The user's name in Telegram, once linked.
+	Name *string `json:"name"`
+
+	// Pending A link code waits for Start.
+	Pending bool `json:"pending"`
+}
 
 // NotificationSettings defines model for NotificationSettings.
 type NotificationSettings struct {
@@ -1675,6 +2235,10 @@ type PostMessageRequest struct {
 	// Private Internal note instead of a reply.
 	Private *bool `json:"private,omitempty"`
 }
+
+// Presence `online` accepts conversations, `away` does not; both with the panel open.
+// `offline`: the panel has not been open for about 90 seconds.
+type Presence string
 
 // Problem RFC 9457 problem details.
 type Problem struct {
@@ -1723,6 +2287,17 @@ type ResetPasswordRequest struct {
 
 // Role System role in phase 1.
 type Role string
+
+// RoutingSettings defines model for RoutingSettings.
+type RoutingSettings struct {
+	// Mode `manual`: operators take conversations from the queue. `round_robin`: the server
+	// assigns them in turn to members who are `online`.
+	Mode RoutingSettingsMode `json:"mode"`
+}
+
+// RoutingSettingsMode `manual`: operators take conversations from the queue. `round_robin`: the server
+// assigns them in turn to members who are `online`.
+type RoutingSettingsMode string
 
 // Session defines model for Session.
 type Session struct {
@@ -1789,9 +2364,215 @@ type TagList struct {
 	Items []Tag `json:"items"`
 }
 
+// Task defines model for Task.
+type Task struct {
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+	Body       string     `json:"body"`
+	ClosedAt   *time.Time `json:"closed_at"`
+
+	// ConversationIds Linked conversations, oldest link first; empty in lists.
+	ConversationIds []uuid.UUID `json:"conversation_ids"`
+	CreatedAt       time.Time   `json:"created_at"`
+
+	// CreatedBy `null` when the author is no longer a member.
+	CreatedBy *uuid.UUID   `json:"created_by"`
+	Id        uuid.UUID    `json:"id"`
+	Number    int64        `json:"number"`
+	Priority  TaskPriority `json:"priority"`
+	QueueId   *uuid.UUID   `json:"queue_id"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	Status    TaskStatus `json:"status"`
+	Title     string     `json:"title"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Version   int32      `json:"version"`
+}
+
+// TaskActivity defines model for TaskActivity.
+type TaskActivity struct {
+	ActorId *uuid.UUID `json:"actor_id"`
+
+	// Body The text of a comment.
+	Body *string `json:"body,omitempty"`
+
+	// ConversationId On `linked` and `unlinked`.
+	ConversationId *uuid.UUID `json:"conversation_id,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+
+	// Fields What an edit changed.
+	Fields *[]TaskActivityFields `json:"fields,omitempty"`
+
+	// From The value a change moved from (a status, a priority, a member or queue id); empty for none.
+	From *string          `json:"from,omitempty"`
+	Id   uuid.UUID        `json:"id"`
+	Kind TaskActivityKind `json:"kind"`
+
+	// To The value a change moved to; empty for none.
+	To *string `json:"to,omitempty"`
+}
+
+// TaskActivityFields defines model for TaskActivity.Fields.
+type TaskActivityFields string
+
+// TaskActivityKind defines model for TaskActivity.Kind.
+type TaskActivityKind string
+
+// TaskActivityList defines model for TaskActivityList.
+type TaskActivityList struct {
+	Items []TaskActivity `json:"items"`
+}
+
+// TaskButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+// connected) or both.
+type TaskButton string
+
+// TaskComment defines model for TaskComment.
+type TaskComment struct {
+	Body string `json:"body"`
+}
+
+// TaskCreate defines model for TaskCreate.
+type TaskCreate struct {
+	AssigneeId *uuid.UUID `json:"assignee_id,omitempty"`
+	Body       *string    `json:"body,omitempty"`
+
+	// ConversationId The conversation the task is created from.
+	ConversationId *uuid.UUID    `json:"conversation_id,omitempty"`
+	Priority       *TaskPriority `json:"priority,omitempty"`
+	QueueId        *uuid.UUID    `json:"queue_id,omitempty"`
+	Title          string        `json:"title"`
+}
+
+// TaskDraft defines model for TaskDraft.
+type TaskDraft struct {
+	// AiFallback Why the AI did not write the draft although AI is on.
+	AiFallback *TaskDraftAiFallback `json:"ai_fallback,omitempty"`
+	Body       string               `json:"body"`
+	DraftedBy  TaskDraftDraftedBy   `json:"drafted_by"`
+	Title      string               `json:"title"`
+}
+
+// TaskDraftAiFallback Why the AI did not write the draft although AI is on.
+type TaskDraftAiFallback string
+
+// TaskDraftDraftedBy defines model for TaskDraft.DraftedBy.
+type TaskDraftDraftedBy string
+
+// TaskLinkRequest defines model for TaskLinkRequest.
+type TaskLinkRequest struct {
+	ConversationId uuid.UUID `json:"conversation_id"`
+}
+
+// TaskPage defines model for TaskPage.
+type TaskPage struct {
+	Items      []Task  `json:"items"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+// TaskPriority defines model for TaskPriority.
+type TaskPriority string
+
+// TaskQueue defines model for TaskQueue.
+type TaskQueue struct {
+	Id uuid.UUID `json:"id"`
+
+	// MemberIds Members told about new tasks without an assignee in the queue.
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+	OpenTasks int64       `json:"open_tasks"`
+}
+
+// TaskQueueInput defines model for TaskQueueInput.
+type TaskQueueInput struct {
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+}
+
+// TaskQueueList defines model for TaskQueueList.
+type TaskQueueList struct {
+	Items []TaskQueue `json:"items"`
+}
+
+// TaskReplyDraft defines model for TaskReplyDraft.
+type TaskReplyDraft struct {
+	Number int64     `json:"number"`
+	TaskId uuid.UUID `json:"task_id"`
+
+	// Text The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+	Text string `json:"text"`
+}
+
+// TaskSettings defines model for TaskSettings.
+type TaskSettings struct {
+	// ConversationButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
+	// connected) or both.
+	ConversationButton TaskButton `json:"conversation_button"`
+
+	// Enabled Off hides the section and the button; tasks stay, new ones are refused.
+	Enabled bool   `json:"enabled"`
+	ReplyEn string `json:"reply_en"`
+	ReplyRu string `json:"reply_ru"`
+}
+
+// TaskSettingsView defines model for TaskSettingsView.
+type TaskSettingsView struct {
+	Defaults struct {
+		ReplyEn string `json:"reply_en"`
+		ReplyRu string `json:"reply_ru"`
+	} `json:"defaults"`
+	Placeholders []string     `json:"placeholders"`
+	Settings     TaskSettings `json:"settings"`
+}
+
+// TaskStatus `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+type TaskStatus string
+
+// TaskSummary defines model for TaskSummary.
+type TaskSummary struct {
+	// AssignedOpen Open tasks assigned to the caller.
+	AssignedOpen int64 `json:"assigned_open"`
+}
+
+// TaskUpdate defines model for TaskUpdate.
+type TaskUpdate struct {
+	AssigneeId *uuid.UUID   `json:"assignee_id"`
+	Body       string       `json:"body"`
+	Priority   TaskPriority `json:"priority"`
+	QueueId    *uuid.UUID   `json:"queue_id"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	Status  TaskStatus `json:"status"`
+	Title   string     `json:"title"`
+	Version int32      `json:"version"`
+}
+
+// TelegramBotInput defines model for TelegramBotInput.
+type TelegramBotInput struct {
+	// Token The bot token from @BotFather.
+	Token *string `json:"token,omitempty"`
+}
+
+// TelegramBotState defines model for TelegramBotState.
+type TelegramBotState struct {
+	Bot *struct {
+		Username string `json:"username"`
+	} `json:"bot"`
+
+	// EncryptionAvailable `false` without `TOLKOVO_MASTER_KEY`: no bot can be added.
+	EncryptionAvailable bool `json:"encryption_available"`
+}
+
 // TelegramCodeRequest defines model for TelegramCodeRequest.
 type TelegramCodeRequest struct {
 	Code string `json:"code"`
+}
+
+// TelegramLinkStart defines model for TelegramLinkStart.
+type TelegramLinkStart struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Url https://t.me/<bot>?start=<code>
+	Url string `json:"url"`
 }
 
 // TelegramLogin defines model for TelegramLogin.
@@ -1867,6 +2648,32 @@ type User struct {
 	Name          string    `json:"name"`
 }
 
+// WidgetAnalytics Where the widget reports its goals on the site. Each way is on separately; a counter
+// the page does not have is skipped. Parameters never carry texts, names, contacts or
+// ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+// `source`; `rated` — `score`, `resolvedBy`.
+type WidgetAnalytics struct {
+	// DataLayer Push `{event: <goal>, tolkovo: {...}}` to `window.dataLayer` (Google Tag Manager, GA4 through GTM).
+	DataLayer bool `json:"data_layer"`
+
+	// Goals Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`.
+	Goals WidgetGoals `json:"goals"`
+
+	// Gtag Call `gtag("event", <goal>, {...})` (GA4 without GTM).
+	Gtag bool `json:"gtag"`
+
+	// MetrikaCounter Yandex Metrica counter number: `ym(<counter>, "reachGoal", <goal>, {...})`; `null` — off.
+	MetrikaCounter *string `json:"metrika_counter"`
+}
+
+// WidgetAvailability defines model for WidgetAvailability.
+type WidgetAvailability struct {
+	// OperatorsOnline Someone on the team takes conversations now: the status «online» and the panel
+	// open. Without them the widget offers the offline form to a visitor who has not
+	// written yet.
+	OperatorsOnline bool `json:"operators_online"`
+}
+
 // WidgetChannelCreated defines model for WidgetChannelCreated.
 type WidgetChannelCreated struct {
 	Channel Channel `json:"channel"`
@@ -1884,10 +2691,35 @@ type WidgetContactRequest struct {
 		PolicyUrl string `json:"policy_url"`
 	} `json:"consent,omitempty"`
 	Email *string `json:"email,omitempty"`
-	Name  *string `json:"name,omitempty"`
+
+	// Form Which form it was; the consent is stored with it.
+	Form *WidgetContactRequestForm `json:"form,omitempty"`
+	Name *string                   `json:"name,omitempty"`
 
 	// Phone 3–32 digits, spaces, brackets or hyphens, an optional leading `+`.
 	Phone *string `json:"phone,omitempty"`
+}
+
+// WidgetContactRequestForm Which form it was; the consent is stored with it.
+type WidgetContactRequestForm string
+
+// WidgetConversation The visitor's newest conversation as they see it.
+type WidgetConversation struct {
+	Id     uuid.UUID           `json:"id"`
+	Rating *ConversationRating `json:"rating"`
+
+	// Status `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
+	Status WidgetConversationStatus `json:"status"`
+}
+
+// WidgetConversationStatus `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
+type WidgetConversationStatus string
+
+// WidgetGoals Goal names in the counters; default `tolkovo.chatStarted`, `tolkovo.contactCollected`, `tolkovo.rated`.
+type WidgetGoals struct {
+	ChatStarted      string `json:"chat_started"`
+	ContactCollected string `json:"contact_collected"`
+	Rated            string `json:"rated"`
 }
 
 // WidgetMessage defines model for WidgetMessage.
@@ -1914,6 +2746,9 @@ type WidgetMessageRequest struct {
 
 // WidgetMessages defines model for WidgetMessages.
 type WidgetMessages struct {
+	// Conversation The visitor's newest conversation; `null` before the first message.
+	Conversation *WidgetConversation `json:"conversation"`
+
 	// Cursor Pass as `since` next time.
 	Cursor string          `json:"cursor"`
 	Items  []WidgetMessage `json:"items"`
@@ -1932,6 +2767,13 @@ type WidgetOriginsRequest struct {
 	AllowedOrigins []string `json:"allowed_origins"`
 }
 
+// WidgetRatingRequest defines model for WidgetRatingRequest.
+type WidgetRatingRequest struct {
+	Comment        *string   `json:"comment,omitempty"`
+	ConversationId uuid.UUID `json:"conversation_id"`
+	Score          int       `json:"score"`
+}
+
 // WidgetReceiptRequest defines model for WidgetReceiptRequest.
 type WidgetReceiptRequest struct {
 	DeliveredUpTo *uuid.UUID `json:"delivered_up_to,omitempty"`
@@ -1940,11 +2782,19 @@ type WidgetReceiptRequest struct {
 
 // WidgetSession defines model for WidgetSession.
 type WidgetSession struct {
-	ChannelName string `json:"channel_name"`
+	// Analytics Where the widget reports its goals on the site. Each way is on separately; a counter
+	// the page does not have is skipped. Parameters never carry texts, names, contacts or
+	// ids: `chatStarted` — `channel`, `page` (the path, no query); `contactCollected` —
+	// `source`; `rated` — `score`, `resolvedBy`.
+	Analytics   WidgetAnalytics `json:"analytics"`
+	ChannelName string          `json:"channel_name"`
 
 	// ExpiresAt Moves 30 days ahead with activity.
 	ExpiresAt time.Time             `json:"expires_at"`
 	Identity  WidgetSessionIdentity `json:"identity"`
+
+	// OperatorsOnline As in `WidgetAvailability`.
+	OperatorsOnline bool `json:"operators_online"`
 
 	// SessionToken `tk_wsess_…`; keep it and send it as `Authorization: Bearer`.
 	SessionToken string `json:"session_token"`
@@ -2083,11 +2933,17 @@ type LoginStep = Problem
 // NotFound RFC 9457 problem details.
 type NotFound = Problem
 
+// NotifyBotConflict RFC 9457 problem details.
+type NotifyBotConflict = Problem
+
 // ReportLimited RFC 9457 problem details.
 type ReportLimited = Problem
 
 // ReportTooLarge RFC 9457 problem details.
 type ReportTooLarge = Problem
+
+// TaskConflict RFC 9457 problem details.
+type TaskConflict = Problem
 
 // TelegramLoginRejected RFC 9457 problem details.
 type TelegramLoginRejected = Problem
@@ -2186,6 +3042,31 @@ type ListIngestReportRepliesParams struct {
 	XReportToken ReportToken `json:"X-Report-Token"`
 }
 
+// ListTasksParams defines parameters for ListTasks.
+type ListTasksParams struct {
+	// State `open` (new or in progress), `closed` (done or canceled); all when absent.
+	State  *ListTasksParamsState `form:"state,omitempty" json:"state,omitempty"`
+	Status *TaskStatus           `form:"status,omitempty" json:"status,omitempty"`
+
+	// Assignee `me`, `none` or a member id.
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// Queue `none` or a queue id.
+	Queue *string `form:"queue,omitempty" json:"queue,omitempty"`
+
+	// Q Part of the title, or the task number.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Cursor Opaque `next_cursor` of the previous page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size, 1–100; 50 when absent.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTasksParamsState defines parameters for ListTasks.
+type ListTasksParamsState string
+
 // ListWidgetMessagesParams defines parameters for ListWidgetMessages.
 type ListWidgetMessagesParams struct {
 	// Since `cursor` of the previous answer.
@@ -2198,6 +3079,9 @@ type SendWidgetMessageParams struct {
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
+
+// SetAISettingsJSONRequestBody defines body for SetAISettings for application/json ContentType.
+type SetAISettingsJSONRequestBody = AISettingsUpdate
 
 // VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
 type VerifyEmailJSONRequestBody = TokenRequest
@@ -2249,6 +3133,9 @@ type SubmitTelegramUserCodeJSONRequestBody = TelegramCodeRequest
 
 // SubmitTelegramUserPasswordJSONRequestBody defines body for SubmitTelegramUserPassword for application/json ContentType.
 type SubmitTelegramUserPasswordJSONRequestBody = TelegramPasswordRequest
+
+// SetWidgetAnalyticsJSONRequestBody defines body for SetWidgetAnalytics for application/json ContentType.
+type SetWidgetAnalyticsJSONRequestBody = WidgetAnalytics
 
 // SetWidgetOriginsJSONRequestBody defines body for SetWidgetOrigins for application/json ContentType.
 type SetWidgetOriginsJSONRequestBody = WidgetOriginsRequest
@@ -2316,14 +3203,47 @@ type UpdateMyNotificationSettingsJSONRequestBody = UpdateNotificationSettingsReq
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest
 
+// SetMyPresenceJSONRequestBody defines body for SetMyPresence for application/json ContentType.
+type SetMyPresenceJSONRequestBody = MyPresence
+
+// SetRoutingJSONRequestBody defines body for SetRouting for application/json ContentType.
+type SetRoutingJSONRequestBody = RoutingSettings
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
+
+// CreateTaskQueueJSONRequestBody defines body for CreateTaskQueue for application/json ContentType.
+type CreateTaskQueueJSONRequestBody = TaskQueueInput
+
+// UpdateTaskQueueJSONRequestBody defines body for UpdateTaskQueue for application/json ContentType.
+type UpdateTaskQueueJSONRequestBody = TaskQueueInput
+
+// UpdateTaskSettingsJSONRequestBody defines body for UpdateTaskSettings for application/json ContentType.
+type UpdateTaskSettingsJSONRequestBody = TaskSettings
+
+// SetTaskTelegramBotJSONRequestBody defines body for SetTaskTelegramBot for application/json ContentType.
+type SetTaskTelegramBotJSONRequestBody = TelegramBotInput
+
+// CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
+type CreateTaskJSONRequestBody = TaskCreate
+
+// UpdateTaskJSONRequestBody defines body for UpdateTask for application/json ContentType.
+type UpdateTaskJSONRequestBody = TaskUpdate
+
+// CommentTaskJSONRequestBody defines body for CommentTask for application/json ContentType.
+type CommentTaskJSONRequestBody = TaskComment
+
+// LinkTaskConversationJSONRequestBody defines body for LinkTaskConversation for application/json ContentType.
+type LinkTaskConversationJSONRequestBody = TaskLinkRequest
 
 // SubmitWidgetContactJSONRequestBody defines body for SubmitWidgetContact for application/json ContentType.
 type SubmitWidgetContactJSONRequestBody = WidgetContactRequest
 
 // SendWidgetMessageJSONRequestBody defines body for SendWidgetMessage for application/json ContentType.
 type SendWidgetMessageJSONRequestBody = WidgetMessageRequest
+
+// RateWidgetConversationJSONRequestBody defines body for RateWidgetConversation for application/json ContentType.
+type RateWidgetConversationJSONRequestBody = WidgetRatingRequest
 
 // MarkWidgetReceiptJSONRequestBody defines body for MarkWidgetReceipt for application/json ContentType.
 type MarkWidgetReceiptJSONRequestBody = WidgetReceiptRequest
@@ -2339,6 +3259,15 @@ type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetAISettings The workspace's AI settings and the month's spending
+	// (GET /ai/settings)
+	GetAISettings(w http.ResponseWriter, r *http.Request)
+	// SetAISettings Choose the provider, model, key, prices and budget
+	// (PUT /ai/settings)
+	SetAISettings(w http.ResponseWriter, r *http.Request)
+	// CheckAISettings Send a tiny request with the saved settings
+	// (POST /ai/settings/check)
+	CheckAISettings(w http.ResponseWriter, r *http.Request)
 	// GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
 	// (GET /attachments/{id}/download-link)
 	GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
@@ -2414,6 +3343,9 @@ type ServerInterface interface {
 	// SubmitTelegramUserPassword Enter the cloud password of a personal account
 	// (POST /channels/{id}/telegram-user/password)
 	SubmitTelegramUserPassword(w http.ResponseWriter, r *http.Request, id Id)
+	// SetWidgetAnalytics Change which site analytics a widget reports goals to
+	// (PUT /channels/{id}/widget-analytics)
+	SetWidgetAnalytics(w http.ResponseWriter, r *http.Request, id Id)
 	// SetWidgetOrigins Change the pages that may embed a widget
 	// (PUT /channels/{id}/widget-origins)
 	SetWidgetOrigins(w http.ResponseWriter, r *http.Request, id Id)
@@ -2483,6 +3415,12 @@ type ServerInterface interface {
 	// SetConversationTags Replace the tags of the conversation
 	// (PUT /conversations/{id}/tags)
 	SetConversationTags(w http.ResponseWriter, r *http.Request, id Id)
+	// ListConversationTasks Tasks of the conversation
+	// (GET /conversations/{id}/tasks)
+	ListConversationTasks(w http.ResponseWriter, r *http.Request, id Id)
+	// GetConversationTaskDraft The task form filled from the conversation
+	// (GET /conversations/{id}/tasks/draft)
+	GetConversationTaskDraft(w http.ResponseWriter, r *http.Request, id Id)
 	// CreateIngestReport Register a problem report and get upload links for its files
 	// (POST /ingest/reports)
 	CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams)
@@ -2549,6 +3487,12 @@ type ServerInterface interface {
 	// ChangePassword Change the current user's password
 	// (POST /me/password)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// GetMyPresence Whether the current user accepts conversations in this workspace
+	// (GET /me/presence)
+	GetMyPresence(w http.ResponseWriter, r *http.Request)
+	// SetMyPresence Accept conversations or step away
+	// (PUT /me/presence)
+	SetMyPresence(w http.ResponseWriter, r *http.Request)
 	// ListMySessions Active sessions (signed-in devices) of the current user
 	// (GET /me/sessions)
 	ListMySessions(w http.ResponseWriter, r *http.Request)
@@ -2558,19 +3502,97 @@ type ServerInterface interface {
 	// RevokeSession End one session of the current user
 	// (DELETE /me/sessions/{id})
 	RevokeSession(w http.ResponseWriter, r *http.Request, id Id)
+	// UnlinkMyTelegram Stop messages to the current user's Telegram
+	// (DELETE /me/telegram)
+	UnlinkMyTelegram(w http.ResponseWriter, r *http.Request)
+	// GetMyTelegram The current user's Telegram link to the workspace's notifications bot
+	// (GET /me/telegram)
+	GetMyTelegram(w http.ResponseWriter, r *http.Request)
+	// CheckMyTelegramLink Read the bot's new messages and complete links
+	// (POST /me/telegram/check)
+	CheckMyTelegramLink(w http.ResponseWriter, r *http.Request)
+	// StartMyTelegramLink A link to press Start in the notifications bot
+	// (POST /me/telegram/link)
+	StartMyTelegramLink(w http.ResponseWriter, r *http.Request)
 	// ListMyWorkspaces Workspaces the current user is an active member of
 	// (GET /me/workspaces)
 	ListMyWorkspaces(w http.ResponseWriter, r *http.Request)
 	// ListMembers Members of the current workspace
 	// (GET /members)
 	ListMembers(w http.ResponseWriter, r *http.Request)
+	// GetRouting How the workspace distributes its queue
+	// (GET /routing)
+	GetRouting(w http.ResponseWriter, r *http.Request)
+	// SetRouting Change how the workspace distributes its queue
+	// (PUT /routing)
+	SetRouting(w http.ResponseWriter, r *http.Request)
 	// ListTags Every tag of the workspace, by name
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
-	// SubmitWidgetContact The visitor fills in the pre-chat form
+	// ListTaskQueues Queues of tasks, by name
+	// (GET /task-queues)
+	ListTaskQueues(w http.ResponseWriter, r *http.Request)
+	// CreateTaskQueue Add a queue
+	// (POST /task-queues)
+	CreateTaskQueue(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskQueue Delete a queue
+	// (DELETE /task-queues/{id})
+	DeleteTaskQueue(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTaskQueue Rename a queue and replace its members
+	// (PUT /task-queues/{id})
+	UpdateTaskQueue(w http.ResponseWriter, r *http.Request, id Id)
+	// GetTaskSettings Settings of the tasks section
+	// (GET /task-settings)
+	GetTaskSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTaskSettings Change the settings of the tasks section
+	// (PUT /task-settings)
+	UpdateTaskSettings(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskTelegramBot Forget the notifications bot and every member's link to it
+	// (DELETE /task-settings/telegram-bot)
+	DeleteTaskTelegramBot(w http.ResponseWriter, r *http.Request)
+	// GetTaskTelegramBot The workspace's Telegram bot for notifications
+	// (GET /task-settings/telegram-bot)
+	GetTaskTelegramBot(w http.ResponseWriter, r *http.Request)
+	// SetTaskTelegramBot Add or replace the notifications bot
+	// (PUT /task-settings/telegram-bot)
+	SetTaskTelegramBot(w http.ResponseWriter, r *http.Request)
+	// ListTasks Tasks, newest first
+	// (GET /tasks)
+	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
+	// CreateTask Create a task
+	// (POST /tasks)
+	CreateTask(w http.ResponseWriter, r *http.Request)
+	// GetTaskSummary The caller's open tasks, for the menu
+	// (GET /tasks/summary)
+	GetTaskSummary(w http.ResponseWriter, r *http.Request)
+	// DeleteTask Delete a task
+	// (DELETE /tasks/{id})
+	DeleteTask(w http.ResponseWriter, r *http.Request, id Id)
+	// GetTask A task with its linked conversations
+	// (GET /tasks/{id})
+	GetTask(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTask Change a task
+	// (PUT /tasks/{id})
+	UpdateTask(w http.ResponseWriter, r *http.Request, id Id)
+	// ListTaskActivity Comments and changes of a task, oldest first
+	// (GET /tasks/{id}/activity)
+	ListTaskActivity(w http.ResponseWriter, r *http.Request, id Id)
+	// CommentTask Comment a task
+	// (POST /tasks/{id}/activity)
+	CommentTask(w http.ResponseWriter, r *http.Request, id Id)
+	// LinkTaskConversation Link a conversation to the task
+	// (POST /tasks/{id}/conversations)
+	LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id)
+	// UnlinkTaskConversation Unlink a conversation from the task
+	// (DELETE /tasks/{id}/conversations/{conversation_id})
+	UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID)
+	// GetWidgetAvailability Whether someone takes conversations now
+	// (GET /widget/availability)
+	GetWidgetAvailability(w http.ResponseWriter, r *http.Request)
+	// SubmitWidgetContact The visitor fills in the pre-chat or the offline form
 	// (POST /widget/contact)
 	SubmitWidgetContact(w http.ResponseWriter, r *http.Request)
 	// ListWidgetMessages The visitor's chat
@@ -2579,6 +3601,9 @@ type ServerInterface interface {
 	// SendWidgetMessage The visitor writes
 	// (POST /widget/messages)
 	SendWidgetMessage(w http.ResponseWriter, r *http.Request, params SendWidgetMessageParams)
+	// RateWidgetConversation The visitor rates a resolved conversation
+	// (POST /widget/rating)
+	RateWidgetConversation(w http.ResponseWriter, r *http.Request)
 	// MarkWidgetReceipt The widget received or showed replies
 	// (POST /widget/receipts)
 	MarkWidgetReceipt(w http.ResponseWriter, r *http.Request)
@@ -2599,6 +3624,24 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// GetAISettings The workspace's AI settings and the month's spending
+// (GET /ai/settings)
+func (_ Unimplemented) GetAISettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAISettings Choose the provider, model, key, prices and budget
+// (PUT /ai/settings)
+func (_ Unimplemented) SetAISettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CheckAISettings Send a tiny request with the saved settings
+// (POST /ai/settings/check)
+func (_ Unimplemented) CheckAISettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // GetAttachmentDownloadLink A short-lived signed download request for a sent attachment
 // (GET /attachments/{id}/download-link)
@@ -2750,6 +3793,12 @@ func (_ Unimplemented) SubmitTelegramUserPassword(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// SetWidgetAnalytics Change which site analytics a widget reports goals to
+// (PUT /channels/{id}/widget-analytics)
+func (_ Unimplemented) SetWidgetAnalytics(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // SetWidgetOrigins Change the pages that may embed a widget
 // (PUT /channels/{id}/widget-origins)
 func (_ Unimplemented) SetWidgetOrigins(w http.ResponseWriter, r *http.Request, id Id) {
@@ -2888,6 +3937,18 @@ func (_ Unimplemented) SetConversationTags(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListConversationTasks Tasks of the conversation
+// (GET /conversations/{id}/tasks)
+func (_ Unimplemented) ListConversationTasks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetConversationTaskDraft The task form filled from the conversation
+// (GET /conversations/{id}/tasks/draft)
+func (_ Unimplemented) GetConversationTaskDraft(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CreateIngestReport Register a problem report and get upload links for its files
 // (POST /ingest/reports)
 func (_ Unimplemented) CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams) {
@@ -3020,6 +4081,18 @@ func (_ Unimplemented) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetMyPresence Whether the current user accepts conversations in this workspace
+// (GET /me/presence)
+func (_ Unimplemented) GetMyPresence(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetMyPresence Accept conversations or step away
+// (PUT /me/presence)
+func (_ Unimplemented) SetMyPresence(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMySessions Active sessions (signed-in devices) of the current user
 // (GET /me/sessions)
 func (_ Unimplemented) ListMySessions(w http.ResponseWriter, r *http.Request) {
@@ -3038,6 +4111,30 @@ func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// UnlinkMyTelegram Stop messages to the current user's Telegram
+// (DELETE /me/telegram)
+func (_ Unimplemented) UnlinkMyTelegram(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetMyTelegram The current user's Telegram link to the workspace's notifications bot
+// (GET /me/telegram)
+func (_ Unimplemented) GetMyTelegram(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CheckMyTelegramLink Read the bot's new messages and complete links
+// (POST /me/telegram/check)
+func (_ Unimplemented) CheckMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartMyTelegramLink A link to press Start in the notifications bot
+// (POST /me/telegram/link)
+func (_ Unimplemented) StartMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMyWorkspaces Workspaces the current user is an active member of
 // (GET /me/workspaces)
 func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) {
@@ -3047,6 +4144,18 @@ func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) 
 // ListMembers Members of the current workspace
 // (GET /members)
 func (_ Unimplemented) ListMembers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRouting How the workspace distributes its queue
+// (GET /routing)
+func (_ Unimplemented) GetRouting(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetRouting Change how the workspace distributes its queue
+// (PUT /routing)
+func (_ Unimplemented) SetRouting(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3062,7 +4171,127 @@ func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// SubmitWidgetContact The visitor fills in the pre-chat form
+// ListTaskQueues Queues of tasks, by name
+// (GET /task-queues)
+func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTaskQueue Add a queue
+// (POST /task-queues)
+func (_ Unimplemented) CreateTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskQueue Delete a queue
+// (DELETE /task-queues/{id})
+func (_ Unimplemented) DeleteTaskQueue(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskQueue Rename a queue and replace its members
+// (PUT /task-queues/{id})
+func (_ Unimplemented) UpdateTaskQueue(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskSettings Settings of the tasks section
+// (GET /task-settings)
+func (_ Unimplemented) GetTaskSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskSettings Change the settings of the tasks section
+// (PUT /task-settings)
+func (_ Unimplemented) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskTelegramBot Forget the notifications bot and every member's link to it
+// (DELETE /task-settings/telegram-bot)
+func (_ Unimplemented) DeleteTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskTelegramBot The workspace's Telegram bot for notifications
+// (GET /task-settings/telegram-bot)
+func (_ Unimplemented) GetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetTaskTelegramBot Add or replace the notifications bot
+// (PUT /task-settings/telegram-bot)
+func (_ Unimplemented) SetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTasks Tasks, newest first
+// (GET /tasks)
+func (_ Unimplemented) ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTask Create a task
+// (POST /tasks)
+func (_ Unimplemented) CreateTask(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskSummary The caller's open tasks, for the menu
+// (GET /tasks/summary)
+func (_ Unimplemented) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTask Delete a task
+// (DELETE /tasks/{id})
+func (_ Unimplemented) DeleteTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTask A task with its linked conversations
+// (GET /tasks/{id})
+func (_ Unimplemented) GetTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTask Change a task
+// (PUT /tasks/{id})
+func (_ Unimplemented) UpdateTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskActivity Comments and changes of a task, oldest first
+// (GET /tasks/{id}/activity)
+func (_ Unimplemented) ListTaskActivity(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CommentTask Comment a task
+// (POST /tasks/{id}/activity)
+func (_ Unimplemented) CommentTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LinkTaskConversation Link a conversation to the task
+// (POST /tasks/{id}/conversations)
+func (_ Unimplemented) LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnlinkTaskConversation Unlink a conversation from the task
+// (DELETE /tasks/{id}/conversations/{conversation_id})
+func (_ Unimplemented) UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetWidgetAvailability Whether someone takes conversations now
+// (GET /widget/availability)
+func (_ Unimplemented) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SubmitWidgetContact The visitor fills in the pre-chat or the offline form
 // (POST /widget/contact)
 func (_ Unimplemented) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -3077,6 +4306,12 @@ func (_ Unimplemented) ListWidgetMessages(w http.ResponseWriter, r *http.Request
 // SendWidgetMessage The visitor writes
 // (POST /widget/messages)
 func (_ Unimplemented) SendWidgetMessage(w http.ResponseWriter, r *http.Request, params SendWidgetMessageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RateWidgetConversation The visitor rates a resolved conversation
+// (POST /widget/rating)
+func (_ Unimplemented) RateWidgetConversation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3118,6 +4353,48 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAISettings operation middleware
+func (siw *ServerInterfaceWrapper) GetAISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAISettings operation middleware
+func (siw *ServerInterfaceWrapper) SetAISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckAISettings operation middleware
+func (siw *ServerInterfaceWrapper) CheckAISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckAISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetAttachmentDownloadLink operation middleware
 func (siw *ServerInterfaceWrapper) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request) {
@@ -3589,6 +4866,32 @@ func (siw *ServerInterfaceWrapper) SubmitTelegramUserPassword(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SubmitTelegramUserPassword(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetWidgetAnalytics operation middleware
+func (siw *ServerInterfaceWrapper) SetWidgetAnalytics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWidgetAnalytics(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4319,6 +5622,58 @@ func (siw *ServerInterfaceWrapper) SetConversationTags(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListConversationTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListConversationTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConversationTasks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversationTaskDraft operation middleware
+func (siw *ServerInterfaceWrapper) GetConversationTaskDraft(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversationTaskDraft(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateIngestReport operation middleware
 func (siw *ServerInterfaceWrapper) CreateIngestReport(w http.ResponseWriter, r *http.Request) {
 
@@ -4830,6 +6185,34 @@ func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyPresence operation middleware
+func (siw *ServerInterfaceWrapper) GetMyPresence(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyPresence(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMyPresence operation middleware
+func (siw *ServerInterfaceWrapper) SetMyPresence(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMyPresence(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMySessions operation middleware
 func (siw *ServerInterfaceWrapper) ListMySessions(w http.ResponseWriter, r *http.Request) {
 
@@ -4884,6 +6267,62 @@ func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// UnlinkMyTelegram operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkMyTelegram(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkMyTelegram(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyTelegram operation middleware
+func (siw *ServerInterfaceWrapper) GetMyTelegram(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyTelegram(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckMyTelegramLink operation middleware
+func (siw *ServerInterfaceWrapper) CheckMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckMyTelegramLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartMyTelegramLink operation middleware
+func (siw *ServerInterfaceWrapper) StartMyTelegramLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartMyTelegramLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyWorkspaces operation middleware
 func (siw *ServerInterfaceWrapper) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) {
 
@@ -4912,6 +6351,34 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetRouting operation middleware
+func (siw *ServerInterfaceWrapper) GetRouting(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRouting(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetRouting operation middleware
+func (siw *ServerInterfaceWrapper) SetRouting(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetRouting(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -4931,6 +6398,500 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTaskQueues operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskQueues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTaskQueue operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskQueue(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskQueue(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskQueue operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskQueue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskQueue operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskQueue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskTelegramBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskTelegramBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTaskTelegramBot operation middleware
+func (siw *ServerInterfaceWrapper) SetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTaskTelegramBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTasksParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "queue" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "queue", r.URL.Query(), &params.Queue, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "queue"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "queue", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTasks(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTask(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTask operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTask operation middleware
+func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTask operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTaskActivity operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CommentTask operation middleware
+func (siw *ServerInterfaceWrapper) CommentTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CommentTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LinkTaskConversation operation middleware
+func (siw *ServerInterfaceWrapper) LinkTaskConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LinkTaskConversation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnlinkTaskConversation operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkTaskConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "conversation_id" -------------
+	var conversationId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversation_id", chi.URLParam(r, "conversation_id"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkTaskConversation(w, r, id, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWidgetAvailability operation middleware
+func (siw *ServerInterfaceWrapper) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWidgetAvailability(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5019,6 +6980,20 @@ func (siw *ServerInterfaceWrapper) SendWidgetMessage(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SendWidgetMessage(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RateWidgetConversation operation middleware
+func (siw *ServerInterfaceWrapper) RateWidgetConversation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RateWidgetConversation(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5269,6 +7244,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/me/notifications", wrapper.UpdateMyNotificationSettings)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/me/telegram", wrapper.UnlinkMyTelegram)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/telegram", wrapper.GetMyTelegram)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/telegram/link", wrapper.StartMyTelegramLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/telegram/check", wrapper.CheckMyTelegramLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/presence", wrapper.GetMyPresence)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/me/presence", wrapper.SetMyPresence)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/workspaces", wrapper.ListMyWorkspaces)
 	})
 	r.Group(func(r chi.Router) {
@@ -5276,6 +7269,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/routing", wrapper.GetRouting)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/routing", wrapper.SetRouting)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/invitations", wrapper.ListInvitations)
@@ -5335,6 +7334,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/channels/{id}/widget-origins", wrapper.SetWidgetOrigins)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/channels/{id}/widget-analytics", wrapper.SetWidgetAnalytics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ai/settings", wrapper.GetAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/ai/settings", wrapper.SetAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/ai/settings/check", wrapper.CheckAISettings)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)
 	})
 	r.Group(func(r chi.Router) {
@@ -5386,10 +7397,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/widget/uploads", wrapper.CreateWidgetUpload)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/widget/availability", wrapper.GetWidgetAvailability)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/contact", wrapper.SubmitWidgetContact)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/receipts", wrapper.MarkWidgetReceipt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/rating", wrapper.RateWidgetConversation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations", wrapper.ListConversations)
@@ -5440,6 +7457,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/conversations/{id}/issues/{issue_id}", wrapper.DismissConversationIssue)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/tasks", wrapper.ListConversationTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/conversations/{id}/tasks/draft", wrapper.GetConversationTaskDraft)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/conversations/{id}/read", wrapper.MarkConversationRead)
 	})
 	r.Group(func(r chi.Router) {
@@ -5465,6 +7488,63 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/contacts/{id}", wrapper.UpdateContact)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks", wrapper.ListTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks", wrapper.CreateTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/summary", wrapper.GetTaskSummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}", wrapper.DeleteTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}", wrapper.GetTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/tasks/{id}", wrapper.UpdateTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}/activity", wrapper.ListTaskActivity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/activity", wrapper.CommentTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/conversations", wrapper.LinkTaskConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/conversations/{conversation_id}", wrapper.UnlinkTaskConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-queues", wrapper.ListTaskQueues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/task-queues", wrapper.CreateTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-queues/{id}", wrapper.DeleteTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-queues/{id}", wrapper.UpdateTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-settings/telegram-bot", wrapper.DeleteTaskTelegramBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-settings/telegram-bot", wrapper.GetTaskTelegramBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-settings/telegram-bot", wrapper.SetTaskTelegramBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-settings", wrapper.GetTaskSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-settings", wrapper.UpdateTaskSettings)
 	})
 
 	return r

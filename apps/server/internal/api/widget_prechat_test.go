@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -148,4 +149,58 @@ func TestWidget_PrechatRejects(t *testing.T) {
 		v.introduce(map[string]any{"name": "Анна"})
 	}
 	wantProblem(t, v.do(http.MethodPost, "/api/v1/widget/contact", map[string]any{"name": "Анна"}), http.StatusTooManyRequests, "too_many_requests")
+}
+
+// Nobody takes conversations: the widget is told so and the visitor leaves
+// a contact with the offline form, its consent marked as such (W-02).
+func TestWidget_Offline(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	w := e.connectWidget("owner@example.test", "zerno", shopOrigin)
+
+	v := e.visitor("198.51.100.40", shopOrigin)
+	if s := v.start(w.key, nil); s.OperatorsOnline {
+		t.Fatalf("online with nobody's panel open: %+v", s)
+	}
+	available := func() bool {
+		t.Helper()
+		rec := v.do(http.MethodGet, "/api/v1/widget/availability", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("availability: %d %s", rec.Code, rec.Body)
+		}
+		return decode[oapi.WidgetAvailability](t, rec).OperatorsOnline
+	}
+	if available() {
+		t.Fatal("available with nobody's panel open")
+	}
+
+	v.introduce(map[string]any{
+		"form": "offline", "email": "anna@example.test", "consent": map[string]any{"policy_url": policyURL},
+	})
+	rec := v.send("Перезвоните завтра", "")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("send: %d %s", rec.Code, rec.Body)
+	}
+	first := decode[oapi.WidgetMessage](t, rec)
+	var source string
+	e.ownerScan(&source, "SELECT k.attributes->'consent'->>'source' FROM contacts k JOIN conversations c ON c.contact_id = k.id WHERE c.id = $1", first.ConversationId)
+	if _, email, _, _, _, _ := e.contactOf(first.ConversationId); email != "anna@example.test" || source != "widget_offline" {
+		t.Fatalf("contact %q, consent source %q", email, source)
+	}
+	wantProblem(t, v.do(http.MethodPost, "/api/v1/widget/contact", map[string]any{"form": "later", "name": "Анна"}), http.StatusBadRequest, "invalid_request")
+
+	// The owner opens the panel: the widget is told on the next check.
+	var owner uuid.UUID
+	e.ownerScan(&owner, "SELECT user_id FROM memberships WHERE workspace_id = $1", w.ws)
+	if err := e.routing.Seen(context.Background(), w.ws, []uuid.UUID{owner}); err != nil {
+		t.Fatalf("seen: %v", err)
+	}
+	if !available() {
+		t.Fatal("not available with the owner online")
+	}
+	if s := v.start(w.key, nil); !s.OperatorsOnline {
+		t.Fatalf("session: %+v", s)
+	}
+
+	gone := e.visitor("198.51.100.41", shopOrigin)
+	wantProblem(t, gone.do(http.MethodGet, "/api/v1/widget/availability", nil, bearer("tk_wsess_nope")), http.StatusUnauthorized, "widget_session_ended")
 }

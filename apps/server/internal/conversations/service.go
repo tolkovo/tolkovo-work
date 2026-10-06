@@ -79,14 +79,31 @@ type Notifier interface {
 	NeedsAttention(ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID) error
 }
 
+// Router distributes the queue (docs/02 §9). Both methods run inside the
+// transaction of the change: they may write rows and queue jobs there,
+// never call the network.
+type Router interface {
+	// Queued hears that a conversation entered the queue. releasedBy is the
+	// member who gave it back, or nil.
+	Queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, releasedBy *uuid.UUID) error
+	// Available reports whether a conversation the customer reopens may go
+	// back to userID rather than to the queue.
+	Available(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) (bool, error)
+}
+
 // Service is the module facade.
 type Service struct {
 	db       *db.DB
 	files    Files
 	notifier Notifier
+	// router hears about the queue (Q-01); nil leaves the queue to operators.
+	router Router
 	// deliverer queues replies for channels (T-03); nil leaves them pending.
 	deliverer Deliverer
-	now       func() time.Time
+	// waiters are the other sources a conversation waits for a fix on
+	// (GitHub issues, tasks), by name.
+	waiters map[string]FixWaiter
+	now     func() time.Time
 }
 
 // New returns the conversations service.
@@ -96,6 +113,29 @@ func New(d *db.DB, files Files) *Service {
 
 // SetNotifier connects the notifications module; call it before serving.
 func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
+
+// SetRouter connects the routing module; call it before serving.
+func (s *Service) SetRouter(r Router) { s.router = r }
+
+// FixWaiter reports, inside the caller's transaction, whether a source
+// keeps the conversation waiting for a fix (an open issue, an open task).
+type FixWaiter func(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) (bool, error)
+
+// Sources of waiting for a fix (AddFixWaiter).
+const (
+	FixSourceIssues = "issues"
+	FixSourceTasks  = "tasks"
+)
+
+// AddFixWaiter connects a source of waiting for a fix; call it before
+// serving. Recording an event of one source asks the others, so closing an
+// issue does not end waiting for an open task, and the other way round.
+func (s *Service) AddFixWaiter(source string, w FixWaiter) {
+	if s.waiters == nil {
+		s.waiters = map[string]FixWaiter{}
+	}
+	s.waiters[source] = w
+}
 
 // Page is one page of a cursor-paginated list. NextCursor is empty on the
 // last page.
@@ -128,7 +168,7 @@ func pageSize(limit int) int32 {
 
 var domainErrors = []error{
 	ErrNotFound, ErrInvalid, ErrTransition, ErrConflict, ErrNotAssignee,
-	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists, ErrNotFailed,
+	ErrClosed, ErrIdempotencyMismatch, ErrNotUploaded, ErrTagExists, ErrNotFailed, ErrConversationOpen,
 }
 
 // wrap returns domain errors as they are, turns "no rows" into ErrNotFound

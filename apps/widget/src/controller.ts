@@ -1,4 +1,5 @@
-import { WidgetApi, WidgetApiError, isSessionEnded, type WidgetContactRequest, type WidgetMessage } from "./api";
+import { type Goal, pagePath, report } from "./analytics";
+import { WidgetApi, WidgetApiError, isSessionEnded, type ConversationRating, type WidgetAnalytics, type WidgetContactRequest, type WidgetMessage } from "./api";
 import { MAX_FILE_SIZE, MAX_FILES, fileType, isImage } from "./files";
 import { Realtime, type SocketFactory } from "./realtime";
 import type { ChatMessage, EventName, Events, Handler, TokenStorage, User } from "./types";
@@ -48,9 +49,15 @@ export interface State {
   unread: number;
   /** The pre-chat form is shown instead of the message field. */
   intro: boolean;
+  /** Someone on the team takes conversations now; without them the UI offers the offline form. */
+  operatorsOnline: boolean;
+  /** The visitor's newest conversation; resolved — the UI asks for a rating. Null before the first message. */
+  conversation: { id: string; resolved: boolean; rating: ConversationRating | null } | null;
 }
 
 const TYPING_MS = 6_000;
+/** Whether someone is there is asked again on opening, at most this often. */
+const AVAILABILITY_MS = 30_000;
 const MAX_CHARS = 10_000;
 
 /** Memory storage when localStorage is not available (private mode, blocked storage). */
@@ -130,6 +137,8 @@ export class Controller {
   private started: Promise<void> | null = null;
   private renewTimer: ReturnType<typeof setTimeout> | undefined;
   private renewing: Promise<void> | null = null;
+  private checkedAt = 0;
+  private analytics: WidgetAnalytics | null = null;
 
   constructor(private readonly o: ControllerOptions) {
     this.api = new WidgetApi(o.apiBase);
@@ -149,6 +158,8 @@ export class Controller {
       unread: 0,
       // Until the session says otherwise, a site with the form shows it.
       intro: o.prechat ?? false,
+      operatorsOnline: true,
+      conversation: null,
     };
     this.realtime = new Realtime(
       this.api.realtimeUrl(),
@@ -186,6 +197,12 @@ export class Controller {
 
   off<E extends EventName>(event: E, handler: Handler<E>): void {
     this.handlers.get(event)?.delete(handler as Handler<EventName>);
+  }
+
+  /** A goal: the host's handlers and the site's analytics hear it. */
+  private goal<E extends Goal>(event: E, payload: Events[E]): void {
+    this.emit(event, payload);
+    report(this.analytics, event, payload);
   }
 
   private emit<E extends EventName>(event: E, payload: Events[E]): void {
@@ -246,7 +263,22 @@ export class Controller {
     this.saveToken(session.session_token);
     // A visitor the site identified, or who filled in the form, is not asked again.
     const intro = !!this.o.prechat && session.identity === "none" && this.storageGet(this.introKey) !== mark(session.session_token);
-    this.set({ channelName: session.channel_name, intro });
+    this.checkedAt = Date.now();
+    this.analytics = session.analytics;
+    this.set({ channelName: session.channel_name, intro, operatorsOnline: session.operators_online });
+  }
+
+  /** On opening the window a while after the start: is someone there now? */
+  private checkAvailability(): void {
+    const token = this.token;
+    if (!token || this.state.status !== "ready" || Date.now() - this.checkedAt < AVAILABILITY_MS) return;
+    this.checkedAt = Date.now();
+    this.api.availability(token).then(
+      (a) => this.set({ operatorsOnline: a.operators_online }),
+      () => {
+        // The last answer stands; an ended session is noticed by the next call.
+      },
+    );
   }
 
   private get introKey(): string {
@@ -285,7 +317,36 @@ export class Controller {
       // Not kept: the server knows, the next session start says so.
     }
     this.set({ intro: false });
-    if (filled) this.emit("contactCollected", { source: "prechat" });
+    if (filled) this.goal("contactCollected", { source: "prechat" });
+  }
+
+  /**
+   * Sends the offline form: the contact first, then the message, as the visitor's first one. Throws
+   * when the server did not take the contact; a message that fails stays in the chat to retry.
+   */
+  async leaveMessage(form: WidgetContactRequest, text: string): Promise<void> {
+    await this.start();
+    if (this.state.status !== "ready") throw new WidgetApiError(0, "unavailable", null);
+    const attempt = () => {
+      if (!this.token) throw new WidgetApiError(0, "no_session", null);
+      return this.api.contact(this.token, { ...form, form: "offline" });
+    };
+    try {
+      await attempt();
+    } catch (e) {
+      if (!isSessionEnded(e)) throw e;
+      await this.restart();
+      await attempt();
+    }
+    try {
+      // The pre-chat form does not ask again: the visitor just said who they are.
+      if (this.token) this.storage.setItem(this.introKey, mark(this.token));
+    } catch {
+      // Not kept: the server knows, the next session start says so.
+    }
+    this.set({ intro: false });
+    this.goal("contactCollected", { source: "offline" });
+    await this.send(text);
   }
 
   /** The session ended on the server: a new one, a fresh chat, a new connection. Unsent messages stay: they are the same visitor's. */
@@ -308,7 +369,7 @@ export class Controller {
     this.cursor = "";
     this.delivered = this.read = "";
     if (!keepPending) for (const p of this.state.pending) revoke(p.files);
-    this.set({ messages: [], unread: 0, typing: false, ...(keepPending ? {} : { pending: [] }) });
+    this.set({ messages: [], unread: 0, typing: false, conversation: null, ...(keepPending ? {} : { pending: [] }) });
   }
 
   async identify(user: User): Promise<void> {
@@ -373,6 +434,8 @@ export class Controller {
       }
       more = page.more;
       this.cursor = page.cursor;
+      const c = page.conversation;
+      this.set({ conversation: c ? { id: c.id, resolved: c.status === "resolved", rating: c.rating } : null });
       this.merge(page.items.map(toChat));
     }
     this.sendReceipts();
@@ -460,13 +523,33 @@ export class Controller {
     }
     revoke(p.files);
     const firstMessage = !this.state.messages.some((m) => m.sender === "contact");
-    this.set({ pending: this.state.pending.filter((x) => x.key !== key) });
+    // A new conversation: the first one, or one after the last was closed. A resolved one reopens.
+    const started = this.state.conversation?.id !== sent.conversation_id;
+    this.set({
+      pending: this.state.pending.filter((x) => x.key !== key),
+      conversation: started ? { id: sent.conversation_id, resolved: false, rating: null } : { ...this.state.conversation!, resolved: false },
+    });
     this.merge([toChat(sent)]);
-    if (firstMessage) {
-      this.emit("chatStarted", undefined);
-      // The session has a contact now: its connection must follow it at once.
-      this.realtime.connect(this.token!);
+    if (started) this.goal("chatStarted", { channel: "widget", page: pagePath() });
+    // The session has a contact now: its connection must follow it at once.
+    if (firstMessage) this.realtime.connect(this.token!);
+  }
+
+  /** Rates the resolved conversation. Throws when the server did not take it; a conversation that reopened stops asking. */
+  async rate(score: number, comment: string): Promise<void> {
+    const c = this.state.conversation;
+    if (!this.token || !c) throw new WidgetApiError(0, "no_conversation", null);
+    const text = comment.trim();
+    let rating: ConversationRating;
+    try {
+      rating = await this.api.rate(this.token, { conversation_id: c.id, score, ...(text ? { comment: text } : {}) });
+    } catch (e) {
+      if (e instanceof WidgetApiError && e.code === "conversation_open") void this.refetch();
+      if (isSessionEnded(e)) void this.restart();
+      throw e;
     }
+    if (this.state.conversation?.id === c.id) this.set({ conversation: { ...this.state.conversation, rating } });
+    this.goal("rated", { score: rating.score, resolvedBy: rating.resolved_by });
   }
 
   /** Marks a message as not sent, with what the visitor can do about it. */
@@ -568,6 +651,7 @@ export class Controller {
       this.emit("unread", 0);
       this.sendReceipts();
       this.renewIfStale();
+      this.checkAvailability();
     } else {
       clearTimeout(this.renewTimer);
     }

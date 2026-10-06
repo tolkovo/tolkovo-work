@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Button, Skeleton } from "@tolkovo/ui";
 import { useTranslation } from "react-i18next";
 
+import { PresenceDot } from "../../../components/presence-dot";
 import { Invitations } from "../../../components/settings/invitations";
 import { describeApiError } from "../../../lib/api-errors";
 
@@ -80,7 +81,14 @@ function MembersTable({ members, currentUserId }: { members: Member[]; currentUs
                 <td className="px-3 py-2 text-ink-2">{m.email}</td>
                 <td className="px-3 py-2 text-ink">{t(`roles.${m.role}`)}</td>
                 <td className={m.active ? "px-3 py-2 text-ink" : "px-3 py-2 text-ink-3"}>
-                  {m.active ? t("settings.team.active") : t("settings.team.inactive")}
+                  {m.active ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <PresenceDot presence={m.presence} />
+                      {t(`presence.${m.presence}`)}
+                    </span>
+                  ) : (
+                    t("settings.team.inactive")
+                  )}
                 </td>
               </tr>
             ))}

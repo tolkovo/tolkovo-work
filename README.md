@@ -42,6 +42,7 @@ Configuration: `TOLKOVO_*` environment variables, all listed in [deploy/compose/
 - [Problem reports from your app](guides/app-reports.md): the REST API with curl, Node.js, Electron and C# examples.
 - [Live chat widget](apps/widget/README.md): `@tolkovo/widget` for sites and Electron apps.
 - [GitHub Issues](guides/github-issues.md): issues from conversations and replies when they are fixed.
+- [Tasks](guides/tasks.md): a tracker for developers and the IT team inside Tolkovo, next to GitHub Issues.
 
 ## Deploy
 

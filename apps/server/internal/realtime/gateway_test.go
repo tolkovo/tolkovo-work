@@ -623,3 +623,47 @@ func TestGateway_ReplyTypingReachesChannels(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 }
+
+// TestGateway_ReportsOpenPanels: a member who connects is reported at
+// once, and every PresenceInterval with the rest of their workspace.
+func TestGateway_ReportsOpenPanels(t *testing.T) {
+	type report struct {
+		ws    uuid.UUID
+		users []uuid.UUID
+	}
+	heard := make(chan report, 16)
+	r := newRig(t, Options{
+		PresenceInterval: 100 * time.Millisecond,
+		OnPresence: func(_ context.Context, ws uuid.UUID, users []uuid.UUID) error {
+			heard <- report{ws, slices.Clone(users)}
+			return nil
+		},
+	})
+	ws := r.workspace()
+	anna, boris := uuid.New(), uuid.New()
+	r.dial(ws, anna, authz.RoleOperator).hello()
+	select {
+	case got := <-heard:
+		if got.ws != ws || !slices.Equal(got.users, []uuid.UUID{anna}) {
+			t.Fatalf("on connect heard %+v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a connecting member must be reported")
+	}
+	r.dial(ws, boris, authz.RoleOperator).hello()
+	r.dial(ws, boris, authz.RoleOperator).hello() // a second tab counts once
+	for deadline := time.After(5 * time.Second); ; {
+		select {
+		case got := <-heard:
+			if len(got.users) != 2 {
+				continue
+			}
+			if !slices.Contains(got.users, anna) || !slices.Contains(got.users, boris) {
+				t.Fatalf("periodic report %+v", got)
+			}
+			return
+		case <-deadline:
+			t.Fatal("open panels must be reported every interval")
+		}
+	}
+}

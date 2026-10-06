@@ -32,11 +32,14 @@ export const EVENT_TYPES = [
   "conversation.assigned",
   "conversation.tags_changed",
   "conversation.issues_changed",
+  "conversation.tasks_changed",
   "conversation.read",
+  "conversation.rated",
   "message.created",
   "message.delivery",
   "contact.created",
   "contact.updated",
+  "task.changed",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

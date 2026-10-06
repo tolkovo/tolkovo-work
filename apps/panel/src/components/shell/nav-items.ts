@@ -1,8 +1,8 @@
-import { Activity, BookOpen, ChartColumn, Inbox, Settings, type LucideIcon } from "lucide-react";
+import { Activity, BookOpen, ChartColumn, Inbox, ListTodo, Settings, type LucideIcon } from "lucide-react";
 
 export type NavItem = {
-  to: "/inbox" | "/monitor" | "/analytics" | "/kb" | "/settings";
-  label: "nav.inbox" | "nav.monitor" | "nav.analytics" | "nav.kb" | "nav.settings";
+  to: "/inbox" | "/tasks" | "/monitor" | "/analytics" | "/kb" | "/settings";
+  label: "nav.inbox" | "nav.tasks" | "nav.monitor" | "nav.analytics" | "nav.kb" | "nav.settings";
   icon: LucideIcon;
   /** Permission from GET /me needed to see the item; none means every member sees it. */
   permission?: string;
@@ -16,6 +16,8 @@ export type NavItem = {
  */
 export const navItems: readonly NavItem[] = [
   { to: "/inbox", label: "nav.inbox", icon: Inbox },
+  // The tasks section (ADR-0015); hidden while an admin has it turned off.
+  { to: "/tasks", label: "nav.tasks", icon: ListTodo, permission: "tasks.view" },
   { to: "/monitor", label: "nav.monitor", icon: Activity },
   { to: "/analytics", label: "nav.analytics", icon: ChartColumn },
   { to: "/kb", label: "nav.kb", icon: BookOpen },

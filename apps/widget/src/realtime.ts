@@ -1,7 +1,7 @@
 /**
  * The widget's realtime connection (api/ws/widget-message.schema.json). It only listens: after
- * hello, resync_required or widget.message the chat is refetched over REST, so a lost event costs
- * a moment, never a message. Reconnects with exponential backoff 0.5 → 30 s and equal jitter, as
+ * hello, resync_required, widget.message or widget.conversation the chat is refetched over REST,
+ * so a lost event costs a moment, never a message. Reconnects with exponential backoff 0.5 → 30 s and equal jitter, as
  * the panel does (docs/02 §10.1).
  */
 
@@ -106,6 +106,7 @@ export class Realtime {
         break;
       case "resync_required":
       case "widget.message":
+      case "widget.conversation":
         this.handlers.onRefetch();
         break;
       case "widget.typing":

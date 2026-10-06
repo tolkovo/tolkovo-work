@@ -7,6 +7,13 @@ ORDER BY created_at, id;
 SELECT * FROM channels
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL;
 
+-- name: HasBot :one
+-- Whether a bot (its Telegram id) is a channel of the workspace.
+SELECT EXISTS (
+    SELECT 1 FROM channels
+    WHERE workspace_id = @workspace_id AND type = 'telegram_bot' AND external_id = @external_id AND deleted_at IS NULL
+);
+
 -- name: GetChannelForUpdate :one
 SELECT * FROM channels
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL

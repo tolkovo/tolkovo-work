@@ -117,3 +117,10 @@ SELECT EXISTS (
 UPDATE integrations
 SET status = 'install_pending', installation_id = NULL, account = NULL, updated_at = @updated_at
 WHERE workspace_id = @workspace_id AND id = @id AND status = 'active' AND installation_id = @installation_id;
+
+-- name: HasOpenIssue :one
+-- Whether an open issue keeps the conversation waiting for the fix.
+SELECT EXISTS (
+    SELECT 1 FROM issue_links
+    WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id AND status = 'open'
+);

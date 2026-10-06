@@ -500,6 +500,16 @@ func TestWidget_Realtime(t *testing.T) {
 		}
 	}
 
+	// Resolving it tells the widget to ask for a rating.
+	if rec := w.owner.do(http.MethodPost, conv+"/status", map[string]any{"status": "resolved"}); rec.Code != http.StatusOK {
+		t.Fatalf("resolve: %d %s", rec.Code, rec.Body)
+	}
+	m = next(ws)
+	data, _ = m["data"].(map[string]any)
+	if m["type"] != "widget.conversation" || data["conversation_id"] != convID.String() {
+		t.Fatalf("widget.conversation: %v", m)
+	}
+
 	// The widget sends nothing over the connection.
 	if err := ws.Write(context.Background(), websocket.MessageText, []byte(`{"type":"resume"}`)); err != nil {
 		t.Fatalf("write: %v", err)

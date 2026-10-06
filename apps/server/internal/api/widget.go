@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,8 +113,21 @@ func (s *server) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, oapi.WidgetSession{
 		SessionToken: sess.Token, ExpiresAt: sess.ExpiresAt, Identity: oapi.WidgetSessionIdentity(sess.Identity),
-		ChannelName: sess.ChannelName,
+		ChannelName: sess.ChannelName, OperatorsOnline: sess.OperatorsOnline, Analytics: widgetAnalyticsBody(sess.Analytics),
 	})
+}
+
+// GetWidgetAvailability implements GET /widget/availability.
+func (s *server) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
+	if s.widgetOff(w, r) {
+		return
+	}
+	online, err := s.widget.OperatorsOnline(r.Context(), s.widgetCaller(r), widgetToken(r))
+	if err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, oapi.WidgetAvailability{OperatorsOnline: online})
 }
 
 // EndWidgetSession implements DELETE /widget/session.
@@ -142,7 +156,33 @@ func (s *server) ListWidgetMessages(w http.ResponseWriter, r *http.Request, para
 	for _, m := range page.Items {
 		items = append(items, widgetMessageBody(m))
 	}
-	writeJSON(w, http.StatusOK, oapi.WidgetMessages{Items: items, Cursor: page.Cursor, More: page.More})
+	body := oapi.WidgetMessages{Items: items, Cursor: page.Cursor, More: page.More}
+	if c := page.Conversation; c != nil {
+		status := oapi.WidgetConversationStatusOpen
+		if c.Resolved {
+			status = oapi.WidgetConversationStatusResolved
+		}
+		body.Conversation = &oapi.WidgetConversation{Id: c.ID, Status: status, Rating: ratingBody(c.Rating)}
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+// RateWidgetConversation implements POST /widget/rating.
+func (s *server) RateWidgetConversation(w http.ResponseWriter, r *http.Request) {
+	if s.widgetOff(w, r) {
+		return
+	}
+	var req oapi.WidgetRatingRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	rating, err := s.widget.Rate(r.Context(), s.widgetCaller(r), widgetToken(r), req.ConversationId, req.Score, deref(req.Comment))
+	if err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ratingBody(&rating))
 }
 
 // SendWidgetMessage implements POST /widget/messages.
@@ -219,6 +259,11 @@ func (s *server) SubmitWidgetContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := widget.Intro{Name: deref(req.Name), Email: deref(req.Email), Phone: deref(req.Phone)}
+	if req.Form != nil && !req.Form.Valid() {
+		s.writeWidgetError(w, r, fmt.Errorf("%w: form is prechat or offline", widget.ErrInvalid))
+		return
+	}
+	in.Offline = req.Form != nil && *req.Form == oapi.WidgetContactRequestFormOffline
 	if req.Consent != nil {
 		in.PolicyURL = req.Consent.PolicyUrl
 	}
@@ -306,6 +351,13 @@ func (s *server) writeWidgetError(w http.ResponseWriter, r *http.Request, err er
 	case errors.As(err, &limited):
 		w.Header().Set("Retry-After", strconv.Itoa(seconds(limited.RetryAfter)))
 		writeProblem(w, r, Problem{Status: http.StatusTooManyRequests, Code: "too_many_requests", Title: "Too Many Requests"})
+	case errors.Is(err, widget.ErrNotFound):
+		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
+	case errors.Is(err, widget.ErrConversationOpen):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "conversation_open", Title: "Conflict",
+			Detail: "the conversation is not resolved; it may have reopened",
+		})
 	case errors.Is(err, widget.ErrIdempotencyMismatch):
 		writeProblem(w, r, Problem{
 			Status: http.StatusUnprocessableEntity, Code: "idempotency_key_reused", Title: "Unprocessable Content",

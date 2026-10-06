@@ -15,11 +15,14 @@
     { "$ref": "#/$defs/conversationAssigned" },
     { "$ref": "#/$defs/conversationTagsChanged" },
     { "$ref": "#/$defs/conversationIssuesChanged" },
+    { "$ref": "#/$defs/conversationTasksChanged" },
     { "$ref": "#/$defs/conversationRead" },
+    { "$ref": "#/$defs/conversationRated" },
     { "$ref": "#/$defs/messageCreated" },
     { "$ref": "#/$defs/messageDelivery" },
     { "$ref": "#/$defs/contactCreated" },
-    { "$ref": "#/$defs/contactUpdated" }
+    { "$ref": "#/$defs/contactUpdated" },
+    { "$ref": "#/$defs/taskChanged" }
   ],
   "$defs": {
     "messageType": {
@@ -36,11 +39,14 @@
         "conversation.assigned",
         "conversation.tags_changed",
         "conversation.issues_changed",
+        "conversation.tasks_changed",
         "conversation.read",
+        "conversation.rated",
         "message.created",
         "message.delivery",
         "contact.created",
-        "contact.updated"
+        "contact.updated",
+        "task.changed"
       ]
     },
     "closeCode": {
@@ -226,6 +232,20 @@
         }
       }
     },
+    "conversationRated": {
+      "description": "The customer rated the conversation or changed the rating; clients fetch it over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.rated" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
     "conversationTagsChanged": {
       "description": "The tags of a conversation changed; clients fetch it over REST.",
       "allOf": [{ "$ref": "#/$defs/event" }],
@@ -245,6 +265,37 @@
       "allOf": [{ "$ref": "#/$defs/event" }],
       "properties": {
         "type": { "const": "conversation.issues_changed" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "taskChanged": {
+      "description": "A task was created, changed, commented or deleted (ADR-0015). Only members with tasks.view receive it; clients fetch the task, its feed and the lists over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "task.changed" },
+        "data": {
+          "type": "object",
+          "required": ["task_id", "assignee_id", "actor_id", "assigned"],
+          "properties": {
+            "task_id": { "$ref": "#/$defs/uuid" },
+            "assignee_id": { "$ref": "#/$defs/nullableUuid" },
+            "actor_id": { "$ref": "#/$defs/uuid" },
+            "assigned": { "type": "boolean", "description": "This change gave the task to assignee_id: their panel may tell them, unless they did it themselves (actor_id)." }
+          }
+        }
+      }
+    },
+    "conversationTasksChanged": {
+      "description": "A task of the tasks section was linked to the conversation, unlinked, closed or reopened; clients fetch the conversation's tasks and the conversation over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.tasks_changed" },
         "data": {
           "type": "object",
           "required": ["conversation_id"],

@@ -4,7 +4,7 @@ import { Controller } from "./controller";
 import { localized, resolveLocale, translator } from "./i18n";
 import type { SocketFactory } from "./realtime";
 import styles from "./styles.css?inline";
-import type { Locale, Options, Prechat, PrechatField, Theme } from "./types";
+import type { Locale, Offline, Options, Prechat, PrechatField, Theme } from "./types";
 import { App, type PrechatView, type View } from "./ui/app";
 
 /**
@@ -51,6 +51,7 @@ export class Widget {
       logo: options.logo,
       position: options.theme?.position === "bottom-left" ? "bottom-left" : "bottom-right",
       prechat: prechatView(options.prechat, locale),
+      offline: offlineView(options.offline, options.prechat, locale),
     };
     render(<App c={this.controller} view={view} />, mount);
     document.addEventListener("visibilitychange", this.onVisibility);
@@ -84,6 +85,18 @@ export function prechatView(p: Prechat | undefined, locale: Locale): PrechatView
     intro: localized(p.intro, locale),
     consent: policy && /^https?:\/\/[^/]/i.test(policy) ? { policyUrl: policy, text: localized(p.consent?.text, locale) } : undefined,
   };
+}
+
+/** The offline form: the email or the phone is always asked, the pre-chat consent is the default. */
+export function offlineView(o: Offline | false | undefined, prechat: Prechat | undefined, locale: Locale): PrechatView | undefined {
+  if (o === false) return undefined;
+  const consent = o?.consent ?? prechat?.consent;
+  const view = prechatView({ ...(o?.fields ? { fields: o.fields } : {}), ...(o?.intro ? { intro: o.intro } : {}), ...(consent ? { consent } : {}) }, locale)!;
+  if (!view.fields.some((f) => f !== "name")) view.fields.push("email");
+  // The only way to reach the visitor is a must; of two, either one (app.tsx).
+  const reach = view.fields.filter((f) => f !== "name");
+  if (reach.length === 1) view.required = reach;
+  return view;
 }
 
 function adoptStyles(root: ShadowRoot, css: string): void {

@@ -19,6 +19,7 @@ import { signalSender } from "../../lib/realtime/signals";
 import { Menu } from "../menu";
 import { actionError } from "./conversation-actions";
 import { FixReplyOffer } from "./issues";
+import { TaskReplyOffer } from "./tasks";
 import { useMemberNames } from "./presence";
 
 /** Characters a message may have (messages.body in api/openapi.yaml). */
@@ -72,6 +73,13 @@ export function Composer({ conversation: c, onShowLatest }: ComposerProps) {
     if (note) return;
     if (text.trim()) signalSender.typing(c.id);
     else signalSender.stopTyping(c.id);
+  };
+
+  // A reply about a fix or a done task, put in the field for the operator to edit and send.
+  const insertReply = (text: string) => {
+    updateDraft(c.id, { text, key: null, seenId: newestForeign });
+    setPaused(false);
+    document.getElementById(fieldId)?.focus();
   };
 
   const submit = (opts: { force?: boolean; andClose?: boolean } = {}) => {
@@ -146,15 +154,10 @@ export function Composer({ conversation: c, onShowLatest }: ComposerProps) {
       {allowed ? (
         <>
           {!note && (
-            <FixReplyOffer
-              conversation={c}
-              text={draft.text}
-              onInsert={(text) => {
-                updateDraft(c.id, { text, key: null, seenId: newestForeign });
-                setPaused(false);
-                document.getElementById(fieldId)?.focus();
-              }}
-            />
+            <>
+              <TaskReplyOffer conversation={c} text={draft.text} onInsert={insertReply} />
+              <FixReplyOffer conversation={c} text={draft.text} onInsert={insertReply} />
+            </>
           )}
           <label htmlFor={fieldId} className="sr-only">
             {t(note ? "inbox.composer.noteLabel" : "inbox.composer.replyLabel")}

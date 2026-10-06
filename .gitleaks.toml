@@ -1,0 +1,8 @@
+# gitleaks reads this file from the repository root (CI: the secrets job).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake model keys in tests"
+regexTarget = "secret"
+regexes = ['''^sk-(test-)?0123456789abcdef$''']

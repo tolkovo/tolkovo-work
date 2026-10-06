@@ -31,6 +31,7 @@ const conv = (id: string, minute: number, patch: Partial<Conversation> = {}): Co
   tag_ids: [],
   last_read_message_id: null,
   unread_count: 0,
+  rating: null,
   ...patch,
 });
 
@@ -128,6 +129,16 @@ describe("createInboxSync", () => {
     sync.stop();
   });
 
+  it("refetches a conversation the customer rated, counters stay", async () => {
+    const { api, queryClient, sync } = setup({ "GET /conversations/c1": () => json(200, conv("c1", 5)) });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    sync.onEvent(event("conversation.rated", { conversation_id: "c1" }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(api.calls.filter((c) => c.path === "/conversations/c1")).toHaveLength(1);
+    expect(invalidate).not.toHaveBeenCalled();
+    sync.stop();
+  });
+
   it("refetches the issues of a conversation and the conversation when they change", async () => {
     const { api, queryClient, sync } = setup({ "GET /conversations/c1": () => json(200, conv("c1", 5)) });
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
@@ -139,6 +150,42 @@ describe("createInboxSync", () => {
       queryKeys.conversationIssues("c1"),
       queryKeys.openGitHubIssues,
     ]);
+    sync.stop();
+  });
+
+  it("refetches the tasks of a conversation and the section when tasks change", async () => {
+    const { queryClient, sync } = setup({ "GET /conversations/c1": () => json(200, conv("c1", 5)) });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    sync.onEvent(event("conversation.tasks_changed", { conversation_id: "c1" }));
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: null, actor_id: "u2", assigned: false }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([queryKeys.conversationTasks("c1"), queryKeys.tasks]);
+    sync.stop();
+  });
+
+  it("tells the member about a task someone else gave them, not about their own", async () => {
+    vi.setSystemTime(new Date("2026-10-04T12:00:30Z"));
+    const me = ownerSession.user.id;
+    const task = {
+      id: "t1", number: 7, queue_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
+      assignee_id: me, created_by: "u2", created_at: "2026-10-04T12:00:00Z", updated_at: "2026-10-04T12:00:00Z",
+      closed_at: null, version: 2, conversation_ids: [],
+    };
+    const api = fakeApi({ routes: { "GET /tasks/t1": () => json(200, task) } });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<Session>(queryKeys.session, ownerSession);
+    const client = createPanelApiClient(queryClient, { origin: "http://panel.test", fetch: api.fetch });
+    const onTaskAssigned = vi.fn();
+    const sync = createInboxSync({ queryClient, api: client, onTaskAssigned });
+
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: me, assigned: true }));
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: "u2", assigned: false }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(onTaskAssigned).not.toHaveBeenCalled();
+
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: "u2", assigned: true }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(onTaskAssigned).toHaveBeenCalledWith(expect.objectContaining({ id: "t1", number: 7 }));
     sync.stop();
   });
 

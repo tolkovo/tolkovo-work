@@ -110,6 +110,36 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.issueNotFound") };
     case "issue_state":
       return { message: t("errors.issueState") };
+    case "task_conflict":
+      return { message: t("errors.taskConflict") };
+    case "task_linked":
+      return { message: t("errors.taskLinked") };
+    case "queue_exists":
+      return { message: t("errors.queueExists"), ...(field ? { field } : {}) };
+    case "tasks_disabled":
+      return { message: t("errors.tasksDisabled") };
+    case "no_notify_bot":
+      return { message: t("errors.noNotifyBot") };
+    case "notify_bot_busy":
+      return { message: t("errors.notifyBotBusy") };
+    case "notify_bot_revoked":
+      return { message: t("errors.notifyBotRevoked") };
+    case "ai_not_configured":
+      return { message: t("errors.aiNotConfigured") };
+    case "ai_budget_exceeded":
+      return { message: t("errors.aiBudgetExceeded") };
+    case "ai_key_required":
+      return { message: t("errors.aiKeyRequired"), ...(field ? { field } : {}) };
+    case "ai_key_refused":
+      return { message: t("errors.aiKeyRefused") };
+    case "ai_request_rejected":
+      return { message: t("errors.aiRequestRejected") };
+    case "ai_rate_limited":
+      return { message: t("errors.aiRateLimited") };
+    case "ai_provider_unavailable":
+      return { message: t("errors.aiProviderUnavailable") };
+    case "ai_bad_answer":
+      return { message: t("errors.aiBadAnswer") };
     default:
       return { message: t("errors.unknown") };
   }

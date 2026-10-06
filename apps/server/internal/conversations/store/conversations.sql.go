@@ -79,7 +79,7 @@ func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountIn
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, status, priority, subject)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix
+RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at
 `
 
 type CreateConversationParams struct {
@@ -123,12 +123,16 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AwaitingFix,
+		&i.Rating,
+		&i.RatingComment,
+		&i.RatingResolvedBy,
+		&i.RatedAt,
 	)
 	return i, err
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -209,6 +213,10 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.Conversation.CreatedAt,
 		&i.Conversation.UpdatedAt,
 		&i.Conversation.AwaitingFix,
+		&i.Conversation.Rating,
+		&i.Conversation.RatingComment,
+		&i.Conversation.RatingResolvedBy,
+		&i.Conversation.RatedAt,
 		&i.ContactName,
 		&i.LastSenderType,
 		&i.LastKind,
@@ -220,6 +228,18 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.UnreadCount,
 	)
 	return i, err
+}
+
+const hasQueued = `-- name: HasQueued :one
+SELECT EXISTS (SELECT 1 FROM conversations WHERE workspace_id = $1 AND status = 'queued')
+`
+
+// Whether the queue still holds something, locked rows included.
+func (q *Queries) HasQueued(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasQueued, workspaceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const isActiveMember = `-- name: IsActiveMember :one
@@ -245,7 +265,7 @@ func (q *Queries) IsActiveMember(ctx context.Context, arg IsActiveMemberParams) 
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -360,6 +380,10 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.Conversation.CreatedAt,
 			&i.Conversation.UpdatedAt,
 			&i.Conversation.AwaitingFix,
+			&i.Conversation.Rating,
+			&i.Conversation.RatingComment,
+			&i.Conversation.RatingResolvedBy,
+			&i.Conversation.RatedAt,
 			&i.ContactName,
 			&i.LastSenderType,
 			&i.LastKind,
@@ -381,7 +405,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const lockConversation = `-- name: LockConversation :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
 WHERE workspace_id = $1 AND id = $2
 FOR UPDATE
 `
@@ -415,8 +439,72 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AwaitingFix,
+		&i.Rating,
+		&i.RatingComment,
+		&i.RatingResolvedBy,
+		&i.RatedAt,
 	)
 	return i, err
+}
+
+const lockQueue = `-- name: LockQueue :many
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+WHERE workspace_id = $1 AND status = 'queued'
+ORDER BY priority DESC, created_at, id
+LIMIT $2
+FOR UPDATE SKIP LOCKED
+`
+
+type LockQueueParams struct {
+	WorkspaceID uuid.UUID
+	Lim         int32
+}
+
+// The head of the queue for the router (docs/02 §9.2): higher priority
+// first, then the oldest. Rows another transaction holds are skipped, so
+// an operator taking one by hand never waits for the router.
+func (q *Queries) LockQueue(ctx context.Context, arg LockQueueParams) ([]Conversation, error) {
+	rows, err := q.db.Query(ctx, lockQueue, arg.WorkspaceID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Conversation
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Number,
+			&i.ContactID,
+			&i.ChannelID,
+			&i.ExternalThreadID,
+			&i.Status,
+			&i.Priority,
+			&i.LineLevel,
+			&i.AssigneeID,
+			&i.Subject,
+			&i.FirstResponseAt,
+			&i.LastMessageAt,
+			&i.ResolvedAt,
+			&i.ClosedAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AwaitingFix,
+			&i.Rating,
+			&i.RatingComment,
+			&i.RatingResolvedBy,
+			&i.RatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const nextConversationNumber = `-- name: NextConversationNumber :one

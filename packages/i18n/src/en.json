@@ -7,10 +7,12 @@
   "nav": {
     "label": "Sections",
     "inbox": "Inbox",
+    "tasks": "Tasks",
     "monitor": "Monitor",
     "analytics": "Analytics",
     "kb": "Knowledge",
-    "settings": "Settings"
+    "settings": "Settings",
+    "myTasks": "{count, plural, one {# open task of mine} other {# open tasks of mine}}"
   },
   "topbar": {
     "theme": {
@@ -21,6 +23,13 @@
     },
     "language": {
       "label": "Interface language"
+    },
+    "status": {
+      "label": "Your status: {status}",
+      "online": "Online",
+      "away": "On a break",
+      "onlineHint": "New conversations come to me in turn",
+      "awayHint": "No new ones; my conversations stay with me"
     }
   },
   "pages": {
@@ -31,6 +40,9 @@
         "text": "Connect a Telegram bot or the website widget, and new customer conversations will show up here.",
         "action": "Connect a channel"
       }
+    },
+    "tasks": {
+      "title": "Tasks"
     },
     "monitor": {
       "title": "Monitor",
@@ -283,6 +295,24 @@
         "originsHint": "One per line: https://shop.example.com, https://*.example.com (every subdomain), app://name (an Electron app’s scheme). file:// and null are for an app loaded from files, but any page in a sandboxed iframe sends null too, so a custom scheme is better.",
         "saveOrigins": "Save addresses",
         "originsSaved": "Addresses saved. Removed addresses lose access within 30 seconds.",
+        "analytics": "Site analytics",
+        "analyticsLead": "The widget sends goals to the counters the site already has: a visitor started a chat, left a contact, rated a conversation. No personal data: no text, names or contacts. The widget adds no counter and no cookie of its own.",
+        "dataLayer": "Google Tag Manager, or GA4 through GTM",
+        "dataLayerHint": "An event named after the goal in window.dataLayer.",
+        "gtag": "GA4 without Tag Manager",
+        "gtagHint": "Calls gtag(\"event\", goal name). If GA4 runs through GTM, turn on only the option above, or the goal counts twice.",
+        "metrika": "Yandex Metrica counter number",
+        "metrikaHint": "Digits only, e.g. 12345678. Empty: nothing goes to Metrica.",
+        "goals": "Goal names",
+        "goalChatStarted": "Started a chat",
+        "goalContactCollected": "Left a contact",
+        "goalRated": "Rated a conversation",
+        "goalsHint": "Latin letters, digits and _ . : -, up to 64 characters. Empty: the default name.",
+        "saveAnalytics": "Save analytics",
+        "analyticsSaved": "Saved. Pages pick it up the next time they open.",
+        "analyticsOff": "Goals go nowhere.",
+        "analyticsOn": "Goals go to: {targets}.",
+        "metrikaTarget": "Yandex Metrica {counter}",
         "noOrigins": "No addresses yet: the widget works nowhere until you add them.",
         "once": "The identity signing secret is shown only now. Save it in a password manager or hand it to your server’s developer right away.",
         "identityHint": "For your server only, never the page or the app: your server signs with it who is signed in. Without a signature the visitor comes in marked “identity not confirmed”.",
@@ -329,6 +359,9 @@
         "placeholders": "Placeholders:",
         "placeholder": {
           "summary": "the problem",
+          "steps": "steps from the AI",
+          "expected": "what was expected, from the AI",
+          "actual": "what happened, from the AI",
           "app_name": "the app",
           "app_version": "its version",
           "os": "OS",
@@ -352,6 +385,51 @@
         "disconnected": "GitHub is disconnected. Delete the App in its settings on GitHub if you no longer need it."
       }
     },
+    "tasks": {
+      "title": "Tasks",
+      "enabled": "The tasks section is on",
+      "enabledHint": "Turned off, the section leaves the menu and no new tasks are created. Existing tasks stay.",
+      "button": "What conversations offer",
+      "buttons": {
+        "both": "A task and a GitHub issue",
+        "bothHint": "Both buttons in the conversation menu. \"Create issue\" appears once GitHub is connected.",
+        "tasks": "Only a task",
+        "tasksHint": "Tasks stay in Tolkovo. No GitHub needed.",
+        "github": "Only a GitHub issue",
+        "githubHint": "The tasks section stays for tasks made by hand."
+      },
+      "replyRu": "Reply to the customer about a done task — in Russian",
+      "replyEn": "Reply to the customer about a done task — in English",
+      "replyHint": "Placeholders: {placeholders}. An operator sends the reply; Tolkovo never writes to the customer itself.",
+      "reset": "Restore the default",
+      "save": "Save",
+      "saved": "Task settings saved.",
+      "queues": "Queues",
+      "queuesHint": "A queue groups tasks of one kind: development, infrastructure. Its members are notified about new tasks without an assignee.",
+      "addQueue": "Add queue",
+      "noQueues": "No queues yet. Tasks work without them too.",
+      "openTasks": "{count, plural, one {# open task} other {# open tasks}}",
+      "noMembers": "no members",
+      "editQueue": "Edit",
+      "deleteQueue": "Delete",
+      "queueName": "Queue name",
+      "queueNameRequired": "Write the queue name.",
+      "queueMembers": "Who to tell about new tasks",
+      "saveQueue": "Save queue",
+      "bot": {
+        "title": "Telegram bot for notifications",
+        "lead": "A separate bot members get messages about tasks from. The bot of a support channel does not fit.",
+        "noEncryption": "TOLKOVO_MASTER_KEY is not set on the server: there is nowhere to keep the bot token safely. Ask the server administrator.",
+        "connected": "The bot @{bot} is connected. Members link their Telegram in \"Personal → Notifications\".",
+        "replace": "Replace the bot",
+        "remove": "Disconnect",
+        "dataNote": "Telegram gets the task number, its title and a link. The description and customer data stay here. A new bot unlinks every member: they link again.",
+        "token": "Bot token",
+        "tokenHint": "Create a bot with @BotFather and paste its token. The token is stored encrypted and never shown again.",
+        "tokenRequired": "Paste the bot token.",
+        "save": "Connect the bot"
+      }
+    },
     "team": {
       "title": "Team",
       "count": "{count, plural, one {# member} other {# members}}",
@@ -360,7 +438,6 @@
       "role": "Role",
       "status": "Status",
       "you": "(you)",
-      "active": "Active",
       "inactive": "Deactivated",
       "invite": {
         "title": "Invite to the team",
@@ -389,6 +466,78 @@
         "revoked": "Invitation for {email} revoked.",
         "resent": "Invitation for {email} sent again."
       }
+    },
+    "routing": {
+      "title": "Distribution",
+      "mode": "How queued conversations reach operators",
+      "modes": {
+        "manual": "Manually",
+        "manualHint": "Conversations wait in the queue; operators take them with «Take».",
+        "round_robin": "In turn",
+        "round_robinHint": "Each new conversation goes at once to the next operator who is «Online» with the panel open. Those already waiting are distributed as soon as you switch this on."
+      },
+      "rules": "With nobody online, a conversation waits in the queue and goes to the first one back. A conversation given back to the queue does not return to the same operator while others are available. A resolved conversation the customer writes to again goes back to its operator if they are online, otherwise to the next one.",
+      "onlineNow": "{count, plural, one {# person takes conversations now:} other {# people take conversations now:}}",
+      "nobodyOnline": "Nobody takes conversations now: new ones will wait in the queue.",
+      "saved": "Saved."
+    },
+    "ai": {
+      "nav": "AI",
+      "title": "Provider, key and spending",
+      "lead": "Your own key to an AI model and a monthly budget. For now AI drafts issues; the customer bot, handoff to people and the operator assistant come later.",
+      "enabled": "Turn AI on",
+      "enabledHint": "While it is off, AI is never called and spends nothing. The connection can be checked while it is off.",
+      "provider": "Provider",
+      "providers": {
+        "anthropic": "Anthropic",
+        "anthropicHint": "Claude models. Get a key in the Anthropic Console, API Keys.",
+        "openai": "OpenAI",
+        "openaiHint": "GPT models. Get a key in the OpenAI platform settings, API keys.",
+        "deepseek": "DeepSeek",
+        "deepseekHint": "DeepSeek models. Get a key at platform.deepseek.com, API keys. DeepSeek's servers are in China; keep that in mind for your customers' personal data.",
+        "openai_compatible": "OpenAI-compatible",
+        "openai_compatibleHint": "Your own server or a service with the same API: Ollama, vLLM, LM Studio, OpenRouter."
+      },
+      "providerRequired": "Choose a provider.",
+      "baseUrl": "Server address",
+      "baseUrlHint": "Including /v1. An outside server only over https://; http:// is for a server on a private network, if the Tolkovo server admin allowed it in TOLKOVO_EGRESS_ALLOW_PRIVATE. The key belongs to the server: enter it again when the address changes.",
+      "baseUrlPlaceholder": "http://ollama:11434/v1",
+      "baseUrlInvalid": "Enter an address starting with http:// or https://.",
+      "key": "API key",
+      "keyOptional": "API key, if the server needs one",
+      "keyHint": "Stored encrypted and never shown in full again.",
+      "keySaved": "Key {hint} is saved. Enter a new one to replace it.",
+      "keyKeep": "Leave empty to keep it",
+      "keyLost": "The saved key belongs to another provider and will be removed when you save.",
+      "keyRequired": "Enter an API key to turn AI on.",
+      "keyInvalid": "The key must not contain spaces.",
+      "model": "Model",
+      "modelHint": "The provider's exact model name. Pick a suggestion or type your own.",
+      "modelRequired": "Enter a model to turn AI on.",
+      "modelInvalid": "A model name is Latin letters, digits and . _ : / @ + -, up to 100 characters.",
+      "prices": "Model prices per million tokens, $",
+      "inputPrice": "Input tokens",
+      "outputPrice": "Model's answer",
+      "pricesHint": "Suggested models fill in their prices; check them against the provider's pricing page. For your own server you can leave 0.",
+      "priceInvalid": "A price is a number from 0 to 1000.",
+      "budget": "Monthly budget, $",
+      "budgetHint": "Once spending in a calendar month reaches the budget, AI is not called until the next month. Empty means no limit.",
+      "budgetInvalid": "The budget is a number from 0 to 1,000,000.",
+      "spent": "Spent since {since}: {spent} of {budget}",
+      "spentNoBudget": "Spent since {since}: {spent}, no budget set",
+      "lessThanCent": "less than a cent",
+      "budgetUsed": "Budget used",
+      "budgetNear": "More than 80% of the budget is used.",
+      "budgetSpent": "This month's budget is spent: AI is not called until the next month.",
+      "pricesUnset": "The model has no prices, so spending is not counted and the budget does not limit calls.",
+      "privacy": "Email addresses, phone numbers, card numbers, SNILS, INN and passport numbers are replaced with placeholders before anything goes to the model. Every call is logged; request texts are kept 30 days.",
+      "noEncryption": "TOLKOVO_MASTER_KEY is not set on the server, so an API key cannot be saved. Ask the server admin to set it.",
+      "save": "Save",
+      "saved": "Saved.",
+      "check": "Check connection",
+      "checking": "Checking…",
+      "checkHint": "The check sends a short request with the saved settings and costs a few tokens.",
+      "checkOk": "Model {model} answered in {ms} ms."
     },
     "groups": {
       "workspace": "Workspace",
@@ -455,6 +604,18 @@
         "unavailable": "Outgoing email is not set up on this server, so no emails are sent. Ask your administrator.",
         "unverified": "{email} is not confirmed: emails start once you confirm it.",
         "toProfile": "Confirm in your profile"
+      },
+      "telegram": {
+        "title": "Telegram",
+        "lead": "Messages about tasks: when a task is assigned to you and when a task without an assignee appears in your queue. A message has the number, the title and a link, never the description or customer data.",
+        "noBot": "An admin has not added a bot for notifications yet.",
+        "toSettings": "Add it in the task settings",
+        "link": "Link Telegram",
+        "steps": "Open the bot @{bot} and press Start. The link works for 15 minutes.",
+        "open": "Open @{bot}",
+        "waiting": "Waiting for you to press Start…",
+        "linked": "Telegram {name} is linked through @{bot}.",
+        "unlink": "Unlink"
       }
     },
     "security": {
@@ -569,7 +730,22 @@
     "issueInProgress": "An issue of this conversation is being created already. Wait for it.",
     "issueLinked": "The conversation is linked to this issue already.",
     "issueNotFound": "The repository has no issue with this number (or it is a pull request).",
-    "issueState": "This works only for an issue that could not be created."
+    "issueState": "This works only for an issue that could not be created.",
+    "aiNotConfigured": "Choose a provider and a model and save the API key first.",
+    "aiBudgetExceeded": "This month's AI budget is spent.",
+    "aiKeyRequired": "Enter an API key to turn AI on.",
+    "aiKeyRefused": "The provider refused the API key. Check the key and that it is not revoked.",
+    "aiRequestRejected": "The provider rejected the request: check the model name and the account balance with the provider.",
+    "aiRateLimited": "The provider asks to wait: too many requests. Try again later.",
+    "aiProviderUnavailable": "The AI provider did not answer. Check the server address or try again later.",
+    "aiBadAnswer": "The model did not answer as expected. Try another model.",
+    "taskConflict": "The task has just changed. Showing the fresh version — try again.",
+    "taskLinked": "The conversation is linked to this task already.",
+    "queueExists": "A queue with this name exists.",
+    "tasksDisabled": "The tasks section is turned off in the settings.",
+    "noNotifyBot": "An admin has not added a bot for notifications yet.",
+    "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications.",
+    "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks."
   },
   "error": {
     "title": "Something went wrong",
@@ -779,6 +955,7 @@
     "event": {
       "taken": "Taken by {name}",
       "assigned": "Assigned to {name}",
+      "autoAssigned": "Assigned automatically: {name}",
       "transferred": "Transferred: {from} → {to}",
       "released": "Returned to the queue",
       "reopened": "Reopened",
@@ -799,7 +976,13 @@
       "issueFixed": "Issue {number} closed as fixed",
       "issueNotPlanned": "Issue {number} closed as not planned",
       "backToAssignee": ", the conversation is back with its assignee",
-      "backToQueue": ", the conversation is back in the queue"
+      "backToQueue": ", the conversation is back in the queue",
+      "taskCreated": "Task {number} created",
+      "taskLinked": "Linked to task {number}",
+      "taskUnlinked": "Unlinked from task {number}",
+      "taskReopened": "Task {number} reopened",
+      "taskDone": "Task {number} done",
+      "taskCanceled": "Task {number} closed: won't do"
     },
     "card": {
       "label": "Customer card",
@@ -809,6 +992,7 @@
       "loadError": "Could not load the customer card.",
       "section": {
         "who": "Who this is",
+        "tasks": "Tasks",
         "history": "Conversation history",
         "tech": "Technical details",
         "issues": "GitHub issues"
@@ -941,15 +1125,142 @@
       "retry": "Try again",
       "dismiss": "Remove",
       "fixed": "Issue #{number} is fixed. Draft reply:",
-      "insertReply": "Insert into the reply"
+      "insertReply": "Insert into the reply",
+      "drafting": "Preparing the draft…",
+      "draftedByAi": "The AI wrote this draft from the customer's words. Check the steps and the wording before you send it.",
+      "aiFallback": {
+        "budget_exceeded": "The monthly AI budget is spent, so the draft comes from the template.",
+        "failed": "The AI could not prepare a draft, so it comes from the template."
+      }
+    },
+    "tasks": {
+      "create": "Create task",
+      "link": "Link to a task",
+      "createTitle": "New task",
+      "linkTitle": "Link to a task",
+      "dataNote": "The task stays in Tolkovo and every member of the workspace sees it. The customer's words are in the description with emails, phone and card numbers masked. Remove what is not needed.",
+      "draftedByAi": "The AI wrote this draft from the customer's words. Check the steps and the wording.",
+      "aiFallback": {
+        "budget_exceeded": "The month's AI budget is spent, so the draft is the customer's words.",
+        "failed": "The AI could not write a draft, so it is the customer's words."
+      },
+      "created": "Task T-{number} created. The conversation waits until it is closed.",
+      "search": "Find a task",
+      "searchHint": "By title or number.",
+      "pickRequired": "Pick a task from the list.",
+      "noOpen": "No open tasks found.",
+      "openTasks": "Open tasks",
+      "linkSubmit": "Link",
+      "linked": "The conversation is linked to task T-{number}.",
+      "loadError": "Could not load the tasks.",
+      "none": "No tasks. Create one in the \"More actions\" menu.",
+      "done": "Task T-{number} is done. A draft reply:"
+    },
+    "rating": {
+      "short": "Rated {score} of 5",
+      "line": "The customer rated the conversation {score} of 5",
+      "byAi": "Only the bot replied",
+      "comment": "The customer's comment"
     },
     "awaitingFix": "Waiting for a fix"
+  },
+  "tasks": {
+    "listLabel": "Task list",
+    "new": "New",
+    "newTitle": "New task",
+    "views": {
+      "label": "Which tasks to show",
+      "mine": "Mine",
+      "open": "Open",
+      "unassigned": "Unassigned",
+      "closed": "Closed",
+      "all": "All"
+    },
+    "search": "Search tasks",
+    "searchPlaceholder": "Title or number",
+    "allQueues": "All queues",
+    "queueFilter": "Filter by queue",
+    "noQueue": "No queue",
+    "unassigned": "Unassigned",
+    "number": "T-{number}",
+    "status": {
+      "open": "New",
+      "in_progress": "In progress",
+      "done": "Done",
+      "canceled": "Won't do"
+    },
+    "priority": {
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "fields": {
+      "title": "Title",
+      "body": "Description",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "queue": "Queue"
+    },
+    "fieldsLabel": "Task fields",
+    "loadError": "Could not load the tasks.",
+    "empty": {
+      "mine": "You have no open tasks",
+      "open": "No open tasks",
+      "unassigned": "Every task has an assignee",
+      "closed": "No closed tasks yet",
+      "all": "No tasks yet",
+      "search": "Nothing found",
+      "hint": "Create a task here or from a conversation, in its \"More actions\" menu."
+    },
+    "pick": {
+      "title": "Pick a task",
+      "text": "The list is on the left. Tasks from conversations keep them waiting until they are closed."
+    },
+    "backToList": "Back to tasks",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "noBody": "No description.",
+    "take": "Take it",
+    "created": "Created",
+    "closed": "Closed",
+    "delete": "Delete task",
+    "deleteConfirm": "Delete the task? Its conversations stop waiting for it. This cannot be undone.",
+    "deleteSubmit": "Delete",
+    "titleRequired": "Write a title.",
+    "conversations": "Conversations",
+    "conversationHidden": "Conversation unavailable",
+    "unlink": "Unlink conversation",
+    "feed": "Comments and history",
+    "feedError": "Could not load the history.",
+    "activity": {
+      "created": "Task created",
+      "status": "Status: {to}",
+      "priority": "Priority: {to}",
+      "assignee": "Assignee: {name}",
+      "unassigned": "Assignee removed",
+      "queue": "Queue: {name}",
+      "edited": "Title or description changed",
+      "linked": "Conversation linked",
+      "unlinked": "Conversation unlinked"
+    },
+    "queueDeleted": "a deleted queue",
+    "comment": "Comment",
+    "commentPlaceholder": "A comment for the team. The customer won't see it.",
+    "commentSubmit": "Send",
+    "create": "Create task",
+    "creating": "Creating…",
+    "notifyAssignee": "The assignee is notified in the panel, and in Telegram if they linked it.",
+    "notifyQueue": "Without an assignee, the members of the queue are notified."
   },
   "notifications": {
     "alert": {
       "assigned": "Conversation #{number} is yours",
       "message": "New message · #{number}",
-      "queued": "New conversation in the queue · #{number}"
+      "queued": "New conversation in the queue · #{number}",
+      "task": "Task T-{number} is assigned to you"
     },
     "test": {
       "title": "Tolkovo: test",
@@ -960,5 +1271,10 @@
     "one": "The {name} channel is down: {reason}",
     "many": "Channels down: {count}. Customer messages through them do not arrive, replies do not go out.",
     "open": "Open channels"
+  },
+  "presence": {
+    "online": "Online",
+    "away": "On a break",
+    "offline": "Offline"
   }
 }

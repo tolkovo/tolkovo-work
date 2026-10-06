@@ -1,6 +1,8 @@
 import type { Conversation, IssueDraft, IssueLink, MessageEvent } from "@tolkovo/api-client";
 import {
+  useCan,
   useConversationIssues,
+  useConversationTasks,
   useCreateConversationIssue,
   useDismissConversationIssue,
   useIssueDraft,
@@ -29,13 +31,17 @@ export type IssueMode = "create" | "link";
 
 /**
  * "Create issue" and "Link to an issue" for the ⋯ menu of the header: with `issues.create`, when
- * GitHub takes new issues (connected, a repository picked).
+ * GitHub takes new issues (connected, a repository picked) and the workspace did not keep only
+ * tasks in conversations.
  */
 export function useIssueMenuItems(c: Conversation, onOpen: (mode: IssueMode) => void): MenuItem[] {
   const { t } = useTranslation();
   const can = useAbilities(c);
   const issues = useConversationIssues(c.id, { enabled: can.issues });
-  if (!can.issues || !issues.data?.repository) return [];
+  // The workspace may keep only "Create task" in conversations (ADR-0015).
+  const tasks = useConversationTasks(c.id, { enabled: useCan("tasks.view") });
+  const tasksOnly = tasks.data?.settings.enabled === true && tasks.data.settings.conversation_button === "tasks";
+  if (!can.issues || !issues.data?.repository || tasksOnly) return [];
   return [
     { label: t("inbox.issues.create"), onSelect: () => onOpen("create") },
     { label: t("inbox.issues.link"), onSelect: () => onOpen("link") },
@@ -110,6 +116,8 @@ function CreateIssue({ conversationId, onClose, onDone }: { conversationId: stri
   if (draft.isPending) {
     return (
       <div aria-busy="true" aria-label={t("app.loading")} className="flex flex-col gap-3">
+        {/* With AI on, the model writes the draft: it may take a few seconds. */}
+        <p className="m-0 text-[13px] text-ink-3">{t("inbox.issues.drafting")}</p>
         <Skeleton className="h-9" />
         <Skeleton className="h-48" />
       </div>
@@ -180,6 +188,16 @@ function CreateIssueForm({
         </p>
       )}
       <p className="m-0 rounded-lg border border-note-line bg-note px-3 py-2 text-[13px] text-ink">{t("inbox.issues.dataNote")}</p>
+      {draft.drafted_by === "ai" && (
+        <p role="note" className="m-0 text-[13px] text-ink-2">
+          {t("inbox.issues.draftedByAi")}
+        </p>
+      )}
+      {draft.ai_fallback && (
+        <p role="note" className="m-0 text-[13px] text-ink-2">
+          {t(`inbox.issues.aiFallback.${draft.ai_fallback}`)}
+        </p>
+      )}
       <TextField
         id="issue-title"
         name="title"
