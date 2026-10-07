@@ -428,6 +428,39 @@ func (e IssueStatus) Valid() bool {
 	}
 }
 
+// Defines values for KBArticleKind.
+const (
+	Article KBArticleKind = "article"
+	Qa      KBArticleKind = "qa"
+)
+
+// Valid indicates whether the value is a known member of the KBArticleKind enum.
+func (e KBArticleKind) Valid() bool {
+	switch e {
+	case Article:
+		return true
+	case Qa:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KBImportFormat.
+const (
+	TolkovoKnowledge1 KBImportFormat = "tolkovo-knowledge/1"
+)
+
+// Valid indicates whether the value is a known member of the KBImportFormat enum.
+func (e KBImportFormat) Valid() bool {
+	switch e {
+	case TolkovoKnowledge1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Locale.
 const (
 	En Locale = "en"
@@ -569,9 +602,49 @@ func (e MessageUnsupported) Valid() bool {
 	}
 }
 
+// Defines values for MessageEventReason.
+const (
+	MessageEventReasonAiUnavailable  MessageEventReason = "ai_unavailable"
+	MessageEventReasonChecksFailed   MessageEventReason = "checks_failed"
+	MessageEventReasonCustomerAsked  MessageEventReason = "customer_asked"
+	MessageEventReasonLimit          MessageEventReason = "limit"
+	MessageEventReasonRules          MessageEventReason = "rules"
+	MessageEventReasonTaskCreated    MessageEventReason = "task_created"
+	MessageEventReasonTaskIncomplete MessageEventReason = "task_incomplete"
+	MessageEventReasonTopic          MessageEventReason = "topic"
+	MessageEventReasonUnknown        MessageEventReason = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the MessageEventReason enum.
+func (e MessageEventReason) Valid() bool {
+	switch e {
+	case MessageEventReasonAiUnavailable:
+		return true
+	case MessageEventReasonChecksFailed:
+		return true
+	case MessageEventReasonCustomerAsked:
+		return true
+	case MessageEventReasonLimit:
+		return true
+	case MessageEventReasonRules:
+		return true
+	case MessageEventReasonTaskCreated:
+		return true
+	case MessageEventReasonTaskIncomplete:
+		return true
+	case MessageEventReasonTopic:
+		return true
+	case MessageEventReasonUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MessageEventType.
 const (
 	MessageEventTypeAssigned      MessageEventType = "assigned"
+	MessageEventTypeBotHandoff    MessageEventType = "bot_handoff"
 	MessageEventTypeIssueClosed   MessageEventType = "issue_closed"
 	MessageEventTypeIssueCreated  MessageEventType = "issue_created"
 	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
@@ -589,6 +662,8 @@ const (
 func (e MessageEventType) Valid() bool {
 	switch e {
 	case MessageEventTypeAssigned:
+		return true
+	case MessageEventTypeBotHandoff:
 		return true
 	case MessageEventTypeIssueClosed:
 		return true
@@ -1098,6 +1173,22 @@ func (e ListTasksParamsState) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AIBot defines model for AIBot.
+type AIBot struct {
+	// ChannelIds The channels whose new conversations the bot answers.
+	ChannelIds []uuid.UUID `json:"channel_ids"`
+
+	// HandoffMessage What the customer reads on a handoff without the bot's own words; empty is the built-in phrase.
+	HandoffMessage string `json:"handoff_message"`
+
+	// MinConfidence How sure the model must be of an answer from the knowledge base, in percent;
+	// below it the bot hands over. 75 by default.
+	MinConfidence int `json:"min_confidence"`
+
+	// TopicsOff Topics left to people; every other topic answers with the bot.
+	TopicsOff []uuid.UUID `json:"topics_off"`
 }
 
 // AICheck defines model for AICheck.
@@ -2052,6 +2143,121 @@ type IssueReplyDraft struct {
 // GitHub refused it, `error` says why.
 type IssueStatus string
 
+// KBArticle defines model for KBArticle.
+type KBArticle struct {
+	// Body Markdown.
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	Id        uuid.UUID `json:"id"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind KBArticleKind `json:"kind"`
+
+	// Published The bot answers only from published entries.
+	Published bool   `json:"published"`
+	Title     string `json:"title"`
+
+	// TopicIds The topics the entry serves; empty — all of them.
+	TopicIds  []uuid.UUID `json:"topic_ids"`
+	UpdatedAt time.Time   `json:"updated_at"`
+
+	// Url A page the bot may show the customer as the source.
+	Url *string `json:"url"`
+}
+
+// KBArticleInput defines model for KBArticleInput.
+type KBArticleInput struct {
+	Body string `json:"body"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind      KBArticleKind `json:"kind"`
+	Published *bool         `json:"published,omitempty"`
+	Title     string        `json:"title"`
+	TopicIds  *[]uuid.UUID  `json:"topic_ids,omitempty"`
+	Url       *string       `json:"url,omitempty"`
+}
+
+// KBArticleKind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+type KBArticleKind string
+
+// KBArticleList defines model for KBArticleList.
+type KBArticleList struct {
+	Items []KBArticle `json:"items"`
+}
+
+// KBGuide defines model for KBGuide.
+type KBGuide struct {
+	// About Who the company is, what its product does and for whom, its main features, what the bot does not discuss.
+	About string `json:"about"`
+
+	// HandoffRules When the bot calls a person at once, besides when it does not know the answer.
+	HandoffRules string `json:"handoff_rules"`
+
+	// TaskChecklist What the bot collects from the customer before it creates a task for the IT team, one item
+	// per line (account email, device, app version, steps, what was expected and what happened).
+	TaskChecklist string     `json:"task_checklist"`
+	UpdatedAt     *time.Time `json:"updated_at"`
+}
+
+// KBGuideInput defines model for KBGuideInput.
+type KBGuideInput struct {
+	About         string `json:"about"`
+	HandoffRules  string `json:"handoff_rules"`
+	TaskChecklist string `json:"task_checklist"`
+}
+
+// KBHit defines model for KBHit.
+type KBHit struct {
+	// Excerpt The start of the text.
+	Excerpt string    `json:"excerpt"`
+	Id      uuid.UUID `json:"id"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind  KBArticleKind `json:"kind"`
+	Title string        `json:"title"`
+	Url   *string       `json:"url"`
+}
+
+// KBImport A knowledge file; unknown fields are ignored, so an agent may add notes.
+type KBImport struct {
+	About         *string           `json:"about,omitempty"`
+	Articles      []KBImportArticle `json:"articles"`
+	Format        KBImportFormat    `json:"format"`
+	HandoffRules  *string           `json:"handoff_rules,omitempty"`
+	TaskChecklist *string           `json:"task_checklist,omitempty"`
+}
+
+// KBImportFormat defines model for KBImport.Format.
+type KBImportFormat string
+
+// KBImportArticle defines model for KBImportArticle.
+type KBImportArticle struct {
+	Body string `json:"body"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind      KBArticleKind `json:"kind"`
+	Published *bool         `json:"published,omitempty"`
+	Title     string        `json:"title"`
+
+	// Topics Names of topics, as in Settings → Topics.
+	Topics *[]string `json:"topics,omitempty"`
+	Url    *string   `json:"url,omitempty"`
+}
+
+// KBImportResult defines model for KBImportResult.
+type KBImportResult struct {
+	Created int `json:"created"`
+
+	// UnknownTopics Topic names of the file that the workspace has no topic for; skipped.
+	UnknownTopics []string `json:"unknown_topics"`
+	Updated       int      `json:"updated"`
+}
+
+// KBSearchResult defines model for KBSearchResult.
+type KBSearchResult struct {
+	Items []KBHit `json:"items"`
+}
+
 // LinkIssueRequest defines model for LinkIssueRequest.
 type LinkIssueRequest struct {
 	// Number The issue number in the workspace's repository.
@@ -2178,7 +2384,15 @@ type MessageEvent struct {
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
 	PreviousTopicId    *uuid.UUID         `json:"previous_topic_id,omitempty"`
-	Task               *MessageEventTask  `json:"task,omitempty"`
+
+	// Reason Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+	// the topic is left to people; the bot did not know the answer or was not sure; the
+	// bot's rules send such questions to people; the answer failed the checks and was not
+	// sent; AI is off, its budget is spent or the model failed; the bot replied as often
+	// as it may; it created a task for the IT team (`task_created`); it collected details
+	// for a task but could not create one (`task_incomplete`).
+	Reason *MessageEventReason `json:"reason,omitempty"`
+	Task   *MessageEventTask   `json:"task,omitempty"`
 
 	// To State of a conversation.
 	To      ConversationStatus `json:"to"`
@@ -2195,9 +2409,18 @@ type MessageEvent struct {
 	// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 	// `topic_changed`: the topic was set, changed or removed (`topic_id`,
 	// `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-	// current status.
+	// current status. `bot_handoff`: the AI bot handed the conversation to people
+	// (`bot → queued`) for `reason` (ADR-0018).
 	Type MessageEventType `json:"type"`
 }
+
+// MessageEventReason Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+// the topic is left to people; the bot did not know the answer or was not sure; the
+// bot's rules send such questions to people; the answer failed the checks and was not
+// sent; AI is off, its budget is spent or the model failed; the bot replied as often
+// as it may; it created a task for the IT team (`task_created`); it collected details
+// for a task but could not create one (`task_incomplete`).
+type MessageEventReason string
 
 // MessageEventType `assigned` covers taking, transferring and releasing. `issue_created` and
 // `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -2210,7 +2433,8 @@ type MessageEvent struct {
 // conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 // `topic_changed`: the topic was set, changed or removed (`topic_id`,
 // `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-// current status.
+// current status. `bot_handoff`: the AI bot handed the conversation to people
+// (`bot → queued`) for `reason` (ADR-0018).
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
@@ -2473,7 +2697,7 @@ type Task struct {
 	ConversationIds []uuid.UUID `json:"conversation_ids"`
 	CreatedAt       time.Time   `json:"created_at"`
 
-	// CreatedBy `null` when the author is no longer a member.
+	// CreatedBy `null` when the author is no longer a member, or the AI bot created the task from a conversation (ADR-0018).
 	CreatedBy *uuid.UUID `json:"created_by"`
 
 	// Files Files of the description, in the order they came; empty in lists.
@@ -3280,6 +3504,12 @@ type ListIngestReportRepliesParams struct {
 	XReportToken ReportToken `json:"X-Report-Token"`
 }
 
+// SearchKBParams defines parameters for SearchKB.
+type SearchKBParams struct {
+	Q     string     `form:"q" json:"q"`
+	Topic *uuid.UUID `form:"topic,omitempty" json:"topic,omitempty"`
+}
+
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
 	// State `open` (new or in progress), `closed` (done or canceled); all when absent.
@@ -3320,6 +3550,9 @@ type SendWidgetMessageParams struct {
 	// reused key with a different body answers `422`.
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
+
+// SetAIBotJSONRequestBody defines body for SetAIBot for application/json ContentType.
+type SetAIBotJSONRequestBody = AIBot
 
 // SetAISettingsJSONRequestBody defines body for SetAISettings for application/json ContentType.
 type SetAISettingsJSONRequestBody = AISettingsUpdate
@@ -3438,6 +3671,18 @@ type StartGitHubIntegrationJSONRequestBody = StartGitHubIntegrationRequest
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
+// CreateKBArticleJSONRequestBody defines body for CreateKBArticle for application/json ContentType.
+type CreateKBArticleJSONRequestBody = KBArticleInput
+
+// UpdateKBArticleJSONRequestBody defines body for UpdateKBArticle for application/json ContentType.
+type UpdateKBArticleJSONRequestBody = KBArticleInput
+
+// SetKBGuideJSONRequestBody defines body for SetKBGuide for application/json ContentType.
+type SetKBGuideJSONRequestBody = KBGuideInput
+
+// ImportKBJSONRequestBody defines body for ImportKB for application/json ContentType.
+type ImportKBJSONRequestBody = KBImport
+
 // McpJSONRequestBody defines body for Mcp for application/json ContentType.
 type McpJSONRequestBody = McpMessage
 
@@ -3533,6 +3778,12 @@ type ServerInterface interface {
 	// RevokeAccessToken Revoke any member's token
 	// (DELETE /access-tokens/{id})
 	RevokeAccessToken(w http.ResponseWriter, r *http.Request, id Id)
+	// GetAIBot Where the AI bot answers customers
+	// (GET /ai/bot)
+	GetAIBot(w http.ResponseWriter, r *http.Request)
+	// SetAIBot Turn the AI bot on for channels and set how strict it is
+	// (PUT /ai/bot)
+	SetAIBot(w http.ResponseWriter, r *http.Request)
 	// GetAISettings The workspace's AI settings and the month's spending
 	// (GET /ai/settings)
 	GetAISettings(w http.ResponseWriter, r *http.Request)
@@ -3746,6 +3997,33 @@ type ServerInterface interface {
 	// ResendInvitation Issue a new link for an open invitation
 	// (POST /invitations/{id}/resend)
 	ResendInvitation(w http.ResponseWriter, r *http.Request, id Id)
+	// ListKBArticles The entries of the knowledge base, the last changed first
+	// (GET /kb/articles)
+	ListKBArticles(w http.ResponseWriter, r *http.Request)
+	// CreateKBArticle Add an entry
+	// (POST /kb/articles)
+	CreateKBArticle(w http.ResponseWriter, r *http.Request)
+	// DeleteKBArticle Delete an entry
+	// (DELETE /kb/articles/{id})
+	DeleteKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// GetKBArticle An entry with its whole text
+	// (GET /kb/articles/{id})
+	GetKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateKBArticle Replace an entry
+	// (PUT /kb/articles/{id})
+	UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// GetKBGuide What the bot always knows
+	// (GET /kb/guide)
+	GetKBGuide(w http.ResponseWriter, r *http.Request)
+	// SetKBGuide Save what the bot always knows
+	// (PUT /kb/guide)
+	SetKBGuide(w http.ResponseWriter, r *http.Request)
+	// ImportKB Import a knowledge file
+	// (POST /kb/import)
+	ImportKB(w http.ResponseWriter, r *http.Request)
+	// SearchKB What the bot would find for a question
+	// (GET /kb/search)
+	SearchKB(w http.ResponseWriter, r *http.Request, params SearchKBParams)
 	// Mcp The MCP server of the tasks section
 	// (POST /mcp)
 	Mcp(w http.ResponseWriter, r *http.Request)
@@ -3953,6 +4231,18 @@ func (_ Unimplemented) ListAccessTokens(w http.ResponseWriter, r *http.Request) 
 // RevokeAccessToken Revoke any member's token
 // (DELETE /access-tokens/{id})
 func (_ Unimplemented) RevokeAccessToken(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAIBot Where the AI bot answers customers
+// (GET /ai/bot)
+func (_ Unimplemented) GetAIBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAIBot Turn the AI bot on for channels and set how strict it is
+// (PUT /ai/bot)
+func (_ Unimplemented) SetAIBot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4382,6 +4672,60 @@ func (_ Unimplemented) ResendInvitation(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListKBArticles The entries of the knowledge base, the last changed first
+// (GET /kb/articles)
+func (_ Unimplemented) ListKBArticles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateKBArticle Add an entry
+// (POST /kb/articles)
+func (_ Unimplemented) CreateKBArticle(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteKBArticle Delete an entry
+// (DELETE /kb/articles/{id})
+func (_ Unimplemented) DeleteKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetKBArticle An entry with its whole text
+// (GET /kb/articles/{id})
+func (_ Unimplemented) GetKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateKBArticle Replace an entry
+// (PUT /kb/articles/{id})
+func (_ Unimplemented) UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetKBGuide What the bot always knows
+// (GET /kb/guide)
+func (_ Unimplemented) GetKBGuide(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetKBGuide Save what the bot always knows
+// (PUT /kb/guide)
+func (_ Unimplemented) SetKBGuide(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ImportKB Import a knowledge file
+// (POST /kb/import)
+func (_ Unimplemented) ImportKB(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SearchKB What the bot would find for a question
+// (GET /kb/search)
+func (_ Unimplemented) SearchKB(w http.ResponseWriter, r *http.Request, params SearchKBParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Mcp The MCP server of the tasks section
 // (POST /mcp)
 func (_ Unimplemented) Mcp(w http.ResponseWriter, r *http.Request) {
@@ -4806,6 +5150,34 @@ func (siw *ServerInterfaceWrapper) RevokeAccessToken(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeAccessToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAIBot operation middleware
+func (siw *ServerInterfaceWrapper) GetAIBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAIBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAIBot operation middleware
+func (siw *ServerInterfaceWrapper) SetAIBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAIBot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6601,6 +6973,200 @@ func (siw *ServerInterfaceWrapper) ResendInvitation(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListKBArticles operation middleware
+func (siw *ServerInterfaceWrapper) ListKBArticles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKBArticles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) CreateKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateKBArticle(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) DeleteKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) GetKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) UpdateKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetKBGuide operation middleware
+func (siw *ServerInterfaceWrapper) GetKBGuide(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetKBGuide(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetKBGuide operation middleware
+func (siw *ServerInterfaceWrapper) SetKBGuide(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetKBGuide(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportKB operation middleware
+func (siw *ServerInterfaceWrapper) ImportKB(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportKB(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchKB operation middleware
+func (siw *ServerInterfaceWrapper) SearchKB(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchKBParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "topic" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "topic", r.URL.Query(), &params.Topic, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchKB(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Mcp operation middleware
 func (siw *ServerInterfaceWrapper) Mcp(w http.ResponseWriter, r *http.Request) {
 
@@ -8149,6 +8715,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ai/settings/check", wrapper.CheckAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ai/bot", wrapper.GetAIBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/ai/bot", wrapper.SetAIBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/articles", wrapper.ListKBArticles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/kb/articles", wrapper.CreateKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/kb/articles/{id}", wrapper.DeleteKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/articles/{id}", wrapper.GetKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/kb/articles/{id}", wrapper.UpdateKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/search", wrapper.SearchKB)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/guide", wrapper.GetKBGuide)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/kb/guide", wrapper.SetKBGuide)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/kb/import", wrapper.ImportKB)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)

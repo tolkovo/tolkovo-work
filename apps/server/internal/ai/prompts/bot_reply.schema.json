@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": { "type": "string", "description": "What the customer reads, in their language." },
+    "answer_type": { "type": "string", "enum": ["answer", "clarify", "collect", "handoff"] },
+    "citations": { "type": "array", "items": { "type": "integer" }, "description": "Numbers of the knowledge entries used." },
+    "confidence": { "type": "number", "description": "From 0 to 1." },
+    "handoff_reason": { "type": "string", "enum": ["", "unknown", "customer_asked", "rules"] },
+    "summary": { "type": "string", "description": "For the support team, never shown to the customer." },
+    "collected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "string", "description": "An item of the checklist." },
+          "value": { "type": "string", "description": "What the customer told for it." }
+        },
+        "required": ["item", "value"],
+        "additionalProperties": false
+      }
+    },
+    "missing": { "type": "array", "items": { "type": "string" }, "description": "Required checklist items still missing." },
+    "task_title": { "type": "string", "description": "At most 80 characters; set when nothing required is missing." }
+  },
+  "required": ["answer", "answer_type", "citations", "confidence", "handoff_reason", "summary", "collected", "missing", "task_title"],
+  "additionalProperties": false
+}

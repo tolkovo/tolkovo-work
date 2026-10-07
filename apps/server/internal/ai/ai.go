@@ -71,6 +71,8 @@ type Service struct {
 	now  func() time.Time
 	// retryWait is the pause before the retry when the provider names none.
 	retryWait time.Duration
+	// jobs queues the bot's turns (SetJobs); nil: the bot takes nothing.
+	jobs Jobs
 }
 
 // New returns the service.

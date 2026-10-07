@@ -106,6 +106,14 @@ export const aiSettingsSchema = z.object({
   encryption_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["AISettings"]>;
 
+/** Where the AI bot answers customers (ADR-0018). */
+export const aiBotSchema = z.object({
+  channel_ids: z.array(z.string()),
+  topics_off: z.array(z.string()),
+  min_confidence: z.number(),
+  handoff_message: z.string(),
+}) satisfies z.ZodType<Schemas["AIBot"]>;
+
 export const aiCheckSchema = z.object({
   model: z.string(),
   latency_ms: z.number(),
@@ -250,6 +258,7 @@ export const messageEventSchema = z.object({
     "task_closed",
     "task_reopened",
     "topic_changed",
+    "bot_handoff",
   ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
@@ -270,6 +279,9 @@ export const messageEventSchema = z.object({
   topic_id: z.string().nullable().optional(),
   previous_topic_id: z.string().nullable().optional(),
   by_customer: z.boolean().optional(),
+  reason: z
+    .enum(["customer_asked", "topic", "unknown", "rules", "checks_failed", "ai_unavailable", "limit", "task_created", "task_incomplete"])
+    .optional(),
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({
@@ -662,3 +674,38 @@ export const accessTokenCreatedSchema = z.object({
   token: accessTokenSchema,
   secret: z.string(),
 }) satisfies z.ZodType<Schemas["AccessTokenCreated"]>;
+
+export const kbArticleKindSchema = z.enum(["article", "qa"]) satisfies z.ZodType<Schemas["KBArticleKind"]>;
+
+export const kbArticleSchema = z.object({
+  id: z.string(),
+  kind: kbArticleKindSchema,
+  title: z.string(),
+  body: z.string(),
+  url: z.string().nullable(),
+  published: z.boolean(),
+  topic_ids: z.array(z.string()),
+  created_at: z.string(),
+  updated_at: z.string(),
+}) satisfies z.ZodType<Schemas["KBArticle"]>;
+
+export const kbArticleListSchema = z.object({ items: z.array(kbArticleSchema) }) satisfies z.ZodType<Schemas["KBArticleList"]>;
+
+export const kbSearchResultSchema = z.object({
+  items: z.array(
+    z.object({ id: z.string(), kind: kbArticleKindSchema, title: z.string(), url: z.string().nullable(), excerpt: z.string() }),
+  ),
+}) satisfies z.ZodType<Schemas["KBSearchResult"]>;
+
+export const kbGuideSchema = z.object({
+  about: z.string(),
+  handoff_rules: z.string(),
+  task_checklist: z.string(),
+  updated_at: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["KBGuide"]>;
+
+export const kbImportResultSchema = z.object({
+  created: z.number(),
+  updated: z.number(),
+  unknown_topics: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["KBImportResult"]>;

@@ -102,7 +102,9 @@ func (s *Service) Messages(ctx context.Context, workspaceID, conversationID uuid
 
 // PostMessage adds an operator reply or an internal note. Replies need the
 // conversation to be the actor's own unless actor.AnyConversation; notes
-// may be left in any conversation the actor can see. Attachments must be
+// may be left in any conversation the actor can see. A reply in a
+// conversation of the AI bot takes it from the bot, so the two never
+// answer at once. Attachments must be
 // uploads of the same conversation (CreateUpload) that are not yet sent.
 // created is false when the Idempotency-Key matched an earlier message.
 func (s *Service) PostMessage(
@@ -134,6 +136,11 @@ func (s *Service) PostMessage(
 		}
 		if err := canPost(conv, actor, in.Private); err != nil {
 			return err
+		}
+		if Status(conv.Status) == StatusBot && !in.Private {
+			if err := s.takeFromBot(ctx, q, tx, conv, actor.UserID); err != nil {
+				return err
+			}
 		}
 		msg, err = insertMessage(ctx, q, tx, conv, actor, in, s.now())
 		if err != nil {

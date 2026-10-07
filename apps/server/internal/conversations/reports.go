@@ -114,7 +114,7 @@ func (s *Service) receiveReport(
 	if err != nil {
 		return Received{}, err
 	}
-	conv, err := s.openThread(ctx, q, tx, workspaceID, contactID, in)
+	conv, err := s.openThread(ctx, q, tx, workspaceID, contactID, in, false) // a report is for people
 	if err != nil {
 		return Received{}, err
 	}

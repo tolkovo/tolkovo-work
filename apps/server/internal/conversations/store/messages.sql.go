@@ -590,6 +590,42 @@ func (q *Queries) PendingAttachments(ctx context.Context, arg PendingAttachments
 	return items, nil
 }
 
+const recentCustomerTexts = `-- name: RecentCustomerTexts :many
+SELECT body FROM messages
+WHERE workspace_id = $1 AND conversation_id = $2
+  AND sender_type = 'contact' AND kind = 'text' AND body <> '' AND deleted_at IS NULL
+ORDER BY id DESC
+LIMIT $3
+`
+
+type RecentCustomerTextsParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	Lim            int32
+}
+
+// What the customer wrote, the newest first: what a draft of a task or an
+// issue is written from.
+func (q *Queries) RecentCustomerTexts(ctx context.Context, arg RecentCustomerTextsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, recentCustomerTexts, arg.WorkspaceID, arg.ConversationID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var body string
+		if err := rows.Scan(&body); err != nil {
+			return nil, err
+		}
+		items = append(items, body)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const replySource = `-- name: ReplySource :one
 SELECT ct.name AS contact_name, ct.locale AS contact_locale,
        coalesce((

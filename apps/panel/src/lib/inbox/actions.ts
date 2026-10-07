@@ -51,7 +51,8 @@ export function abilities(session: Session | null | undefined, c: Conversation):
   return {
     reply: open && can("conversations.reply") && (own || can("conversations.manage")),
     note: open && can("conversations.note"),
-    take: (can("conversations.take") || assignOthers) && c.assignee_id === null && c.status === "queued",
+    // From the queue, or from the AI bot (ADR-0018).
+    take: (can("conversations.take") || assignOthers) && c.assignee_id === null && (c.status === "queued" || c.status === "bot"),
     release: c.status === "assigned" && (moveOwn || assignOthers),
     transfer: (c.status === "assigned" || c.status === "pending") && (moveOwn || assignOthers),
     close: changeStatus && (c.status === "assigned" || c.status === "pending"),

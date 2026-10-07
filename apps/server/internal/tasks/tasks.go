@@ -83,56 +83,93 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 	if err := s.checkFiles(ctx, workspaceID, actorID, in.FileIDs); err != nil {
 		return Task{}, err
 	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		return Task{}, err
-	}
-	now := s.now()
+	in.Title, in.Body = title, body
 	var out Task
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		q := store.New(tx)
-		if err := s.enabled(ctx, q, workspaceID); err != nil {
-			return err
-		}
-		if err := s.topicDefaults(ctx, q, workspaceID, &in); err != nil {
-			return err
-		}
-		n, err := q.NextTaskNumber(ctx, workspaceID)
-		if err != nil {
-			return err
-		}
-		row, err := q.InsertTask(ctx, store.InsertTaskParams{
-			ID: id, WorkspaceID: workspaceID, Number: n, QueueID: in.QueueID, TopicID: in.TopicID, Title: title, Body: body,
-			Priority: in.Priority, AssigneeID: in.AssigneeID, CreatedBy: &actorID, CreatedAt: now,
-		})
-		if err != nil {
-			return err
-		}
-		if _, err := s.addActivity(ctx, q, row, &actorID, "created", nil, nil); err != nil {
-			return err
-		}
-		if err := s.attachFiles(ctx, q, row, actorID, nil, in.FileIDs); err != nil {
-			return err
-		}
-		out = taskFrom(row)
-		if out.Files, _, err = taskFiles(ctx, q, workspaceID, id); err != nil {
-			return err
-		}
-		if in.ConversationID != nil {
-			if err := s.link(ctx, tx, q, row, *in.ConversationID, actorID, conversations.EventTaskCreated); err != nil {
-				return err
-			}
-			out.ConversationIDs = []uuid.UUID{*in.ConversationID}
-		}
-		if err := s.notifyNew(ctx, tx, q, row, actorID); err != nil {
-			return err
-		}
-		return changed(ctx, tx, row, actorID, row.AssigneeID != nil)
+		out, err = s.create(ctx, tx, workspaceID, &actorID, in)
+		return err
 	})
 	if err != nil {
 		return Task{}, dbError(err, "create task")
 	}
 	return out, nil
+}
+
+// CreateFromBot records, in the caller's transaction, a task the AI bot
+// collected from the customer in a conversation (ADR-0018), and returns
+// its number: nobody created it, it is linked to the conversation and
+// takes its topic and the topic's queue. While the section is off it
+// creates nothing and returns 0.
+func (s *Service) CreateFromBot(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, title, body string) (int64, error) {
+	title, err := validTitle(title)
+	if err != nil {
+		return 0, err
+	}
+	if body, err = validBody(body); err != nil {
+		return 0, err
+	}
+	if s.opts.Conversations == nil {
+		return 0, errors.New("tasks: no conversations to link")
+	}
+	out, err := s.create(ctx, tx, workspaceID, nil, NewTask{Title: title, Body: body, Priority: PriorityNormal, ConversationID: &conversationID})
+	if errors.Is(err, ErrDisabled) {
+		return 0, nil // checked first: nothing was written
+	}
+	if err != nil {
+		return 0, dbError(err, "create task from bot")
+	}
+	return out.Number, nil
+}
+
+// create records a checked task in tx; actor is nil for the AI bot, whose
+// tasks have no files.
+func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, actor *uuid.UUID, in NewTask) (Task, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return Task{}, err
+	}
+	q := store.New(tx)
+	if err := s.enabled(ctx, q, workspaceID); err != nil {
+		return Task{}, err
+	}
+	if err := s.topicDefaults(ctx, q, workspaceID, &in); err != nil {
+		return Task{}, err
+	}
+	n, err := q.NextTaskNumber(ctx, workspaceID)
+	if err != nil {
+		return Task{}, err
+	}
+	row, err := q.InsertTask(ctx, store.InsertTaskParams{
+		ID: id, WorkspaceID: workspaceID, Number: n, QueueID: in.QueueID, TopicID: in.TopicID, Title: in.Title, Body: in.Body,
+		Priority: in.Priority, AssigneeID: in.AssigneeID, CreatedBy: actor, CreatedAt: s.now(),
+	})
+	if err != nil {
+		return Task{}, err
+	}
+	if _, err := s.addActivity(ctx, q, row, actor, "created", nil, nil); err != nil {
+		return Task{}, err
+	}
+	var actorID uuid.UUID // uuid.Nil for the bot: nobody is left out of the notices
+	if actor != nil {
+		actorID = *actor
+		if err := s.attachFiles(ctx, q, row, actorID, nil, in.FileIDs); err != nil {
+			return Task{}, err
+		}
+	}
+	out := taskFrom(row)
+	if out.Files, _, err = taskFiles(ctx, q, workspaceID, id); err != nil {
+		return Task{}, err
+	}
+	if in.ConversationID != nil {
+		if err := s.link(ctx, tx, q, row, *in.ConversationID, actor, conversations.EventTaskCreated); err != nil {
+			return Task{}, err
+		}
+		out.ConversationIDs = []uuid.UUID{*in.ConversationID}
+	}
+	if err := s.notifyNew(ctx, tx, q, row, actorID); err != nil {
+		return Task{}, err
+	}
+	return out, changed(ctx, tx, row, actor, row.AssigneeID != nil)
 }
 
 // topicDefaults fills what a new task takes from topics: the topic of the
@@ -415,7 +452,7 @@ func (s *Service) recordChanges(ctx context.Context, tx pgx.Tx, q *store.Queries
 			return err
 		}
 	}
-	return changed(ctx, tx, row, actorID, row.AssigneeID != nil && !sameID(cur.AssigneeID, row.AssigneeID))
+	return changed(ctx, tx, row, &actorID, row.AssigneeID != nil && !sameID(cur.AssigneeID, row.AssigneeID))
 }
 
 // recordStatus tells the linked conversations that the task was closed or
@@ -475,7 +512,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if err := q.DeleteTask(ctx, store.DeleteTaskParams{WorkspaceID: workspaceID, ID: taskID}); err != nil {
 			return err
 		}
-		return changed(ctx, tx, row, actorID, false)
+		return changed(ctx, tx, row, &actorID, false)
 	})
 	if err != nil {
 		return dbError(err, "delete task")
@@ -575,7 +612,7 @@ func (s *Service) Comment(ctx context.Context, workspaceID, actorID, taskID uuid
 			}
 			out.Files = byComment[id]
 		}
-		return changed(ctx, tx, row, actorID, false)
+		return changed(ctx, tx, row, &actorID, false)
 	})
 	if err != nil {
 		return Activity{}, dbError(err, "comment task")
@@ -638,9 +675,10 @@ func (s *Service) notify(ctx context.Context, tx pgx.Tx, row store.Task, kind st
 
 // changed tells clients to fetch the task and the list again. assigned:
 // this change gave the task to its assignee, so their panel may tell them.
-func changed(ctx context.Context, tx pgx.Tx, row store.Task, actorID uuid.UUID, assigned bool) error {
+// actor is nil for the AI bot.
+func changed(ctx context.Context, tx pgx.Tx, row store.Task, actor *uuid.UUID, assigned bool) error {
 	return outbox.Add(ctx, tx, row.WorkspaceID, "task.changed", map[string]any{
-		"task_id": row.ID, "assignee_id": row.AssigneeID, "actor_id": actorID, "assigned": assigned,
+		"task_id": row.ID, "assignee_id": row.AssigneeID, "actor_id": actor, "assigned": assigned,
 	})
 }
 

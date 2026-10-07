@@ -1126,6 +1126,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the AI bot answers customers
+         * @description The bot answers new conversations of `channel_ids` while AI is on (ADR-0018);
+         *     conversations of `topics_off` go to people at once. Requires `ai.manage`.
+         */
+        get: operations["getAIBot"];
+        /**
+         * Turn the AI bot on for channels and set how strict it is
+         * @description Replaces the settings. Only conversations started after the change go to the bot. A
+         *     channel or a topic that is not the workspace's is `400`. Requires `ai.manage`.
+         */
+        put: operations["setAIBot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kb/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The entries of the knowledge base, the last changed first
+         * @description Articles and questions with their answers the AI bot answers from (ADR-0018). `body`
+         *     holds only the first 300 characters here; `GET /kb/articles/{id}` gives the whole text.
+         *     At most 1000, so there are no pages. Requires `knowledge.manage`.
+         */
+        get: operations["listKBArticles"];
+        put?: never;
+        /**
+         * Add an entry
+         * @description Requires `knowledge.manage`. A workspace keeps up to 1000 entries.
+         */
+        post: operations["createKBArticle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kb/articles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * An entry with its whole text
+         * @description Requires `knowledge.manage`.
+         */
+        get: operations["getKBArticle"];
+        /**
+         * Replace an entry
+         * @description Requires `knowledge.manage`.
+         */
+        put: operations["updateKBArticle"];
+        post?: never;
+        /**
+         * Delete an entry
+         * @description Requires `knowledge.manage`.
+         */
+        delete: operations["deleteKBArticle"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kb/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the bot would find for a question
+         * @description The same search the bot runs for each customer message: published entries matching any
+         *     word of `q`, the best first, at most 5. With `topic`, the entries of that topic and the
+         *     ones without topics. The search costs no tokens. Requires `knowledge.manage`.
+         */
+        get: operations["searchKB"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kb/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the bot always knows
+         * @description About the company and its product, when to call a person, and what to collect before a
+         *     task for the IT team. All three go into every prompt
+         *     of the bot, whatever the search finds. Empty until saved. Requires `knowledge.manage`.
+         */
+        get: operations["getKBGuide"];
+        /**
+         * Save what the bot always knows
+         * @description Requires `knowledge.manage`.
+         */
+        put: operations["setKBGuide"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kb/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a knowledge file
+         * @description The file an AI agent writes by `guides/knowledge-base-brief.md`. In one transaction:
+         *     `about`, `handoff_rules` and `task_checklist`, when present, replace the guide's fields; an entry with the
+         *     same kind and title (ignoring case) is replaced, the others are added, so a changed file
+         *     can be imported again. Topics are named; names without a topic in the workspace are
+         *     skipped and listed in `unknown_topics`. Nothing is saved when an entry is invalid or the
+         *     base would grow over 1000 entries. Up to 16 MiB (`400` above). Requires `knowledge.manage`.
+         */
+        post: operations["importKB"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/github": {
         parameters: {
             query?: never;
@@ -2966,6 +3121,19 @@ export interface components {
             /** Format: int64 */
             monthly_budget_micros: number | null;
         };
+        AIBot: {
+            /** @description The channels whose new conversations the bot answers. */
+            channel_ids: string[];
+            /** @description Topics left to people; every other topic answers with the bot. */
+            topics_off: string[];
+            /**
+             * @description How sure the model must be of an answer from the knowledge base, in percent;
+             *     below it the bot hands over. 75 by default.
+             */
+            min_confidence: number;
+            /** @description What the customer reads on a handoff without the bot's own words; empty is the built-in phrase. */
+            handoff_message: string;
+        };
         AICheck: {
             /** @description The model that answered */
             model: string;
@@ -3191,10 +3359,11 @@ export interface components {
              *     conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
              *     `topic_changed`: the topic was set, changed or removed (`topic_id`,
              *     `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-             *     current status.
+             *     current status. `bot_handoff`: the AI bot handed the conversation to people
+             *     (`bot → queued`) for `reason` (ADR-0018).
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed" | "bot_handoff";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
@@ -3204,6 +3373,16 @@ export interface components {
             topic_id?: string | null;
             previous_topic_id?: string | null;
             by_customer?: boolean;
+            /**
+             * @description Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+             *     the topic is left to people; the bot did not know the answer or was not sure; the
+             *     bot's rules send such questions to people; the answer failed the checks and was not
+             *     sent; AI is off, its budget is spent or the model failed; the bot replied as often
+             *     as it may; it created a task for the IT team (`task_created`); it collected details
+             *     for a task but could not create one (`task_incomplete`).
+             * @enum {string}
+             */
+            reason?: "customer_asked" | "topic" | "unknown" | "rules" | "checks_failed" | "ai_unavailable" | "limit" | "task_created" | "task_incomplete";
         };
         MessageEventIssue: {
             link_id: string;
@@ -3271,7 +3450,7 @@ export interface components {
             status: components["schemas"]["TaskStatus"];
             priority: components["schemas"]["TaskPriority"];
             assignee_id: string | null;
-            /** @description `null` when the author is no longer a member. */
+            /** @description `null` when the author is no longer a member, or the AI bot created the task from a conversation (ADR-0018). */
             created_by: string | null;
             /** Format: date-time */
             created_at: string;
@@ -3476,6 +3655,94 @@ export interface components {
             tag_ids: string[];
             /** @description When set, must equal the current version, otherwise `409 version_conflict`. */
             version?: number;
+        };
+        /**
+         * @description `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+         * @enum {string}
+         */
+        KBArticleKind: "article" | "qa";
+        KBArticle: {
+            id: string;
+            kind: components["schemas"]["KBArticleKind"];
+            title: string;
+            /** @description Markdown. */
+            body: string;
+            /** @description A page the bot may show the customer as the source. */
+            url: string | null;
+            /** @description The bot answers only from published entries. */
+            published: boolean;
+            /** @description The topics the entry serves; empty — all of them. */
+            topic_ids: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        KBArticleList: {
+            items: components["schemas"]["KBArticle"][];
+        };
+        KBArticleInput: {
+            kind: components["schemas"]["KBArticleKind"];
+            title: string;
+            body: string;
+            url?: string | null;
+            /** @default true */
+            published: boolean;
+            topic_ids?: string[];
+        };
+        KBHit: {
+            id: string;
+            kind: components["schemas"]["KBArticleKind"];
+            title: string;
+            url: string | null;
+            /** @description The start of the text. */
+            excerpt: string;
+        };
+        KBSearchResult: {
+            items: components["schemas"]["KBHit"][];
+        };
+        KBGuide: {
+            /** @description Who the company is, what its product does and for whom, its main features, what the bot does not discuss. */
+            about: string;
+            /** @description When the bot calls a person at once, besides when it does not know the answer. */
+            handoff_rules: string;
+            /**
+             * @description What the bot collects from the customer before it creates a task for the IT team, one item
+             *     per line (account email, device, app version, steps, what was expected and what happened).
+             */
+            task_checklist: string;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
+        KBGuideInput: {
+            about: string;
+            handoff_rules: string;
+            task_checklist: string;
+        };
+        /** @description A knowledge file; unknown fields are ignored, so an agent may add notes. */
+        KBImport: {
+            /** @enum {string} */
+            format: "tolkovo-knowledge/1";
+            about?: string;
+            handoff_rules?: string;
+            task_checklist?: string;
+            articles: components["schemas"]["KBImportArticle"][];
+        };
+        KBImportArticle: {
+            kind: components["schemas"]["KBArticleKind"];
+            title: string;
+            body: string;
+            url?: string | null;
+            /** @default true */
+            published: boolean;
+            /** @description Names of topics, as in Settings → Topics. */
+            topics?: string[];
+        };
+        KBImportResult: {
+            created: number;
+            updated: number;
+            /** @description Topic names of the file that the workspace has no topic for; skipped. */
+            unknown_topics: string[];
         };
         Topic: {
             id: string;
@@ -6261,6 +6528,284 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getAIBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings of the bot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIBot"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAIBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIBot"];
+            };
+        };
+        responses: {
+            /** @description The settings now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIBot"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listKBArticles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBArticleList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createKBArticle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KBArticleInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBArticle"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getKBArticle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBArticle"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateKBArticle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KBArticleInput"];
+            };
+        };
+        responses: {
+            /** @description The entry now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBArticle"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteKBArticle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    searchKB: {
+        parameters: {
+            query: {
+                q: string;
+                topic?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entries found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBSearchResult"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getKBGuide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The guide. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBGuide"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setKBGuide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KBGuideInput"];
+            };
+        };
+        responses: {
+            /** @description The guide now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBGuide"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    importKB: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KBImport"];
+            };
+        };
+        responses: {
+            /** @description What the import did. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KBImportResult"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getGitHubIntegration: {

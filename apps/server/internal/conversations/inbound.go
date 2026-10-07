@@ -166,7 +166,7 @@ func (s *Service) receive(ctx context.Context, q *store.Queries, tx pgx.Tx, work
 		}
 	}
 	if !hasOpen {
-		if conv, err = s.openThread(ctx, q, tx, workspaceID, contactID, in); err != nil {
+		if conv, err = s.openThread(ctx, q, tx, workspaceID, contactID, in, true); err != nil {
 			return Received{}, err
 		}
 		out.CreatedConversation = true
@@ -182,7 +182,7 @@ func (s *Service) receive(ctx context.Context, q *store.Queries, tx pgx.Tx, work
 			return Received{}, err
 		}
 	}
-	return out, nil
+	return out, s.wakeBot(ctx, tx, conv)
 }
 
 // storeCustomerMessage adds what the customer wrote to their conversation,
@@ -257,10 +257,11 @@ func (s *Service) identify(ctx context.Context, q *store.Queries, tx pgx.Tx, wor
 	return contactID, outbox.Add(ctx, tx, workspaceID, "contact.created", map[string]any{"contact_id": contactID})
 }
 
-// openThread starts the conversation of a chat. It enters the queue at
-// once, as CreateConversation does.
+// openThread starts the conversation of a chat: withBot, with the AI bot
+// when it answers the channel (ADR-0018), otherwise in the queue at once,
+// as CreateConversation does.
 func (s *Service) openThread(
-	ctx context.Context, q *store.Queries, tx pgx.Tx, workspaceID, contactID uuid.UUID, in Inbound,
+	ctx context.Context, q *store.Queries, tx pgx.Tx, workspaceID, contactID uuid.UUID, in Inbound, withBot bool,
 ) (store.Conversation, error) {
 	id, err := newID()
 	if err != nil {
@@ -270,17 +271,30 @@ func (s *Service) openThread(
 	if err != nil {
 		return store.Conversation{}, err
 	}
+	status := StatusQueued
+	if withBot && s.bot != nil {
+		ok, err := s.bot.Answers(ctx, tx, workspaceID, in.ChannelID)
+		if err != nil {
+			return store.Conversation{}, fmt.Errorf("ask bot: %w", err)
+		}
+		if ok {
+			status = StatusBot
+		}
+	}
 	conv, err := q.CreateThreadConversation(ctx, store.CreateThreadConversationParams{
 		ID: id, WorkspaceID: workspaceID, Number: number, ContactID: contactID,
-		ChannelID: &in.ChannelID, ExternalThreadID: &in.Thread, Status: string(StatusQueued),
+		ChannelID: &in.ChannelID, ExternalThreadID: &in.Thread, Status: string(status),
 	})
 	if err != nil {
 		return store.Conversation{}, err
 	}
 	if err := outbox.Add(ctx, tx, workspaceID, "conversation.created", map[string]any{
-		"conversation_id": id, "contact_id": contactID, "number": number, "status": StatusQueued,
+		"conversation_id": id, "contact_id": contactID, "number": number, "status": status,
 	}); err != nil {
 		return store.Conversation{}, err
+	}
+	if status == StatusBot {
+		return conv, nil
 	}
 	return conv, s.queued(ctx, tx, workspaceID, nil)
 }

@@ -1515,6 +1515,243 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /ai/bot:
+    get:
+      tags: [ai]
+      operationId: getAIBot
+      summary: Where the AI bot answers customers
+      description: |
+        The bot answers new conversations of `channel_ids` while AI is on (ADR-0018);
+        conversations of `topics_off` go to people at once. Requires `ai.manage`.
+      responses:
+        '200':
+          description: The settings of the bot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIBot' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [ai]
+      operationId: setAIBot
+      summary: Turn the AI bot on for channels and set how strict it is
+      description: |
+        Replaces the settings. Only conversations started after the change go to the bot. A
+        channel or a topic that is not the workspace's is `400`. Requires `ai.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AIBot' }
+      responses:
+        '200':
+          description: The settings now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIBot' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /kb/articles:
+    get:
+      tags: [ai]
+      operationId: listKBArticles
+      summary: The entries of the knowledge base, the last changed first
+      description: |
+        Articles and questions with their answers the AI bot answers from (ADR-0018). `body`
+        holds only the first 300 characters here; `GET /kb/articles/{id}` gives the whole text.
+        At most 1000, so there are no pages. Requires `knowledge.manage`.
+      responses:
+        '200':
+          description: The entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBArticleList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [ai]
+      operationId: createKBArticle
+      summary: Add an entry
+      description: Requires `knowledge.manage`. A workspace keeps up to 1000 entries.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KBArticleInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBArticle' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /kb/articles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [ai]
+      operationId: getKBArticle
+      summary: An entry with its whole text
+      description: Requires `knowledge.manage`.
+      responses:
+        '200':
+          description: The entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBArticle' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [ai]
+      operationId: updateKBArticle
+      summary: Replace an entry
+      description: Requires `knowledge.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KBArticleInput' }
+      responses:
+        '200':
+          description: The entry now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBArticle' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [ai]
+      operationId: deleteKBArticle
+      summary: Delete an entry
+      description: Requires `knowledge.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /kb/search:
+    get:
+      tags: [ai]
+      operationId: searchKB
+      summary: What the bot would find for a question
+      description: |
+        The same search the bot runs for each customer message: published entries matching any
+        word of `q`, the best first, at most 5. With `topic`, the entries of that topic and the
+        ones without topics. The search costs no tokens. Requires `knowledge.manage`.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, maxLength: 1000 }
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+      responses:
+        '200':
+          description: The entries found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBSearchResult' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /kb/guide:
+    get:
+      tags: [ai]
+      operationId: getKBGuide
+      summary: What the bot always knows
+      description: |
+        About the company and its product, when to call a person, and what to collect before a
+        task for the IT team. All three go into every prompt
+        of the bot, whatever the search finds. Empty until saved. Requires `knowledge.manage`.
+      responses:
+        '200':
+          description: The guide.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBGuide' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [ai]
+      operationId: setKBGuide
+      summary: Save what the bot always knows
+      description: Requires `knowledge.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KBGuideInput' }
+      responses:
+        '200':
+          description: The guide now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBGuide' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /kb/import:
+    post:
+      tags: [ai]
+      operationId: importKB
+      summary: Import a knowledge file
+      description: |
+        The file an AI agent writes by `guides/knowledge-base-brief.md`. In one transaction:
+        `about`, `handoff_rules` and `task_checklist`, when present, replace the guide's fields; an entry with the
+        same kind and title (ignoring case) is replaced, the others are added, so a changed file
+        can be imported again. Topics are named; names without a topic in the workspace are
+        skipped and listed in `unknown_topics`. Nothing is saved when an entry is invalid or the
+        base would grow over 1000 entries. Up to 16 MiB (`400` above). Requires `knowledge.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KBImport' }
+      responses:
+        '200':
+          description: What the import did.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBImportResult' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /integrations/github:
     get:
       tags: [integrations]
@@ -4608,6 +4845,39 @@ components:
           minimum: 0
           maximum: 1000000000000
 
+    AIBot:
+      type: object
+      additionalProperties: false
+      required: [channel_ids, topics_off, min_confidence, handoff_message]
+      properties:
+        channel_ids:
+          type: array
+          maxItems: 100
+          description: The channels whose new conversations the bot answers.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        topics_off:
+          type: array
+          maxItems: 20
+          description: Topics left to people; every other topic answers with the bot.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        min_confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            How sure the model must be of an answer from the knowledge base, in percent;
+            below it the bot hands over. 75 by default.
+        handoff_message:
+          type: string
+          maxLength: 500
+          description: What the customer reads on a handoff without the bot's own words; empty is the built-in phrase.
+
     AICheck:
       type: object
       required: [model, latency_ms]
@@ -4916,7 +5186,7 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed, bot_handoff]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -4929,7 +5199,8 @@ components:
             conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
             `topic_changed`: the topic was set, changed or removed (`topic_id`,
             `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-            current status.
+            current status. `bot_handoff`: the AI bot handed the conversation to people
+            (`bot → queued`) for `reason` (ADR-0018).
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -4951,6 +5222,16 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         by_customer: { type: boolean }
+        reason:
+          type: string
+          enum: [customer_asked, topic, unknown, rules, checks_failed, ai_unavailable, limit, task_created, task_incomplete]
+          description: |
+            Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+            the topic is left to people; the bot did not know the answer or was not sure; the
+            bot's rules send such questions to people; the answer failed the checks and was not
+            sent; AI is off, its budget is spent or the model failed; the bot replied as often
+            as it may; it created a task for the IT team (`task_created`); it collected details
+            for a task but could not create one (`task_incomplete`).
 
     MessageEventIssue:
       type: object
@@ -5064,7 +5345,7 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         created_by:
           type: [string, 'null']
-          description: '`null` when the author is no longer a member.'
+          description: '`null` when the author is no longer a member, or the AI bot created the task from a conversation (ADR-0018).'
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         created_at: { type: string, format: date-time }
@@ -5461,6 +5742,156 @@ components:
         version:
           type: integer
           description: When set, must equal the current version, otherwise `409 version_conflict`.
+
+    KBArticleKind:
+      type: string
+      enum: [article, qa]
+      description: '`article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).'
+
+    KBArticle:
+      type: object
+      required: [id, kind, title, body, url, published, topic_ids, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        kind: { $ref: '#/components/schemas/KBArticleKind' }
+        title: { type: string, maxLength: 200 }
+        body: { type: string, maxLength: 20000, description: Markdown. }
+        url:
+          type: [string, 'null']
+          maxLength: 500
+          description: A page the bot may show the customer as the source.
+        published: { type: boolean, description: The bot answers only from published entries. }
+        topic_ids:
+          type: array
+          maxItems: 20
+          description: The topics the entry serves; empty — all of them.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    KBArticleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/KBArticle' }
+
+    KBArticleInput:
+      type: object
+      additionalProperties: false
+      required: [kind, title, body]
+      properties:
+        kind: { $ref: '#/components/schemas/KBArticleKind' }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 20000 }
+        url: { type: [string, 'null'], maxLength: 500 }
+        published: { type: boolean, default: true }
+        topic_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    KBHit:
+      type: object
+      required: [id, kind, title, url, excerpt]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        kind: { $ref: '#/components/schemas/KBArticleKind' }
+        title: { type: string }
+        url: { type: [string, 'null'] }
+        excerpt: { type: string, maxLength: 300, description: The start of the text. }
+
+    KBSearchResult:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/KBHit' }
+
+    KBGuide:
+      type: object
+      required: [about, handoff_rules, task_checklist, updated_at]
+      properties:
+        about:
+          type: string
+          maxLength: 3000
+          description: Who the company is, what its product does and for whom, its main features, what the bot does not discuss.
+        handoff_rules:
+          type: string
+          maxLength: 3000
+          description: When the bot calls a person at once, besides when it does not know the answer.
+        task_checklist:
+          type: string
+          maxLength: 3000
+          description: |
+            What the bot collects from the customer before it creates a task for the IT team, one item
+            per line (account email, device, app version, steps, what was expected and what happened).
+        updated_at: { type: [string, 'null'], format: date-time }
+
+    KBGuideInput:
+      type: object
+      additionalProperties: false
+      required: [about, handoff_rules, task_checklist]
+      properties:
+        about: { type: string, maxLength: 3000 }
+        handoff_rules: { type: string, maxLength: 3000 }
+        task_checklist: { type: string, maxLength: 3000 }
+
+    KBImport:
+      type: object
+      required: [format, articles]
+      description: A knowledge file; unknown fields are ignored, so an agent may add notes.
+      properties:
+        format: { type: string, enum: [tolkovo-knowledge/1] }
+        about: { type: string, maxLength: 3000 }
+        handoff_rules: { type: string, maxLength: 3000 }
+        task_checklist: { type: string, maxLength: 3000 }
+        articles:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/KBImportArticle' }
+
+    KBImportArticle:
+      type: object
+      required: [kind, title, body]
+      properties:
+        kind: { $ref: '#/components/schemas/KBArticleKind' }
+        title: { type: string, maxLength: 200 }
+        body: { type: string, maxLength: 20000 }
+        url: { type: [string, 'null'], maxLength: 500 }
+        published: { type: boolean, default: true }
+        topics:
+          type: array
+          maxItems: 20
+          description: Names of topics, as in Settings → Topics.
+          items: { type: string, maxLength: 40 }
+
+    KBImportResult:
+      type: object
+      required: [created, updated, unknown_topics]
+      properties:
+        created: { type: integer, minimum: 0 }
+        updated: { type: integer, minimum: 0 }
+        unknown_topics:
+          type: array
+          items: { type: string }
+          description: Topic names of the file that the workspace has no topic for; skipped.
 
     Topic:
       type: object

@@ -20,6 +20,9 @@ describe("abilities", () => {
     expect(theirs).toMatchObject({ reply: false, note: true, close: false, transfer: false, release: false, tag: true });
     const queued = abilities(inboxOperator, conv("c", { status: "queued", assignee_id: null }));
     expect(queued).toMatchObject({ take: true, reply: false, close: false });
+    // The AI bot answers it: an operator may take it over (ADR-0018).
+    const bot = abilities(inboxOperator, conv("c", { status: "bot", assignee_id: null }));
+    expect(bot).toMatchObject({ take: true, reply: false, close: false, release: false });
   });
 
   it("follows the state machine", () => {

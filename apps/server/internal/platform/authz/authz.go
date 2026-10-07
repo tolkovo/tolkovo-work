@@ -62,7 +62,8 @@ const (
 	IntegrationsManage Permission = "integrations.manage" // connect GitHub, pick the repository, labels and templates
 	IssuesCreate       Permission = "issues.create"       // create a GitHub issue from a visible conversation or link it to one
 
-	AIManage Permission = "ai.manage" // choose the AI provider and model, the API key, prices and the budget
+	AIManage        Permission = "ai.manage"        // choose the AI provider and model, the API key, prices and the budget
+	KnowledgeManage Permission = "knowledge.manage" // the bot's knowledge base and what it always knows (ADR-0018)
 
 	TasksView   Permission = "tasks.view"   // see the tasks section (ADR-0015)
 	TasksEdit   Permission = "tasks.edit"   // create, change and comment tasks, link them to visible conversations
@@ -76,7 +77,7 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage,
+		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage, KnowledgeManage,
 		TasksView, TasksEdit, TasksManage,
 	},
 	RoleAdmin: {
@@ -84,7 +85,7 @@ var rolePermissions = map[string][]Permission{
 		ConversationsView, ConversationsCreate, ConversationsReply, ConversationsNote,
 		ConversationsTake, ConversationsAssign, ConversationsManage, ConversationsTag, TagsManage,
 		ContactsView, ContactsEdit,
-		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage,
+		ChannelsView, ChannelsManage, RoutingManage, IntegrationsManage, IssuesCreate, AIManage, KnowledgeManage,
 		TasksView, TasksEdit, TasksManage,
 	},
 	RoleOperator: {

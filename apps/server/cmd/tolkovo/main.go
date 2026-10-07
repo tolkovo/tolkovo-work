@@ -267,8 +267,20 @@ func startWorker(
 	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil, nil, log))
 	// A conversation waits for the fix on issues and tasks (ADR-0015).
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
-	worktasks := tasks.New(pool, tasks.Options{Files: store, Log: log})
+	worktasks := tasks.New(pool, tasks.Options{Conversations: convs, Files: store, Log: log})
 	convs.AddFixWaiter(conversations.FixSourceTasks, worktasks.HasOpenTask)
+	// The AI bot answers customers here (ADR-0018): its turns run in this
+	// role, and its replies, like messages the receivers store, are queued
+	// for their channels.
+	inserter, err := jobs.New(pool.Pool(), jobs.Options{Log: log})
+	if err != nil {
+		return fmt.Errorf("jobs: %w", err)
+	}
+	chans.SetJobs(inserter)
+	convs.SetDeliverer(chans)
+	aiSvc := ai.New(pool, aiOptions(cfg, sealer))
+	aiSvc.SetJobs(inserter)
+	convs.SetBot(aiSvc)
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
@@ -276,6 +288,7 @@ func startWorker(
 	river.AddWorker(workers, widget.NewPruneSessionsWorker(sys.Pool()))
 	// Masked texts of AI calls are kept 30 days (AI-01).
 	river.AddWorker(workers, ai.NewClearTextsWorker(sys.Pool()))
+	aiSvc.AddBotWorker(workers, convs, worktasks)
 	// Visitors' files no message took are deleted (W-02).
 	widget.New(pool, widget.Options{Inbox: convs, Files: store, Log: log}).AddWorkers(workers, sys.Pool())
 	// Files of tasks no task holds are deleted.
@@ -425,6 +438,10 @@ func apiDeps(
 		widgetOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
 	}
 	aiSvc := ai.New(pool, aiOptions(cfg, sealer))
+	// New conversations of channels the AI bot is on go to it, and customer
+	// messages queue its turns for the worker (ADR-0018).
+	aiSvc.SetJobs(inserter)
+	convs.SetBot(aiSvc)
 	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log))
 	// Task drafts come from the workspace's model too (ADR-0015).
 	// Files of tasks are checked by type, and by ClamAV when it is set.

@@ -46,6 +46,20 @@ import {
   type TaskUpdate,
 } from "./tasks";
 import {
+  createKBArticle,
+  deleteKBArticle,
+  fetchKBArticle,
+  fetchKBArticles,
+  fetchKBGuide,
+  importKB,
+  searchKB,
+  setKBGuide,
+  updateKBArticle,
+  type KBArticleInput,
+  type KBGuideInput,
+  type KBImport,
+} from "./knowledge";
+import {
   createAccessToken,
   fetchAccessTokens,
   fetchMyAccessTokens,
@@ -79,6 +93,7 @@ import {
   fetchMyPresence,
   fetchRouting,
   fetchAISettings,
+  fetchAIBot,
   checkAISettings,
   fetchMessages,
   fetchMySessions,
@@ -127,6 +142,7 @@ import {
   setMyPresence,
   setRouting,
   setAISettings,
+  setAIBot,
   updateMe,
   updateWorkspace,
   verifyEmail,
@@ -142,6 +158,7 @@ import {
   type OperatorStatus,
   type RoutingMode,
   type AISettingsUpdate,
+  type AIBot,
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
@@ -188,6 +205,11 @@ export const queryKeys = {
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
   aiSettings: ["ai", "settings"] as const,
+  aiBot: ["ai", "bot"] as const,
+  kbArticles: ["kb", "articles"] as const,
+  kbArticle: (id: string) => ["kb", "articles", id] as const,
+  kbSearch: (q: string, topic: string | null) => ["kb", "search", q, topic] as const,
+  kbGuide: ["kb", "guide"] as const,
   channels: ["channels"] as const,
   ingestKeys: (channelId: string) => ["channels", "ingest-keys", channelId] as const,
   githubIntegration: ["integrations", "github"] as const,
@@ -881,6 +903,21 @@ export function useSetAISettings() {
 }
 
 /** The check costs tokens, so the month's spending is read again afterwards. */
+/** Where the AI bot answers customers (ADR-0018). */
+export function useAIBot() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.aiBot, queryFn: () => fetchAIBot(client) });
+}
+
+export function useSetAIBot() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AIBot) => setAIBot(client, body),
+    onSuccess: (bot) => queryClient.setQueryData(queryKeys.aiBot, bot),
+  });
+}
+
 export function useCheckAISettings() {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -1107,4 +1144,56 @@ export function useStartMyTelegramLink() {
 
 export function useUnlinkMyTelegram() {
   return useBotMutation((client, _: void) => unlinkMyTelegram(client));
+}
+
+/** The knowledge base of the AI bot (ADR-0018). */
+export function useKBArticles() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.kbArticles, queryFn: () => fetchKBArticles(client) });
+}
+
+/** One entry with its whole text; off while `id` is null. */
+export function useKBArticle(id: string | null) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.kbArticle(id ?? ""), queryFn: () => fetchKBArticle(client, id!), enabled: id !== null });
+}
+
+/** What the bot would find; off while `q` is empty. */
+export function useKBSearch(q: string, topic: string | null) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.kbSearch(q, topic),
+    queryFn: () => searchKB(client, q, topic ?? undefined),
+    enabled: q.trim() !== "",
+  });
+}
+
+/** Creates, changes, deletes and imports entries; the base is read again after each. */
+export function useKBMutations() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const onSettled = () => queryClient.invalidateQueries({ queryKey: ["kb"] });
+  return {
+    create: useMutation({ mutationFn: (body: KBArticleInput) => createKBArticle(client, body), onSettled }),
+    update: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: KBArticleInput }) => updateKBArticle(client, id, body),
+      onSettled,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => deleteKBArticle(client, id), onSettled }),
+    importFile: useMutation({ mutationFn: (body: KBImport) => importKB(client, body), onSettled }),
+  };
+}
+
+export function useKBGuide() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.kbGuide, queryFn: () => fetchKBGuide(client) });
+}
+
+export function useSetKBGuide() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: KBGuideInput) => setKBGuide(client, body),
+    onSuccess: (guide) => queryClient.setQueryData(queryKeys.kbGuide, guide),
+  });
 }

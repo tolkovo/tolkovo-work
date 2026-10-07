@@ -34,10 +34,10 @@ func (s *Service) Link(ctx context.Context, workspaceID, actorID, taskID, conver
 		if err != nil {
 			return err
 		}
-		if err := s.link(ctx, tx, q, row, conversationID, actorID, conversations.EventTaskLinked); err != nil {
+		if err := s.link(ctx, tx, q, row, conversationID, &actorID, conversations.EventTaskLinked); err != nil {
 			return err
 		}
-		if err := changed(ctx, tx, row, actorID, false); err != nil {
+		if err := changed(ctx, tx, row, &actorID, false); err != nil {
 			return err
 		}
 		out = taskFrom(row)
@@ -66,7 +66,7 @@ func (s *Service) Unlink(ctx context.Context, workspaceID, actorID, taskID, conv
 		if err := s.unlink(ctx, tx, q, row, conversationID, actorID); err != nil {
 			return err
 		}
-		return changed(ctx, tx, row, actorID, false)
+		return changed(ctx, tx, row, &actorID, false)
 	})
 	if err != nil {
 		return dbError(err, "unlink task")
@@ -75,10 +75,10 @@ func (s *Service) Unlink(ctx context.Context, workspaceID, actorID, taskID, conv
 }
 
 // link stores the link and records it in the conversation (typ is
-// EventTaskCreated or EventTaskLinked).
-func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row store.Task, conversationID, actorID uuid.UUID, typ string) error {
+// EventTaskCreated or EventTaskLinked); actor is nil for the AI bot.
+func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row store.Task, conversationID uuid.UUID, actor *uuid.UUID, typ string) error {
 	n, err := q.LinkConversation(ctx, store.LinkConversationParams{
-		WorkspaceID: row.WorkspaceID, TaskID: row.ID, ConversationID: conversationID, CreatedBy: &actorID, CreatedAt: s.now(),
+		WorkspaceID: row.WorkspaceID, TaskID: row.ID, ConversationID: conversationID, CreatedBy: actor, CreatedAt: s.now(),
 	})
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row sto
 	if n == 0 {
 		return ErrLinked
 	}
-	if _, err := s.addActivity(ctx, q, row, &actorID, "linked", nil, map[string]any{"conversation_id": conversationID}); err != nil {
+	if _, err := s.addActivity(ctx, q, row, actor, "linked", nil, map[string]any{"conversation_id": conversationID}); err != nil {
 		return err
 	}
 	if s.opts.Conversations == nil {
@@ -97,7 +97,7 @@ func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row sto
 		return err
 	}
 	if err := s.opts.Conversations.RecordTask(ctx, tx, row.WorkspaceID, conversationID, conversations.TaskNote{
-		Type: typ, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number}, ActorID: &actorID, AwaitingFix: open,
+		Type: typ, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number}, ActorID: actor, AwaitingFix: open,
 	}); err != nil {
 		return err
 	}
@@ -244,8 +244,9 @@ type Draft struct {
 
 // Draft prepares a task from a conversation. With AI on, the workspace's
 // model writes the title, the summary, the steps, the expected and the
-// actual result, as for a GitHub issue (docs/03 §8.1); without it the
-// draft is the subject and the customer's first message. The customer's
+// actual result, as for a GitHub issue (docs/03 §8.1), from everything the
+// customer wrote; without it the draft is the subject or the customer's
+// longest message, and their words. The customer's
 // words reach the draft with their personal data masked (guard): every
 // member sees tasks, and a task outlives the deletion of the contact's
 // data (ADR-0015). The AI's text comes masked already. locale is the
@@ -263,7 +264,7 @@ func (s *Service) Draft(ctx context.Context, workspaceID, conversationID uuid.UU
 	masker := guard.NewMasker()
 	summary := masker.Mask(strings.TrimSpace(src.Subject))
 	if summary == "" {
-		summary = firstLine(masker.Mask(src.CustomerText), 120)
+		summary = firstLine(masker.Mask(src.Headline), 120)
 	}
 	var b strings.Builder
 	if text, fallback := s.aiDraft(ctx, workspaceID, conversationID, src, locale); text != nil {
@@ -338,12 +339,12 @@ func labelsFor(locale string) draftLabels {
 	if locale == "en" {
 		return draftLabels{
 			steps: "Steps to reproduce:", expected: "Expected:", actual: "Actual:", app: "App:",
-			quote: "Customer's message:", untitled: "Conversation #%d",
+			quote: "Customer's words:", untitled: "Conversation #%d",
 		}
 	}
 	return draftLabels{
 		steps: "Шаги воспроизведения:", expected: "Ожидалось:", actual: "Фактически:", app: "Приложение:",
-		quote: "Сообщение клиента:", untitled: "Обращение №%d",
+		quote: "Слова клиента:", untitled: "Обращение №%d",
 	}
 }
 

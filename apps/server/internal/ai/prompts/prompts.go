@@ -21,3 +21,14 @@ var IssueDraft string
 //
 //go:embed issue_draft.schema.json
 var IssueDraftSchema []byte
+
+// BotReply is the system prompt of the AI bot's turn (ADR-0018); the
+// workspace's company description and rules follow it.
+//
+//go:embed bot_reply.txt
+var BotReply string
+
+// BotReplySchema is the JSON Schema of the bot's answer.
+//
+//go:embed bot_reply.schema.json
+var BotReplySchema []byte

@@ -222,7 +222,7 @@ func TestTasks_FromConversation(t *testing.T) {
 	// personal data masked: a task outlives the contact's data.
 	d := decode[oapi.TaskDraft](t, c.do(http.MethodGet, cbase+"/tasks/draft", nil))
 	if d.DraftedBy != oapi.TaskDraftDraftedByTemplate || d.Title != "Не синхронизируется корзина" ||
-		!strings.Contains(d.Body, "Сообщение клиента:\nНе синхронизируется корзина") || !strings.Contains(d.Body, "Приложение: Зерно 2.4.1") ||
+		!strings.Contains(d.Body, "Слова клиента:\nНе синхронизируется корзина") || !strings.Contains(d.Body, "Приложение: Зерно 2.4.1") ||
 		!strings.Contains(d.Body, "ответьте на ⟨EMAIL_1⟩") || strings.Contains(d.Body, "anna@example.com") {
 		t.Fatalf("draft: %+v", d)
 	}
@@ -238,7 +238,7 @@ func TestTasks_FromConversation(t *testing.T) {
 	ad := decode[oapi.TaskDraft](t, c.do(http.MethodGet, cbase+"/tasks/draft", nil))
 	if ad.DraftedBy != oapi.TaskDraftDraftedByAi || ad.Title != "Корзина пустеет после обновления" ||
 		!strings.HasPrefix(ad.Body, "После обновления корзина пустая.\n\nШаги воспроизведения:\n1. Обновить приложение\n2. Открыть корзину\n\nОжидалось:\nТовары на месте\n\nФактически:\nКорзина пустая") ||
-		!strings.Contains(ad.Body, "Сообщение клиента:\nНе синхронизируется корзина") || strings.Contains(ad.Body, "anna@example.com") {
+		!strings.Contains(ad.Body, "Слова клиента:\nНе синхронизируется корзина") || strings.Contains(ad.Body, "anna@example.com") {
 		t.Fatalf("ai draft: %+v", ad)
 	}
 	if n := e.ownerCount(`SELECT count(*) FROM ai_calls WHERE conversation_id = $1 AND purpose = 'issue_draft' AND status = 'ok'`, conv); n != 1 {

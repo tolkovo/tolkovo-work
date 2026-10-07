@@ -114,6 +114,7 @@ export function fakeApi(
     "GET /me/presence": () => json(200, { status: "online" }),
     "GET /routing": () => json(200, { mode: "manual" }),
     "GET /ai/settings": () => json(200, aiSettingsOff),
+    "GET /ai/bot": () => json(200, { channel_ids: [], topics_off: [], min_confidence: 75, handoff_message: "" }),
     "GET /tags": () => json(200, { items: [] }),
     "GET /topics": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),

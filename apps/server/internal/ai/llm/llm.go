@@ -130,6 +130,10 @@ type Request struct {
 	Temperature *float64
 	// Schema, when set, makes Response.JSON hold the answer.
 	Schema *Schema
+	// CacheSystem asks to cache the system prompt where the provider needs
+	// to be asked (Anthropic); OpenAI and DeepSeek cache long prefixes
+	// themselves.
+	CacheSystem bool
 }
 
 // Usage counts tokens. InputTokens includes CachedTokens.

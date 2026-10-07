@@ -602,6 +602,10 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 	if e.Type == conversations.EventTopicChanged {
 		out.TopicId, out.PreviousTopicId, out.ByCustomer = e.TopicID, e.PreviousTopicID, &e.ByCustomer
 	}
+	if e.Reason != "" {
+		r := oapi.MessageEventReason(e.Reason)
+		out.Reason = &r
+	}
 	return out
 }
 

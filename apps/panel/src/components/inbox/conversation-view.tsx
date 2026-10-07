@@ -487,6 +487,9 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   if (e.type.startsWith("issue_")) return <IssueEventText event={e} by={by} />;
   if (e.type.startsWith("task_")) return <TaskEventText event={e} by={by} />;
   if (e.type === "topic_changed") return <TopicEventText event={e} by={by} />;
+  if (e.type === "bot_handoff") {
+    return <>{t("inbox.event.botHandoff", { reason: t(`inbox.event.botReason.${e.reason ?? "unknown"}`) })}</>;
+  }
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {
