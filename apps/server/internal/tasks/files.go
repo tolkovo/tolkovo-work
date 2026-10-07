@@ -358,7 +358,7 @@ func (s *Service) AddFiles(ctx context.Context, workspaceID, actorID, taskID uui
 		if _, err := s.addActivity(ctx, q, row, &actorID, "files", nil, map[string]any{"added": len(ids)}); err != nil {
 			return err
 		}
-		return changed(ctx, tx, row, actorID, false)
+		return changed(ctx, tx, row, &actorID, false)
 	})
 	if err != nil {
 		return Task{}, dbError(err, "add files")
@@ -385,7 +385,7 @@ func (s *Service) RemoveFile(ctx context.Context, workspaceID, actorID, taskID, 
 		if _, err := s.addActivity(ctx, q, row, &actorID, "files", nil, map[string]any{"removed": 1}); err != nil {
 			return err
 		}
-		return changed(ctx, tx, row, actorID, false)
+		return changed(ctx, tx, row, &actorID, false)
 	})
 	if err != nil {
 		return dbError(err, "remove file")

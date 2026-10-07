@@ -182,3 +182,50 @@ func (s *server) writeAIError(w http.ResponseWriter, r *http.Request, err error)
 	}
 	return true
 }
+
+// GetAIBot implements GET /ai/bot.
+func (s *server) GetAIBot(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.AIManage)
+	if !ok {
+		return
+	}
+	if s.ai == nil {
+		notFound(w, r)
+		return
+	}
+	got, err := s.ai.BotSettings(r.Context(), p.WorkspaceID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, aiBotBody(got))
+}
+
+// SetAIBot implements PUT /ai/bot.
+func (s *server) SetAIBot(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.AIManage)
+	if !ok {
+		return
+	}
+	if s.ai == nil {
+		notFound(w, r)
+		return
+	}
+	var req oapi.AIBot
+	if err := decodeRequired(w, r, &req, "channel_ids", "topics_off", "min_confidence", "handoff_message"); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	got, err := s.ai.SetBotSettings(r.Context(), p.WorkspaceID, ai.BotSettings{
+		ChannelIDs: req.ChannelIds, TopicsOff: req.TopicsOff, MinConfidence: req.MinConfidence, HandoffMessage: req.HandoffMessage,
+	})
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, aiBotBody(got))
+}
+
+func aiBotBody(b ai.BotSettings) oapi.AIBot {
+	return oapi.AIBot{ChannelIds: b.ChannelIDs, TopicsOff: b.TopicsOff, MinConfidence: b.MinConfidence, HandoffMessage: b.HandoffMessage}
+}

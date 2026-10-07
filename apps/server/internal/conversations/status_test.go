@@ -19,6 +19,7 @@ func TestCanTransition_MatchesStateMachine(t *testing.T) {
 		{StatusNew, StatusBot}:           true,
 		{StatusNew, StatusQueued}:        true,
 		{StatusBot, StatusQueued}:        true,
+		{StatusBot, StatusAssigned}:      true,
 		{StatusBot, StatusResolved}:      true,
 		{StatusQueued, StatusAssigned}:   true,
 		{StatusAssigned, StatusQueued}:   true,
@@ -102,7 +103,8 @@ func TestAssign_SideEffects(t *testing.T) {
 			state{Status: StatusAssigned, AssigneeID: &b}, nil},
 		{"release to the queue", state{Status: StatusAssigned, AssigneeID: &a}, nil, state{Status: StatusQueued}, nil},
 		{"pending cannot be released", state{Status: StatusPending, AssigneeID: &a}, nil, state{}, ErrTransition},
-		{"bot decides first", state{Status: StatusBot}, &a, state{}, ErrTransition},
+		{"taken from the bot", state{Status: StatusBot}, &a, state{Status: StatusAssigned, AssigneeID: &a}, nil},
+		{"handed over by hand", state{Status: StatusBot}, nil, state{Status: StatusQueued}, nil},
 		{"new is routed first", state{Status: StatusNew}, &a, state{}, ErrTransition},
 		{"closed is final", state{Status: StatusClosed, AssigneeID: &a}, &b, state{}, ErrTransition},
 	}

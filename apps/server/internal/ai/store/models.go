@@ -8,7 +8,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type AiBotConversation struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	AnsweredUpTo   *uuid.UUID
+	Replies        int32
+	CollectTurns   int32
+	Collected      []byte
+	ClaimedBy      *int64
+	ClaimedAt      pgtype.Timestamptz
+	UpdatedAt      time.Time
+}
 
 type AiCall struct {
 	ID               uuid.UUID

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -21,9 +24,13 @@ import (
 type IssueSource struct {
 	Number  int64
 	Subject string
-	// CustomerText is the customer's first message with text, up to
-	// MaxBodyLength characters; empty when there is none.
+	// CustomerText is what the customer wrote, message by message, oldest
+	// first, up to MaxBodyLength characters: the newest messages are kept
+	// when it is longer. Empty when there is none.
 	CustomerText string
+	// Headline is the longest of those messages, up to MaxBodyLength
+	// characters: what a draft without AI is titled by ("Привет" is not).
+	Headline string
 	// App is what the app said about itself in its report; nil for other
 	// channels.
 	App *ReportApp
@@ -41,11 +48,17 @@ func (s *Service) IssueSource(ctx context.Context, workspaceID, conversationID u
 		if row.Conversation.Subject != nil {
 			out.Subject = *row.Conversation.Subject
 		}
+		texts, err := q.RecentCustomerTexts(ctx, store.RecentCustomerTextsParams{
+			WorkspaceID: workspaceID, ConversationID: conversationID, Lim: maxDraftMessages,
+		})
+		if err != nil {
+			return err
+		}
+		out.CustomerText, out.Headline = customerText(texts)
 		first, err := q.FirstCustomerText(ctx, store.FirstCustomerTextParams{WorkspaceID: workspaceID, ConversationID: conversationID})
 		if err != nil || len(first) == 0 {
 			return err
 		}
-		out.CustomerText = first[0].Body
 		var meta messageMeta
 		if len(first[0].Meta) > 2 && json.Unmarshal(first[0].Meta, &meta) == nil && meta.Report != nil {
 			app := meta.Report.App
@@ -57,6 +70,34 @@ func (s *Service) IssueSource(ctx context.Context, workspaceID, conversationID u
 		return IssueSource{}, wrap(err, "issue source")
 	}
 	return out, nil
+}
+
+// maxDraftMessages bounds the customer's messages a draft reads.
+const maxDraftMessages = 50
+
+// customerText joins the customer's messages, given newest first, oldest
+// first, keeping the newest within MaxBodyLength characters, and picks the
+// longest as the headline.
+func customerText(newestFirst []string) (text, headline string) {
+	var kept []string
+	n := 0
+	for _, t := range newestFirst {
+		t = strings.TrimSpace(t)
+		size := utf8.RuneCountInString(t) + 2
+		if t == "" {
+			continue
+		}
+		if n+size > MaxBodyLength && len(kept) > 0 {
+			break // older messages would leave a gap
+		}
+		kept = append(kept, truncate(t, MaxBodyLength))
+		n += size
+		if utf8.RuneCountInString(t) > utf8.RuneCountInString(headline) {
+			headline = truncate(t, MaxBodyLength)
+		}
+	}
+	slices.Reverse(kept)
+	return strings.Join(kept, "\n\n"), headline
 }
 
 // IssueNote is an issue event for a conversation feed.

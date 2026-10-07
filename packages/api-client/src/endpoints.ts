@@ -27,6 +27,7 @@ import {
   memberListSchema,
   myPresenceSchema,
   routingSettingsSchema,
+  aiBotSchema,
   aiCheckSchema,
   aiSettingsSchema,
   messagePageSchema,
@@ -86,6 +87,7 @@ export type AIProvider = Schemas["AIProvider"];
 export type AISettings = Schemas["AISettings"];
 export type AISettingsUpdate = Schemas["AISettingsUpdate"];
 export type AICheck = Schemas["AICheck"];
+export type AIBot = Schemas["AIBot"];
 export type Channel = Schemas["Channel"];
 export type ChannelList = Schemas["ChannelList"];
 export type TelegramLogin = Schemas["TelegramLogin"];
@@ -497,6 +499,16 @@ export async function setAISettings(client: ApiClient, body: AISettingsUpdate): 
 /** Sends a tiny request with the saved settings. */
 export async function checkAISettings(client: ApiClient): Promise<AICheck> {
   return parseAnswer(aiCheckSchema, await unwrap(client.POST("/ai/settings/check")));
+}
+
+/** Where the AI bot answers customers and how strict it is (ADR-0018). */
+export async function fetchAIBot(client: ApiClient): Promise<AIBot> {
+  return parseAnswer(aiBotSchema, await unwrap(client.GET("/ai/bot")));
+}
+
+/** Replaces the settings of the AI bot. */
+export async function setAIBot(client: ApiClient, body: AIBot): Promise<AIBot> {
+  return parseAnswer(aiBotSchema, await unwrap(client.PUT("/ai/bot", { body })));
 }
 
 /** Channels of the workspace and what this server can connect (docs/02 §11, ADR-0014). */

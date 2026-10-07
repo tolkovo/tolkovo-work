@@ -41,6 +41,9 @@ const (
 	// EventTopicChanged: the topic was set, changed or removed, by the
 	// customer (ByCustomer) or an operator (docs/02 §7.3).
 	EventTopicChanged = "topic_changed"
+	// EventBotHandoff: the AI bot handed the conversation to people
+	// (bot → queued) for Reason (ADR-0018).
+	EventBotHandoff = "bot_handoff"
 )
 
 // Why GitHub closed an issue (IssueRef.Reason).
@@ -72,6 +75,8 @@ type Event struct {
 	TopicID         *uuid.UUID `json:"topic_id,omitempty"`
 	PreviousTopicID *uuid.UUID `json:"previous_topic_id,omitempty"`
 	ByCustomer      bool       `json:"by_customer,omitempty"`
+	// Reason is set on EventBotHandoff: one of the Handoff… reasons.
+	Reason string `json:"reason,omitempty"`
 }
 
 // IssueRef names an issue in a feed line: no title, the panel links to it.
@@ -143,6 +148,10 @@ func eventFrom(kind string, meta []byte) *Event {
 	}
 	switch ev.Type {
 	case EventStatusChanged, EventAssigned, EventTopicChanged:
+	case EventBotHandoff:
+		if ev.Reason == "" {
+			return nil
+		}
 	case EventIssueCreated, EventIssueLinked, EventIssueClosed, EventIssueReopened:
 		if ev.Issue == nil {
 			return nil

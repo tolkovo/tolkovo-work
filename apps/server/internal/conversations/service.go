@@ -100,6 +100,8 @@ type Service struct {
 	router Router
 	// deliverer queues replies for channels (T-03); nil leaves them pending.
 	deliverer Deliverer
+	// bot is the AI bot (ADR-0018); nil sends every conversation to the queue.
+	bot Bot
 	// waiters are the other sources a conversation waits for a fix on
 	// (GitHub issues, tasks), by name.
 	waiters map[string]FixWaiter

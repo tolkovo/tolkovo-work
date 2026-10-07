@@ -602,9 +602,49 @@ func (e MessageUnsupported) Valid() bool {
 	}
 }
 
+// Defines values for MessageEventReason.
+const (
+	MessageEventReasonAiUnavailable  MessageEventReason = "ai_unavailable"
+	MessageEventReasonChecksFailed   MessageEventReason = "checks_failed"
+	MessageEventReasonCustomerAsked  MessageEventReason = "customer_asked"
+	MessageEventReasonLimit          MessageEventReason = "limit"
+	MessageEventReasonRules          MessageEventReason = "rules"
+	MessageEventReasonTaskCreated    MessageEventReason = "task_created"
+	MessageEventReasonTaskIncomplete MessageEventReason = "task_incomplete"
+	MessageEventReasonTopic          MessageEventReason = "topic"
+	MessageEventReasonUnknown        MessageEventReason = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the MessageEventReason enum.
+func (e MessageEventReason) Valid() bool {
+	switch e {
+	case MessageEventReasonAiUnavailable:
+		return true
+	case MessageEventReasonChecksFailed:
+		return true
+	case MessageEventReasonCustomerAsked:
+		return true
+	case MessageEventReasonLimit:
+		return true
+	case MessageEventReasonRules:
+		return true
+	case MessageEventReasonTaskCreated:
+		return true
+	case MessageEventReasonTaskIncomplete:
+		return true
+	case MessageEventReasonTopic:
+		return true
+	case MessageEventReasonUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MessageEventType.
 const (
 	MessageEventTypeAssigned      MessageEventType = "assigned"
+	MessageEventTypeBotHandoff    MessageEventType = "bot_handoff"
 	MessageEventTypeIssueClosed   MessageEventType = "issue_closed"
 	MessageEventTypeIssueCreated  MessageEventType = "issue_created"
 	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
@@ -622,6 +662,8 @@ const (
 func (e MessageEventType) Valid() bool {
 	switch e {
 	case MessageEventTypeAssigned:
+		return true
+	case MessageEventTypeBotHandoff:
 		return true
 	case MessageEventTypeIssueClosed:
 		return true
@@ -1131,6 +1173,22 @@ func (e ListTasksParamsState) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AIBot defines model for AIBot.
+type AIBot struct {
+	// ChannelIds The channels whose new conversations the bot answers.
+	ChannelIds []uuid.UUID `json:"channel_ids"`
+
+	// HandoffMessage What the customer reads on a handoff without the bot's own words; empty is the built-in phrase.
+	HandoffMessage string `json:"handoff_message"`
+
+	// MinConfidence How sure the model must be of an answer from the knowledge base, in percent;
+	// below it the bot hands over. 75 by default.
+	MinConfidence int `json:"min_confidence"`
+
+	// TopicsOff Topics left to people; every other topic answers with the bot.
+	TopicsOff []uuid.UUID `json:"topics_off"`
 }
 
 // AICheck defines model for AICheck.
@@ -2326,7 +2384,15 @@ type MessageEvent struct {
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
 	PreviousTopicId    *uuid.UUID         `json:"previous_topic_id,omitempty"`
-	Task               *MessageEventTask  `json:"task,omitempty"`
+
+	// Reason Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+	// the topic is left to people; the bot did not know the answer or was not sure; the
+	// bot's rules send such questions to people; the answer failed the checks and was not
+	// sent; AI is off, its budget is spent or the model failed; the bot replied as often
+	// as it may; it created a task for the IT team (`task_created`); it collected details
+	// for a task but could not create one (`task_incomplete`).
+	Reason *MessageEventReason `json:"reason,omitempty"`
+	Task   *MessageEventTask   `json:"task,omitempty"`
 
 	// To State of a conversation.
 	To      ConversationStatus `json:"to"`
@@ -2343,9 +2409,18 @@ type MessageEvent struct {
 	// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 	// `topic_changed`: the topic was set, changed or removed (`topic_id`,
 	// `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-	// current status.
+	// current status. `bot_handoff`: the AI bot handed the conversation to people
+	// (`bot → queued`) for `reason` (ADR-0018).
 	Type MessageEventType `json:"type"`
 }
+
+// MessageEventReason Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+// the topic is left to people; the bot did not know the answer or was not sure; the
+// bot's rules send such questions to people; the answer failed the checks and was not
+// sent; AI is off, its budget is spent or the model failed; the bot replied as often
+// as it may; it created a task for the IT team (`task_created`); it collected details
+// for a task but could not create one (`task_incomplete`).
+type MessageEventReason string
 
 // MessageEventType `assigned` covers taking, transferring and releasing. `issue_created` and
 // `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -2358,7 +2433,8 @@ type MessageEvent struct {
 // conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
 // `topic_changed`: the topic was set, changed or removed (`topic_id`,
 // `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-// current status.
+// current status. `bot_handoff`: the AI bot handed the conversation to people
+// (`bot → queued`) for `reason` (ADR-0018).
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
@@ -2621,7 +2697,7 @@ type Task struct {
 	ConversationIds []uuid.UUID `json:"conversation_ids"`
 	CreatedAt       time.Time   `json:"created_at"`
 
-	// CreatedBy `null` when the author is no longer a member.
+	// CreatedBy `null` when the author is no longer a member, or the AI bot created the task from a conversation (ADR-0018).
 	CreatedBy *uuid.UUID `json:"created_by"`
 
 	// Files Files of the description, in the order they came; empty in lists.
@@ -3475,6 +3551,9 @@ type SendWidgetMessageParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// SetAIBotJSONRequestBody defines body for SetAIBot for application/json ContentType.
+type SetAIBotJSONRequestBody = AIBot
+
 // SetAISettingsJSONRequestBody defines body for SetAISettings for application/json ContentType.
 type SetAISettingsJSONRequestBody = AISettingsUpdate
 
@@ -3699,6 +3778,12 @@ type ServerInterface interface {
 	// RevokeAccessToken Revoke any member's token
 	// (DELETE /access-tokens/{id})
 	RevokeAccessToken(w http.ResponseWriter, r *http.Request, id Id)
+	// GetAIBot Where the AI bot answers customers
+	// (GET /ai/bot)
+	GetAIBot(w http.ResponseWriter, r *http.Request)
+	// SetAIBot Turn the AI bot on for channels and set how strict it is
+	// (PUT /ai/bot)
+	SetAIBot(w http.ResponseWriter, r *http.Request)
 	// GetAISettings The workspace's AI settings and the month's spending
 	// (GET /ai/settings)
 	GetAISettings(w http.ResponseWriter, r *http.Request)
@@ -4146,6 +4231,18 @@ func (_ Unimplemented) ListAccessTokens(w http.ResponseWriter, r *http.Request) 
 // RevokeAccessToken Revoke any member's token
 // (DELETE /access-tokens/{id})
 func (_ Unimplemented) RevokeAccessToken(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAIBot Where the AI bot answers customers
+// (GET /ai/bot)
+func (_ Unimplemented) GetAIBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAIBot Turn the AI bot on for channels and set how strict it is
+// (PUT /ai/bot)
+func (_ Unimplemented) SetAIBot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5053,6 +5150,34 @@ func (siw *ServerInterfaceWrapper) RevokeAccessToken(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeAccessToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAIBot operation middleware
+func (siw *ServerInterfaceWrapper) GetAIBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAIBot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAIBot operation middleware
+func (siw *ServerInterfaceWrapper) SetAIBot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAIBot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8590,6 +8715,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ai/settings/check", wrapper.CheckAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ai/bot", wrapper.GetAIBot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/ai/bot", wrapper.SetAIBot)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/kb/articles", wrapper.ListKBArticles)

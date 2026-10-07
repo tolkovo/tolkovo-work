@@ -93,6 +93,7 @@ import {
   fetchMyPresence,
   fetchRouting,
   fetchAISettings,
+  fetchAIBot,
   checkAISettings,
   fetchMessages,
   fetchMySessions,
@@ -141,6 +142,7 @@ import {
   setMyPresence,
   setRouting,
   setAISettings,
+  setAIBot,
   updateMe,
   updateWorkspace,
   verifyEmail,
@@ -156,6 +158,7 @@ import {
   type OperatorStatus,
   type RoutingMode,
   type AISettingsUpdate,
+  type AIBot,
   type ContactInput,
   type ConversationFilter,
   type CreateInvitationRequest,
@@ -202,6 +205,7 @@ export const queryKeys = {
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
   aiSettings: ["ai", "settings"] as const,
+  aiBot: ["ai", "bot"] as const,
   kbArticles: ["kb", "articles"] as const,
   kbArticle: (id: string) => ["kb", "articles", id] as const,
   kbSearch: (q: string, topic: string | null) => ["kb", "search", q, topic] as const,
@@ -899,6 +903,21 @@ export function useSetAISettings() {
 }
 
 /** The check costs tokens, so the month's spending is read again afterwards. */
+/** Where the AI bot answers customers (ADR-0018). */
+export function useAIBot() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.aiBot, queryFn: () => fetchAIBot(client) });
+}
+
+export function useSetAIBot() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AIBot) => setAIBot(client, body),
+    onSuccess: (bot) => queryClient.setQueryData(queryKeys.aiBot, bot),
+  });
+}
+
 export function useCheckAISettings() {
   const client = useApiClient();
   const queryClient = useQueryClient();

@@ -305,14 +305,18 @@ func (s *Service) ChooseVisitorTopic(
 	return wrap(err, "choose visitor topic")
 }
 
-// customerTopic applies the topic the customer picked. A conversation the
-// router gave to someone outside the topic's members, who has not replied
-// yet, goes back to the queue for the members.
+// customerTopic applies the topic the customer picked and wakes the bot,
+// which may have waited for it. A conversation the router gave to someone
+// outside the topic's members, who has not replied yet, goes back to the
+// queue for the members.
 func (s *Service) customerTopic(ctx context.Context, q *store.Queries, tx pgx.Tx, row store.Conversation, t *store.Topic) error {
 	if sameID(row.TopicID, &t.ID) {
 		return nil
 	}
 	if err := s.applyTopic(ctx, q, tx, row, t, uuid.Nil); err != nil {
+		return err
+	}
+	if err := s.wakeBot(ctx, tx, row); err != nil {
 		return err
 	}
 	if Status(row.Status) != StatusAssigned || row.AssigneeID == nil || row.FirstResponseAt != nil {

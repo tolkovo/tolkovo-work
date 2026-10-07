@@ -1515,6 +1515,47 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /ai/bot:
+    get:
+      tags: [ai]
+      operationId: getAIBot
+      summary: Where the AI bot answers customers
+      description: |
+        The bot answers new conversations of `channel_ids` while AI is on (ADR-0018);
+        conversations of `topics_off` go to people at once. Requires `ai.manage`.
+      responses:
+        '200':
+          description: The settings of the bot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIBot' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [ai]
+      operationId: setAIBot
+      summary: Turn the AI bot on for channels and set how strict it is
+      description: |
+        Replaces the settings. Only conversations started after the change go to the bot. A
+        channel or a topic that is not the workspace's is `400`. Requires `ai.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AIBot' }
+      responses:
+        '200':
+          description: The settings now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIBot' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /kb/articles:
     get:
       tags: [ai]
@@ -4804,6 +4845,39 @@ components:
           minimum: 0
           maximum: 1000000000000
 
+    AIBot:
+      type: object
+      additionalProperties: false
+      required: [channel_ids, topics_off, min_confidence, handoff_message]
+      properties:
+        channel_ids:
+          type: array
+          maxItems: 100
+          description: The channels whose new conversations the bot answers.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        topics_off:
+          type: array
+          maxItems: 20
+          description: Topics left to people; every other topic answers with the bot.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        min_confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            How sure the model must be of an answer from the knowledge base, in percent;
+            below it the bot hands over. 75 by default.
+        handoff_message:
+          type: string
+          maxLength: 500
+          description: What the customer reads on a handoff without the bot's own words; empty is the built-in phrase.
+
     AICheck:
       type: object
       required: [model, latency_ms]
@@ -5112,7 +5186,7 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed, bot_handoff]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -5125,7 +5199,8 @@ components:
             conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
             `topic_changed`: the topic was set, changed or removed (`topic_id`,
             `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-            current status.
+            current status. `bot_handoff`: the AI bot handed the conversation to people
+            (`bot → queued`) for `reason` (ADR-0018).
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -5147,6 +5222,16 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         by_customer: { type: boolean }
+        reason:
+          type: string
+          enum: [customer_asked, topic, unknown, rules, checks_failed, ai_unavailable, limit, task_created, task_incomplete]
+          description: |
+            Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+            the topic is left to people; the bot did not know the answer or was not sure; the
+            bot's rules send such questions to people; the answer failed the checks and was not
+            sent; AI is off, its budget is spent or the model failed; the bot replied as often
+            as it may; it created a task for the IT team (`task_created`); it collected details
+            for a task but could not create one (`task_incomplete`).
 
     MessageEventIssue:
       type: object
@@ -5260,7 +5345,7 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         created_by:
           type: [string, 'null']
-          description: '`null` when the author is no longer a member.'
+          description: '`null` when the author is no longer a member, or the AI bot created the task from a conversation (ADR-0018).'
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         created_at: { type: string, format: date-time }

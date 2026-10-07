@@ -76,6 +76,7 @@ type env struct {
 	// llm is the fake model provider behind the ai module: it plays both
 	// Anthropic and OpenAI.
 	llm *fakeLLM
+	ai  *ai.Service
 }
 
 // fakeLLM answers each request with the next queued answer; none queued
@@ -225,6 +226,9 @@ func newEnv(t *testing.T, o envOptions) *env {
 	llmSrv := httptest.NewServer(llm)
 	t.Cleanup(llmSrv.Close)
 	ais := ai.New(app, ai.Options{Sealer: sealer, HTTP: http.DefaultClient, AnthropicURL: llmSrv.URL, OpenAIURL: llmSrv.URL})
+	// The bot's turns are queued as in the api role; tests run BotTurn.
+	ais.SetJobs(inserter)
+	convs.SetBot(ais)
 	gh := &githubtest.GitHub{}
 	integ := integrations.New(app, integrations.Options{
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
@@ -260,7 +264,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	return &env{
 		t: t, h: NewRouter(deps), tenancy: ten, files: files, ownerDB: d.OwnerURL, mail: sender, bots: bots,
 		db: d, app: app, convs: convs, ingest: reports, rdb: rc, prefix: prefix, github: gh, integrations: integ,
-		widget: widgets, routing: router, llm: llm, notifications: notifs, tasks: taskSvc,
+		widget: widgets, routing: router, llm: llm, notifications: notifs, tasks: taskSvc, ai: ais,
 	}
 }
 

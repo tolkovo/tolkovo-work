@@ -170,6 +170,56 @@ describe("AI settings", () => {
     expect(screen.getByLabelText("Ключ API")).toBeDisabled();
   });
 
+  it("turns the bot on for a channel and leaves a topic to people", async () => {
+    const user = userEvent.setup();
+    const channel = {
+      id: "ch1",
+      type: "telegram_bot",
+      name: "Бот поддержки",
+      status: "active",
+      error_code: null,
+      details: { username: "zerno_help_bot", display_name: null, phone_masked: null },
+      last_inbound_at: null,
+      created_at: "2026-10-01T10:00:00Z",
+    };
+    const api = fakeApi({
+      session: admin,
+      routes: {
+        "GET /ai/settings": () => json(200, haiku),
+        "GET /channels": () => json(200, { items: [channel], telegram_user_available: true, encryption_available: true }),
+        "GET /topics": () =>
+          json(200, {
+            items: [{ id: "t1", name: "Оплата", color: "gray", position: 0, priority: 0, task_queue_id: null, member_ids: [] }],
+          }),
+        "PUT /ai/bot": async (r) => json(200, await r.json()),
+      },
+    });
+    renderApp("/settings/ai", { api });
+    await screen.findByRole("heading", { level: 3, name: "ИИ-бот отвечает клиентам" });
+    await user.click(await screen.findByRole("checkbox", { name: "Бот поддержки" }));
+    await user.click(screen.getByRole("checkbox", { name: "Оплата" }));
+    const confidence = screen.getByLabelText("Уверенность бота, %");
+    await user.clear(confidence);
+    await user.type(confidence, "150");
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки бота" }));
+    expect(confidence).toHaveAccessibleDescription(/Введите число от 0 до 100/);
+    await user.clear(confidence);
+    await user.type(confidence, "80");
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки бота" }));
+    expect(await screen.findByText("Настройки бота сохранены.")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.method === "PUT" && c.path === "/ai/bot")?.body).toEqual({
+      channel_ids: ["ch1"],
+      topics_off: ["t1"],
+      min_confidence: 80,
+      handoff_message: "",
+    });
+  });
+
+  it("says the bot waits while AI is off", async () => {
+    renderApp("/settings/ai", { api: fakeApi({ session: admin }) });
+    expect(await screen.findByText("ИИ выключен: бот не отвечает, пока ИИ не включён выше.")).toBeInTheDocument();
+  });
+
   it("is not in the tree without ai.manage", async () => {
     renderApp("/settings/team", { api: fakeApi({ session: operatorSession }) });
     await screen.findByRole("heading", { level: 2, name: "Команда" });

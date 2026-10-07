@@ -106,6 +106,14 @@ export const aiSettingsSchema = z.object({
   encryption_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["AISettings"]>;
 
+/** Where the AI bot answers customers (ADR-0018). */
+export const aiBotSchema = z.object({
+  channel_ids: z.array(z.string()),
+  topics_off: z.array(z.string()),
+  min_confidence: z.number(),
+  handoff_message: z.string(),
+}) satisfies z.ZodType<Schemas["AIBot"]>;
+
 export const aiCheckSchema = z.object({
   model: z.string(),
   latency_ms: z.number(),
@@ -250,6 +258,7 @@ export const messageEventSchema = z.object({
     "task_closed",
     "task_reopened",
     "topic_changed",
+    "bot_handoff",
   ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
@@ -270,6 +279,9 @@ export const messageEventSchema = z.object({
   topic_id: z.string().nullable().optional(),
   previous_topic_id: z.string().nullable().optional(),
   by_customer: z.boolean().optional(),
+  reason: z
+    .enum(["customer_asked", "topic", "unknown", "rules", "checks_failed", "ai_unavailable", "limit", "task_created", "task_incomplete"])
+    .optional(),
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({

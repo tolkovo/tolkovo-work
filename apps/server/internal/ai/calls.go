@@ -41,6 +41,8 @@ type Call struct {
 	// Schema asks for Result.JSON.
 	Schema    *llm.Schema
 	MaxTokens int
+	// CacheSystem: System is the same for many calls (llm.Request.CacheSystem).
+	CacheSystem bool
 }
 
 // Result is the model's answer, still masked: Unmask puts personal data
@@ -108,7 +110,7 @@ func (s *Service) complete(ctx context.Context, workspaceID uuid.UUID, call Call
 	}
 	masker := guard.NewMasker()
 	req := llm.Request{
-		System: masker.Mask(call.System), MaxTokens: call.MaxTokens, Schema: call.Schema,
+		System: masker.Mask(call.System), MaxTokens: call.MaxTokens, Schema: call.Schema, CacheSystem: call.CacheSystem,
 		Messages: make([]llm.Message, 0, len(call.Messages)),
 	}
 	for _, m := range call.Messages {

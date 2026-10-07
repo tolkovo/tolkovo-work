@@ -578,7 +578,26 @@
       "check": "Check connection",
       "checking": "Checking…",
       "checkHint": "The check sends a short request with the saved settings and costs a few tokens.",
-      "checkOk": "Model {model} answered in {ms} ms."
+      "checkOk": "Model {model} answered in {ms} ms.",
+      "bot": {
+        "title": "The AI bot answers customers",
+        "lead": "The bot answers only from the knowledge base. When it does not know or is not sure, it tells the customer it is calling a colleague and hands the conversation to the queue. What the bot knows:",
+        "knowledgeLink": "Knowledge base",
+        "aiOff": "AI is off: the bot does not answer until AI is turned on above.",
+        "channels": "Channels where the bot answers",
+        "channelsHint": "The bot takes new conversations of these channels. Ones started earlier stay with people.",
+        "noChannels": "No channels yet. Connect one under Channels.",
+        "topicsOff": "Topics left to people",
+        "topicsOffHint": "The bot hands conversations of these topics to the queue at once.",
+        "confidence": "Bot confidence, %",
+        "confidenceHint": "An answer the bot is less sure of goes to people. 75 is strict; lower makes the bot answer more often but risk mistakes.",
+        "confidenceInvalid": "Enter a number from 0 to 100.",
+        "handoff": "Handoff message",
+        "handoffHint": "The customer reads it when the bot hands over without words of its own. Up to {max} characters; empty uses the default phrase.",
+        "handoffPlaceholder": "I'm passing your question to our support team. The reply will come here, in this chat.",
+        "save": "Save bot settings",
+        "saved": "Bot settings saved."
+      }
     },
     "knowledge": {
       "title": "Knowledge base",
@@ -1155,7 +1174,19 @@
       "taskCanceled": "Task {number} closed: won't do",
       "topicChosen": "The customer chose the topic «{name}»",
       "topicSet": "Topic: {name}",
-      "topicRemoved": "Topic removed"
+      "topicRemoved": "Topic removed",
+      "botHandoff": "AI handed the conversation to people: {reason}",
+      "botReason": {
+        "customer_asked": "the customer asked for a person",
+        "topic": "the topic is left to people",
+        "unknown": "it did not know the answer",
+        "rules": "the bot's rules say so",
+        "checks_failed": "the answer failed the checks",
+        "ai_unavailable": "AI is unavailable",
+        "limit": "the bot replied as often as it may",
+        "task_created": "a task for IT was created",
+        "task_incomplete": "not enough details for a task"
+      }
     },
     "card": {
       "label": "Customer card",

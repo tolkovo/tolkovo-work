@@ -27,7 +27,7 @@ const (
 // and go through Assign.
 var transitions = map[Status][]Status{
 	StatusNew:      {StatusBot, StatusQueued},
-	StatusBot:      {StatusQueued, StatusResolved},
+	StatusBot:      {StatusQueued, StatusAssigned, StatusResolved},
 	StatusQueued:   {StatusAssigned},
 	StatusAssigned: {StatusQueued, StatusPending, StatusResolved},
 	StatusPending:  {StatusAssigned, StatusResolved},
@@ -111,16 +111,17 @@ func reopenClosed(cur state, to Status) (state, error) {
 // releasing it to the queue when assignee is nil.
 //
 //   - queued or resolved + someone → assigned (take, reopen);
+//   - bot + someone → assigned: an operator takes it from the AI bot (ADR-0018);
 //   - assigned or pending + someone → same status, new assignee (transfer);
-//   - assigned + nobody → queued (release);
-//   - new, bot and closed cannot be assigned: the bot or the router decides
-//     first, and a closed conversation is final.
+//   - assigned or bot + nobody → queued (release, a handoff by hand);
+//   - new and closed cannot be assigned: the router decides first, and a
+//     closed conversation is final.
 func assign(cur state, assignee *uuid.UUID, now time.Time) (state, error) {
 	if assignee == nil {
 		return transition(cur, StatusQueued, now)
 	}
 	switch cur.Status {
-	case StatusQueued, StatusResolved:
+	case StatusQueued, StatusResolved, StatusBot:
 		next := cur
 		next.AssigneeID = assignee
 		return transition(next, StatusAssigned, now)

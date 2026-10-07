@@ -108,3 +108,12 @@ SELECT ct.name AS contact_name, ct.locale AS contact_locale,
 FROM conversations c
 JOIN contacts ct ON ct.workspace_id = c.workspace_id AND ct.id = c.contact_id
 WHERE c.workspace_id = @workspace_id AND c.id = @id;
+
+-- name: RecentCustomerTexts :many
+-- What the customer wrote, the newest first: what a draft of a task or an
+-- issue is written from.
+SELECT body FROM messages
+WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id
+  AND sender_type = 'contact' AND kind = 'text' AND body <> '' AND deleted_at IS NULL
+ORDER BY id DESC
+LIMIT @lim;

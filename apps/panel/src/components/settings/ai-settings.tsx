@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
 import { FormMessage, TextField } from "../form/fields";
+import { AIBotSettings } from "./ai-bot-settings";
 
 const PROVIDERS: readonly AIProvider[] = ["anthropic", "openai", "deepseek", "openai_compatible"];
 
@@ -54,8 +55,7 @@ function draftFrom(s: AISettings): Draft {
 
 /**
  * «ИИ → Провайдер, ключ и расход» (docs/07 §7, docs/03 §8.1): the workspace's own key to one
- * model, its prices and the monthly budget. The bot, handoff and the copilot get their own
- * subsections in phase 2.
+ * model, its prices and the monthly budget, then where the AI bot answers customers (ADR-0018).
  */
 export function AISettingsPage() {
   const { t } = useTranslation();
@@ -84,6 +84,7 @@ export function AISettingsPage() {
         <>
           <Spending settings={query.data} />
           <AIForm settings={query.data} />
+          <AIBotSettings aiEnabled={query.data.enabled} />
         </>
       )}
     </section>

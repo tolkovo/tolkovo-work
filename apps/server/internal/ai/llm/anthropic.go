@@ -21,9 +21,10 @@ type anthropic struct {
 }
 
 type anthropicRequest struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	System      string             `json:"system,omitempty"`
+	Model     string `json:"model"`
+	MaxTokens int    `json:"max_tokens"`
+	// System is the prompt as a string, or as one cached text block.
+	System      any                `json:"system,omitempty"`
 	Messages    []anthropicMessage `json:"messages"`
 	Temperature *float64           `json:"temperature,omitempty"`
 	Tools       []anthropicTool    `json:"tools,omitempty"`
@@ -67,7 +68,7 @@ func (a *anthropic) Name() string { return Anthropic }
 
 func (a *anthropic) Chat(ctx context.Context, req Request) (Response, error) {
 	body := anthropicRequest{
-		Model: req.Model, MaxTokens: req.MaxTokens, System: req.System, Temperature: req.Temperature,
+		Model: req.Model, MaxTokens: req.MaxTokens, System: anthropicSystem(req), Temperature: req.Temperature,
 		Messages: make([]anthropicMessage, 0, len(req.Messages)),
 	}
 	for _, m := range req.Messages {
@@ -112,4 +113,14 @@ func (a *anthropic) Chat(ctx context.Context, req Request) (Response, error) {
 		return resp, &Error{Kind: ErrBadOutput}
 	}
 	return resp, nil
+}
+
+// anthropicSystem marks a system prompt to cache as a breakpoint of
+// Anthropic's prompt cache; a prompt shorter than the model's minimum is
+// simply not cached.
+func anthropicSystem(req Request) any {
+	if !req.CacheSystem || req.System == "" {
+		return req.System
+	}
+	return []map[string]any{{"type": "text", "text": req.System, "cache_control": map[string]string{"type": "ephemeral"}}}
 }

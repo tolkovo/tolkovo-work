@@ -302,7 +302,7 @@
           "properties": {
             "task_id": { "$ref": "#/$defs/uuid" },
             "assignee_id": { "$ref": "#/$defs/nullableUuid" },
-            "actor_id": { "$ref": "#/$defs/uuid" },
+            "actor_id": { "$ref": "#/$defs/nullableUuid", "description": "Who made the change; null for the AI bot, which creates tasks it collected (ADR-0018)." },
             "assigned": { "type": "boolean", "description": "This change gave the task to assignee_id: their panel may tell them, unless they did it themselves (actor_id)." }
           }
         }

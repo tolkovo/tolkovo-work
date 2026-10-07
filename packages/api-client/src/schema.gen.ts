@@ -1126,6 +1126,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the AI bot answers customers
+         * @description The bot answers new conversations of `channel_ids` while AI is on (ADR-0018);
+         *     conversations of `topics_off` go to people at once. Requires `ai.manage`.
+         */
+        get: operations["getAIBot"];
+        /**
+         * Turn the AI bot on for channels and set how strict it is
+         * @description Replaces the settings. Only conversations started after the change go to the bot. A
+         *     channel or a topic that is not the workspace's is `400`. Requires `ai.manage`.
+         */
+        put: operations["setAIBot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/kb/articles": {
         parameters: {
             query?: never;
@@ -3095,6 +3121,19 @@ export interface components {
             /** Format: int64 */
             monthly_budget_micros: number | null;
         };
+        AIBot: {
+            /** @description The channels whose new conversations the bot answers. */
+            channel_ids: string[];
+            /** @description Topics left to people; every other topic answers with the bot. */
+            topics_off: string[];
+            /**
+             * @description How sure the model must be of an answer from the knowledge base, in percent;
+             *     below it the bot hands over. 75 by default.
+             */
+            min_confidence: number;
+            /** @description What the customer reads on a handoff without the bot's own words; empty is the built-in phrase. */
+            handoff_message: string;
+        };
         AICheck: {
             /** @description The model that answered */
             model: string;
@@ -3320,10 +3359,11 @@ export interface components {
              *     conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
              *     `topic_changed`: the topic was set, changed or removed (`topic_id`,
              *     `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
-             *     current status.
+             *     current status. `bot_handoff`: the AI bot handed the conversation to people
+             *     (`bot → queued`) for `reason` (ADR-0018).
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed" | "bot_handoff";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
@@ -3333,6 +3373,16 @@ export interface components {
             topic_id?: string | null;
             previous_topic_id?: string | null;
             by_customer?: boolean;
+            /**
+             * @description Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
+             *     the topic is left to people; the bot did not know the answer or was not sure; the
+             *     bot's rules send such questions to people; the answer failed the checks and was not
+             *     sent; AI is off, its budget is spent or the model failed; the bot replied as often
+             *     as it may; it created a task for the IT team (`task_created`); it collected details
+             *     for a task but could not create one (`task_incomplete`).
+             * @enum {string}
+             */
+            reason?: "customer_asked" | "topic" | "unknown" | "rules" | "checks_failed" | "ai_unavailable" | "limit" | "task_created" | "task_incomplete";
         };
         MessageEventIssue: {
             link_id: string;
@@ -3400,7 +3450,7 @@ export interface components {
             status: components["schemas"]["TaskStatus"];
             priority: components["schemas"]["TaskPriority"];
             assignee_id: string | null;
-            /** @description `null` when the author is no longer a member. */
+            /** @description `null` when the author is no longer a member, or the AI bot created the task from a conversation (ADR-0018). */
             created_by: string | null;
             /** Format: date-time */
             created_at: string;
@@ -6478,6 +6528,55 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getAIBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings of the bot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIBot"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAIBot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIBot"];
+            };
+        };
+        responses: {
+            /** @description The settings now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIBot"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listKBArticles: {
