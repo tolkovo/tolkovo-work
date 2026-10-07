@@ -75,6 +75,19 @@ func TestParseBotUpdate(t *testing.T) {
 	if _, err := ParseBotUpdate([]byte("{")); err == nil {
 		t.Fatal("broken JSON parsed")
 	}
+
+	// A press of a button in a private chat; in a group or by a bot it is skipped.
+	u, err := ParseBotUpdate([]byte(`{"update_id":2,"callback_query":{"id":"cb","from":{"id":70001,"is_bot":false,"first_name":"Пётр"},` +
+		`"message":{"message_id":91,"chat":{"id":70001,"type":"private"}},"data":"topic:x"}}`))
+	if err != nil || u.Callback == nil || u.Message != nil ||
+		*u.Callback != (Callback{ID: "cb", ChatID: 70001, MessageID: 91, From: Person{ID: 70001, FirstName: "Пётр"}, Data: "topic:x"}) {
+		t.Fatalf("callback: %+v %v", u.Callback, err)
+	}
+	u, _ = ParseBotUpdate([]byte(`{"update_id":3,"callback_query":{"id":"cb","from":{"id":70001,"is_bot":false,"first_name":"П"},` +
+		`"message":{"message_id":91,"chat":{"id":-100,"type":"supergroup"}},"data":"topic:x"}}`))
+	if u.Callback != nil {
+		t.Fatalf("group callback: %+v", u.Callback)
+	}
 }
 
 func TestBotAPI_GetUpdatesAndDownload(t *testing.T) {

@@ -215,9 +215,12 @@ func (s *Service) pollBot(ctx context.Context, workspaceID, channelID uuid.UUID,
 		}
 		for _, u := range ups {
 			if u.Message != nil {
-				if err := s.deliverRetrying(ctx, workspaceID, channelID, *u.Message, fetch, BotFileLimit); err != nil {
+				if err := s.deliverRetrying(ctx, workspaceID, channelID, *u.Message, fetch, BotFileLimit, sec.Token); err != nil {
 					return err
 				}
+			}
+			if u.Callback != nil {
+				s.chooseTopic(ctx, workspaceID, channelID, sec.Token, *u.Callback)
 			}
 			offset = u.ID + 1
 		}
@@ -249,7 +252,7 @@ func (s *Service) listenUser(ctx context.Context, workspaceID, channelID uuid.UU
 			if s.isOutgoingEcho(ctx, channelID, m) {
 				return nil
 			}
-			return s.deliverRetrying(ctx, workspaceID, channelID, m, fetchFunc(fetch), UserFileLimit)
+			return s.deliverRetrying(ctx, workspaceID, channelID, m, fetchFunc(fetch), UserFileLimit, "")
 		},
 		Read: func(ctx context.Context, chatID, maxID int64) error {
 			return s.opts.Inbox.MarkContactRead(ctx, workspaceID, channelID, threadOf(chatID), maxID)

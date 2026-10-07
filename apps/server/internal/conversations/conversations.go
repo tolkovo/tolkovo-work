@@ -41,6 +41,8 @@ type Conversation struct {
 	// no system events): the inbox preview. Nil until there is one.
 	LastMessage *Preview
 	TagIDs      []uuid.UUID // in the order they were added
+	// TopicID is what the question is about (docs/02 §7.3); nil: none yet.
+	TopicID *uuid.UUID
 	// LastReadMessageID and UnreadCount are the viewer's: read marks are per
 	// operator. UnreadCount counts customer messages after the mark, up to
 	// MaxUnreadCount.
@@ -89,8 +91,12 @@ type ListFilter struct {
 	AssigneeID *uuid.UUID
 	// ContactID restricts the list to one contact's conversations.
 	ContactID *uuid.UUID
-	Cursor    string
-	Limit     int
+	// ByTopic restricts the list to TopicID, or to conversations without a
+	// topic when TopicID is nil.
+	ByTopic bool
+	TopicID *uuid.UUID
+	Cursor  string
+	Limit   int
 }
 
 // CreateConversation starts a conversation with an existing contact. It
@@ -178,7 +184,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		rows, err = q.ListConversations(ctx, store.ListConversationsParams{
 			UserID: f.ViewerID, WorkspaceID: workspaceID, Statuses: statuses,
 			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID, ContactID: f.ContactID,
-			BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
+			ByTopic: f.ByTopic, TopicID: f.TopicID, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
 		})
 		return err
 	})
@@ -421,6 +427,6 @@ func conversationFrom(c store.Conversation, contactName string) Conversation {
 		ChannelID: c.ChannelID, Status: Status(c.Status), Priority: int(c.Priority), LineLevel: int(c.LineLevel),
 		AssigneeID: c.AssigneeID, Subject: c.Subject, FirstResponseAt: c.FirstResponseAt,
 		LastMessageAt: c.LastMessageAt, ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix,
-		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Rating: ratingFrom(c),
+		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Rating: ratingFrom(c), TopicID: c.TopicID,
 	}
 }

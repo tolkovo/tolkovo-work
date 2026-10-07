@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -43,6 +44,21 @@ func (s *server) writeTaskError(w http.ResponseWriter, r *http.Request, err erro
 			return true
 		}
 	}
+	var rejected *tasks.FileError
+	if errors.As(err, &rejected) {
+		writeProblem(w, r, Problem{
+			Status: http.StatusUnprocessableEntity, Code: "file_rejected", Title: "Unprocessable Content",
+			Detail: rejected.FileName + ": " + rejected.Reason,
+		})
+		return true
+	}
+	if errors.Is(err, tasks.ErrScanUnavailable) {
+		writeProblem(w, r, Problem{
+			Status: http.StatusServiceUnavailable, Code: "scan_unavailable", Title: "Service Unavailable",
+			Detail: "the antivirus did not answer; send the file again later",
+		})
+		return true
+	}
 	if errors.Is(err, tasks.ErrInvalid) {
 		writeProblem(w, r, Problem{Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err)})
 		return true
@@ -50,10 +66,16 @@ func (s *server) writeTaskError(w http.ResponseWriter, r *http.Request, err erro
 	return false
 }
 
-// conversationForTasks checks perm and that the caller sees the conversation.
+// conversationForTasks checks perm and that the caller sees the
+// conversation. A personal access token, which has no conversation scope,
+// is refused here.
 func (s *server) conversationForTasks(w http.ResponseWriter, r *http.Request, id uuid.UUID, perm authz.Permission) (authz.Principal, bool) {
 	p, ok := s.requirePrincipal(w, r, perm)
 	if !ok {
+		return p, false
+	}
+	if !p.Can(authz.ConversationsView) {
+		s.writeError(w, r, authz.ErrForbidden)
 		return p, false
 	}
 	if _, err := s.conversations.Conversation(r.Context(), p.WorkspaceID, p.UserID, id); err != nil {
@@ -143,6 +165,12 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 		}
 		f.QueueID = &id
 	}
+	byTopic, topic, err := topicFilter(deref(params.Topic))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	f.TopicID, f.NoTopic = topic, byTopic && topic == nil
 	if c := deref(params.Cursor); c != "" {
 		n, err := strconv.ParseInt(c, 10, 64)
 		if err != nil || n <= 0 {
@@ -187,7 +215,8 @@ func (s *server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := tasks.NewTask{
-		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, AssigneeID: req.AssigneeId, ConversationID: req.ConversationId,
+		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
+		ConversationID: req.ConversationId, FileIDs: deref(req.FileIds),
 	}
 	if req.Priority != nil {
 		in.Priority = string(*req.Priority)
@@ -235,7 +264,8 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 		return
 	}
 	var req oapi.TaskUpdate
-	if err := decodeJSON(w, r, &req); err != nil {
+	// A missing topic_id must not clear the topic of a client that does not know it.
+	if err := decodeRequired(w, r, &req, "topic_id"); err != nil {
 		s.writeError(w, r, err)
 		return
 	}
@@ -244,7 +274,7 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 	}
 	t, err := s.tasks.Update(r.Context(), p.WorkspaceID, p.UserID, id, tasks.Update{
 		Version: req.Version, Title: req.Title, Body: req.Body, Status: string(req.Status), Priority: string(req.Priority),
-		QueueID: req.QueueId, AssigneeID: req.AssigneeId,
+		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -295,7 +325,7 @@ func (s *server) CommentTask(w http.ResponseWriter, r *http.Request, id oapi.Id)
 		s.writeError(w, r, err)
 		return
 	}
-	a, err := s.tasks.Comment(r.Context(), p.WorkspaceID, p.UserID, id, req.Body)
+	a, err := s.tasks.Comment(r.Context(), p.WorkspaceID, p.UserID, id, req.Body, deref(req.FileIds))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -442,25 +472,32 @@ func (s *server) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
 // activeMember refuses an assignee who is not an active member of the
 // caller's workspace; nil passes.
 func (s *server) activeMember(w http.ResponseWriter, r *http.Request, p authz.Principal, userID *uuid.UUID) bool {
-	if userID == nil {
-		return true
-	}
-	_, err := s.tenancy.Membership(r.Context(), p.WorkspaceID, *userID)
-	if errors.Is(err, tenancy.ErrNotFound) {
-		err = tasks.ErrMember
-	}
-	if err != nil {
+	if err := s.checkMember(r.Context(), p.WorkspaceID, userID); err != nil {
 		s.writeError(w, r, err)
 		return false
 	}
 	return true
 }
 
+// checkMember is nil for no member or an active one, tasks.ErrMember for
+// anyone else.
+func (s *server) checkMember(ctx context.Context, workspaceID uuid.UUID, userID *uuid.UUID) error {
+	if userID == nil {
+		return nil
+	}
+	_, err := s.tenancy.Membership(ctx, workspaceID, *userID)
+	if errors.Is(err, tenancy.ErrNotFound) {
+		return tasks.ErrMember
+	}
+	return err
+}
+
 func taskBody(t tasks.Task) oapi.Task {
 	return oapi.Task{
-		Id: t.ID, Number: t.Number, QueueId: t.QueueID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
+		Id: t.ID, Number: t.Number, QueueId: t.QueueID, TopicId: t.TopicID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, Version: t.Version, ConversationIds: nonNil(t.ConversationIDs),
+		Files: taskFileList(t.Files),
 	}
 }
 
@@ -469,8 +506,15 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 	if a.Body != "" {
 		out.Body = &a.Body
 	}
-	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" {
+	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" {
 		out.From, out.To = &a.From, &a.To
+	}
+	if a.Kind == "comment" {
+		files := taskFileList(a.Files)
+		out.Files = &files
+	}
+	if a.Kind == "files" {
+		out.FilesAdded, out.FilesRemoved = &a.FilesAdded, &a.FilesRemoved
 	}
 	if len(a.Fields) > 0 {
 		fields := make([]oapi.TaskActivityFields, len(a.Fields))

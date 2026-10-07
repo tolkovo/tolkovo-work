@@ -52,7 +52,11 @@ export interface State {
   /** Someone on the team takes conversations now; without them the UI offers the offline form. */
   operatorsOnline: boolean;
   /** The visitor's newest conversation; resolved — the UI asks for a rating. Null before the first message. */
-  conversation: { id: string; resolved: boolean; rating: ConversationRating | null } | null;
+  conversation: { id: string; resolved: boolean; rating: ConversationRating | null; topicId: string | null } | null;
+  /** Topics of questions to pick from before writing (docs/02 §7.3); empty asks none. */
+  topics: { id: string; name: string }[];
+  /** The topic picked before the conversation has one: it goes with the next message. */
+  topic: string | null;
 }
 
 const TYPING_MS = 6_000;
@@ -160,6 +164,8 @@ export class Controller {
       intro: o.prechat ?? false,
       operatorsOnline: true,
       conversation: null,
+      topics: [],
+      topic: null,
     };
     this.realtime = new Realtime(
       this.api.realtimeUrl(),
@@ -265,7 +271,7 @@ export class Controller {
     const intro = !!this.o.prechat && session.identity === "none" && this.storageGet(this.introKey) !== mark(session.session_token);
     this.checkedAt = Date.now();
     this.analytics = session.analytics;
-    this.set({ channelName: session.channel_name, intro, operatorsOnline: session.operators_online });
+    this.set({ channelName: session.channel_name, intro, operatorsOnline: session.operators_online, topics: session.topics });
   }
 
   /** On opening the window a while after the start: is someone there now? */
@@ -435,7 +441,7 @@ export class Controller {
       more = page.more;
       this.cursor = page.cursor;
       const c = page.conversation;
-      this.set({ conversation: c ? { id: c.id, resolved: c.status === "resolved", rating: c.rating } : null });
+      this.set({ conversation: c ? { id: c.id, resolved: c.status === "resolved", rating: c.rating, topicId: c.topic_id } : null });
       this.merge(page.items.map(toChat));
     }
     this.sendReceipts();
@@ -506,7 +512,7 @@ export class Controller {
         }
         ids.push(f.uploadId);
       }
-      return this.api.send(token, key, p.body, ids);
+      return this.api.send(token, key, p.body, ids, this.state.conversation?.topicId ? null : this.state.topic);
     };
     let sent: WidgetMessage;
     try {
@@ -525,14 +531,37 @@ export class Controller {
     const firstMessage = !this.state.messages.some((m) => m.sender === "contact");
     // A new conversation: the first one, or one after the last was closed. A resolved one reopens.
     const started = this.state.conversation?.id !== sent.conversation_id;
+    const topicId = (started ? null : this.state.conversation!.topicId) ?? this.state.topic;
     this.set({
       pending: this.state.pending.filter((x) => x.key !== key),
-      conversation: started ? { id: sent.conversation_id, resolved: false, rating: null } : { ...this.state.conversation!, resolved: false },
+      conversation: started
+        ? { id: sent.conversation_id, resolved: false, rating: null, topicId }
+        : { ...this.state.conversation!, resolved: false, topicId },
+      topic: null,
     });
     this.merge([toChat(sent)]);
     if (started) this.goal("chatStarted", { channel: "widget", page: pagePath() });
     // The session has a contact now: its connection must follow it at once.
     if (firstMessage) this.realtime.connect(this.token!);
+  }
+
+  /**
+   * Picks the topic of the question: for the open conversation at once, otherwise for the next
+   * message. Throws when the server did not take it.
+   */
+  async chooseTopic(id: string): Promise<void> {
+    const c = this.state.conversation;
+    if (!c || c.resolved || !this.token) {
+      this.set({ topic: this.state.topic === id ? null : id });
+      return;
+    }
+    try {
+      await this.api.topic(this.token, { conversation_id: c.id, topic_id: id });
+    } catch (e) {
+      if (isSessionEnded(e)) void this.restart();
+      throw e;
+    }
+    if (this.state.conversation?.id === c.id) this.set({ conversation: { ...this.state.conversation, topicId: id } });
   }
 
   /** Rates the resolved conversation. Throws when the server did not take it; a conversation that reopened stops asking. */

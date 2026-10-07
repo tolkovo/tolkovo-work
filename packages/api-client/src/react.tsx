@@ -11,7 +11,10 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import {
+  addTaskFiles,
   commentTask,
+  fetchTaskFileLink,
+  removeTaskFile,
   createTask,
   createTaskQueue,
   deleteTask,
@@ -43,6 +46,14 @@ import {
   type TaskUpdate,
 } from "./tasks";
 import {
+  createAccessToken,
+  fetchAccessTokens,
+  fetchMyAccessTokens,
+  revokeAccessToken,
+  revokeMyAccessToken,
+  type AccessTokenCreate,
+} from "./tokens";
+import {
   acceptInvitation,
   changePassword,
   connectAppChannel,
@@ -51,6 +62,8 @@ import {
   createIngestKey,
   createInvitation,
   createTag,
+  createTopic,
+  deleteTopic,
   disconnectChannel,
   fetchAttachmentLink,
   fetchRegistrationOpen,
@@ -86,6 +99,7 @@ import {
   fetchMyWorkspaces,
   fetchSession,
   fetchTags,
+  fetchTopics,
   forgotPassword,
   hasPermission,
   login,
@@ -133,6 +147,9 @@ import {
   type CreateInvitationRequest,
   type CreateIssueRequest,
   type CreateTagRequest,
+  type TopicInput,
+  reorderTopics,
+  updateTopic,
   type LoginRequest,
   type RegisterRequest,
   type ResetPasswordRequest,
@@ -165,6 +182,8 @@ export const queryKeys = {
   members: ["members"] as const,
   invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
+  myAccessTokens: ["me", "access-tokens"] as const,
+  accessTokens: ["access-tokens"] as const,
   myNotifications: ["me", "notifications"] as const,
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
@@ -204,6 +223,7 @@ export const queryKeys = {
   myTelegram: ["me", "telegram"] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
+  topics: ["topics"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
 };
 
@@ -362,6 +382,45 @@ export function useRevokeOtherSessions() {
     mutationFn: () => revokeOtherSessions(client),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.mySessions }),
   });
+}
+
+/** The user's personal access tokens (ADR-0016). */
+export function useMyAccessTokens() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.myAccessTokens, queryFn: () => fetchMyAccessTokens(client) });
+}
+
+/** Every member's tokens, for admins; `enabled` false skips the request. */
+export function useAccessTokens(enabled = true) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.accessTokens, queryFn: () => fetchAccessTokens(client), enabled });
+}
+
+function useInvalidateTokens() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.myAccessTokens }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.accessTokens }),
+    ]);
+}
+
+export function useCreateAccessToken() {
+  const client = useApiClient();
+  const invalidate = useInvalidateTokens();
+  return useMutation({ mutationFn: (body: AccessTokenCreate) => createAccessToken(client, body), onSettled: invalidate });
+}
+
+export function useRevokeMyAccessToken() {
+  const client = useApiClient();
+  const invalidate = useInvalidateTokens();
+  return useMutation({ mutationFn: (id: string) => revokeMyAccessToken(client, id), onSettled: invalidate });
+}
+
+export function useRevokeAccessToken() {
+  const client = useApiClient();
+  const invalidate = useInvalidateTokens();
+  return useMutation({ mutationFn: (id: string) => revokeAccessToken(client, id), onSettled: invalidate });
 }
 
 /** Asks for a new email confirmation link for the signed-in user. */
@@ -725,6 +784,28 @@ export function useCreateTag() {
   });
 }
 
+/** The topics of questions in the order of the buttons; at most 20. */
+export function useTopics() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.topics, queryFn: () => fetchTopics(client), staleTime: 5 * 60_000 });
+}
+
+/** Creates, changes, deletes or reorders topics; the list is read again after each. */
+export function useTopicMutations() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const onSettled = () => queryClient.invalidateQueries({ queryKey: queryKeys.topics });
+  return {
+    create: useMutation({ mutationFn: (body: TopicInput) => createTopic(client, body), onSettled }),
+    update: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: TopicInput }) => updateTopic(client, id, body),
+      onSettled,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => deleteTopic(client, id), onSettled }),
+    reorder: useMutation({ mutationFn: (ids: string[]) => reorderTopics(client, ids), onSettled }),
+  };
+}
+
 export function useContact(id: string) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.contact(id), queryFn: () => fetchContact(client, id) });
@@ -912,7 +993,29 @@ export function useDeleteTask() {
 }
 
 export function useCommentTask(id: string) {
-  return useTaskMutation((client, body: string) => commentTask(client, id, body));
+  return useTaskMutation((client, { body, fileIds = [] }: { body: string; fileIds?: string[] }) => commentTask(client, id, body, fileIds));
+}
+
+export function useAddTaskFiles(id: string) {
+  return useTaskMutation((client, fileIds: string[]) => addTaskFiles(client, id, fileIds));
+}
+
+export function useRemoveTaskFile(id: string) {
+  return useTaskMutation((client, fileId: string) => removeTaskFile(client, id, fileId));
+}
+
+/** The signed link of a file of a task, for showing a picture; links live 15 minutes. */
+export function useTaskFileLink(id: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    // Outside "tasks": changing a task must not sign every link again.
+    queryKey: ["task-file-link", id] as const,
+    queryFn: () => fetchTaskFileLink(client, id),
+    enabled,
+    staleTime: 10 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+  });
 }
 
 export function useLinkTaskConversation() {

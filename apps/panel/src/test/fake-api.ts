@@ -84,6 +84,15 @@ export function problem(status: number, code: string, headers: Record<string, st
   return json(status, { type: "about:blank", title: "Error", status, code }, headers);
 }
 
+/** A JSON body as an object; a file upload stays its text. */
+function parseBody(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
 /**
  * A fake Tolkovo API: "METHOD /path" (path after /api/v1) → handler. Unknown routes fail the
  * test loudly. Every request is recorded, with its body read once, for assertions.
@@ -106,6 +115,7 @@ export function fakeApi(
     "GET /routing": () => json(200, { mode: "manual" }),
     "GET /ai/settings": () => json(200, aiSettingsOff),
     "GET /tags": () => json(200, { items: [] }),
+    "GET /topics": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {
@@ -124,7 +134,7 @@ export function fakeApi(
       method: request.method,
       path,
       headers: request.headers,
-      body: text ? (JSON.parse(text) as unknown) : undefined,
+      body: text ? parseBody(text) : undefined,
     });
     const handler = table[`${request.method} ${path}`];
     if (!handler) throw new Error(`fakeApi: no handler for ${request.method} ${path}`);

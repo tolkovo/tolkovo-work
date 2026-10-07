@@ -120,7 +120,11 @@ type Options struct {
 	Drafter Drafter
 	// Notifier sends notices outside the panel; nil sends none.
 	Notifier Notifier
-	Log      *slog.Logger
+	// Files keeps the files of tasks; nil refuses files.
+	Files Storage
+	// Scanner checks files for viruses; nil checks their type only.
+	Scanner Scanner
+	Log     *slog.Logger
 }
 
 // Service is the facade of the module.
@@ -200,6 +204,8 @@ func dbError(err error, what string) error {
 			return fmt.Errorf("%w: text holds a character that cannot be stored", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "queue"):
 			return fmt.Errorf("%w: unknown queue", ErrInvalid)
+		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "topic"):
+			return fmt.Errorf("%w: unknown topic", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "conversation"):
 			return ErrNotFound
 		}

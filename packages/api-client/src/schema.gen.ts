@@ -361,6 +361,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The current user's personal access tokens in this workspace
+         * @description Live tokens, newest first. The secrets are never returned again.
+         */
+        get: operations["listMyAccessTokens"];
+        put?: never;
+        /**
+         * Issue a personal access token
+         * @description A token for a script or an AI agent (MCP) that works with tasks on the caller's
+         *     behalf (ADR-0016). `tasks:write` includes `tasks:read`. The whole token is in
+         *     `secret` of this answer only; the server keeps its hash. At most 20 live tokens per
+         *     member (`409 too_many_tokens`). Any member may issue tokens; a token cannot issue
+         *     tokens.
+         */
+        post: operations["createAccessToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/access-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of the current user's tokens
+         * @description It stops working at once. A token of someone else answers `404`.
+         */
+        delete: operations["revokeMyAccessToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/notifications": {
         parameters: {
             query?: never;
@@ -516,6 +566,48 @@ export interface paths {
          * @description Requires `workspace.manage` (owner, admin).
          */
         patch: operations["updateWorkspace"];
+        trace?: never;
+    };
+    "/access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every member's personal access tokens
+         * @description Live tokens of the workspace, newest first, with their members. Requires `members.manage`.
+         */
+        get: operations["listAccessTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke any member's token
+         * @description It stops working at once. Requires `members.manage`.
+         */
+        delete: operations["revokeAccessToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/members": {
@@ -1479,6 +1571,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/widget/topic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The visitor picks the topic of their open conversation
+         * @description For a visitor who wrote before picking a topic (`WidgetSession.topics`; a topic picked
+         *     before the first message goes with it, `WidgetMessageRequest.topic_id`). The
+         *     conversation must be open (`conversation` of `GET /widget/messages`); picking again
+         *     changes the topic. Rate: 10 a minute per session.
+         */
+        post: operations["chooseWidgetTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/widget/rating": {
         parameters: {
             query?: never;
@@ -1730,6 +1845,30 @@ export interface paths {
          *     At most 20 tags; every id must be a tag of the workspace (`GET /tags`).
          */
         put: operations["setConversationTags"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/topic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set, change or remove the topic of the conversation
+         * @description Requires `conversations.tag`; works in any visible conversation, closed ones too. The
+         *     conversation takes the topic's priority (none: 0) and stays with whoever has it; a
+         *     queued one is distributed again. The feed gets a line.
+         */
+        put: operations["setConversationTopic"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2028,6 +2167,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The topics of questions, in the order of the buttons
+         * @description Requires `conversations.view` or `tasks.view`. At most 20, so there are no pages. The
+         *     customer picks a topic before writing: the Telegram bot shows a button per topic after
+         *     the first message of a conversation, the widget shows them above the message field. An
+         *     operator can set or change it (`PUT /conversations/{id}/topic`).
+         */
+        get: operations["listTopics"];
+        put?: never;
+        /**
+         * Add a topic after the others
+         * @description Requires `routing.manage` (owner, admin): a topic decides who gets its conversations
+         *     and how soon. Names are unique without regard to case (`409 topic_exists`).
+         */
+        post: operations["createTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/topics/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put the topics in a new order
+         * @description Requires `routing.manage`. `ids` names every topic once.
+         */
+        put: operations["reorderTopics"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/topics/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a topic
+         * @description Requires `routing.manage`. Conversations of the topic keep the priority they have;
+         *     new ones get the new one. Changed members apply to the queue at once.
+         */
+        put: operations["updateTopic"];
+        post?: never;
+        /**
+         * Delete a topic
+         * @description Requires `routing.manage`. Its conversations and tasks are left without a topic.
+         */
+        delete: operations["deleteTopic"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contacts": {
         parameters: {
             query?: never;
@@ -2228,6 +2442,128 @@ export interface paths {
          * @description The conversation stops waiting for it. Requires `tasks.edit`.
          */
         delete: operations["unlinkTaskConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The MCP server of the tasks section
+         * @description Model Context Protocol over Streamable HTTP (protocol 2025-06-18 and later), without
+         *     sessions and without server-sent events: one JSON-RPC message per request, answered
+         *     with one JSON message, or `202` for a notification or a response. An AI agent
+         *     connects with a personal access token, e.g.
+         *     `claude mcp add --transport http tolkovo https://<server>/api/v1/mcp --header
+         *     "Authorization: Bearer tk_pat_…"`. Tools: `list_tasks`, `get_task`, `list_queues`,
+         *     `read_file` (`tasks:read`), `create_task`, `update_task`, `attach_file`, `comment_task`
+         *     (`tasks:write`); a tool the token or the role cannot use is not listed. Requests are up
+         *     to 16 MB (`attach_file` carries a file of up to 10 MB in base64). `GET` answers `405`: the server
+         *     sends nothing on its own.
+         */
+        post: operations["mcp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a file for a task and get a signed upload request
+         * @description Requires `tasks.edit`. Upload the file with exactly the returned method, URL and
+         *     headers, then send its id in `file_ids` of `POST /tasks`, `POST /tasks/{id}/activity`
+         *     or `POST /tasks/{id}/files`. Only the member who registered a file can send it. The
+         *     upload lives an hour; a file no task took is deleted after that. Up to 25 MB.
+         */
+        post: operations["createTaskFileUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-files/{id}/download-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A short-lived signed download request for a file of a task
+         * @description Requires `tasks.view`. A file of no task (not sent, removed, its task deleted) answers `404`.
+         */
+        get: operations["getTaskFileDownloadLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add uploaded files to a task's description
+         * @description Requires `tasks.edit`. Each file is checked (whole, its content fits its type, and
+         *     clean when the server has ClamAV). A line `files` goes to the feed. A task holds at
+         *     most 100 files.
+         */
+        post: operations["addTaskFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take a file out of a task's description
+         * @description Requires `tasks.edit`. Files of comments stay, as comments do. The file is deleted
+         *     from storage shortly after. A line `files` goes to the feed.
+         */
+        delete: operations["removeTaskFile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2655,6 +2991,7 @@ export interface components {
              */
             number: number;
             status: components["schemas"]["ConversationStatus"];
+            /** @description Higher is taken from the queue first; a topic sets it (`Topic.priority`). */
             priority: number;
             line_level: number;
             contact: components["schemas"]["ContactRef"];
@@ -2688,6 +3025,8 @@ export interface components {
             last_message: components["schemas"]["ConversationPreview"] | null;
             /** @description Tags in the order they were added; names and colors are in `GET /tags`. */
             tag_ids: string[];
+            /** @description What the question is about (`GET /topics`); `null` until the customer or an operator picks one. */
+            topic_id: string | null;
             /** @description The caller's read mark; `null` when they have not read the conversation. */
             last_read_message_id: string | null;
             /** @description Customer messages after the caller's read mark, counted up to 100. */
@@ -2850,15 +3189,21 @@ export interface components {
              *     reopened one put it to wait for the fix again. `task_*`: the same for a task of the
              *     tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
              *     conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
+             *     `topic_changed`: the topic was set, changed or removed (`topic_id`,
+             *     `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
+             *     current status.
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
             previous_assignee_id: string | null;
             issue?: components["schemas"]["MessageEventIssue"];
             task?: components["schemas"]["MessageEventTask"];
+            topic_id?: string | null;
+            previous_topic_id?: string | null;
+            by_customer?: boolean;
         };
         MessageEventIssue: {
             link_id: string;
@@ -2919,6 +3264,8 @@ export interface components {
             /** Format: int64 */
             number: number;
             queue_id: string | null;
+            /** @description The topic of questions (`GET /topics`); a task from a conversation takes the conversation's. */
+            topic_id: string | null;
             title: string;
             body: string;
             status: components["schemas"]["TaskStatus"];
@@ -2936,6 +3283,33 @@ export interface components {
             version: number;
             /** @description Linked conversations, oldest link first; empty in lists. */
             conversation_ids: string[];
+            /** @description Files of the description, in the order they came; empty in lists. */
+            files: components["schemas"]["TaskFile"][];
+        };
+        TaskFile: {
+            id: string;
+            file_name: string;
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+            /** @description `null` when the member left. */
+            uploaded_by: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskFileUploadRequest: {
+            file_name: string;
+            /** @description Images (PNG, JPEG, GIF, WebP), PDF, text, CSV, JSON, ZIP, GZIP and Office documents. */
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+        };
+        TaskFileUpload: {
+            file: components["schemas"]["TaskFile"];
+            upload: components["schemas"]["SignedRequest"];
+        };
+        TaskFilesAdd: {
+            file_ids: string[];
         };
         TaskPage: {
             items: components["schemas"]["Task"][];
@@ -2944,11 +3318,16 @@ export interface components {
         TaskCreate: {
             title: string;
             body?: string;
+            /** @description Absent or `null` with a topic that has a task queue — that queue. */
             queue_id?: string | null;
+            /** @description Absent or `null` for a task from a conversation — the conversation's topic. */
+            topic_id?: string | null;
             priority?: components["schemas"]["TaskPriority"];
             assignee_id?: string | null;
             /** @description The conversation the task is created from. */
             conversation_id?: string | null;
+            /** @description Uploaded files (`POST /task-files`) for the description. */
+            file_ids?: string[];
         };
         TaskUpdate: {
             /** Format: int32 */
@@ -2958,6 +3337,7 @@ export interface components {
             status: components["schemas"]["TaskStatus"];
             priority: components["schemas"]["TaskPriority"];
             queue_id: string | null;
+            topic_id: string | null;
             assignee_id: string | null;
         };
         TaskSummary: {
@@ -2971,10 +3351,10 @@ export interface components {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "edited" | "linked" | "unlinked";
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files";
             /** @description The text of a comment. */
             body?: string;
-            /** @description The value a change moved from (a status, a priority, a member or queue id); empty for none. */
+            /** @description The value a change moved from (a status, a priority, a member, queue or topic id); empty for none. */
             from?: string;
             /** @description The value a change moved to; empty for none. */
             to?: string;
@@ -2982,6 +3362,12 @@ export interface components {
             fields?: ("title" | "body")[];
             /** @description On `linked` and `unlinked`. */
             conversation_id?: string;
+            /** @description The files of a comment. */
+            files?: components["schemas"]["TaskFile"][];
+            /** @description On `files` */
+            files_added?: number;
+            /** @description On `files` */
+            files_removed?: number;
             /** Format: date-time */
             created_at: string;
         };
@@ -2989,7 +3375,10 @@ export interface components {
             items: components["schemas"]["TaskActivity"][];
         };
         TaskComment: {
+            /** @description May be empty when the comment has files. */
             body: string;
+            /** @description Uploaded files (`POST /task-files`) for the comment. */
+            file_ids?: string[];
         };
         TaskLinkRequest: {
             conversation_id: string;
@@ -3086,6 +3475,46 @@ export interface components {
         SetTagsRequest: {
             tag_ids: string[];
             /** @description When set, must equal the current version, otherwise `409 version_conflict`. */
+            version?: number;
+        };
+        Topic: {
+            id: string;
+            name: string;
+            color: components["schemas"]["TagColor"];
+            /** @description The order of the buttons */
+            position: number;
+            /**
+             * @description `Conversation.priority` of its conversations: 0 normal, 1 raised, 2 high, 3 urgent.
+             *     Higher conversations are taken from the queue first.
+             */
+            priority: number;
+            /** @description The queue of tasks created from its conversations; `null` — none. */
+            task_queue_id: string | null;
+            /**
+             * @description Who gets its conversations from automatic distribution, by user id; empty — everyone.
+             *     Taking one from the queue by hand is open to all.
+             */
+            member_ids: string[];
+        };
+        TopicList: {
+            items: components["schemas"]["Topic"][];
+        };
+        TopicInput: {
+            name: string;
+            color?: components["schemas"]["TagColor"];
+            /** @default 0 */
+            priority: number;
+            task_queue_id?: string | null;
+            /** @description Active members of the workspace; absent or empty — everyone. */
+            member_ids?: string[];
+        };
+        TopicOrder: {
+            ids: string[];
+        };
+        SetTopicRequest: {
+            /** @description A topic of the workspace; `null` removes the topic. */
+            topic_id: string | null;
+            /** @description The conversation's `version` you read; a mismatch answers `409 version_conflict`. */
             version?: number;
         };
         MarkReadRequest: {
@@ -3457,6 +3886,52 @@ export interface components {
             /** @description Usually the app's name, e.g. "Зерно для Windows". */
             name: string;
         };
+        /**
+         * @description `tasks:read` reads tasks, comments and queues; `tasks:write` also creates, changes and comments tasks.
+         * @enum {string}
+         */
+        AccessTokenScope: "tasks:read" | "tasks:write";
+        AccessToken: {
+            id: string;
+            user_id: string;
+            /** @description The member the token acts as. */
+            user_name: string;
+            name: string;
+            scopes: components["schemas"]["AccessTokenScope"][];
+            /** @description The start of the token, e.g. "tk_pat_Xb3k9Q". */
+            prefix: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Null for a token without an end.
+             */
+            expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description Updated at most once a minute.
+             */
+            last_used_at: string | null;
+        };
+        AccessTokenList: {
+            items: components["schemas"]["AccessToken"][];
+        };
+        AccessTokenCreate: {
+            /** @description Where the token goes, e.g. "Claude Code, ноутбук". */
+            name: string;
+            scopes: components["schemas"]["AccessTokenScope"][];
+            /** @description Days the token lives, 30, 90 or 365; null for a token without an end. */
+            expires_in_days: number | null;
+        };
+        AccessTokenCreated: {
+            token: components["schemas"]["AccessToken"];
+            /** @description `tk_pat_…`, the whole token. Shown once; the server keeps only its hash. */
+            secret: string;
+        };
+        /** @description One JSON-RPC 2.0 message of the Model Context Protocol. */
+        McpMessage: {
+            [key: string]: unknown;
+        };
         IngestKey: {
             id: string;
             name: string;
@@ -3667,12 +4142,22 @@ export interface components {
         /** @description The visitor's newest conversation as they see it. */
         WidgetConversation: {
             id: string;
+            /** @description The topic picked; `null` — none yet. */
+            topic_id: string | null;
             /**
              * @description `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
              * @enum {string}
              */
             status: "open" | "resolved";
             rating: components["schemas"]["ConversationRating"] | null;
+        };
+        WidgetTopicRequest: {
+            conversation_id: string;
+            topic_id: string;
+        };
+        WidgetTopic: {
+            id: string;
+            name: string;
         };
         WidgetRatingRequest: {
             conversation_id: string;
@@ -3693,6 +4178,11 @@ export interface components {
             /** @description As in `WidgetAvailability`. */
             operators_online: boolean;
             analytics: components["schemas"]["WidgetAnalytics"];
+            /**
+             * @description Topics of questions in the order to show; empty — the widget asks none. The widget
+             *     offers them while the conversation has no topic.
+             */
+            topics: components["schemas"]["WidgetTopic"][];
         };
         WidgetMessages: {
             /** @description The visitor's newest conversation; `null` before the first message. */
@@ -3719,6 +4209,12 @@ export interface components {
         /** @description Text, files or both. */
         WidgetMessageRequest: {
             message?: string;
+            /**
+             * @description A topic of `WidgetSession.topics` the visitor picked before writing; it goes to the
+             *     conversation the message opens, or to an open one without a topic. An unknown id
+             *     is ignored.
+             */
+            topic_id?: string;
             /** @description Ids of `POST /widget/uploads`, in the order to show. */
             attachment_ids?: string[];
         };
@@ -3750,7 +4246,10 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description `unauthenticated` (no or expired session) or `invalid_credentials` (login). */
+        /**
+         * @description `unauthenticated` (no or expired session), `invalid_credentials` (login) or
+         *     `invalid_access_token` (a bad, expired or revoked personal access token).
+         */
         Unauthenticated: {
             headers: {
                 [name: string]: unknown;
@@ -3759,7 +4258,11 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description `forbidden` (missing permission), `csrf_failed`, `cross_origin` or `no_workspace`. */
+        /**
+         * @description `forbidden` (missing permission, also a scope a token lacks), `csrf_failed`,
+         *     `cross_origin`, `no_workspace` or `token_not_allowed` (the operation does not take a
+         *     personal access token).
+         */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -3779,6 +4282,15 @@ export interface components {
         };
         /** @description `link_invalid` (bad signature or parameters) or `link_expired`. */
         LinkRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `topic_exists`: a topic with this name exists. */
+        TopicExists: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4007,6 +4519,29 @@ export interface components {
          *     replaces the bot).
          */
         NotifyBotConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `file_rejected`: a file is not uploaded whole yet (`not_uploaded`, upload it and send
+         *     again), its content does not fit its type (`type_mismatch`) or the antivirus found a
+         *     virus (`infected`); `detail` names the file and the reason. A rejected file of the
+         *     last two kinds is deleted.
+         */
+        TaskFileRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `scan_unavailable`: the antivirus did not answer; send the file again later. */
+        TaskFilesUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4571,6 +5106,88 @@ export interface operations {
             };
         };
     };
+    listMyAccessTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createAccessToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenCreated"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `too_many_tokens`: revoke a token first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    revokeMyAccessToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMyNotificationSettings: {
         parameters: {
             query?: never;
@@ -4806,6 +5423,51 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listAccessTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeAccessToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listMembers: {
@@ -6299,6 +6961,41 @@ export interface operations {
             429: components["responses"]["WidgetLimited"];
         };
     };
+    chooseWidgetTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            /** @description `not_found`: no such open conversation in the visitor's chat, or no such topic. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
     rateWidgetConversation: {
         parameters: {
             query?: never;
@@ -6486,6 +7183,8 @@ export interface operations {
                 status?: components["schemas"]["ConversationStatus"][];
                 /** @description `me`, `none` (unassigned) or a member's user id. */
                 assignee?: string;
+                /** @description `none` (without a topic) or a topic id. */
+                topic?: string;
                 /**
                  * @description Only this contact's conversations: the history in the customer card. An unknown id
                  *     gives an empty page.
@@ -6789,6 +7488,37 @@ export interface operations {
         };
         responses: {
             /** @description The conversation with its new tags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    setConversationTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation with its new topic. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7163,6 +7893,137 @@ export interface operations {
             };
         };
     };
+    listTopics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The topics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topic"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TopicExists"];
+        };
+    };
+    reorderTopics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicOrder"];
+            };
+        };
+        responses: {
+            /** @description The topics in the new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicList"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicInput"];
+            };
+        };
+        responses: {
+            /** @description The changed topic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topic"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TopicExists"];
+        };
+    };
+    deleteTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listContacts: {
         parameters: {
             query?: {
@@ -7283,6 +8144,8 @@ export interface operations {
                 assignee?: string;
                 /** @description `none` or a queue id. */
                 queue?: string;
+                /** @description `none` or a topic id. */
+                topic?: string;
                 /** @description Part of the title, or the task number. */
                 q?: string;
                 /** @description Opaque `next_cursor` of the previous page. */
@@ -7337,6 +8200,8 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["TaskConflict"];
+            422: components["responses"]["TaskFileRejected"];
+            503: components["responses"]["TaskFilesUnavailable"];
         };
     };
     getTaskSummary: {
@@ -7493,6 +8358,8 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["TaskFileRejected"];
+            503: components["responses"]["TaskFilesUnavailable"];
         };
     };
     linkTaskConversation: {
@@ -7539,6 +8406,159 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Unlinked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    mcp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpMessage"];
+            };
+        };
+        responses: {
+            /** @description The JSON-RPC response; errors of the protocol are JSON-RPC errors too. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMessage"];
+                };
+            };
+            /** @description A notification or a response was taken. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not one JSON-RPC message, or an unsupported `MCP-Protocol-Version`; a JSON-RPC error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMessage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createTaskFileUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFileUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; upload the file next. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskFileUpload"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    getTaskFileDownloadLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed request (15 minutes by default). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedRequest"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTaskFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFilesAdd"];
+            };
+        };
+        responses: {
+            /** @description The task with its files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+            422: components["responses"]["TaskFileRejected"];
+            503: components["responses"]["TaskFilesUnavailable"];
+        };
+    };
+    removeTaskFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
             204: {
                 headers: {
                     [name: string]: unknown;

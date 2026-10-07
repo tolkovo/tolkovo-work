@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -90,7 +91,42 @@ func TestRequire(t *testing.T) {
 		t.Fatalf("operator: want ErrForbidden, got %v", err)
 	}
 	got, err := Require(opCtx, MembersView)
-	if err != nil || got != op {
+	if err != nil || !reflect.DeepEqual(got, op) {
 		t.Fatalf("operator members.view: got %+v, %v", got, err)
+	}
+}
+
+// A token is narrowed to its scopes and never widened past the role.
+func TestPrincipalCan_TokenScopes(t *testing.T) {
+	read, ok := ScopePermissions([]string{ScopeTasksRead})
+	if !ok || len(read) != 1 || read[0] != TasksView {
+		t.Fatalf("tasks:read = %v", read)
+	}
+	write, _ := ScopePermissions([]string{ScopeTasksWrite, ScopeTasksRead})
+	if len(write) != 2 {
+		t.Fatalf("tasks:write = %v", write)
+	}
+	if _, ok := ScopePermissions([]string{"conversations:read"}); ok {
+		t.Fatal("an unknown scope is accepted")
+	}
+	session := Principal{Role: RoleOperator}
+	token := Principal{Role: RoleOwner, Scopes: write}
+	empty := Principal{Role: RoleOwner, Scopes: []Permission{}}
+	for _, c := range []struct {
+		p    Principal
+		perm Permission
+		want bool
+	}{
+		{session, ConversationsView, true},
+		{session, TasksManage, false},
+		{token, TasksEdit, true},
+		{token, ConversationsView, false}, // the owner's role has it, the token does not
+		{token, TasksManage, false},
+		{Principal{Role: RoleOperator, Scopes: write}, TasksEdit, true},
+		{empty, TasksView, false},
+	} {
+		if got := c.p.Can(c.perm); got != c.want {
+			t.Errorf("%+v Can(%s) = %v", c.p, c.perm, got)
+		}
 	}
 }

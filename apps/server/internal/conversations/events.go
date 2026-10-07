@@ -38,6 +38,9 @@ const (
 	EventTaskUnlinked = "task_unlinked"
 	EventTaskClosed   = "task_closed"
 	EventTaskReopened = "task_reopened"
+	// EventTopicChanged: the topic was set, changed or removed, by the
+	// customer (ByCustomer) or an operator (docs/02 §7.3).
+	EventTopicChanged = "topic_changed"
 )
 
 // Why GitHub closed an issue (IssueRef.Reason).
@@ -64,6 +67,11 @@ type Event struct {
 	Issue *IssueRef `json:"issue,omitempty"`
 	// Task is set on the task events.
 	Task *TaskRef `json:"task,omitempty"`
+	// TopicID and PreviousTopicID are set on EventTopicChanged; nil is no
+	// topic. The panel names them from the workspace's topics.
+	TopicID         *uuid.UUID `json:"topic_id,omitempty"`
+	PreviousTopicID *uuid.UUID `json:"previous_topic_id,omitempty"`
+	ByCustomer      bool       `json:"by_customer,omitempty"`
 }
 
 // IssueRef names an issue in a feed line: no title, the panel links to it.
@@ -94,6 +102,12 @@ func addEventMessage(
 	if !sameID(next.AssigneeID, cur.AssigneeID) {
 		ev.Type = EventAssigned
 	}
+	return addEvent(ctx, q, tx, conv, actorID, ev, now)
+}
+
+// addEvent writes a system line of the feed, by actorID (uuid.Nil: the
+// system or the customer).
+func addEvent(ctx context.Context, q *store.Queries, tx pgx.Tx, conv store.Conversation, actorID uuid.UUID, ev Event, now time.Time) error {
 	meta, err := json.Marshal(ev)
 	if err != nil {
 		return fmt.Errorf("encode event: %w", err)
@@ -128,7 +142,7 @@ func eventFrom(kind string, meta []byte) *Event {
 		return nil
 	}
 	switch ev.Type {
-	case EventStatusChanged, EventAssigned:
+	case EventStatusChanged, EventAssigned, EventTopicChanged:
 	case EventIssueCreated, EventIssueLinked, EventIssueClosed, EventIssueReopened:
 		if ev.Issue == nil {
 			return nil

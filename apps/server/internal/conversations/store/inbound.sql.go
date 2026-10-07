@@ -242,7 +242,7 @@ func (q *Queries) CreateReceivedAttachment(ctx context.Context, arg CreateReceiv
 const createThreadConversation = `-- name: CreateThreadConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, channel_id, external_thread_id, status)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at
+RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at
 `
 
 type CreateThreadConversationParams struct {
@@ -290,6 +290,8 @@ func (q *Queries) CreateThreadConversation(ctx context.Context, arg CreateThread
 		&i.RatingComment,
 		&i.RatingResolvedBy,
 		&i.RatedAt,
+		&i.TopicID,
+		&i.TopicAskedAt,
 	)
 	return i, err
 }
@@ -390,7 +392,7 @@ func (q *Queries) LockExternalID(ctx context.Context, arg LockExternalIDParams) 
 }
 
 const lockOpenThread = `-- name: LockOpenThread :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
 WHERE workspace_id = $1 AND channel_id = $2 AND external_thread_id = $3
   AND status <> 'closed'
 FOR UPDATE
@@ -431,6 +433,8 @@ func (q *Queries) LockOpenThread(ctx context.Context, arg LockOpenThreadParams) 
 		&i.RatingComment,
 		&i.RatingResolvedBy,
 		&i.RatedAt,
+		&i.TopicID,
+		&i.TopicAskedAt,
 	)
 	return i, err
 }

@@ -116,6 +116,8 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.taskLinked") };
     case "queue_exists":
       return { message: t("errors.queueExists"), ...(field ? { field } : {}) };
+    case "topic_exists":
+      return { message: t("errors.topicExists"), ...(field ? { field } : {}) };
     case "tasks_disabled":
       return { message: t("errors.tasksDisabled") };
     case "no_notify_bot":
@@ -124,6 +126,14 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.notifyBotBusy") };
     case "notify_bot_revoked":
       return { message: t("errors.notifyBotRevoked") };
+    case "file_rejected":
+      return { message: t("errors.fileRejected") };
+    case "scan_unavailable":
+      return { message: t("errors.scanUnavailable") };
+    case "too_many_tokens":
+      return { message: t("errors.tooManyTokens") };
+    case "invalid_access_token":
+      return { message: t("errors.invalidAccessToken") };
     case "ai_not_configured":
       return { message: t("errors.aiNotConfigured") };
     case "ai_budget_exceeded":

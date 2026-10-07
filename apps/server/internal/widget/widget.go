@@ -113,6 +113,11 @@ type Inbox interface {
 	RateVisitorConversation(
 		ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, id uuid.UUID, score int, comment string,
 	) (conversations.Rating, error)
+	// Topics of questions (docs/02 §7.3).
+	Topics(ctx context.Context, workspaceID uuid.UUID) ([]conversations.Topic, error)
+	ChooseVisitorTopic(
+		ctx context.Context, workspaceID uuid.UUID, chat conversations.VisitorChat, conversationID, topicID uuid.UUID, onlyIfNone bool,
+	) error
 }
 
 // Presence tells whether someone takes conversations now (internal/routing).
@@ -196,6 +201,8 @@ type Session struct {
 	OperatorsOnline bool
 	// Analytics is where the widget reports its goals on the site (W-05).
 	Analytics channels.WidgetAnalytics
+	// Topics the visitor picks from before writing; empty asks none.
+	Topics []conversations.Topic
 }
 
 // Visitor is an authenticated session.
@@ -322,6 +329,9 @@ func (s *Service) Start(ctx context.Context, c Caller, in Start) (Session, error
 	}
 	out.Token = token
 	if out.OperatorsOnline, err = s.anyOnline(ctx, w.WorkspaceID); err != nil {
+		return Session{}, err
+	}
+	if out.Topics, err = s.opts.Inbox.Topics(ctx, w.WorkspaceID); err != nil {
 		return Session{}, err
 	}
 	return out, nil
@@ -460,6 +470,9 @@ type Message struct {
 	Key   string
 	Body  string
 	Files []uuid.UUID
+	// TopicID is the topic the visitor picked before writing; it goes to a
+	// conversation without one.
+	TopicID *uuid.UUID
 }
 
 // Send stores what the visitor wrote. The first message of an anonymous
@@ -510,6 +523,13 @@ func (s *Service) Send(ctx context.Context, c Caller, token string, m Message) (
 	}
 	if !res.Stored && msg.Body != body {
 		return Sent{}, ErrIdempotencyMismatch
+	}
+	if res.Stored && m.TopicID != nil {
+		// The message is stored: a topic that is gone is no reason to fail it.
+		err := s.opts.Inbox.ChooseVisitorTopic(ctx, v.WorkspaceID, v.chat(), res.ConversationID, *m.TopicID, true)
+		if err != nil && !errors.Is(err, conversations.ErrNotFound) {
+			s.log().Warn("widget topic not kept", "workspace_id", v.WorkspaceID, "error", err)
+		}
 	}
 	return Sent{VisitorMessage: msg, Created: res.Stored}, nil
 }
@@ -782,6 +802,29 @@ func (s *Service) Rate(ctx context.Context, c Caller, token string, conversation
 		return conversations.Rating{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return r, err
+}
+
+// ChooseTopic records the topic the visitor picked for an open
+// conversation of their chat.
+func (s *Service) ChooseTopic(ctx context.Context, c Caller, token string, conversationID, topicID uuid.UUID) error {
+	if err := s.allow(ctx, "widget:ip:"+c.IP, requestsPerIP); err != nil {
+		return err
+	}
+	v, err := s.Authenticate(ctx, c, token)
+	if err != nil {
+		return err
+	}
+	if err := s.allow(ctx, "widget:topics:"+v.SessionID.String(), ratingsPerSession); err != nil {
+		return err
+	}
+	if v.ContactID == uuid.Nil {
+		return ErrNotFound
+	}
+	err = s.opts.Inbox.ChooseVisitorTopic(ctx, v.WorkspaceID, v.chat(), conversationID, topicID, false)
+	if errors.Is(err, conversations.ErrNotFound) {
+		return ErrNotFound
+	}
+	return err
 }
 
 // AllowConnect takes one realtime handshake of a client IP. A widget

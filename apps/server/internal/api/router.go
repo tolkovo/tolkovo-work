@@ -105,6 +105,7 @@ func NewRouter(d Deps) http.Handler {
 		ingest: d.Ingest, integrations: d.Integrations, widget: d.Widget, routing: d.Routing, ai: d.AI, tasks: d.Tasks,
 		cookies: sessionCookies{secure: d.SecureCookies, maxAge: d.SessionMaxAge},
 		clients: clientIPs{trusted: d.TrustedProxies},
+		version: d.Version,
 	}
 	if d.Realtime != nil {
 		r.Get(RealtimePath, srv.realtimeHandler(d.Realtime))

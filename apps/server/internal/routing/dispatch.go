@@ -97,7 +97,7 @@ func (s *Service) Dispatch(ctx context.Context, convs *conversations.Service, wo
 			return s.dispatchLater(ctx, tx, workspaceID)
 		}
 		// What is still queued was held by another transaction.
-		left, err := convs.HasQueued(ctx, tx, workspaceID)
+		left, err := convs.HasQueued(ctx, tx, workspaceID, users)
 		if err != nil || !left {
 			return err
 		}

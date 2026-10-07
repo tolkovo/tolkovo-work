@@ -14,7 +14,7 @@ apps/landing    landing page (Astro)
 api/            OpenAPI and WebSocket schemas: the source of truth
 deploy/compose  local development dependencies (Docker)
 deploy/production  production compose example; guide in deploy/README.md
-guides/         integration guides: app reports, GitHub Issues
+guides/         integration guides: app reports, GitHub Issues, tasks, topics
 ```
 
 ## Develop
@@ -43,6 +43,7 @@ Configuration: `TOLKOVO_*` environment variables, all listed in [deploy/compose/
 - [Live chat widget](apps/widget/README.md): `@tolkovo/widget` for sites and Electron apps.
 - [GitHub Issues](guides/github-issues.md): issues from conversations and replies when they are fixed.
 - [Tasks](guides/tasks.md): a tracker for developers and the IT team inside Tolkovo, next to GitHub Issues.
+- [Topics](guides/topics.md): customers pick what the question is about in the Telegram bot and the widget; topics set priority, who gets the conversation and the task queue.
 
 ## Deploy
 

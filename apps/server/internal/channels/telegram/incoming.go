@@ -70,10 +70,22 @@ type File struct {
 }
 
 // BotUpdate is one update of getUpdates or a webhook. Message is nil when
-// the update is nothing a support inbox stores.
+// the update is nothing a support inbox stores; Callback is set when a
+// person pressed an inline button of the bot in a private chat.
 type BotUpdate struct {
-	ID      int64
-	Message *Message
+	ID       int64
+	Message  *Message
+	Callback *Callback
+}
+
+// Callback is a press of an inline button: Data is what the button carried.
+// Answer it with BotAPI.AnswerCallback, or the button keeps spinning.
+type Callback struct {
+	ID        string
+	ChatID    int64
+	MessageID int64 // the message with the buttons
+	From      Person
+	Data      string
 }
 
 type botUser struct {
@@ -119,17 +131,31 @@ type botMessage struct {
 }
 
 // ParseBotUpdate reads an update of the Bot API. Only new messages in
-// private chats from people make a Message; edits, callbacks, membership
-// changes, groups and bots are skipped (BotUpdate.Message is nil).
+// private chats from people make a Message, and presses of the bot's
+// buttons there a Callback; edits, membership changes, groups and bots are
+// skipped.
 func ParseBotUpdate(raw []byte) (BotUpdate, error) {
 	var u struct {
 		UpdateID int64       `json:"update_id"`
 		Message  *botMessage `json:"message"`
+		Callback *struct {
+			ID      string      `json:"id"`
+			From    *botUser    `json:"from"`
+			Message *botMessage `json:"message"`
+			Data    string      `json:"data"`
+		} `json:"callback_query"`
 	}
 	if err := json.Unmarshal(raw, &u); err != nil {
 		return BotUpdate{}, fmt.Errorf("telegram: decode update: %w", err)
 	}
 	out := BotUpdate{ID: u.UpdateID}
+	if c := u.Callback; c != nil && c.From != nil && !c.From.IsBot && c.Message != nil && c.Message.Chat.Type == "private" {
+		out.Callback = &Callback{
+			ID: c.ID, ChatID: c.Message.Chat.ID, MessageID: c.Message.MessageID, Data: c.Data,
+			From: Person{ID: c.From.ID, FirstName: c.From.FirstName, LastName: c.From.LastName, Username: c.From.Username},
+		}
+		return out, nil
+	}
 	m := u.Message
 	if m == nil || m.Chat.Type != "private" || m.From == nil || m.From.IsBot || m.From.ID == ServiceUserID {
 		return out, nil

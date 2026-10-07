@@ -6,12 +6,14 @@ export type SettingsPath =
   | "/settings/integrations"
   | "/settings/tasks"
   | "/settings/routing"
+  | "/settings/topics"
   | "/settings/ai"
   | "/settings/team"
   | "/settings/profile"
   | "/settings/appearance"
   | "/settings/notifications"
-  | "/settings/security";
+  | "/settings/security"
+  | "/settings/api";
 
 type SettingsSection = {
   to: SettingsPath;
@@ -21,12 +23,14 @@ type SettingsSection = {
     | "settings.integrations.title"
     | "settings.tasks.title"
     | "settings.routing.title"
+    | "settings.topics.title"
     | "settings.ai.nav"
     | "settings.team.title"
     | "settings.profile.title"
     | "settings.appearance.title"
     | "settings.notifications.title"
-    | "settings.security.title";
+    | "settings.security.title"
+    | "settings.api.title";
   /** Permission from GET /me needed to see the section; none means every member sees it. */
   permission?: string;
   /** /settings may open it. Team is not a landing page: for an operator it is a read-only list. */
@@ -54,6 +58,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/tasks", label: "settings.tasks.title", permission: "tasks.manage" },
       { to: "/settings/team", label: "settings.team.title", permission: "members.view" },
       { to: "/settings/routing", label: "settings.routing.title", permission: "routing.manage" },
+      { to: "/settings/topics", label: "settings.topics.title", permission: "routing.manage" },
       { to: "/settings/ai", label: "settings.ai.nav", permission: "ai.manage" },
     ],
   },
@@ -64,6 +69,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/appearance", label: "settings.appearance.title" },
       { to: "/settings/notifications", label: "settings.notifications.title" },
       { to: "/settings/security", label: "settings.security.title" },
+      { to: "/settings/api", label: "settings.api.title" },
     ],
   },
 ];

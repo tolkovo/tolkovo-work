@@ -1,14 +1,17 @@
 import type { Task, TaskActivity, TaskUpdate } from "@tolkovo/api-client";
 import {
+  useAddTaskFiles,
   useCan,
   useCommentTask,
   useConversation,
   useDeleteTask,
   useMembers,
+  useRemoveTaskFile,
   useSession,
   useTask,
   useTaskActivity,
   useTaskQueues,
+  useTopics,
   useUnlinkTaskConversation,
   useUpdateTask,
 } from "@tolkovo/api-client/react";
@@ -22,7 +25,9 @@ import { describeApiError } from "../../lib/api-errors";
 import { TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
+import { useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge, control } from "./task-bits";
+import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
 
 /** The open task (ADR-0015): its fields, description, conversations and feed. */
 export function TaskView({ taskId, search }: { taskId: string; search: TasksSearch }) {
@@ -99,6 +104,7 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
               )}
             </section>
           )}
+          <DescriptionFiles task={task} />
           <Conversations task={task} />
           <Feed task={task} />
         </div>
@@ -108,14 +114,15 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
   );
 }
 
-/** Status, priority, assignee and queue: each change is saved at once. */
+/** Status, priority, assignee, queue and topic: each change is saved at once. */
 function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; onChange: (patch: Partial<Omit<TaskUpdate, "version">>) => void }) {
   const { t } = useTranslation();
   const { data: session } = useSession();
   const { data: members } = useMembers();
   const { data: queues } = useTaskQueues();
+  const { data: topics } = useTopics();
   const canManage = useCan("tasks.manage");
-  const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId() };
+  const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId(), topic: useId() };
   const me = session?.user.id;
   return (
     <aside aria-label={t("tasks.fieldsLabel")} className="flex flex-col gap-3">
@@ -171,6 +178,20 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
           ))}
         </Select>
       </div>
+      {((topics?.length ?? 0) > 0 || task.topic_id) && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={ids.topic}>{t("tasks.fields.topic")}</Label>
+          <Select id={ids.topic} value={task.topic_id ?? ""} disabled={disabled} onChange={(e) => onChange({ topic_id: e.currentTarget.value || null })}>
+            <option value="">{t("inbox.topic.none")}</option>
+            {topics?.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+            {task.topic_id && !topics?.some((x) => x.id === task.topic_id) && <option value={task.topic_id}>{t("inbox.topic.deleted")}</option>}
+          </Select>
+        </div>
+      )}
       <Dates task={task} />
       {canManage && <DeleteTask task={task} />}
     </aside>
@@ -352,6 +373,7 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
   const { t, i18n } = useTranslation();
   const names = useMemberNames();
   const { data: queues } = useTaskQueues();
+  const topics = useTopicMap();
   const who = a.actor_id ? (names.get(a.actor_id) ?? t("inbox.colleague")) : t("inbox.sender.system");
   const time = new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(new Date(a.created_at));
   if (a.kind === "comment") {
@@ -360,7 +382,8 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
         <span className="text-[12px] text-ink-3">
           <b className="font-medium text-ink-2">{who}</b> · {time}
         </span>
-        <p className="m-0 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap">{a.body}</p>
+        {a.body && <p className="m-0 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap">{a.body}</p>}
+        <TaskFileList files={a.files ?? []} />
       </li>
     );
   }
@@ -383,6 +406,11 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
     case "queue":
       text = t("tasks.activity.queue", { name: queue(a.to) });
       break;
+    case "topic":
+      text = a.to
+        ? t("tasks.activity.topic", { name: topics.get(a.to)?.name ?? t("inbox.topic.deleted") })
+        : t("tasks.activity.noTopic");
+      break;
     case "edited":
       text = t("tasks.activity.edited");
       break;
@@ -391,6 +419,9 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
       break;
     case "unlinked":
       text = t("tasks.activity.unlinked");
+      break;
+    case "files":
+      text = a.files_removed ? t("tasks.activity.filesRemoved") : t("tasks.activity.filesAdded", { count: a.files_added ?? 0 });
       break;
     default:
       text = "";
@@ -405,34 +436,79 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
 function CommentForm({ taskId }: { taskId: string }) {
   const { t } = useTranslation();
   const comment = useCommentTask(taskId);
+  const files = useFileDrafts();
   const [text, setText] = useState("");
   const id = useId();
+  const ready = (text.trim() !== "" || files.ids.length > 0) && !files.uploading;
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    comment.mutate(text.trim(), { onSuccess: () => setText("") });
+    if (!ready) return;
+    const sent = files.ids;
+    comment.mutate(
+      { body: text.trim(), fileIds: sent },
+      {
+        onSuccess: () => {
+          setText("");
+          files.drop(sent);
+        },
+      },
+    );
   };
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-2">
       <Label htmlFor={id} className="sr-only">
         {t("tasks.comment")}
       </Label>
-      <textarea
-        id={id}
-        value={text}
-        rows={3}
-        maxLength={4000}
-        placeholder={t("tasks.commentPlaceholder")}
-        onChange={(e) => setText(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e);
-        }}
-        className={cn(control, "py-2 leading-relaxed")}
-      />
+      <AttachArea drafts={files}>
+        <textarea
+          id={id}
+          value={text}
+          rows={3}
+          maxLength={4000}
+          placeholder={t("tasks.commentPlaceholder")}
+          onChange={(e) => setText(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e);
+          }}
+          className={cn(control, "py-2 leading-relaxed")}
+        />
+      </AttachArea>
       <FormMessage tone="error" message={comment.isError ? describeApiError(t, comment.error).message : null} />
-      <Button type="submit" size="sm" className="self-start" disabled={comment.isPending || !text.trim()}>
+      <Button type="submit" size="sm" className="self-start" disabled={comment.isPending || !ready}>
         {t("tasks.commentSubmit")}
       </Button>
     </form>
+  );
+}
+
+/**
+ * Files of the description: chosen, pasted or dropped files are added at once; a file can be
+ * taken out. Files of comments stay with their comments.
+ */
+function DescriptionFiles({ task }: { task: Task }) {
+  const { t } = useTranslation();
+  const add = useAddTaskFiles(task.id);
+  const remove = useRemoveTaskFile(task.id);
+  const files = useFileDrafts();
+  const { ids, uploading, drop } = files;
+  const { mutate } = add;
+  // Ready uploads go to the task once none is still uploading; they leave the list either way, so a
+  // refused file is not sent again and again.
+  const batch = uploading ? "" : ids.join(",");
+  useEffect(() => {
+    if (batch === "") return;
+    const sent = batch.split(",");
+    mutate(sent, { onSettled: () => drop(sent) });
+  }, [batch, mutate, drop]);
+  const error = add.isError ? add.error : remove.isError ? remove.error : null;
+  return (
+    <section aria-labelledby="task-files" className="flex flex-col gap-2">
+      <h3 id="task-files" className="m-0 text-[13px] font-semibold">
+        {t("tasks.files.title")}
+      </h3>
+      <TaskFileList files={task.files} removing={remove.isPending} onRemove={(f) => remove.mutate(f.id)} />
+      <AttachArea drafts={files} />
+      <FormMessage tone="error" message={error ? describeApiError(t, error).message : null} />
+    </section>
   );
 }

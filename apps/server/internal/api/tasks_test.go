@@ -24,7 +24,7 @@ import (
 func taskUpdate(t oapi.Task, edit func(map[string]any)) map[string]any {
 	body := map[string]any{
 		"version": t.Version, "title": t.Title, "body": t.Body, "status": t.Status, "priority": t.Priority,
-		"queue_id": t.QueueId, "assignee_id": t.AssigneeId,
+		"queue_id": t.QueueId, "topic_id": t.TopicId, "assignee_id": t.AssigneeId,
 	}
 	if edit != nil {
 		edit(body)
@@ -110,7 +110,7 @@ func TestTasks_Lifecycle(t *testing.T) {
 		SELECT ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid, workspace_id, id, 'comment', 'старый', created_at
 		FROM tasks, generate_series(1, 500) n WHERE id = $1`, task.Id)
 	long := decode[oapi.TaskActivityList](t, op.do(http.MethodGet, base+"/activity", nil)).Items
-	if len(long) != 500 || long[len(long)-1].Kind != oapi.Status || long[0].Body == nil || *long[0].Body != "старый" {
+	if len(long) != 500 || long[len(long)-1].Kind != oapi.TaskActivityKindStatus || long[0].Body == nil || *long[0].Body != "старый" {
 		t.Fatalf("long feed: %d lines, last %+v", len(long), long[len(long)-1])
 	}
 

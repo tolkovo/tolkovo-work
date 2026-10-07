@@ -22,7 +22,7 @@ describe("settings tree", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Профиль" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/profile");
     const nav = await settingsNav();
-    expect(navLinks(nav)).toEqual(["Команда", "Профиль", "Внешний вид", "Уведомления", "Безопасность и вход"]);
+    expect(navLinks(nav)).toEqual(["Команда", "Профиль", "Внешний вид", "Уведомления", "Безопасность и вход", "Доступ по API"]);
     expect(within(nav).getByRole("heading", { name: "Пространство" })).toBeInTheDocument();
     expect(within(nav).getByRole("heading", { name: "Лично для меня" })).toBeInTheDocument();
   });
@@ -31,7 +31,7 @@ describe("settings tree", () => {
     const reader: Session = { ...operatorSession, permissions: [] };
     renderApp("/settings", { api: fakeApi({ session: reader }) });
     const nav = await settingsNav();
-    expect(navLinks(nav)).toEqual(["Профиль", "Внешний вид", "Уведомления", "Безопасность и вход"]);
+    expect(navLinks(nav)).toEqual(["Профиль", "Внешний вид", "Уведомления", "Безопасность и вход", "Доступ по API"]);
     expect(within(nav).queryByRole("heading", { name: "Пространство" })).not.toBeInTheDocument();
   });
 
@@ -47,6 +47,7 @@ describe("settings tree", () => {
       "Внешний вид",
       "Уведомления",
       "Безопасность и вход",
+      "Доступ по API",
     ]);
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/general"));
   });

@@ -147,6 +147,10 @@ type BotClient interface {
 	SendMessage(ctx context.Context, token string, chatID int64, text string) (int64, error)
 	SendFile(ctx context.Context, token string, chatID int64, f telegram.OutFile, r io.Reader) (int64, error)
 	SendChatAction(ctx context.Context, token string, chatID int64) error
+	// Topic buttons (docs/02 §7.3).
+	SendButtons(ctx context.Context, token string, chatID int64, text string, rows [][]telegram.Button) (int64, error)
+	AnswerCallback(ctx context.Context, token, callbackID, text string) error
+	EditText(ctx context.Context, token string, chatID, messageID int64, text string) error
 }
 
 // UserLogin signs personal accounts in and out (telegram.UserAuth).

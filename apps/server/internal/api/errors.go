@@ -53,6 +53,17 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, auth.ErrNoSession), errors.Is(err, authz.ErrUnauthenticated):
 		writeProblem(w, r, Problem{Status: http.StatusUnauthorized, Code: "unauthenticated", Title: "Unauthorized"})
+	case errors.Is(err, auth.ErrInvalidAccessToken):
+		w.Header().Set("WWW-Authenticate", `Bearer realm="tolkovo", error="invalid_token"`)
+		writeProblem(w, r, Problem{
+			Status: http.StatusUnauthorized, Code: "invalid_access_token", Title: "Unauthorized",
+			Detail: "the access token is invalid, expired or revoked",
+		})
+	case errors.Is(err, tenancy.ErrTooManyTokens):
+		writeProblem(w, r, Problem{
+			Status: http.StatusConflict, Code: "too_many_tokens", Title: "Conflict",
+			Detail: fmt.Sprintf("a member may have %d tokens; revoke one first", tenancy.MaxAccessTokens),
+		})
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		writeProblem(w, r, Problem{
 			Status: http.StatusUnauthorized, Code: "invalid_credentials", Title: "Unauthorized",
@@ -117,6 +128,8 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, conversations.ErrTagExists):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "tag_exists", Title: "Conflict"})
+	case errors.Is(err, conversations.ErrTopicExists):
+		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "topic_exists", Title: "Conflict"})
 	case errors.Is(err, conversations.ErrNotFailed):
 		writeProblem(w, r, Problem{
 			Status: http.StatusConflict, Code: "not_failed", Title: "Conflict",

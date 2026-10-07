@@ -481,6 +481,47 @@
       "nobodyOnline": "Nobody takes conversations now: new ones will wait in the queue.",
       "saved": "Saved."
     },
+    "topics": {
+      "title": "Topics",
+      "lead": "The customer picks a topic before writing: the Telegram bot shows a button per topic, the widget shows them above the message field. The inbox shows the topic and filters by it. A topic sets the priority, who gets its conversations from automatic distribution and the queue of tasks.",
+      "add": "Add topic",
+      "empty": "No topics yet. Without them the bot and the widget ask nothing.",
+      "up": "Move «{name}» up",
+      "down": "Move «{name}» down",
+      "priorities": {
+        "0": "Normal priority",
+        "1": "Raised priority",
+        "2": "High priority",
+        "3": "Urgent"
+      },
+      "everyone": "goes to everyone",
+      "queueShort": "tasks → {name}",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete the topic? Its conversations and tasks will have none.",
+      "deleteSubmit": "Delete topic",
+      "name": "Name",
+      "nameHint": "The customer sees it on a button in the bot and the widget.",
+      "nameRequired": "Write the topic's name.",
+      "color": "Color",
+      "colors": {
+        "gray": "Gray",
+        "teal": "Teal",
+        "amber": "Yellow",
+        "red": "Red",
+        "violet": "Violet",
+        "blue": "Blue",
+        "green": "Green"
+      },
+      "priority": "Priority",
+      "priorityHint": "Conversations with a higher priority are given out of the queue first.",
+      "members": "Who gets the topic's conversations",
+      "membersHint": "With «In turn» distribution only the checked members get the topic's conversations. None checked — everyone. Anyone may take one from the queue by hand.",
+      "queue": "Task queue",
+      "queueHint": "A task from a conversation of this topic goes to this queue unless another is picked.",
+      "noQueue": "No queue",
+      "save": "Save topic"
+    },
     "ai": {
       "nav": "AI",
       "title": "Provider, key and spending",
@@ -646,6 +687,56 @@
         "revokedOthers": "Signed out on other devices.",
         "none": "No other active sessions."
       }
+    },
+    "api": {
+      "title": "API access",
+      "lead": "A token lets a script or an AI agent (Claude Code, Cursor) work with tasks on your behalf. It can do no more than you, and only in tasks: conversations, customers and settings stay closed to it.",
+      "new": {
+        "title": "New token",
+        "name": "Name",
+        "nameHint": "Where it will work, e.g. \"Claude Code, laptop\".",
+        "access": "Access",
+        "read": "Read tasks",
+        "write": "Read and change tasks",
+        "expires": "Expires",
+        "days30": "In 30 days",
+        "days90": "In 90 days",
+        "days365": "In 1 year",
+        "never": "Never",
+        "submit": "Issue token",
+        "pending": "Issuing…"
+      },
+      "issued": {
+        "title": "Token issued",
+        "token": "Token",
+        "once": "Copy it now: it will not be shown again. Keep it like a password.",
+        "mcp": "Connect Claude Code",
+        "mcpHint": "Run the command in a terminal: the agent sees tasks through MCP. Other MCP clients connect to the same address with the Authorization header.",
+        "hide": "Hide"
+      },
+      "mine": {
+        "title": "My tokens",
+        "none": "No tokens yet."
+      },
+      "all": {
+        "title": "Members' tokens",
+        "text": "Every live token of the workspace. Revoke a token that leaked or is no longer needed.",
+        "none": "No member has a token."
+      },
+      "row": {
+        "read": "read",
+        "write": "read and change",
+        "created": "Issued {date}",
+        "expires": "until {date}",
+        "noExpiry": "no expiry",
+        "used": "Used {date}",
+        "unused": "Not used yet",
+        "owner": "Member: {name}",
+        "revoke": "Revoke",
+        "revokeLabel": "Revoke the token \"{name}\"",
+        "revoked": "The token is revoked and no longer works.",
+        "gone": "This token is already revoked."
+      }
     }
   },
   "roles": {
@@ -745,7 +836,12 @@
     "tasksDisabled": "The tasks section is turned off in the settings.",
     "noNotifyBot": "An admin has not added a bot for notifications yet.",
     "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications.",
-    "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks."
+    "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks.",
+    "tooManyTokens": "You may have at most 20 tokens. Revoke one you no longer need and try again.",
+    "invalidAccessToken": "This token is not valid: it was revoked or has expired.",
+    "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
+    "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
+    "topicExists": "A topic with this name exists."
   },
   "error": {
     "title": "Something went wrong",
@@ -952,6 +1048,14 @@
       "createError": "The tag was not created. Try again.",
       "full": "A conversation can have at most {max} tags."
     },
+    "topic": {
+      "label": "Topic",
+      "none": "No topic",
+      "deleted": "Deleted topic",
+      "filter": "Topics",
+      "all": "All topics",
+      "without": "No topic"
+    },
     "event": {
       "taken": "Taken by {name}",
       "assigned": "Assigned to {name}",
@@ -982,7 +1086,10 @@
       "taskUnlinked": "Unlinked from task {number}",
       "taskReopened": "Task {number} reopened",
       "taskDone": "Task {number} done",
-      "taskCanceled": "Task {number} closed: won't do"
+      "taskCanceled": "Task {number} closed: won't do",
+      "topicChosen": "The customer chose the topic «{name}»",
+      "topicSet": "Topic: {name}",
+      "topicRemoved": "Topic removed"
     },
     "card": {
       "label": "Customer card",
@@ -1201,7 +1308,8 @@
       "status": "Status",
       "priority": "Priority",
       "assignee": "Assignee",
-      "queue": "Queue"
+      "queue": "Queue",
+      "topic": "Topic"
     },
     "fieldsLabel": "Task fields",
     "loadError": "Could not load the tasks.",
@@ -1244,7 +1352,11 @@
       "queue": "Queue: {name}",
       "edited": "Title or description changed",
       "linked": "Conversation linked",
-      "unlinked": "Conversation unlinked"
+      "unlinked": "Conversation unlinked",
+      "filesAdded": "Files added: {count}",
+      "filesRemoved": "A file was removed from the description",
+      "topic": "Topic: {name}",
+      "noTopic": "Topic removed"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1253,7 +1365,24 @@
     "create": "Create task",
     "creating": "Creating…",
     "notifyAssignee": "The assignee is notified in the panel, and in Telegram if they linked it.",
-    "notifyQueue": "Without an assignee, the members of the queue are notified."
+    "notifyQueue": "Without an assignee, the members of the queue are notified.",
+    "files": {
+      "title": "Files",
+      "attach": "Attach a file",
+      "hint": "or paste a screenshot (Ctrl+V), or drop files here",
+      "chosen": "Chosen files",
+      "uploading": "uploading…",
+      "failed": "not uploaded",
+      "badType": "this type of file cannot be attached",
+      "tooBig": "larger than 25 MB",
+      "tooMany": "At most {count} files at once.",
+      "unchoose": "Remove \"{name}\"",
+      "remove": "Remove \"{name}\" from the task"
+    },
+    "topicFilter": "Topic",
+    "allTopics": "All topics",
+    "topicOfConversation": "As the conversation's",
+    "queueOfTopic": "The topic's, or none"
   },
   "notifications": {
     "alert": {

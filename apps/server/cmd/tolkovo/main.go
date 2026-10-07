@@ -267,7 +267,8 @@ func startWorker(
 	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, nil, nil, log))
 	// A conversation waits for the fix on issues and tasks (ADR-0015).
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
-	convs.AddFixWaiter(conversations.FixSourceTasks, tasks.New(pool, tasks.Options{Log: log}).HasOpenTask)
+	worktasks := tasks.New(pool, tasks.Options{Files: store, Log: log})
+	convs.AddFixWaiter(conversations.FixSourceTasks, worktasks.HasOpenTask)
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, outbox.NewPruneWorker(sys.Pool(), cfg.OutboxRetention))
@@ -277,6 +278,8 @@ func startWorker(
 	river.AddWorker(workers, ai.NewClearTextsWorker(sys.Pool()))
 	// Visitors' files no message took are deleted (W-02).
 	widget.New(pool, widget.Options{Inbox: convs, Files: store, Log: log}).AddWorkers(workers, sys.Pool())
+	// Files of tasks no task holds are deleted.
+	worktasks.AddWorkers(workers, sys.Pool())
 	chans.AddWorkers(workers)
 	reports.AddWorkers(workers, sys.Pool())
 	integ.AddWorkers(workers)
@@ -289,7 +292,7 @@ func startWorker(
 	router.AddWorkers(workers, convs)
 	periodic := []*river.PeriodicJob{
 		outbox.PrunePeriodic(), channels.PruneLoginsPeriodic(), ingest.CleanupPeriodic(), widget.PruneSessionsPeriodic(),
-		widget.CleanupUploadsPeriodic(), ai.ClearTextsPeriodic(),
+		widget.CleanupUploadsPeriodic(), ai.ClearTextsPeriodic(), tasks.CleanupFilesPeriodic(),
 	}
 	if err := addMailWorkers(workers, cfg, pool, redisClient, log); err != nil {
 		return err
@@ -424,7 +427,12 @@ func apiDeps(
 	aiSvc := ai.New(pool, aiOptions(cfg, sealer))
 	integ := integrations.New(pool, integrationsOptions(cfg, sealer, convs, inserter, aiSvc, log))
 	// Task drafts come from the workspace's model too (ADR-0015).
-	tasksSvc := tasks.New(pool, tasks.Options{Conversations: convs, Drafter: aiSvc, Log: log})
+	// Files of tasks are checked by type, and by ClamAV when it is set.
+	taskOpts := tasks.Options{Conversations: convs, Drafter: aiSvc, Files: store, Log: log}
+	if cfg.ClamAVAddr != "" {
+		taskOpts.Scanner = clamav.New(cfg.ClamAVAddr, 0)
+	}
+	tasksSvc := tasks.New(pool, taskOpts)
 	// Messages about tasks are queued here and sent to Telegram by the worker (TK-02).
 	notifs.SetTelegram(notifications.TelegramOptions{
 		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Channels: chans, Jobs: inserter, Log: log,

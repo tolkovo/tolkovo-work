@@ -72,6 +72,9 @@ export class FakeServer {
   conversationId = "conv-1";
   resolved = false;
   rating: { score: number; comment: string | null; resolved_by: "human" | "ai"; rated_at: string } | null = null;
+  /** Topics of questions the session offers, and the one of the conversation. */
+  topics: { id: string; name: string }[] = [];
+  topicId: string | null = null;
   private issued = 0;
 
   install(): void {
@@ -128,6 +131,7 @@ export class FakeServer {
           channel_name: "Поддержка Зерна",
           operators_online: this.operatorsOnline,
           analytics: this.analytics,
+          topics: this.topics,
         });
       }
       case "DELETE /session":
@@ -138,7 +142,9 @@ export class FakeServer {
         const fresh = (m: FakeMessage) => ({ ...m, files: m.files.map((f) => ({ ...f, download: { ...f.download, url: f.download.url.replace(/v=\d+/, `v=${this.linkVersion}`), expires_at: this.linkVersion > 1 ? "2099-01-01T00:00:00Z" : f.download.expires_at } })) });
         const items = (since ? this.messages.filter((m) => m.id > since) : this.messages.slice(-100)).map(fresh);
         const last = items.at(-1)?.id ?? since;
-        const conversation = this.messages.length ? { id: this.conversationId, status: this.resolved ? "resolved" : "open", rating: this.rating } : null;
+        const conversation = this.messages.length
+          ? { id: this.conversationId, status: this.resolved ? "resolved" : "open", rating: this.rating, topic_id: this.topicId }
+          : null;
         return json(200, { items, cursor: last, more: false, conversation });
       }
       case "POST /uploads": {
@@ -148,7 +154,7 @@ export class FakeServer {
         return json(201, { id, upload: { method: "PUT", url: `${FILES}/u/${id}`, headers: { "Content-Type": req.content_type }, expires_at: "2099-01-01T00:00:00Z" } });
       }
       case "POST /messages": {
-        const req = body as { message?: string; attachment_ids?: string[] };
+        const req = body as { message?: string; attachment_ids?: string[]; topic_id?: string };
         const files: FakeFile[] = [];
         for (const id of req.attachment_ids ?? []) {
           const up = this.uploads.get(id);
@@ -160,8 +166,9 @@ export class FakeServer {
           }
           files.push(fakeFile(up.name, up.type, up.size));
         }
-        // A message reopens a resolved conversation.
+        // A message reopens a resolved conversation; a topic goes to one without it.
         this.resolved = false;
+        if (req.topic_id && !this.topicId) this.topicId = req.topic_id;
         const m: FakeMessage = {
           id: nextId(),
           conversation_id: this.conversationId,
@@ -182,6 +189,12 @@ export class FakeServer {
         return new Response(null, { status: 204 });
       case "GET /availability":
         return json(200, { operators_online: this.operatorsOnline });
+      case "POST /topic": {
+        const req = body as { conversation_id: string; topic_id: string };
+        if (req.conversation_id !== this.conversationId || this.resolved) return json(404, { code: "not_found" });
+        this.topicId = req.topic_id;
+        return new Response(null, { status: 204 });
+      }
       case "POST /rating": {
         const req = body as { conversation_id: string; score: number; comment?: string };
         if (req.conversation_id !== this.conversationId) return json(404, { code: "not_found" });

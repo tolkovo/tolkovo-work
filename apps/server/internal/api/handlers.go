@@ -35,6 +35,7 @@ type server struct {
 	tasks         *tasks.Service
 	cookies       sessionCookies
 	clients       clientIPs
+	version       string
 }
 
 var _ oapi.ServerInterface = (*server)(nil)

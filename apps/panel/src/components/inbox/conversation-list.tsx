@@ -1,4 +1,4 @@
-import type { Conversation } from "@tolkovo/api-client";
+import type { Conversation, Topic } from "@tolkovo/api-client";
 import { useConversationList, useInboxCounts, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
@@ -14,18 +14,21 @@ import {
   type InboxTab,
 } from "../../lib/inbox/tabs";
 import { CollaboratorMarks } from "./presence";
+import { TopicFilter, TopicPill, useTopicMap } from "./topics";
 
 /** The server counts unread messages up to this (Conversation.unread_count). */
 const MAX_UNREAD = 100;
 
 type ConversationListProps = {
   tab: InboxTab;
+  /** `none` or a topic id: the list shows only these. */
+  topic?: string | undefined;
   selectedId?: string | undefined;
   className?: string;
 };
 
-/** The left column of the inbox: tabs with live counters and the list (docs/07 §4). */
-export function ConversationList({ tab, selectedId, className }: ConversationListProps) {
+/** The left column of the inbox: tabs with live counters, the topics and the list (docs/07 §4). */
+export function ConversationList({ tab, topic, selectedId, className }: ConversationListProps) {
   const { t } = useTranslation();
   const { data: counts } = useInboxCounts();
   return (
@@ -40,7 +43,7 @@ export function ConversationList({ tab, selectedId, className }: ConversationLis
             <Link
               key={id}
               to="/inbox"
-              search={{ tab: id }}
+              search={topic ? { tab: id, topic } : { tab: id }}
               aria-current={id === tab ? "page" : undefined}
               className={cn(
                 "flex items-center gap-1.5 border-b-2 border-transparent px-2.5 pt-1.5 pb-2 text-[13px] whitespace-nowrap text-ink-2 no-underline",
@@ -59,14 +62,16 @@ export function ConversationList({ tab, selectedId, className }: ConversationLis
           );
         })}
       </nav>
-      <ListBody tab={tab} selectedId={selectedId} />
+      <TopicFilter tab={tab} topic={topic} />
+      <ListBody tab={tab} topic={topic} selectedId={selectedId} />
     </section>
   );
 }
 
-function ListBody({ tab, selectedId }: { tab: InboxTab; selectedId?: string | undefined }) {
+function ListBody({ tab, topic, selectedId }: { tab: InboxTab; topic?: string | undefined; selectedId?: string | undefined }) {
   const { t } = useTranslation();
-  const list = useConversationList(tabFilter(tab));
+  const list = useConversationList(tabFilter(tab, topic));
+  const topics = useTopicMap();
   if (list.isPending) {
     return (
       <div className="flex flex-col gap-3 p-3" aria-busy="true" aria-label={t("app.loading")}>
@@ -100,7 +105,13 @@ function ListBody({ tab, selectedId }: { tab: InboxTab; selectedId?: string | un
       <ul className="m-0 list-none p-0">
         {items.map((c) => (
           <li key={c.id}>
-            <ConversationRow conversation={c} tab={tab} selected={c.id === selectedId} />
+            <ConversationRow
+              conversation={c}
+              tab={tab}
+              topic={topic}
+              label={c.topic_id ? topics.get(c.topic_id) : undefined}
+              selected={c.id === selectedId}
+            />
           </li>
         ))}
       </ul>
@@ -120,7 +131,16 @@ function ListBody({ tab, selectedId }: { tab: InboxTab; selectedId?: string | un
   );
 }
 
-function ConversationRow({ conversation: c, tab, selected }: { conversation: Conversation; tab: InboxTab; selected: boolean }) {
+type RowProps = {
+  conversation: Conversation;
+  tab: InboxTab;
+  topic: string | undefined;
+  /** The conversation's topic, shown before the preview. */
+  label: Topic | undefined;
+  selected: boolean;
+};
+
+function ConversationRow({ conversation: c, tab, topic, label, selected }: RowProps) {
   const { t, i18n } = useTranslation();
   const { data: session } = useSession();
   const wait = waitsForPerson(c, session?.user.id);
@@ -132,7 +152,7 @@ function ConversationRow({ conversation: c, tab, selected }: { conversation: Con
     <Link
       to="/inbox/$conversationId"
       params={{ conversationId: c.id }}
-      search={{ tab }}
+      search={topic ? { tab, topic } : { tab }}
       aria-current={selected ? "page" : undefined}
       className={cn(
         "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-0.5 border-b border-line-2 py-2.5 pr-3 pl-5 text-ink no-underline",
@@ -177,6 +197,7 @@ function ConversationRow({ conversation: c, tab, selected }: { conversation: Con
             </span>
           )
         )}
+        {label && <TopicPill topic={label} />}
         {c.awaiting_fix && !finished && (
           <span className="shrink-0 rounded-sm bg-lamp-soft px-1.5 py-0.5 text-[10.5px] font-medium text-lamp-ink">
             {t("inbox.awaitingFix")}

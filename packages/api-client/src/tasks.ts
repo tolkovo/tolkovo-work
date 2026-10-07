@@ -8,6 +8,8 @@ import {
   taskPageSchema,
   taskQueueListSchema,
   taskQueueSchema,
+  signedRequestSchema,
+  taskFileUploadSchema,
   taskSchema,
   taskSettingsViewSchema,
   taskSummarySchema,
@@ -38,12 +40,16 @@ export type MyTelegram = Schemas["MyTelegram"];
 export type TelegramLinkStart = Schemas["TelegramLinkStart"];
 export type TelegramBotState = Schemas["TelegramBotState"];
 
-/** Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` is `none` or a queue id. */
+/**
+ * Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` and `topic` are
+ * `none` or an id.
+ */
 export type TaskFilter = {
   state?: "open" | "closed";
   status?: TaskStatus;
   assignee?: string;
   queue?: string;
+  topic?: string;
   q?: string;
 };
 
@@ -77,8 +83,10 @@ export async function fetchTaskActivity(client: ApiClient, id: string): Promise<
   return parseAnswer(taskActivityListSchema, await unwrap(client.GET("/tasks/{id}/activity", { params: { path: { id } } }))).items;
 }
 
-export async function commentTask(client: ApiClient, id: string, body: string): Promise<TaskActivity> {
-  const data = await unwrap(client.POST("/tasks/{id}/activity", { params: { path: { id } }, body: { body } }));
+export async function commentTask(client: ApiClient, id: string, body: string, fileIds: string[] = []): Promise<TaskActivity> {
+  const data = await unwrap(
+    client.POST("/tasks/{id}/activity", { params: { path: { id } }, body: fileIds.length > 0 ? { body, file_ids: fileIds } : { body } }),
+  );
   return parseAnswer(taskActivitySchema, data, 201);
 }
 
@@ -157,3 +165,33 @@ export async function checkMyTelegramLink(client: ApiClient): Promise<MyTelegram
 export async function unlinkMyTelegram(client: ApiClient): Promise<void> {
   await unwrap(client.DELETE("/me/telegram"));
 }
+
+export type TaskFile = Schemas["TaskFile"];
+
+/**
+ * Registers a file and uploads it with the signed request, exactly as signed. The file belongs to
+ * no task until `file_ids` of a task, a comment or `addTaskFiles` names it.
+ */
+export async function uploadTaskFile(client: ApiClient, file: File): Promise<TaskFile> {
+  const body = { file_name: file.name || "file", content_type: file.type, size: file.size };
+  const up = parseAnswer(taskFileUploadSchema, await unwrap(client.POST("/task-files", { body })), 201);
+  // The signed request carries no cookie: the signature is the authority.
+  const content = await file.arrayBuffer(); // at most 25 MB
+  const res = await fetch(new Request(up.upload.url, { method: up.upload.method, headers: up.upload.headers, body: content }));
+  if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+  return up.file;
+}
+
+export async function addTaskFiles(client: ApiClient, id: string, fileIds: string[]): Promise<Task> {
+  const data = await unwrap(client.POST("/tasks/{id}/files", { params: { path: { id } }, body: { file_ids: fileIds } }));
+  return parseAnswer(taskSchema, data);
+}
+
+export async function removeTaskFile(client: ApiClient, id: string, fileId: string): Promise<void> {
+  await unwrap(client.DELETE("/tasks/{id}/files/{file_id}", { params: { path: { id, file_id: fileId } } }));
+}
+
+export async function fetchTaskFileLink(client: ApiClient, id: string) {
+  return parseAnswer(signedRequestSchema, await unwrap(client.GET("/task-files/{id}/download-link", { params: { path: { id } } })));
+}
+

@@ -23,6 +23,7 @@ var samplePayloads = map[string]string{
 	"conversation.status_changed": `{"conversation_id":"%c","from":"queued","to":"assigned","assignee_id":"%u","actor_id":"%u"}`,
 	"conversation.assigned":       `{"conversation_id":"%c","assignee_id":"%u","previous_assignee_id":null,"actor_id":"%u"}`,
 	"conversation.tags_changed":   `{"conversation_id":"%c"}`,
+	"conversation.topic_changed":  `{"conversation_id":"%c","topic_id":"%t"}`,
 	"conversation.issues_changed": `{"conversation_id":"%c"}`,
 	"conversation.tasks_changed":  `{"conversation_id":"%c"}`,
 	"conversation.read":           `{"conversation_id":"%c","reader_type":"operator","reader_id":"%u","up_to_message_id":"%m"}`,

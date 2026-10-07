@@ -1,5 +1,5 @@
 import type { Task, TaskPriority } from "@tolkovo/api-client";
-import { useCreateTask, useMembers, useTaskQueues } from "@tolkovo/api-client/react";
+import { useCreateTask, useMembers, useTaskQueues, useTopics } from "@tolkovo/api-client/react";
 import { Button, Label, Select, cn } from "@tolkovo/ui";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { describeApiError } from "../../lib/api-errors";
 import { TASK_PRIORITIES } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { control } from "./task-bits";
+import { AttachArea, useFileDrafts } from "./task-files";
 
 type NewTaskFormProps = {
   /** Where the form starts: empty by hand, the draft from a conversation. */
@@ -18,19 +19,25 @@ type NewTaskFormProps = {
   onCancel: () => void;
 };
 
-/** A new task (ADR-0015): title, description, queue, priority and assignee. */
+/**
+ * A new task (ADR-0015): title, description, topic, queue, priority and assignee. A task from a
+ * conversation takes the conversation's topic and the topic's queue unless they are picked here.
+ */
 export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTaskFormProps) {
   const { t } = useTranslation();
   const create = useCreateTask();
   const { data: members } = useMembers();
   const { data: queues } = useTaskQueues();
+  const { data: topics } = useTopics();
+  const [topic, setTopic] = useState("");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [body, setBody] = useState(initial?.body ?? "");
   const [queue, setQueue] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [assignee, setAssignee] = useState("");
   const [titleError, setTitleError] = useState<string | undefined>();
-  const ids = { body: useId(), queue: useId(), priority: useId(), assignee: useId() };
+  const files = useFileDrafts();
+  const ids = { body: useId(), topic: useId(), queue: useId(), priority: useId(), assignee: useId() };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -46,8 +53,10 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
         body,
         priority,
         queue_id: queue || null,
+        ...(topic ? { topic_id: topic } : {}),
         assignee_id: assignee || null,
         ...(conversationId ? { conversation_id: conversationId } : {}),
+        ...(files.ids.length > 0 ? { file_ids: files.ids } : {}),
       },
       { onSuccess: onDone },
     );
@@ -66,20 +75,35 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
       />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={ids.body}>{t("tasks.fields.body")}</Label>
-        <textarea
-          id={ids.body}
-          value={body}
-          rows={10}
-          maxLength={20000}
-          onChange={(e) => setBody(e.currentTarget.value)}
-          className={cn(control, "py-2 leading-relaxed")}
-        />
+        <AttachArea drafts={files}>
+          <textarea
+            id={ids.body}
+            value={body}
+            rows={10}
+            maxLength={20000}
+            onChange={(e) => setBody(e.currentTarget.value)}
+            className={cn(control, "py-2 leading-relaxed")}
+          />
+        </AttachArea>
       </div>
-      <div className="grid grid-cols-3 gap-3 max-nav:grid-cols-1">
+      <div className="grid grid-cols-2 gap-3 max-nav:grid-cols-1">
+        {(topics?.length ?? 0) > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={ids.topic}>{t("tasks.fields.topic")}</Label>
+            <Select id={ids.topic} value={topic} onChange={(e) => setTopic(e.currentTarget.value)}>
+              <option value="">{t(conversationId ? "tasks.topicOfConversation" : "inbox.topic.none")}</option>
+              {topics?.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={ids.queue}>{t("tasks.fields.queue")}</Label>
           <Select id={ids.queue} value={queue} onChange={(e) => setQueue(e.currentTarget.value)}>
-            <option value="">{t("tasks.noQueue")}</option>
+            <option value="">{t(topic || conversationId ? "tasks.queueOfTopic" : "tasks.noQueue")}</option>
             {queues?.map((q) => (
               <option key={q.id} value={q.id}>
                 {q.name}
@@ -112,7 +136,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
       <p className="m-0 text-[12.5px] text-ink-3">{t(assignee ? "tasks.notifyAssignee" : "tasks.notifyQueue")}</p>
       <FormMessage tone="error" message={create.isError ? describeApiError(t, create.error).message : null} />
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="primary" disabled={create.isPending}>
+        <Button type="submit" variant="primary" disabled={create.isPending || files.uploading}>
           {create.isPending ? t("tasks.creating") : t("tasks.create")}
         </Button>
         <Button type="button" onClick={onCancel}>

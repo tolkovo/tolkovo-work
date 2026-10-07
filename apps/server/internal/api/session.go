@@ -50,6 +50,29 @@ var publicOperations = map[string]bool{
 	"POST /api/v1/widget/contact":     true,
 	"GET /api/v1/widget/availability": true,
 	"POST /api/v1/widget/rating":      true,
+	"POST /api/v1/widget/topic":       true,
+}
+
+// tokenOperations are the only routes a personal access token opens
+// (ADR-0016): the tasks API and the MCP server, as api/openapi.yaml lists
+// accessToken in their security. A token reaches nothing else, whatever its
+// member's role, and cannot issue tokens. The scopes are checked again by
+// authz.Require in the handlers.
+var tokenOperations = map[string]bool{
+	"GET /api/v1/topics":                        true,
+	"GET /api/v1/tasks":                         true,
+	"POST /api/v1/tasks":                        true,
+	"GET /api/v1/tasks/summary":                 true,
+	"GET /api/v1/tasks/{id}":                    true,
+	"PUT /api/v1/tasks/{id}":                    true,
+	"GET /api/v1/tasks/{id}/activity":           true,
+	"POST /api/v1/tasks/{id}/activity":          true,
+	"GET /api/v1/task-queues":                   true,
+	"POST /api/v1/mcp":                          true,
+	"POST /api/v1/task-files":                   true,
+	"GET /api/v1/task-files/{id}/download-link": true,
+	"POST /api/v1/tasks/{id}/files":             true,
+	"DELETE /api/v1/tasks/{id}/files/{file_id}": true,
 }
 
 // sessionCookies writes and reads the session cookie.
@@ -113,6 +136,10 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if h := r.Header.Get("Authorization"); h != "" {
+			s.authenticateToken(next, w, r, route, h)
+			return
+		}
 		token := s.cookies.token(r)
 		if token == "" {
 			s.writeError(w, r, auth.ErrNoSession)
@@ -141,6 +168,45 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, authStateKey{}, authState{token: token, session: sess, membership: m})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// authenticateToken lets in a request with a personal access token: no
+// cookie and no CSRF token, the member and role read again on every
+// request, the permissions narrowed to the token's scopes.
+func (s *server) authenticateToken(next http.Handler, w http.ResponseWriter, r *http.Request, route, header string) {
+	token, ok := bearerToken(header)
+	if !ok || !auth.IsAccessToken(token) {
+		s.writeError(w, r, auth.ErrInvalidAccessToken)
+		return
+	}
+	ta, err := s.auth.AuthenticateToken(r.Context(), token, s.browser(r))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	m := ta.Membership
+	setLogWorkspace(r.Context(), m.Workspace.ID.String())
+	if !tokenOperations[route] {
+		writeProblem(w, r, Problem{
+			Status: http.StatusForbidden, Code: "token_not_allowed", Title: "Forbidden",
+			Detail: "this operation does not take a personal access token",
+		})
+		return
+	}
+	ctx := authz.WithPrincipal(r.Context(), authz.Principal{
+		UserID: m.User.ID, WorkspaceID: m.Workspace.ID, Role: m.Role, Scopes: ta.Scopes,
+	})
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// bearerToken reads "Bearer <token>" (the scheme in any case).
+func bearerToken(header string) (string, bool) {
+	scheme, token, ok := strings.Cut(header, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	token = strings.TrimSpace(token)
+	return token, token != ""
 }
 
 // sameOrigin rejects unsafe cross-origin browser requests, including login

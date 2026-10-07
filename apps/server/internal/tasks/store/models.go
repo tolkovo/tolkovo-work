@@ -25,6 +25,7 @@ type Task struct {
 	UpdatedAt   time.Time
 	ClosedAt    *time.Time
 	Version     int32
+	TopicID     *uuid.UUID
 }
 
 type TaskActivity struct {
@@ -36,6 +37,20 @@ type TaskActivity struct {
 	Body        *string
 	Meta        []byte
 	CreatedAt   time.Time
+}
+
+type TaskFile struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	TaskID      *uuid.UUID
+	ActivityID  *uuid.UUID
+	StorageKey  string
+	FileName    string
+	ContentType string
+	Size        int64
+	UploadedBy  *uuid.UUID
+	CreatedAt   time.Time
+	AttachedAt  *time.Time
 }
 
 type TaskQueue struct {

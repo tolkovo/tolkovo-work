@@ -17,6 +17,7 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   id,
   number: 12,
   queue_id: null,
+  topic_id: null,
   title: "Обновить сертификат на сервере",
   body: "Истекает в пятницу",
   status: "open",
@@ -28,6 +29,7 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   closed_at: null,
   version: 3,
   conversation_ids: [],
+  files: [],
   ...patch,
 });
 
@@ -84,6 +86,7 @@ describe("the tasks section", () => {
       status: "in_progress",
       priority: "normal",
       queue_id: null,
+      topic_id: null,
       assignee_id: member.user.id,
     });
     // Members do not delete tasks.
@@ -111,6 +114,34 @@ describe("the tasks section", () => {
       assignee_id: null,
     });
     expect(await screen.findByRole("heading", { name: /З-12/ })).toBeInTheDocument();
+  });
+
+  it("files a task under a topic, filters by it and names its change in the feed", async () => {
+    const user = userEvent.setup();
+    const crm = "0199a000-0000-7000-8000-00000000c0a1";
+    const { api } = server(member, {
+      "GET /topics": () =>
+        json(200, { items: [{ id: crm, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, member_ids: [] }] }),
+      "GET /tasks": () => json(200, { items: [task("t1", { topic_id: crm })], next_cursor: null }),
+      "GET /tasks/t1": () => json(200, task("t1", { topic_id: crm })),
+      "GET /tasks/t1/activity": () =>
+        json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "topic", from: "", to: crm, created_at: "2026-10-06T10:00:00Z" }] }),
+      "POST /tasks": () => json(201, task("t1")),
+    });
+    renderApp("/tasks?view=open", { api });
+    const row = await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }, firstLook);
+    expect(within(row).getByText("CRM")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Тема вопроса"), crm);
+    await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }));
+    expect(await screen.findByText(/Тема: CRM/)).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("link", { name: "Новая" }));
+    await user.type(await screen.findByLabelText("Название"), "Не грузится список моделей");
+    // The list's filter has the same name; the form's field comes last.
+    await user.selectOptions(screen.getAllByLabelText("Тема вопроса").at(-1)!, crm);
+    await user.click(screen.getByRole("button", { name: "Создать задачу" }));
+    await waitFor(() => expect(calls(api, "POST", "/tasks")).toHaveLength(1));
+    expect(calls(api, "POST", "/tasks")[0]?.body).toMatchObject({ title: "Не грузится список моделей", topic_id: crm, queue_id: null });
   });
 
   it("lets admins connect the Telegram bot for notifications", async () => {

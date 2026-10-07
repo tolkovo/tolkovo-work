@@ -39,7 +39,7 @@ func (q *Queries) ConversationRepliers(ctx context.Context, arg ConversationRepl
 }
 
 const lockVisitorConversation = `-- name: LockVisitorConversation :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
 WHERE workspace_id = $1 AND id = $2 AND channel_id = $3 AND external_thread_id = $4
 FOR UPDATE
 `
@@ -85,6 +85,8 @@ func (q *Queries) LockVisitorConversation(ctx context.Context, arg LockVisitorCo
 		&i.RatingComment,
 		&i.RatingResolvedBy,
 		&i.RatedAt,
+		&i.TopicID,
+		&i.TopicAskedAt,
 	)
 	return i, err
 }
@@ -173,7 +175,7 @@ func (q *Queries) SetConversationRating(ctx context.Context, arg SetConversation
 }
 
 const visitorConversation = `-- name: VisitorConversation :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
 WHERE workspace_id = $1 AND channel_id = $2 AND external_thread_id = $3
 ORDER BY created_at DESC, id DESC
 LIMIT 1
@@ -214,6 +216,8 @@ func (q *Queries) VisitorConversation(ctx context.Context, arg VisitorConversati
 		&i.RatingComment,
 		&i.RatingResolvedBy,
 		&i.RatedAt,
+		&i.TopicID,
+		&i.TopicAskedAt,
 	)
 	return i, err
 }

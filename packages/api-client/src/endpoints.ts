@@ -36,6 +36,8 @@ import {
   signedRequestSchema,
   tagListSchema,
   tagSchema,
+  topicListSchema,
+  topicSchema,
   telegramLoginSchema,
   widgetChannelCreatedSchema,
   workspaceListSchema,
@@ -116,6 +118,8 @@ export type MessagePage = Schemas["MessagePage"];
 export type Tag = Schemas["Tag"];
 export type TagColor = Schemas["TagColor"];
 export type CreateTagRequest = Schemas["CreateTagRequest"];
+export type Topic = Schemas["Topic"];
+export type TopicInput = Schemas["TopicInput"];
 export type PostMessageRequest = Schemas["PostMessageRequest"];
 
 /**
@@ -126,6 +130,8 @@ export type ConversationFilter = {
   status?: ConversationStatus[];
   assignee?: "me" | "none";
   contact_id?: string;
+  /** `none` (without a topic) or a topic id. */
+  topic?: string;
 };
 
 /**
@@ -384,6 +390,24 @@ export async function setConversationTags(
   );
 }
 
+/** Sets, changes or removes (`null`) the topic of the conversation. */
+export async function setConversationTopic(
+  client: ApiClient,
+  id: string,
+  topicId: string | null,
+  version?: number,
+): Promise<Conversation> {
+  return parseAnswer(
+    conversationSchema,
+    await unwrap(
+      client.PUT("/conversations/{id}/topic", {
+        params: { path: { id } },
+        body: version === undefined ? { topic_id: topicId } : { topic_id: topicId, version },
+      }),
+    ),
+  );
+}
+
 /** Moves the caller's read mark up to the message; never back. */
 export async function markConversationRead(client: ApiClient, id: string, upToMessageId: string): Promise<void> {
   await unwrap(
@@ -397,6 +421,28 @@ export async function fetchTags(client: ApiClient): Promise<Tag[]> {
 
 export async function createTag(client: ApiClient, body: CreateTagRequest): Promise<Tag> {
   return parseAnswer(tagSchema, await unwrap(client.POST("/tags", { body })), 201);
+}
+
+/** The topics of questions in the order of the buttons; at most 20. */
+export async function fetchTopics(client: ApiClient): Promise<Topic[]> {
+  return parseAnswer(topicListSchema, await unwrap(client.GET("/topics"))).items;
+}
+
+export async function createTopic(client: ApiClient, body: TopicInput): Promise<Topic> {
+  return parseAnswer(topicSchema, await unwrap(client.POST("/topics", { body })), 201);
+}
+
+export async function updateTopic(client: ApiClient, id: string, body: TopicInput): Promise<Topic> {
+  return parseAnswer(topicSchema, await unwrap(client.PUT("/topics/{id}", { params: { path: { id } }, body })));
+}
+
+export async function deleteTopic(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/topics/{id}", { params: { path: { id } } }));
+}
+
+/** `ids` names every topic once, in the new order. */
+export async function reorderTopics(client: ApiClient, ids: string[]): Promise<Topic[]> {
+  return parseAnswer(topicListSchema, await unwrap(client.PUT("/topics/order", { body: { ids } }))).items;
 }
 
 export async function fetchContact(client: ApiClient, id: string): Promise<Contact> {

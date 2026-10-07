@@ -82,6 +82,8 @@ type Conversation struct {
 	RatingComment    *string
 	RatingResolvedBy *string
 	RatedAt          *time.Time
+	TopicID          *uuid.UUID
+	TopicAskedAt     *time.Time
 }
 
 type Message struct {
@@ -113,4 +115,16 @@ type Tag struct {
 	Color       string
 	CreatedBy   *uuid.UUID
 	CreatedAt   time.Time
+}
+
+type Topic struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Name        string
+	Color       string
+	Position    int32
+	Priority    int16
+	TaskQueueID *uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

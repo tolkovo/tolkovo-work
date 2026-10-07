@@ -44,7 +44,7 @@ export function MessageAttachments({ message: m }: { message: Message }) {
   );
 }
 
-function FileIcon({ contentType, className }: { contentType: string; className: string }) {
+export function FileIcon({ contentType, className }: { contentType: string; className: string }) {
   if (contentType.startsWith("text/") || contentType.endsWith("/json") || contentType.endsWith("/xml")) {
     return <FileText aria-hidden="true" className={className} />;
   }
@@ -188,7 +188,7 @@ function Picture({ attachment: a }: { attachment: Attachment }) {
         )}
       </button>
       {open && link.data && (
-        <Viewer
+        <AttachmentViewer
           url={link.data.url}
           attachment={a}
           onClose={() => {
@@ -201,11 +201,17 @@ function Picture({ attachment: a }: { attachment: Attachment }) {
   );
 }
 
+function AttachmentViewer({ url, attachment: a, onClose }: { url: string; attachment: Attachment; onClose: () => void }) {
+  const download = useDownload(a);
+  return <ImageViewer url={url} name={a.file_name} download={download} onClose={onClose} />;
+}
+
+type ViewerDownload = { start: () => void; pending: boolean; failed: boolean };
+
 /** A screenshot over the panel: Esc, the cross or a click beside it closes it. */
-function Viewer({ url, attachment: a, onClose }: { url: string; attachment: Attachment; onClose: () => void }) {
+export function ImageViewer({ url, name, download, onClose }: { url: string; name: string; download: ViewerDownload; onClose: () => void }) {
   const { t } = useTranslation();
   const close = useRef<HTMLButtonElement>(null);
-  const download = useDownload(a);
   useEffect(() => {
     close.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -221,14 +227,14 @@ function Viewer({ url, attachment: a, onClose }: { url: string; attachment: Atta
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={t("inbox.attachment.viewer", { name: a.file_name })}
+      aria-label={t("inbox.attachment.viewer", { name })}
       className="fixed inset-0 z-50 flex flex-col gap-3 bg-ink/70 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div className="flex items-center gap-2 rounded-lg bg-surface px-3 py-1.5 text-sm text-ink shadow-pop">
-        <span className="min-w-0 flex-1 truncate font-mono">{a.file_name}</span>
+        <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
         <button
           type="button"
           onClick={download.start}
@@ -254,7 +260,7 @@ function Viewer({ url, attachment: a, onClose }: { url: string; attachment: Atta
           if (e.target === e.currentTarget) onClose();
         }}
       >
-        <img src={url} alt={a.file_name} className="max-h-full max-w-full rounded-md bg-surface object-contain" />
+        <img src={url} alt={name} className="max-h-full max-w-full rounded-md bg-surface object-contain" />
       </div>
       {download.failed && (
         <p role="alert" className="m-0 self-center rounded-md bg-surface px-3 py-1.5 text-sm text-danger">

@@ -29,6 +29,36 @@ func (q *Queries) AddQueueMember(ctx context.Context, arg AddQueueMemberParams) 
 	return err
 }
 
+const attachTaskFiles = `-- name: AttachTaskFiles :execrows
+UPDATE task_files SET task_id = $1, activity_id = $2, attached_at = $3
+WHERE workspace_id = $4 AND id = ANY($5::uuid[]) AND uploaded_by = $6
+  AND task_id IS NULL AND attached_at IS NULL
+`
+
+type AttachTaskFilesParams struct {
+	TaskID      *uuid.UUID
+	ActivityID  *uuid.UUID
+	AttachedAt  *time.Time
+	WorkspaceID uuid.UUID
+	Ids         []uuid.UUID
+	UploadedBy  *uuid.UUID
+}
+
+func (q *Queries) AttachTaskFiles(ctx context.Context, arg AttachTaskFilesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, attachTaskFiles,
+		arg.TaskID,
+		arg.ActivityID,
+		arg.AttachedAt,
+		arg.WorkspaceID,
+		arg.Ids,
+		arg.UploadedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const clearQueueMembers = `-- name: ClearQueueMembers :exec
 DELETE FROM task_queue_members WHERE workspace_id = $1 AND queue_id = $2
 `
@@ -45,7 +75,7 @@ func (q *Queries) ClearQueueMembers(ctx context.Context, arg ClearQueueMembersPa
 
 const conversationTasks = `-- name: ConversationTasks :many
 
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2
 ORDER BY l.created_at, t.id
@@ -82,6 +112,7 @@ func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksPa
 			&i.UpdatedAt,
 			&i.ClosedAt,
 			&i.Version,
+			&i.TopicID,
 		); err != nil {
 			return nil, err
 		}
@@ -91,6 +122,23 @@ func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const conversationTopic = `-- name: ConversationTopic :one
+SELECT topic_id FROM conversations WHERE workspace_id = $1 AND id = $2
+`
+
+type ConversationTopicParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// The topic of a conversation a task is created from.
+func (q *Queries) ConversationTopic(ctx context.Context, arg ConversationTopicParams) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, conversationTopic, arg.WorkspaceID, arg.ID)
+	var topic_id *uuid.UUID
+	err := row.Scan(&topic_id)
+	return topic_id, err
 }
 
 const countOpenAssigned = `-- name: CountOpenAssigned :one
@@ -117,6 +165,22 @@ SELECT count(*) FROM task_queues WHERE workspace_id = $1
 
 func (q *Queries) CountQueues(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countQueues, workspaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTaskFiles = `-- name: CountTaskFiles :one
+SELECT count(*) FROM task_files WHERE workspace_id = $1 AND task_id = $2
+`
+
+type CountTaskFilesParams struct {
+	WorkspaceID uuid.UUID
+	TaskID      *uuid.UUID
+}
+
+func (q *Queries) CountTaskFiles(ctx context.Context, arg CountTaskFilesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTaskFiles, arg.WorkspaceID, arg.TaskID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -153,8 +217,42 @@ func (q *Queries) DeleteTask(ctx context.Context, arg DeleteTaskParams) error {
 	return err
 }
 
+const deleteTaskFile = `-- name: DeleteTaskFile :exec
+DELETE FROM task_files WHERE workspace_id = $1 AND id = $2
+`
+
+type DeleteTaskFileParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) DeleteTaskFile(ctx context.Context, arg DeleteTaskFileParams) error {
+	_, err := q.db.Exec(ctx, deleteTaskFile, arg.WorkspaceID, arg.ID)
+	return err
+}
+
+const detachTaskFile = `-- name: DetachTaskFile :execrows
+UPDATE task_files SET task_id = NULL
+WHERE workspace_id = $1 AND id = $2 AND task_id = $3 AND activity_id IS NULL
+`
+
+type DetachTaskFileParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	TaskID      *uuid.UUID
+}
+
+// Removes a file from a task's description; the cleanup deletes it.
+func (q *Queries) DetachTaskFile(ctx context.Context, arg DetachTaskFileParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachTaskFile, arg.WorkspaceID, arg.ID, arg.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const doneTask = `-- name: DoneTask :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2 AND t.status = 'done'
 ORDER BY t.closed_at DESC, t.id DESC
@@ -192,6 +290,7 @@ func (q *Queries) DoneTask(ctx context.Context, arg DoneTaskParams) ([]Task, err
 			&i.UpdatedAt,
 			&i.ClosedAt,
 			&i.Version,
+			&i.TopicID,
 		); err != nil {
 			return nil, err
 		}
@@ -243,7 +342,7 @@ func (q *Queries) GetSettings(ctx context.Context, workspaceID uuid.UUID) (TaskS
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version FROM tasks WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks WHERE workspace_id = $1 AND id = $2
 `
 
 type GetTaskParams struct {
@@ -269,12 +368,41 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) 
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
+	)
+	return i, err
+}
+
+const getTaskFile = `-- name: GetTaskFile :one
+SELECT id, workspace_id, task_id, activity_id, storage_key, file_name, content_type, size, uploaded_by, created_at, attached_at FROM task_files WHERE workspace_id = $1 AND id = $2
+`
+
+type GetTaskFileParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) GetTaskFile(ctx context.Context, arg GetTaskFileParams) (TaskFile, error) {
+	row := q.db.QueryRow(ctx, getTaskFile, arg.WorkspaceID, arg.ID)
+	var i TaskFile
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.TaskID,
+		&i.ActivityID,
+		&i.StorageKey,
+		&i.FileName,
+		&i.ContentType,
+		&i.Size,
+		&i.UploadedBy,
+		&i.CreatedAt,
+		&i.AttachedAt,
 	)
 	return i, err
 }
 
 const getTaskForUpdate = `-- name: GetTaskForUpdate :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
 `
 
 type GetTaskForUpdateParams struct {
@@ -300,6 +428,7 @@ func (q *Queries) GetTaskForUpdate(ctx context.Context, arg GetTaskForUpdatePara
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
 	)
 	return i, err
 }
@@ -386,9 +515,9 @@ func (q *Queries) InsertQueue(ctx context.Context, arg InsertQueueParams) (TaskQ
 }
 
 const insertTask = `-- name: InsertTask :one
-INSERT INTO tasks (id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10, $10)
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version
+INSERT INTO tasks (id, workspace_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9, $10, $11, $11)
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id
 `
 
 type InsertTaskParams struct {
@@ -396,6 +525,7 @@ type InsertTaskParams struct {
 	WorkspaceID uuid.UUID
 	Number      int64
 	QueueID     *uuid.UUID
+	TopicID     *uuid.UUID
 	Title       string
 	Body        string
 	Priority    string
@@ -410,6 +540,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 		arg.WorkspaceID,
 		arg.Number,
 		arg.QueueID,
+		arg.TopicID,
 		arg.Title,
 		arg.Body,
 		arg.Priority,
@@ -433,6 +564,54 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
+	)
+	return i, err
+}
+
+const insertTaskFile = `-- name: InsertTaskFile :one
+
+INSERT INTO task_files (id, workspace_id, storage_key, file_name, content_type, size, uploaded_by, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, workspace_id, task_id, activity_id, storage_key, file_name, content_type, size, uploaded_by, created_at, attached_at
+`
+
+type InsertTaskFileParams struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	StorageKey  string
+	FileName    string
+	ContentType string
+	Size        int64
+	UploadedBy  *uuid.UUID
+	CreatedAt   time.Time
+}
+
+// Files of tasks (migration 00033).
+func (q *Queries) InsertTaskFile(ctx context.Context, arg InsertTaskFileParams) (TaskFile, error) {
+	row := q.db.QueryRow(ctx, insertTaskFile,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.StorageKey,
+		arg.FileName,
+		arg.ContentType,
+		arg.Size,
+		arg.UploadedBy,
+		arg.CreatedAt,
+	)
+	var i TaskFile
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.TaskID,
+		&i.ActivityID,
+		&i.StorageKey,
+		&i.FileName,
+		&i.ContentType,
+		&i.Size,
+		&i.UploadedBy,
+		&i.CreatedAt,
+		&i.AttachedAt,
 	)
 	return i, err
 }
@@ -555,7 +734,7 @@ func (q *Queries) ListQueues(ctx context.Context, workspaceID uuid.UUID) ([]List
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version FROM tasks
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks
 WHERE workspace_id = $1
   AND ($2::bigint = 0 OR number < $2::bigint)
   AND (NOT $3::boolean OR closed_at IS NULL)
@@ -564,10 +743,12 @@ WHERE workspace_id = $1
   AND (NOT $6::boolean OR assignee_id IS NULL)
   AND ($7::uuid IS NULL OR queue_id = $7::uuid)
   AND (NOT $8::boolean OR queue_id IS NULL)
-  AND ($9::text IS NULL OR status = $9::text)
-  AND ($10::text = '' OR title ILIKE '%' || $10::text || '%' OR number::text = $10::text)
+  AND ($9::uuid IS NULL OR topic_id = $9::uuid)
+  AND (NOT $10::boolean OR topic_id IS NULL)
+  AND ($11::text IS NULL OR status = $11::text)
+  AND ($12::text = '' OR title ILIKE '%' || $12::text || '%' OR number::text = $12::text)
 ORDER BY number DESC
-LIMIT $11
+LIMIT $13
 `
 
 type ListTasksParams struct {
@@ -579,6 +760,8 @@ type ListTasksParams struct {
 	Unassigned   bool
 	QueueID      *uuid.UUID
 	NoQueue      bool
+	TopicID      *uuid.UUID
+	NoTopic      bool
 	Status       *string
 	Query        string
 	Lim          int32
@@ -586,7 +769,8 @@ type ListTasksParams struct {
 
 // A page of tasks, newest first, before the number before_number (0: from
 // the newest). open_only and closed_only pick the state; assignee_id and
-// queue_id filter when set; unassigned and no_queue ask for NULL.
+// queue_id and topic_id filter when set; unassigned, no_queue and no_topic
+// ask for NULL.
 func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listTasks,
 		arg.WorkspaceID,
@@ -597,6 +781,8 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 		arg.Unassigned,
 		arg.QueueID,
 		arg.NoQueue,
+		arg.TopicID,
+		arg.NoTopic,
 		arg.Status,
 		arg.Query,
 		arg.Lim,
@@ -623,7 +809,93 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.UpdatedAt,
 			&i.ClosedAt,
 			&i.Version,
+			&i.TopicID,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const looseTaskFiles = `-- name: LooseTaskFiles :many
+SELECT id, workspace_id, task_id, activity_id, storage_key, file_name, content_type, size, uploaded_by, created_at, attached_at FROM task_files
+WHERE workspace_id = $1 AND id = ANY($2::uuid[]) AND uploaded_by = $3
+  AND task_id IS NULL AND attached_at IS NULL
+ORDER BY id
+`
+
+type LooseTaskFilesParams struct {
+	WorkspaceID uuid.UUID
+	Ids         []uuid.UUID
+	UploadedBy  *uuid.UUID
+}
+
+// Files of the member not taken yet, among ids.
+func (q *Queries) LooseTaskFiles(ctx context.Context, arg LooseTaskFilesParams) ([]TaskFile, error) {
+	rows, err := q.db.Query(ctx, looseTaskFiles, arg.WorkspaceID, arg.Ids, arg.UploadedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskFile
+	for rows.Next() {
+		var i TaskFile
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.TaskID,
+			&i.ActivityID,
+			&i.StorageKey,
+			&i.FileName,
+			&i.ContentType,
+			&i.Size,
+			&i.UploadedBy,
+			&i.CreatedAt,
+			&i.AttachedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const looseTaskFilesToClean = `-- name: LooseTaskFilesToClean :many
+SELECT id, workspace_id FROM task_files
+WHERE task_id IS NULL AND (attached_at IS NOT NULL OR created_at < $1)
+ORDER BY created_at
+LIMIT $2
+`
+
+type LooseTaskFilesToCleanParams struct {
+	Before time.Time
+	Lim    int32
+}
+
+type LooseTaskFilesToCleanRow struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+}
+
+// Runs as tolkovo_system (policy system_see_loose): files a task gave up,
+// and files nobody took within the upload's lifetime.
+func (q *Queries) LooseTaskFilesToClean(ctx context.Context, arg LooseTaskFilesToCleanParams) ([]LooseTaskFilesToCleanRow, error) {
+	rows, err := q.db.Query(ctx, looseTaskFilesToClean, arg.Before, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LooseTaskFilesToCleanRow
+	for rows.Next() {
+		var i LooseTaskFilesToCleanRow
+		if err := rows.Scan(&i.ID, &i.WorkspaceID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -734,6 +1006,89 @@ func (q *Queries) TaskConversationIDs(ctx context.Context, arg TaskConversationI
 	return items, nil
 }
 
+const taskFiles = `-- name: TaskFiles :many
+SELECT id, workspace_id, task_id, activity_id, storage_key, file_name, content_type, size, uploaded_by, created_at, attached_at FROM task_files
+WHERE workspace_id = $1 AND task_id = $2
+ORDER BY created_at, id
+`
+
+type TaskFilesParams struct {
+	WorkspaceID uuid.UUID
+	TaskID      *uuid.UUID
+}
+
+// The files of a task, in the order they came.
+func (q *Queries) TaskFiles(ctx context.Context, arg TaskFilesParams) ([]TaskFile, error) {
+	rows, err := q.db.Query(ctx, taskFiles, arg.WorkspaceID, arg.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskFile
+	for rows.Next() {
+		var i TaskFile
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.TaskID,
+			&i.ActivityID,
+			&i.StorageKey,
+			&i.FileName,
+			&i.ContentType,
+			&i.Size,
+			&i.UploadedBy,
+			&i.CreatedAt,
+			&i.AttachedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDByNumber = `-- name: TaskIDByNumber :one
+SELECT id FROM tasks WHERE workspace_id = $1 AND number = $2
+`
+
+type TaskIDByNumberParams struct {
+	WorkspaceID uuid.UUID
+	Number      int64
+}
+
+func (q *Queries) TaskIDByNumber(ctx context.Context, arg TaskIDByNumberParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, taskIDByNumber, arg.WorkspaceID, arg.Number)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const topicQueue = `-- name: TopicQueue :one
+SELECT id, task_queue_id FROM topics WHERE workspace_id = $1 AND id = $2
+`
+
+type TopicQueueParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+type TopicQueueRow struct {
+	ID          uuid.UUID
+	TaskQueueID *uuid.UUID
+}
+
+// A topic of the workspace and the queue of its tasks (topics belongs to
+// conversations; tasks only reads it). No row: no such topic.
+func (q *Queries) TopicQueue(ctx context.Context, arg TopicQueueParams) (TopicQueueRow, error) {
+	row := q.db.QueryRow(ctx, topicQueue, arg.WorkspaceID, arg.ID)
+	var i TopicQueueRow
+	err := row.Scan(&i.ID, &i.TaskQueueID)
+	return i, err
+}
+
 const unlinkConversation = `-- name: UnlinkConversation :execrows
 DELETE FROM task_conversations
 WHERE workspace_id = $1 AND task_id = $2 AND conversation_id = $3
@@ -755,15 +1110,16 @@ func (q *Queries) UnlinkConversation(ctx context.Context, arg UnlinkConversation
 
 const updateTask = `-- name: UpdateTask :one
 UPDATE tasks
-SET queue_id = $1, title = $2, body = $3, status = $4, priority = $5,
-    assignee_id = $6, closed_at = $7, updated_at = $8,
+SET queue_id = $1, topic_id = $2, title = $3, body = $4, status = $5, priority = $6,
+    assignee_id = $7, closed_at = $8, updated_at = $9,
     version = version + 1
-WHERE workspace_id = $9 AND id = $10
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version
+WHERE workspace_id = $10 AND id = $11
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id
 `
 
 type UpdateTaskParams struct {
 	QueueID     *uuid.UUID
+	TopicID     *uuid.UUID
 	Title       string
 	Body        string
 	Status      string
@@ -778,6 +1134,7 @@ type UpdateTaskParams struct {
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
 	row := q.db.QueryRow(ctx, updateTask,
 		arg.QueueID,
+		arg.TopicID,
 		arg.Title,
 		arg.Body,
 		arg.Status,
@@ -804,6 +1161,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
 	)
 	return i, err
 }

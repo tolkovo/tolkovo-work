@@ -44,6 +44,10 @@ func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, param
 		}
 		f.ByAssignee, f.AssigneeID = true, &id
 	}
+	if f.ByTopic, f.TopicID, err = topicFilter(deref(params.Topic)); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	page, err := s.conversations.Conversations(r.Context(), p.WorkspaceID, f)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -126,7 +130,7 @@ func (s *server) AssignConversation(w http.ResponseWriter, r *http.Request, id o
 	if !ok {
 		return
 	}
-	if !authz.Allowed(p.Role, authz.ConversationsTake) && !authz.Allowed(p.Role, authz.ConversationsAssign) {
+	if !p.Can(authz.ConversationsTake) && !p.Can(authz.ConversationsAssign) {
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
@@ -256,7 +260,7 @@ func (s *server) PostMessage(w http.ResponseWriter, r *http.Request, id oapi.Id,
 	if private {
 		need = authz.ConversationsNote
 	}
-	if !authz.Allowed(p.Role, need) {
+	if !p.Can(need) {
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
@@ -294,7 +298,7 @@ func (s *server) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	if !authz.Allowed(p.Role, authz.ConversationsReply) && !authz.Allowed(p.Role, authz.ConversationsNote) {
+	if !p.Can(authz.ConversationsReply) && !p.Can(authz.ConversationsNote) {
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
@@ -440,8 +444,8 @@ func (s *server) requirePrincipal(w http.ResponseWriter, r *http.Request, perm a
 func actorOf(p authz.Principal) conversations.Actor {
 	return conversations.Actor{
 		UserID:          p.UserID,
-		AnyConversation: authz.Allowed(p.Role, authz.ConversationsManage),
-		AssignOthers:    authz.Allowed(p.Role, authz.ConversationsAssign),
+		AnyConversation: p.Can(authz.ConversationsManage),
+		AssignOthers:    p.Can(authz.ConversationsAssign),
 	}
 }
 
@@ -493,7 +497,7 @@ func conversationBody(c conversations.Conversation) oapi.Conversation {
 		Contact: oapi.ContactRef{Id: c.ContactID, Name: c.ContactName}, AssigneeId: c.AssigneeID, ChannelId: c.ChannelID,
 		Subject: c.Subject, FirstResponseAt: c.FirstResponseAt, LastMessageAt: c.LastMessageAt,
 		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix, Version: c.Version,
-		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs),
+		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs), TopicId: c.TopicID,
 		LastReadMessageId: c.LastReadMessageID, UnreadCount: c.UnreadCount, Rating: ratingBody(c.Rating),
 	}
 }
@@ -587,6 +591,16 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 			r := oapi.MessageEventIssueReason(e.Issue.Reason)
 			out.Issue.Reason = &r
 		}
+	}
+	if e.Task != nil {
+		out.Task = &oapi.MessageEventTask{TaskId: e.Task.TaskID, Number: e.Task.Number}
+		if e.Task.Reason != "" {
+			r := oapi.MessageEventTaskReason(e.Task.Reason)
+			out.Task.Reason = &r
+		}
+	}
+	if e.Type == conversations.EventTopicChanged {
+		out.TopicId, out.PreviousTopicId, out.ByCustomer = e.TopicID, e.PreviousTopicID, &e.ByCustomer
 	}
 	return out
 }

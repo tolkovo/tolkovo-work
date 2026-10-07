@@ -160,3 +160,43 @@ func TestBlankMessages(t *testing.T) {
 		t.Fatal("a short answer passes as is")
 	}
 }
+
+func TestBotAPI_TopicButtons(t *testing.T) {
+	calls := map[string]map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := strings.TrimPrefix(r.URL.Path, "/bot"+token+"/")
+		body := map[string]any{}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		calls[method] = body
+		if method == "sendMessage" {
+			_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":91}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
+	}))
+	defer srv.Close()
+	api := NewBotAPI(srv.URL, srv.Client())
+	ctx := context.Background()
+
+	id, err := api.SendButtons(ctx, token, 70001, "Выберите тему", [][]Button{{{Text: "CRM", Data: "topic:1"}}, {{Text: "OnlyFans", Data: "topic:2"}}})
+	if err != nil || id != 91 {
+		t.Fatalf("send buttons: %d, %v", id, err)
+	}
+	kb, _ := json.Marshal(calls["sendMessage"]["reply_markup"])
+	if string(kb) != `{"inline_keyboard":[[{"callback_data":"topic:1","text":"CRM"}],[{"callback_data":"topic:2","text":"OnlyFans"}]]}` {
+		t.Fatalf("keyboard: %s", kb)
+	}
+	if err := api.AnswerCallback(ctx, token, "cb1", ""); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if _, ok := calls["answerCallbackQuery"]["text"]; ok || calls["answerCallbackQuery"]["callback_query_id"] != "cb1" {
+		t.Fatalf("answer: %+v", calls["answerCallbackQuery"])
+	}
+	if err := api.EditText(ctx, token, 70001, 91, "Тема вопроса: CRM"); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	if e := calls["editMessageText"]; e["message_id"] != float64(91) || e["text"] != "Тема вопроса: CRM" || e["reply_markup"] != nil {
+		t.Fatalf("edit: %+v", e)
+	}
+}

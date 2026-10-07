@@ -198,6 +198,7 @@ export const conversationSchema = z.object({
   updated_at: z.string(),
   last_message: conversationPreviewSchema.nullable(),
   tag_ids: z.array(z.string()),
+  topic_id: z.string().nullable(),
   last_read_message_id: z.string().nullable(),
   unread_count: z.number(),
   rating: conversationRatingSchema.nullable(),
@@ -248,6 +249,7 @@ export const messageEventSchema = z.object({
     "task_unlinked",
     "task_closed",
     "task_reopened",
+    "topic_changed",
   ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
@@ -265,6 +267,9 @@ export const messageEventSchema = z.object({
   task: z
     .object({ task_id: z.string(), number: z.number(), reason: z.enum(["done", "canceled"]).optional() })
     .optional() satisfies z.ZodType<Schemas["MessageEventTask"] | undefined>,
+  topic_id: z.string().nullable().optional(),
+  previous_topic_id: z.string().nullable().optional(),
+  by_customer: z.boolean().optional(),
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({
@@ -325,6 +330,18 @@ export const tagSchema = z.object({
 }) satisfies z.ZodType<Schemas["Tag"]>;
 
 export const tagListSchema = z.object({ items: z.array(tagSchema) }) satisfies z.ZodType<Schemas["TagList"]>;
+
+export const topicSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: tagColorSchema,
+  position: z.number(),
+  priority: z.number(),
+  task_queue_id: z.string().nullable(),
+  member_ids: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["Topic"]>;
+
+export const topicListSchema = z.object({ items: z.array(topicSchema) }) satisfies z.ZodType<Schemas["TopicList"]>;
 
 export const appLimitsSchema = z.object({
   max_file_mb: z.number(),
@@ -503,10 +520,25 @@ export const taskStatusSchema = z.enum(["open", "in_progress", "done", "canceled
 export const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]) satisfies z.ZodType<Schemas["TaskPriority"]>;
 export const taskButtonSchema = z.enum(["tasks", "github", "both"]) satisfies z.ZodType<Schemas["TaskButton"]>;
 
+export const taskFileSchema = z.object({
+  id: z.string(),
+  file_name: z.string(),
+  content_type: z.string(),
+  size: z.number(),
+  uploaded_by: z.string().nullable(),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskFile"]>;
+
+export const taskFileUploadSchema = z.object({
+  file: taskFileSchema,
+  upload: signedRequestSchema,
+}) satisfies z.ZodType<Schemas["TaskFileUpload"]>;
+
 export const taskSchema = z.object({
   id: z.string(),
   number: z.number(),
   queue_id: z.string().nullable(),
+  topic_id: z.string().nullable(),
   title: z.string(),
   body: z.string(),
   status: taskStatusSchema,
@@ -518,6 +550,7 @@ export const taskSchema = z.object({
   closed_at: z.string().nullable(),
   version: z.number(),
   conversation_ids: z.array(z.string()),
+  files: z.array(taskFileSchema),
 }) satisfies z.ZodType<Schemas["Task"]>;
 
 export const taskPageSchema = z.object({
@@ -530,12 +563,27 @@ export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfi
 export const taskActivitySchema = z.object({
   id: z.string(),
   actor_id: z.string().nullable(),
-  kind: z.enum(["comment", "created", "status", "assignee", "queue", "priority", "edited", "linked", "unlinked"]),
+  kind: z.enum([
+    "comment",
+    "created",
+    "status",
+    "assignee",
+    "queue",
+    "priority",
+    "topic",
+    "edited",
+    "linked",
+    "unlinked",
+    "files",
+  ]),
   body: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   fields: z.array(z.enum(["title", "body"])).optional(),
   conversation_id: z.string().optional(),
+  files: z.array(taskFileSchema).optional(),
+  files_added: z.number().optional(),
+  files_removed: z.number().optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["TaskActivity"]>;
 
@@ -593,3 +641,24 @@ export const telegramBotStateSchema = z.object({
   bot: z.object({ username: z.string() }).nullable(),
   encryption_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["TelegramBotState"]>;
+
+const accessTokenSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  user_name: z.string(),
+  name: z.string(),
+  scopes: z.array(z.enum(["tasks:read", "tasks:write"])),
+  prefix: z.string(),
+  created_at: z.string(),
+  expires_at: z.string().nullable(),
+  last_used_at: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["AccessToken"]>;
+
+export const accessTokenListSchema = z.object({
+  items: z.array(accessTokenSchema),
+}) satisfies z.ZodType<Schemas["AccessTokenList"]>;
+
+export const accessTokenCreatedSchema = z.object({
+  token: accessTokenSchema,
+  secret: z.string(),
+}) satisfies z.ZodType<Schemas["AccessTokenCreated"]>;

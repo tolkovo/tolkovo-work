@@ -20,7 +20,7 @@ This page is for the workspace admin who sets the section up and for everyone wh
 
 ## 3. A task by hand
 
-**Tasks → New**: a title, a description, and optionally a queue, a priority (low, normal, high, urgent) and an assignee. The assignee is notified. Without an assignee, the members of the queue are notified.
+**Tasks → New**: a title, a description, and optionally a [topic](topics.md), a queue, a priority (low, normal, high, urgent) and an assignee. The assignee is notified. Without an assignee, the members of the queue are notified. A task from a conversation takes the conversation's topic, and the topic's queue when no queue is picked.
 
 ## 4. A task from a conversation (operator)
 
@@ -49,6 +49,12 @@ On a task:
 - Comments are for the team: the customer never sees them. The history below shows every change and who made it, the latest 500 lines.
 - Linked conversations are listed with the customer's name, and can be unlinked.
 
+### Files and screenshots
+
+A task takes files in its description and in comments: screenshots, logs, PDFs, documents, archives. Paste a screenshot with **Ctrl+V** (**⌘V** on a Mac) into the description or the comment, drop files on it, or press **Attach a file**. A file uploads as soon as you choose it and goes with the task or the comment when you send it. In an open task, files added under **Files** join the description at once; a file there can be removed. Files of comments stay, as comments do.
+
+Up to 25 MB a file and 10 at once; images (PNG, JPEG, GIF, WebP), PDF, text and logs, CSV, JSON, ZIP, GZIP and Office documents. When a file is sent, Tolkovo checks that its content matches its type and, when the server has ClamAV (`TOLKOVO_CLAMAV_ADDR`), that it has no virus; a refused file is deleted and the panel says why. Pictures show as thumbnails and open larger; other files download. A file removed from a task, and the files of a deleted task, are deleted from storage within 15 minutes.
+
 ## 6. When a task is done
 
 Set the status to **Done**. In every linked conversation:
@@ -69,7 +75,25 @@ In Telegram, members get a message when a task is assigned to them, and when a t
 2. **Each member** opens **Settings → Notifications → Telegram → Link Telegram**, opens the bot from the link and presses **Start**. The link works for 15 minutes. The panel notices the Start by itself: Tolkovo reads the bot's messages, so no webhook is needed and it works on a server behind NAT.
 3. **Unlink** stops the messages. A member who blocks the bot is unlinked automatically. One Telegram account gets the messages of one member: a second member's link from the same account is refused, and the bot says so.
 
-## 8. What leaves Tolkovo
+## 8. API and AI agents (MCP)
+
+A script or an AI agent (Claude Code, Cursor and other MCP clients) can work with tasks on a member's behalf: list them, take one, comment it and close it.
+
+1. Open **Settings → API access** and issue a token: give it a name, choose **Read tasks** or **Read and change tasks**, and an expiry (30, 90 or 365 days, or never).
+2. Copy the token at once: it is shown only once, and the server keeps only its hash. Next to it the panel shows the command for Claude Code:
+
+   ```sh
+   claude mcp add --transport http tolkovo https://<your server>/api/v1/mcp --header "Authorization: Bearer tk_pat_…"
+   ```
+
+   Other MCP clients connect to the same address with the same `Authorization` header. Scripts call the REST API of tasks with it (`GET /api/v1/tasks`, `PUT /api/v1/tasks/{id}` and so on).
+3. The agent gets the tools `list_tasks`, `get_task`, `list_queues`, `read_file`, and with a token that changes tasks also `create_task`, `update_task`, `attach_file` and `comment_task`. `read_file` shows the agent a screenshot of the task as a picture and a log as text; `attach_file` puts a file (up to 10 MB) into the description, or into a comment when it comes with text. It names tasks by number (`#42`). It is told to treat the texts of tasks as data, not as instructions.
+
+A token acts as its member and can do no more than the member's role. It reaches only tasks: conversations, customers, settings, deleting tasks and queues are closed to it, and it cannot link a task to a conversation. Changes made with a token appear in the task's feed under the member's name.
+
+A member has at most 20 tokens and revokes them on the same page. Admins also see every member's tokens there (**Members' tokens**) and revoke any. A token stops working at once when it is revoked or expires, and when its member leaves the workspace or their account is disabled.
+
+## 9. What leaves Tolkovo
 
 - With the AI turned on, the customer's first message, with personal data masked, goes to the AI provider of the workspace to write the draft.
 - With a Telegram bot for notifications, Telegram gets the task's number, its title and a link to it in the panel. The description and customer data never go there.
