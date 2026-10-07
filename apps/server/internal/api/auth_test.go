@@ -21,7 +21,7 @@ func TestRegister_CreatesOwnerAndSignsIn(t *testing.T) {
 	if !slices.Equal(s.Permissions, []string{
 		"ai.manage", "channels.manage", "channels.view", "contacts.edit", "contacts.view", "conversations.assign", "conversations.create", "conversations.manage",
 		"conversations.note", "conversations.reply", "conversations.tag", "conversations.take", "conversations.view",
-		"integrations.manage", "issues.create", "members.manage", "members.view", "routing.manage", "tags.manage",
+		"integrations.manage", "issues.create", "knowledge.manage", "members.manage", "members.view", "routing.manage", "tags.manage",
 		"tasks.edit", "tasks.manage", "tasks.view", "workspace.delete", "workspace.manage",
 	}) {
 		t.Fatalf("owner permissions: %v", s.Permissions)

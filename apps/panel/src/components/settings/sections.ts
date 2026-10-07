@@ -8,6 +8,7 @@ export type SettingsPath =
   | "/settings/routing"
   | "/settings/topics"
   | "/settings/ai"
+  | "/settings/knowledge"
   | "/settings/team"
   | "/settings/profile"
   | "/settings/appearance"
@@ -25,6 +26,7 @@ type SettingsSection = {
     | "settings.routing.title"
     | "settings.topics.title"
     | "settings.ai.nav"
+    | "settings.knowledge.title"
     | "settings.team.title"
     | "settings.profile.title"
     | "settings.appearance.title"
@@ -60,6 +62,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/routing", label: "settings.routing.title", permission: "routing.manage" },
       { to: "/settings/topics", label: "settings.topics.title", permission: "routing.manage" },
       { to: "/settings/ai", label: "settings.ai.nav", permission: "ai.manage" },
+      { to: "/settings/knowledge", label: "settings.knowledge.title", permission: "knowledge.manage" },
     ],
   },
   {

@@ -428,6 +428,39 @@ func (e IssueStatus) Valid() bool {
 	}
 }
 
+// Defines values for KBArticleKind.
+const (
+	Article KBArticleKind = "article"
+	Qa      KBArticleKind = "qa"
+)
+
+// Valid indicates whether the value is a known member of the KBArticleKind enum.
+func (e KBArticleKind) Valid() bool {
+	switch e {
+	case Article:
+		return true
+	case Qa:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KBImportFormat.
+const (
+	TolkovoKnowledge1 KBImportFormat = "tolkovo-knowledge/1"
+)
+
+// Valid indicates whether the value is a known member of the KBImportFormat enum.
+func (e KBImportFormat) Valid() bool {
+	switch e {
+	case TolkovoKnowledge1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Locale.
 const (
 	En Locale = "en"
@@ -2052,6 +2085,121 @@ type IssueReplyDraft struct {
 // GitHub refused it, `error` says why.
 type IssueStatus string
 
+// KBArticle defines model for KBArticle.
+type KBArticle struct {
+	// Body Markdown.
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	Id        uuid.UUID `json:"id"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind KBArticleKind `json:"kind"`
+
+	// Published The bot answers only from published entries.
+	Published bool   `json:"published"`
+	Title     string `json:"title"`
+
+	// TopicIds The topics the entry serves; empty — all of them.
+	TopicIds  []uuid.UUID `json:"topic_ids"`
+	UpdatedAt time.Time   `json:"updated_at"`
+
+	// Url A page the bot may show the customer as the source.
+	Url *string `json:"url"`
+}
+
+// KBArticleInput defines model for KBArticleInput.
+type KBArticleInput struct {
+	Body string `json:"body"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind      KBArticleKind `json:"kind"`
+	Published *bool         `json:"published,omitempty"`
+	Title     string        `json:"title"`
+	TopicIds  *[]uuid.UUID  `json:"topic_ids,omitempty"`
+	Url       *string       `json:"url,omitempty"`
+}
+
+// KBArticleKind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+type KBArticleKind string
+
+// KBArticleList defines model for KBArticleList.
+type KBArticleList struct {
+	Items []KBArticle `json:"items"`
+}
+
+// KBGuide defines model for KBGuide.
+type KBGuide struct {
+	// About Who the company is, what its product does and for whom, its main features, what the bot does not discuss.
+	About string `json:"about"`
+
+	// HandoffRules When the bot calls a person at once, besides when it does not know the answer.
+	HandoffRules string `json:"handoff_rules"`
+
+	// TaskChecklist What the bot collects from the customer before it creates a task for the IT team, one item
+	// per line (account email, device, app version, steps, what was expected and what happened).
+	TaskChecklist string     `json:"task_checklist"`
+	UpdatedAt     *time.Time `json:"updated_at"`
+}
+
+// KBGuideInput defines model for KBGuideInput.
+type KBGuideInput struct {
+	About         string `json:"about"`
+	HandoffRules  string `json:"handoff_rules"`
+	TaskChecklist string `json:"task_checklist"`
+}
+
+// KBHit defines model for KBHit.
+type KBHit struct {
+	// Excerpt The start of the text.
+	Excerpt string    `json:"excerpt"`
+	Id      uuid.UUID `json:"id"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind  KBArticleKind `json:"kind"`
+	Title string        `json:"title"`
+	Url   *string       `json:"url"`
+}
+
+// KBImport A knowledge file; unknown fields are ignored, so an agent may add notes.
+type KBImport struct {
+	About         *string           `json:"about,omitempty"`
+	Articles      []KBImportArticle `json:"articles"`
+	Format        KBImportFormat    `json:"format"`
+	HandoffRules  *string           `json:"handoff_rules,omitempty"`
+	TaskChecklist *string           `json:"task_checklist,omitempty"`
+}
+
+// KBImportFormat defines model for KBImport.Format.
+type KBImportFormat string
+
+// KBImportArticle defines model for KBImportArticle.
+type KBImportArticle struct {
+	Body string `json:"body"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind      KBArticleKind `json:"kind"`
+	Published *bool         `json:"published,omitempty"`
+	Title     string        `json:"title"`
+
+	// Topics Names of topics, as in Settings → Topics.
+	Topics *[]string `json:"topics,omitempty"`
+	Url    *string   `json:"url,omitempty"`
+}
+
+// KBImportResult defines model for KBImportResult.
+type KBImportResult struct {
+	Created int `json:"created"`
+
+	// UnknownTopics Topic names of the file that the workspace has no topic for; skipped.
+	UnknownTopics []string `json:"unknown_topics"`
+	Updated       int      `json:"updated"`
+}
+
+// KBSearchResult defines model for KBSearchResult.
+type KBSearchResult struct {
+	Items []KBHit `json:"items"`
+}
+
 // LinkIssueRequest defines model for LinkIssueRequest.
 type LinkIssueRequest struct {
 	// Number The issue number in the workspace's repository.
@@ -3280,6 +3428,12 @@ type ListIngestReportRepliesParams struct {
 	XReportToken ReportToken `json:"X-Report-Token"`
 }
 
+// SearchKBParams defines parameters for SearchKB.
+type SearchKBParams struct {
+	Q     string     `form:"q" json:"q"`
+	Topic *uuid.UUID `form:"topic,omitempty" json:"topic,omitempty"`
+}
+
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
 	// State `open` (new or in progress), `closed` (done or canceled); all when absent.
@@ -3437,6 +3591,18 @@ type StartGitHubIntegrationJSONRequestBody = StartGitHubIntegrationRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
+
+// CreateKBArticleJSONRequestBody defines body for CreateKBArticle for application/json ContentType.
+type CreateKBArticleJSONRequestBody = KBArticleInput
+
+// UpdateKBArticleJSONRequestBody defines body for UpdateKBArticle for application/json ContentType.
+type UpdateKBArticleJSONRequestBody = KBArticleInput
+
+// SetKBGuideJSONRequestBody defines body for SetKBGuide for application/json ContentType.
+type SetKBGuideJSONRequestBody = KBGuideInput
+
+// ImportKBJSONRequestBody defines body for ImportKB for application/json ContentType.
+type ImportKBJSONRequestBody = KBImport
 
 // McpJSONRequestBody defines body for Mcp for application/json ContentType.
 type McpJSONRequestBody = McpMessage
@@ -3746,6 +3912,33 @@ type ServerInterface interface {
 	// ResendInvitation Issue a new link for an open invitation
 	// (POST /invitations/{id}/resend)
 	ResendInvitation(w http.ResponseWriter, r *http.Request, id Id)
+	// ListKBArticles The entries of the knowledge base, the last changed first
+	// (GET /kb/articles)
+	ListKBArticles(w http.ResponseWriter, r *http.Request)
+	// CreateKBArticle Add an entry
+	// (POST /kb/articles)
+	CreateKBArticle(w http.ResponseWriter, r *http.Request)
+	// DeleteKBArticle Delete an entry
+	// (DELETE /kb/articles/{id})
+	DeleteKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// GetKBArticle An entry with its whole text
+	// (GET /kb/articles/{id})
+	GetKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateKBArticle Replace an entry
+	// (PUT /kb/articles/{id})
+	UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// GetKBGuide What the bot always knows
+	// (GET /kb/guide)
+	GetKBGuide(w http.ResponseWriter, r *http.Request)
+	// SetKBGuide Save what the bot always knows
+	// (PUT /kb/guide)
+	SetKBGuide(w http.ResponseWriter, r *http.Request)
+	// ImportKB Import a knowledge file
+	// (POST /kb/import)
+	ImportKB(w http.ResponseWriter, r *http.Request)
+	// SearchKB What the bot would find for a question
+	// (GET /kb/search)
+	SearchKB(w http.ResponseWriter, r *http.Request, params SearchKBParams)
 	// Mcp The MCP server of the tasks section
 	// (POST /mcp)
 	Mcp(w http.ResponseWriter, r *http.Request)
@@ -4379,6 +4572,60 @@ func (_ Unimplemented) RevokeInvitation(w http.ResponseWriter, r *http.Request, 
 // ResendInvitation Issue a new link for an open invitation
 // (POST /invitations/{id}/resend)
 func (_ Unimplemented) ResendInvitation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListKBArticles The entries of the knowledge base, the last changed first
+// (GET /kb/articles)
+func (_ Unimplemented) ListKBArticles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateKBArticle Add an entry
+// (POST /kb/articles)
+func (_ Unimplemented) CreateKBArticle(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteKBArticle Delete an entry
+// (DELETE /kb/articles/{id})
+func (_ Unimplemented) DeleteKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetKBArticle An entry with its whole text
+// (GET /kb/articles/{id})
+func (_ Unimplemented) GetKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateKBArticle Replace an entry
+// (PUT /kb/articles/{id})
+func (_ Unimplemented) UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetKBGuide What the bot always knows
+// (GET /kb/guide)
+func (_ Unimplemented) GetKBGuide(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetKBGuide Save what the bot always knows
+// (PUT /kb/guide)
+func (_ Unimplemented) SetKBGuide(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ImportKB Import a knowledge file
+// (POST /kb/import)
+func (_ Unimplemented) ImportKB(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SearchKB What the bot would find for a question
+// (GET /kb/search)
+func (_ Unimplemented) SearchKB(w http.ResponseWriter, r *http.Request, params SearchKBParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6601,6 +6848,200 @@ func (siw *ServerInterfaceWrapper) ResendInvitation(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListKBArticles operation middleware
+func (siw *ServerInterfaceWrapper) ListKBArticles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKBArticles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) CreateKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateKBArticle(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) DeleteKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) GetKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateKBArticle operation middleware
+func (siw *ServerInterfaceWrapper) UpdateKBArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetKBGuide operation middleware
+func (siw *ServerInterfaceWrapper) GetKBGuide(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetKBGuide(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetKBGuide operation middleware
+func (siw *ServerInterfaceWrapper) SetKBGuide(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetKBGuide(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportKB operation middleware
+func (siw *ServerInterfaceWrapper) ImportKB(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportKB(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchKB operation middleware
+func (siw *ServerInterfaceWrapper) SearchKB(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchKBParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "topic" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "topic", r.URL.Query(), &params.Topic, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchKB(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Mcp operation middleware
 func (siw *ServerInterfaceWrapper) Mcp(w http.ResponseWriter, r *http.Request) {
 
@@ -8149,6 +8590,33 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/ai/settings/check", wrapper.CheckAISettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/articles", wrapper.ListKBArticles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/kb/articles", wrapper.CreateKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/kb/articles/{id}", wrapper.DeleteKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/articles/{id}", wrapper.GetKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/kb/articles/{id}", wrapper.UpdateKBArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/search", wrapper.SearchKB)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/guide", wrapper.GetKBGuide)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/kb/guide", wrapper.SetKBGuide)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/kb/import", wrapper.ImportKB)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/integrations/github", wrapper.DisconnectGitHubIntegration)

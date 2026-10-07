@@ -35,6 +35,7 @@ import { Route as AppSettingsAppearanceRouteImport } from "./routes/_app/setting
 import { Route as AppSettingsChannelsRouteImport } from "./routes/_app/settings/channels"
 import { Route as AppSettingsGeneralRouteImport } from "./routes/_app/settings/general"
 import { Route as AppSettingsIntegrationsRouteImport } from "./routes/_app/settings/integrations"
+import { Route as AppSettingsKnowledgeRouteImport } from "./routes/_app/settings/knowledge"
 import { Route as AppSettingsNotificationsRouteImport } from "./routes/_app/settings/notifications"
 import { Route as AppSettingsProfileRouteImport } from "./routes/_app/settings/profile"
 import { Route as AppSettingsRoutingRouteImport } from "./routes/_app/settings/routing"
@@ -173,6 +174,11 @@ const AppSettingsIntegrationsRoute = AppSettingsIntegrationsRouteImport.update({
   path: "/integrations",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsKnowledgeRoute = AppSettingsKnowledgeRouteImport.update({
+  id: "/knowledge",
+  path: "/knowledge",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsNotificationsRoute =
   AppSettingsNotificationsRouteImport.update({
     id: "/notifications",
@@ -247,6 +253,7 @@ export interface FileRoutesByFullPath {
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/integrations": typeof AppSettingsIntegrationsRoute
+  "/settings/knowledge": typeof AppSettingsKnowledgeRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
   "/settings/routing": typeof AppSettingsRoutingRoute
@@ -279,6 +286,7 @@ export interface FileRoutesByTo {
   "/settings/channels": typeof AppSettingsChannelsRoute
   "/settings/general": typeof AppSettingsGeneralRoute
   "/settings/integrations": typeof AppSettingsIntegrationsRoute
+  "/settings/knowledge": typeof AppSettingsKnowledgeRoute
   "/settings/notifications": typeof AppSettingsNotificationsRoute
   "/settings/profile": typeof AppSettingsProfileRoute
   "/settings/routing": typeof AppSettingsRoutingRoute
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   "/_app/settings/channels": typeof AppSettingsChannelsRoute
   "/_app/settings/general": typeof AppSettingsGeneralRoute
   "/_app/settings/integrations": typeof AppSettingsIntegrationsRoute
+  "/_app/settings/knowledge": typeof AppSettingsKnowledgeRoute
   "/_app/settings/notifications": typeof AppSettingsNotificationsRoute
   "/_app/settings/profile": typeof AppSettingsProfileRoute
   "/_app/settings/routing": typeof AppSettingsRoutingRoute
@@ -355,6 +364,7 @@ export interface FileRouteTypes {
     | "/settings/channels"
     | "/settings/general"
     | "/settings/integrations"
+    | "/settings/knowledge"
     | "/settings/notifications"
     | "/settings/profile"
     | "/settings/routing"
@@ -387,6 +397,7 @@ export interface FileRouteTypes {
     | "/settings/channels"
     | "/settings/general"
     | "/settings/integrations"
+    | "/settings/knowledge"
     | "/settings/notifications"
     | "/settings/profile"
     | "/settings/routing"
@@ -425,6 +436,7 @@ export interface FileRouteTypes {
     | "/_app/settings/channels"
     | "/_app/settings/general"
     | "/_app/settings/integrations"
+    | "/_app/settings/knowledge"
     | "/_app/settings/notifications"
     | "/_app/settings/profile"
     | "/_app/settings/routing"
@@ -630,6 +642,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsIntegrationsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/knowledge": {
+      id: "/_app/settings/knowledge"
+      path: "/knowledge"
+      fullPath: "/settings/knowledge"
+      preLoaderRoute: typeof AppSettingsKnowledgeRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/settings/notifications": {
       id: "/_app/settings/notifications"
       path: "/notifications"
@@ -724,6 +743,7 @@ interface AppSettingsRouteChildren {
   AppSettingsChannelsRoute: typeof AppSettingsChannelsRoute
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
   AppSettingsIntegrationsRoute: typeof AppSettingsIntegrationsRoute
+  AppSettingsKnowledgeRoute: typeof AppSettingsKnowledgeRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
   AppSettingsRoutingRoute: typeof AppSettingsRoutingRoute
@@ -741,6 +761,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsChannelsRoute: AppSettingsChannelsRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,
   AppSettingsIntegrationsRoute: AppSettingsIntegrationsRoute,
+  AppSettingsKnowledgeRoute: AppSettingsKnowledgeRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
   AppSettingsRoutingRoute: AppSettingsRoutingRoute,

@@ -76,6 +76,35 @@ export function SelectField({ id, label, hint, error, children, ...select }: Sel
   );
 }
 
+type TextAreaFieldProps = Omit<ComponentProps<"textarea">, "id" | "name"> & {
+  id: string;
+  name: string;
+  label: string;
+  hint?: string | undefined;
+  error?: string | undefined;
+};
+
+/** A multi-line text styled like the inputs. */
+export function TextAreaField({ id, label, hint, error, className, ...textarea }: TextAreaFieldProps) {
+  return (
+    <FieldShell id={id} label={label} hint={hint} error={error}>
+      {(aria) => (
+        <textarea
+          id={id}
+          className={cn(
+            "w-full min-w-0 rounded-lg border border-input bg-surface px-2.5 py-2 text-sm leading-relaxed text-ink",
+            "placeholder:text-ink-3 focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+            "disabled:cursor-not-allowed disabled:opacity-55 aria-invalid:border-destructive",
+            className,
+          )}
+          {...textarea}
+          {...aria}
+        />
+      )}
+    </FieldShell>
+  );
+}
+
 /**
  * Form-level message. The live region is always in the DOM, so changing its text is announced
  * (role="alert" for errors, role="status" for success).
