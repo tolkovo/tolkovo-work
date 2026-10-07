@@ -31,9 +31,12 @@ type Bots struct {
 	Files map[string][]byte
 	// Sent records the messages sent; Typing the chats shown "typing".
 	// Fail is returned by the next sends, one error per send.
-	Sent    []Sent
-	Typing  []int64
-	Fail    []error
+	Sent   []Sent
+	Typing []int64
+	Fail   []error
+	// Answers and Edits record the topic buttons' presses (SnapshotAnswers).
+	Answers []Answer
+	Edits   []Edit
 	revoked bool
 	updates []telegram.BotUpdate
 	nextID  int64
@@ -58,6 +61,8 @@ type Sent struct {
 	RandomID int64 // personal accounts
 	// NoPreview: sent by SendNotice, link previews off.
 	NoPreview bool
+	// Buttons: sent by SendButtons, one row per slice.
+	Buttons [][]telegram.Button
 }
 
 // SnapshotSent returns a copy of what was sent so far.
@@ -100,6 +105,45 @@ func (b *Bots) SendMessage(_ context.Context, token string, chatID int64, text s
 // SendNotice records the text with link previews off.
 func (b *Bots) SendNotice(_ context.Context, token string, chatID int64, text string) (int64, error) {
 	return b.send(token, Sent{ChatID: chatID, Text: text, NoPreview: true})
+}
+
+// SendButtons records the text with its buttons.
+func (b *Bots) SendButtons(_ context.Context, token string, chatID int64, text string, rows [][]telegram.Button) (int64, error) {
+	return b.send(token, Sent{ChatID: chatID, Text: text, Buttons: rows})
+}
+
+// Answer is one AnswerCallback call.
+type Answer struct {
+	CallbackID, Text string
+}
+
+// Edit is one EditText call.
+type Edit struct {
+	ChatID, MessageID int64
+	Text              string
+}
+
+// AnswerCallback records the answer.
+func (b *Bots) AnswerCallback(_ context.Context, _, callbackID, text string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.Answers = append(b.Answers, Answer{CallbackID: callbackID, Text: text})
+	return nil
+}
+
+// EditText records the edit.
+func (b *Bots) EditText(_ context.Context, _ string, chatID, messageID int64, text string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.Edits = append(b.Edits, Edit{ChatID: chatID, MessageID: messageID, Text: text})
+	return nil
+}
+
+// SnapshotAnswers returns the callback answers and the edits so far.
+func (b *Bots) SnapshotAnswers() ([]Answer, []Edit) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]Answer(nil), b.Answers...), append([]Edit(nil), b.Edits...)
 }
 
 // SendFile records the file with its bytes.

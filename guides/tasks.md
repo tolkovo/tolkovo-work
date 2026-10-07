@@ -20,7 +20,7 @@ This page is for the workspace admin who sets the section up and for everyone wh
 
 ## 3. A task by hand
 
-**Tasks → New**: a title, a description, and optionally a queue, a priority (low, normal, high, urgent) and an assignee. The assignee is notified. Without an assignee, the members of the queue are notified.
+**Tasks → New**: a title, a description, and optionally a [topic](topics.md), a queue, a priority (low, normal, high, urgent) and an assignee. The assignee is notified. Without an assignee, the members of the queue are notified. A task from a conversation takes the conversation's topic, and the topic's queue when no queue is picked.
 
 ## 4. A task from a conversation (operator)
 

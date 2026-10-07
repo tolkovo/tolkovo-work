@@ -62,6 +62,8 @@ import {
   createIngestKey,
   createInvitation,
   createTag,
+  createTopic,
+  deleteTopic,
   disconnectChannel,
   fetchAttachmentLink,
   fetchRegistrationOpen,
@@ -97,6 +99,7 @@ import {
   fetchMyWorkspaces,
   fetchSession,
   fetchTags,
+  fetchTopics,
   forgotPassword,
   hasPermission,
   login,
@@ -144,6 +147,9 @@ import {
   type CreateInvitationRequest,
   type CreateIssueRequest,
   type CreateTagRequest,
+  type TopicInput,
+  reorderTopics,
+  updateTopic,
   type LoginRequest,
   type RegisterRequest,
   type ResetPasswordRequest,
@@ -217,6 +223,7 @@ export const queryKeys = {
   myTelegram: ["me", "telegram"] as const,
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
+  topics: ["topics"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
 };
 
@@ -775,6 +782,28 @@ export function useCreateTag() {
     mutationFn: (body: CreateTagRequest) => createTag(client, body),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
   });
+}
+
+/** The topics of questions in the order of the buttons; at most 20. */
+export function useTopics() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.topics, queryFn: () => fetchTopics(client), staleTime: 5 * 60_000 });
+}
+
+/** Creates, changes, deletes or reorders topics; the list is read again after each. */
+export function useTopicMutations() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const onSettled = () => queryClient.invalidateQueries({ queryKey: queryKeys.topics });
+  return {
+    create: useMutation({ mutationFn: (body: TopicInput) => createTopic(client, body), onSettled }),
+    update: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: TopicInput }) => updateTopic(client, id, body),
+      onSettled,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => deleteTopic(client, id), onSettled }),
+    reorder: useMutation({ mutationFn: (ids: string[]) => reorderTopics(client, ids), onSettled }),
+  };
 }
 
 export function useContact(id: string) {

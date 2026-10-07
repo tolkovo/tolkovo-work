@@ -2164,6 +2164,36 @@ paths:
         '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
         '429': { $ref: '#/components/responses/WidgetLimited' }
 
+  /widget/topic:
+    post:
+      tags: [widget]
+      operationId: chooseWidgetTopic
+      summary: The visitor picks the topic of their open conversation
+      description: |
+        For a visitor who wrote before picking a topic (`WidgetSession.topics`; a topic picked
+        before the first message goes with it, `WidgetMessageRequest.topic_id`). The
+        conversation must be open (`conversation` of `GET /widget/messages`); picking again
+        changes the topic. Rate: 10 a minute per session.
+      security:
+        - widgetSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WidgetTopicRequest' }
+      responses:
+        '204':
+          description: Stored.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/WidgetSessionEnded' }
+        '403': { $ref: '#/components/responses/WidgetOriginNotAllowed' }
+        '404':
+          description: '`not_found`: no such open conversation in the visitor''s chat, or no such topic.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/WidgetLimited' }
+
   /widget/rating:
     post:
       tags: [widget]
@@ -2329,6 +2359,10 @@ paths:
           in: query
           description: '`me`, `none` (unassigned) or a member''s user id.'
           schema: { type: string }
+        - name: topic
+          in: query
+          description: '`none` (without a topic) or a topic id.'
+          schema: { type: string, maxLength: 36 }
         - name: contact_id
           in: query
           description: |
@@ -2591,6 +2625,37 @@ paths:
       responses:
         '200':
           description: The conversation with its new tags.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /conversations/{id}/topic:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [conversations]
+      operationId: setConversationTopic
+      summary: Set, change or remove the topic of the conversation
+      description: |
+        Requires `conversations.tag`; works in any visible conversation, closed ones too. The
+        conversation takes the topic's priority (none: 0) and stays with whoever has it; a
+        queued one is distributed again. The feed gets a line.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetTopicRequest' }
+      responses:
+        '200':
+          description: The conversation with its new topic.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Conversation' }
@@ -2933,6 +2998,121 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /topics:
+    get:
+      tags: [conversations]
+      operationId: listTopics
+      summary: The topics of questions, in the order of the buttons
+      description: |
+        Requires `conversations.view` or `tasks.view`. At most 20, so there are no pages. The
+        customer picks a topic before writing: the Telegram bot shows a button per topic after
+        the first message of a conversation, the widget shows them above the message field. An
+        operator can set or change it (`PUT /conversations/{id}/topic`).
+      security:
+        - sessionCookie: []
+        - accessToken: []
+      responses:
+        '200':
+          description: The topics.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [conversations]
+      operationId: createTopic
+      summary: Add a topic after the others
+      description: |
+        Requires `routing.manage` (owner, admin): a topic decides who gets its conversations
+        and how soon. Names are unique without regard to case (`409 topic_exists`).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TopicInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Topic' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/TopicExists' }
+
+  /topics/order:
+    put:
+      tags: [conversations]
+      operationId: reorderTopics
+      summary: Put the topics in a new order
+      description: Requires `routing.manage`. `ids` names every topic once.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TopicOrder' }
+      responses:
+        '200':
+          description: The topics in the new order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicList' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /topics/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [conversations]
+      operationId: updateTopic
+      summary: Change a topic
+      description: |
+        Requires `routing.manage`. Conversations of the topic keep the priority they have;
+        new ones get the new one. Changed members apply to the queue at once.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TopicInput' }
+      responses:
+        '200':
+          description: The changed topic.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Topic' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TopicExists' }
+    delete:
+      tags: [conversations]
+      operationId: deleteTopic
+      summary: Delete a topic
+      description: Requires `routing.manage`. Its conversations and tasks are left without a topic.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /contacts:
     get:
       tags: [contacts]
@@ -3041,6 +3221,10 @@ paths:
         - name: queue
           in: query
           description: '`none` or a queue id.'
+          schema: { type: string, maxLength: 36 }
+        - name: topic
+          in: query
+          description: '`none` or a topic id.'
           schema: { type: string, maxLength: 36 }
         - name: q
           in: query
@@ -3769,6 +3953,11 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    TopicExists:
+      description: '`topic_exists`: a topic with this name exists.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: |
         `invalid_transition` (the state machine forbids it), `version_conflict` (the
@@ -4453,7 +4642,7 @@ components:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
                  first_response_at, last_message_at, resolved_at, closed_at, awaiting_fix, version, created_at,
-                 updated_at, last_message, tag_ids, last_read_message_id, unread_count, rating]
+                 updated_at, last_message, tag_ids, topic_id, last_read_message_id, unread_count, rating]
       properties:
         id:
           type: string
@@ -4461,7 +4650,11 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         number: { type: integer, format: int64, description: Human-readable number inside the workspace. }
         status: { $ref: '#/components/schemas/ConversationStatus' }
-        priority: { type: integer, minimum: 0, maximum: 3 }
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Higher is taken from the queue first; a topic sets it (`Topic.priority`).
         line_level: { type: integer, minimum: 1, maximum: 3 }
         contact: { $ref: '#/components/schemas/ContactRef' }
         assignee_id:
@@ -4503,6 +4696,11 @@ components:
             type: string
             x-go-type: uuid.UUID
             x-go-type-import: { path: github.com/google/uuid }
+        topic_id:
+          type: [string, 'null']
+          description: What the question is about (`GET /topics`); `null` until the customer or an operator picks one.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
         last_read_message_id:
           type: [string, 'null']
           description: The caller's read mark; `null` when they have not read the conversation.
@@ -4718,7 +4916,7 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -4729,6 +4927,9 @@ components:
             reopened one put it to wait for the fix again. `task_*`: the same for a task of the
             tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
             conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
+            `topic_changed`: the topic was set, changed or removed (`topic_id`,
+            `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
+            current status.
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -4741,6 +4942,15 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         issue: { $ref: '#/components/schemas/MessageEventIssue' }
         task: { $ref: '#/components/schemas/MessageEventTask' }
+        topic_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        previous_topic_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        by_customer: { type: boolean }
 
     MessageEventIssue:
       type: object
@@ -4828,7 +5038,7 @@ components:
 
     Task:
       type: object
-      required: [id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, conversation_ids, files]
+      required: [id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, conversation_ids, files]
       properties:
         id:
           type: string
@@ -4837,6 +5047,11 @@ components:
         number: { type: integer, format: int64 }
         queue_id:
           type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        topic_id:
+          type: [string, 'null']
+          description: The topic of questions (`GET /topics`); a task from a conversation takes the conversation's.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         title: { type: string }
@@ -4937,6 +5152,12 @@ components:
         body: { type: string, maxLength: 20000 }
         queue_id:
           type: [string, 'null']
+          description: Absent or `null` with a topic that has a task queue — that queue.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        topic_id:
+          type: [string, 'null']
+          description: Absent or `null` for a task from a conversation — the conversation's topic.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         priority: { $ref: '#/components/schemas/TaskPriority' }
@@ -4961,7 +5182,7 @@ components:
     TaskUpdate:
       type: object
       additionalProperties: false
-      required: [version, title, body, status, priority, queue_id, assignee_id]
+      required: [version, title, body, status, priority, queue_id, topic_id, assignee_id]
       properties:
         version: { type: integer, format: int32 }
         title: { type: string, minLength: 1, maxLength: 256 }
@@ -4969,6 +5190,10 @@ components:
         status: { $ref: '#/components/schemas/TaskStatus' }
         priority: { $ref: '#/components/schemas/TaskPriority' }
         queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        topic_id:
           type: [string, 'null']
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
@@ -4997,11 +5222,11 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         kind:
           type: string
-          enum: [comment, created, status, assignee, queue, priority, edited, linked, unlinked, files]
+          enum: [comment, created, status, assignee, queue, priority, topic, edited, linked, unlinked, files]
         body: { type: string, description: The text of a comment. }
         from:
           type: string
-          description: The value a change moved from (a status, a priority, a member or queue id); empty for none.
+          description: The value a change moved from (a status, a priority, a member, queue or topic id); empty for none.
         to: { type: string, description: The value a change moved to; empty for none. }
         fields:
           type: array
@@ -5236,6 +5461,97 @@ components:
         version:
           type: integer
           description: When set, must equal the current version, otherwise `409 version_conflict`.
+
+    Topic:
+      type: object
+      required: [id, name, color, position, priority, task_queue_id, member_ids]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string, maxLength: 40 }
+        color: { $ref: '#/components/schemas/TagColor' }
+        position: { type: integer, minimum: 0, description: The order of the buttons, from 0. }
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: |
+            `Conversation.priority` of its conversations: 0 normal, 1 raised, 2 high, 3 urgent.
+            Higher conversations are taken from the queue first.
+        task_queue_id:
+          type: [string, 'null']
+          description: The queue of tasks created from its conversations; `null` — none.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        member_ids:
+          type: array
+          maxItems: 1000
+          description: |
+            Who gets its conversations from automatic distribution, by user id; empty — everyone.
+            Taking one from the queue by hand is open to all.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TopicList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/Topic' }
+
+    TopicInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 40 }
+        color: { $ref: '#/components/schemas/TagColor' }
+        priority: { type: integer, minimum: 0, maximum: 3, default: 0 }
+        task_queue_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        member_ids:
+          type: array
+          maxItems: 1000
+          description: Active members of the workspace; absent or empty — everyone.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TopicOrder:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    SetTopicRequest:
+      type: object
+      additionalProperties: false
+      required: [topic_id]
+      properties:
+        topic_id:
+          type: [string, 'null']
+          description: A topic of the workspace; `null` removes the topic.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        version:
+          type: integer
+          description: The conversation's `version` you read; a mismatch answers `409 version_conflict`.
 
     MarkReadRequest:
       type: object
@@ -6152,10 +6468,15 @@ components:
     WidgetConversation:
       type: object
       description: The visitor's newest conversation as they see it.
-      required: [id, status, rating]
+      required: [id, status, rating, topic_id]
       properties:
         id:
           type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        topic_id:
+          type: [string, 'null']
+          description: The topic picked; `null` — none yet.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         status:
@@ -6166,6 +6487,30 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ConversationRating'
             - type: 'null'
+
+    WidgetTopicRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id, topic_id]
+      properties:
+        conversation_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        topic_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    WidgetTopic:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string }
 
     WidgetRatingRequest:
       type: object
@@ -6181,7 +6526,7 @@ components:
 
     WidgetSession:
       type: object
-      required: [session_token, expires_at, identity, channel_name, operators_online, analytics]
+      required: [session_token, expires_at, identity, channel_name, operators_online, analytics, topics]
       properties:
         session_token: { type: string, description: '`tk_wsess_…`; keep it and send it as `Authorization: Bearer`.' }
         expires_at: { type: string, format: date-time, description: 'Moves 30 days ahead with activity.' }
@@ -6191,6 +6536,13 @@ components:
         channel_name: { type: string }
         operators_online: { type: boolean, description: As in `WidgetAvailability`. }
         analytics: { $ref: '#/components/schemas/WidgetAnalytics' }
+        topics:
+          type: array
+          maxItems: 20
+          description: |
+            Topics of questions in the order to show; empty — the widget asks none. The widget
+            offers them while the conversation has no topic.
+          items: { $ref: '#/components/schemas/WidgetTopic' }
 
     WidgetMessages:
       type: object
@@ -6235,6 +6587,14 @@ components:
       description: Text, files or both.
       properties:
         message: { type: string, maxLength: 10000 }
+        topic_id:
+          type: string
+          description: |
+            A topic of `WidgetSession.topics` the visitor picked before writing; it goes to the
+            conversation the message opens, or to an open one without a topic. An unknown id
+            is ignored.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
         attachment_ids:
           type: array
           description: Ids of `POST /widget/uploads`, in the order to show.

@@ -21,6 +21,7 @@ export type WidgetAnalytics = Schemas["WidgetAnalytics"];
 export type WidgetConversation = Schemas["WidgetConversation"];
 export type ConversationRating = Schemas["ConversationRating"];
 type WidgetRatingRequest = Schemas["WidgetRatingRequest"];
+type WidgetTopicRequest = Schemas["WidgetTopicRequest"];
 
 /** An answer that is not 2xx: the problem's code, Retry-After for 429 and 503, the file a message was refused for. */
 export class WidgetApiError extends Error {
@@ -87,8 +88,12 @@ export class WidgetApi {
     return this.call("GET", "/messages" + (since ? "?since=" + encodeURIComponent(since) : ""), token);
   }
 
-  send(token: string, key: string, message: string, attachmentIds: string[] = []): Promise<WidgetMessage> {
-    const body = { ...(message ? { message } : {}), ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}) };
+  send(token: string, key: string, message: string, attachmentIds: string[] = [], topicId: string | null = null): Promise<WidgetMessage> {
+    const body = {
+      ...(message ? { message } : {}),
+      ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+      ...(topicId ? { topic_id: topicId } : {}),
+    };
     return this.call("POST", "/messages", token, body, { "Idempotency-Key": key });
   }
 
@@ -112,6 +117,10 @@ export class WidgetApi {
 
   rate(token: string, req: WidgetRatingRequest): Promise<ConversationRating> {
     return this.call("POST", "/rating", token, req);
+  }
+
+  topic(token: string, req: WidgetTopicRequest): Promise<void> {
+    return this.call("POST", "/topic", token, req);
   }
 
   receipt(token: string, req: WidgetReceiptRequest): Promise<void> {

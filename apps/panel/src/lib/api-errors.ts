@@ -116,6 +116,8 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.taskLinked") };
     case "queue_exists":
       return { message: t("errors.queueExists"), ...(field ? { field } : {}) };
+    case "topic_exists":
+      return { message: t("errors.topicExists"), ...(field ? { field } : {}) };
     case "tasks_disabled":
       return { message: t("errors.tasksDisabled") };
     case "no_notify_bot":

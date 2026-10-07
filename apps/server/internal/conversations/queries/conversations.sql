@@ -58,21 +58,36 @@ FOR UPDATE;
 -- name: LockQueue :many
 -- The head of the queue for the router (docs/02 §9.2): higher priority
 -- first, then the oldest. Rows another transaction holds are skipped, so
--- an operator taking one by hand never waits for the router.
-SELECT * FROM conversations
-WHERE workspace_id = @workspace_id AND status = 'queued'
-ORDER BY priority DESC, created_at, id
+-- an operator taking one by hand never waits for the router. Only
+-- conversations someone of available may take: a topic with members goes
+-- to them alone, so one nobody online may take does not block the rest.
+SELECT * FROM conversations c
+WHERE c.workspace_id = @workspace_id AND c.status = 'queued'
+  AND (c.topic_id IS NULL
+       OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+       OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                    AND tm.user_id = ANY(@available::uuid[])))
+ORDER BY c.priority DESC, c.created_at, c.id
 LIMIT @lim
-FOR UPDATE SKIP LOCKED;
+FOR UPDATE OF c SKIP LOCKED;
 
 -- name: HasQueued :one
--- Whether the queue still holds something, locked rows included.
-SELECT EXISTS (SELECT 1 FROM conversations WHERE workspace_id = @workspace_id AND status = 'queued');
+-- Whether the queue still holds something someone of available may take,
+-- locked rows included.
+SELECT EXISTS (
+    SELECT 1 FROM conversations c
+    WHERE c.workspace_id = @workspace_id AND c.status = 'queued'
+      AND (c.topic_id IS NULL
+           OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+           OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                        AND tm.user_id = ANY(@available::uuid[])))
+);
 
 -- name: ListConversations :many
 -- Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the
--- unassigned ones. contact_id narrows it to one customer's history (served by
+-- unassigned ones, by_topic with a NULL topic_id those without a topic.
+-- contact_id narrows it to one customer's history (served by
 -- conversations_contact_idx: a contact has few conversations to sort).
 SELECT sqlc.embed(c), ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
@@ -115,6 +130,9 @@ WHERE c.workspace_id = @workspace_id
        OR (sqlc.narg(assignee_id)::uuid IS NULL AND c.assignee_id IS NULL)
        OR c.assignee_id = sqlc.narg(assignee_id)::uuid)
   AND (sqlc.narg(contact_id)::uuid IS NULL OR c.contact_id = sqlc.narg(contact_id)::uuid)
+  AND (NOT @by_topic::boolean
+       OR (sqlc.narg(topic_id)::uuid IS NULL AND c.topic_id IS NULL)
+       OR c.topic_id = sqlc.narg(topic_id)::uuid)
   AND (sqlc.narg(before_at)::timestamptz IS NULL
        OR (c.last_message_at, c.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC

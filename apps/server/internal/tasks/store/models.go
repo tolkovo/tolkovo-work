@@ -25,6 +25,7 @@ type Task struct {
 	UpdatedAt   time.Time
 	ClosedAt    *time.Time
 	Version     int32
+	TopicID     *uuid.UUID
 }
 
 type TaskActivity struct {

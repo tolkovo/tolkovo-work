@@ -114,6 +114,7 @@ func (s *server) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, oapi.WidgetSession{
 		SessionToken: sess.Token, ExpiresAt: sess.ExpiresAt, Identity: oapi.WidgetSessionIdentity(sess.Identity),
 		ChannelName: sess.ChannelName, OperatorsOnline: sess.OperatorsOnline, Analytics: widgetAnalyticsBody(sess.Analytics),
+		Topics: widgetTopics(sess.Topics),
 	})
 }
 
@@ -162,7 +163,7 @@ func (s *server) ListWidgetMessages(w http.ResponseWriter, r *http.Request, para
 		if c.Resolved {
 			status = oapi.WidgetConversationStatusResolved
 		}
-		body.Conversation = &oapi.WidgetConversation{Id: c.ID, Status: status, Rating: ratingBody(c.Rating)}
+		body.Conversation = &oapi.WidgetConversation{Id: c.ID, Status: status, Rating: ratingBody(c.Rating), TopicId: c.TopicID}
 	}
 	writeJSON(w, http.StatusOK, body)
 }
@@ -185,6 +186,23 @@ func (s *server) RateWidgetConversation(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, ratingBody(&rating))
 }
 
+// ChooseWidgetTopic implements POST /widget/topic.
+func (s *server) ChooseWidgetTopic(w http.ResponseWriter, r *http.Request) {
+	if s.widgetOff(w, r) {
+		return
+	}
+	var req oapi.WidgetTopicRequest
+	if err := decodeRequired(w, r, &req, "conversation_id", "topic_id"); err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	if err := s.widget.ChooseTopic(r.Context(), s.widgetCaller(r), widgetToken(r), req.ConversationId, req.TopicId); err != nil {
+		s.writeWidgetError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // SendWidgetMessage implements POST /widget/messages.
 func (s *server) SendWidgetMessage(w http.ResponseWriter, r *http.Request, params oapi.SendWidgetMessageParams) {
 	if s.widgetOff(w, r) {
@@ -196,7 +214,7 @@ func (s *server) SendWidgetMessage(w http.ResponseWriter, r *http.Request, param
 		return
 	}
 	sent, err := s.widget.Send(r.Context(), s.widgetCaller(r), widgetToken(r), widget.Message{
-		Key: deref(params.IdempotencyKey), Body: deref(req.Message), Files: deref(req.AttachmentIds),
+		Key: deref(params.IdempotencyKey), Body: deref(req.Message), Files: deref(req.AttachmentIds), TopicID: req.TopicId,
 	})
 	if err != nil {
 		s.writeWidgetError(w, r, err)
@@ -389,4 +407,14 @@ func (s *server) writeWidgetError(w http.ResponseWriter, r *http.Request, err er
 	default:
 		s.writeError(w, r, err)
 	}
+}
+
+// widgetTopics names the topics for the visitor: no members, queues or
+// priorities leave the panel.
+func widgetTopics(topics []conversations.Topic) []oapi.WidgetTopic {
+	out := make([]oapi.WidgetTopic, 0, len(topics))
+	for _, t := range topics {
+		out = append(out, oapi.WidgetTopic{Id: t.ID, Name: t.Name})
+	}
+	return out
 }

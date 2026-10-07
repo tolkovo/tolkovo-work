@@ -17,6 +17,7 @@ import { IssueEventText, IssueForm, useIssueMenuItems, type IssueMode } from "./
 import { ConversationTaskForm, TaskEventText, useTaskMenuItems, type TaskMode } from "./tasks";
 import { PresenceLine, useMemberNames } from "./presence";
 import { ConversationTags } from "./tags";
+import { TopicEventText } from "./topics";
 
 type ConversationViewProps = { conversationId: string; tab: InboxTab };
 
@@ -189,7 +190,7 @@ function BackLink({ tab }: { tab: InboxTab }) {
   return (
     <Link
       to="/inbox"
-      search={{ tab }}
+      search={(prev) => ({ ...prev, tab })}
       aria-label={t("inbox.back")}
       className="hidden size-8 shrink-0 place-items-center rounded-md text-ink-2 hover:bg-hover max-nav:grid"
     >
@@ -485,6 +486,7 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   const by = actorId ? ` · ${name(actorId)}` : "";
   if (e.type.startsWith("issue_")) return <IssueEventText event={e} by={by} />;
   if (e.type.startsWith("task_")) return <TaskEventText event={e} by={by} />;
+  if (e.type === "topic_changed") return <TopicEventText event={e} by={by} />;
   if (e.type === "assigned") {
     if (e.assignee_id === null) return <>{t("inbox.event.released") + by}</>;
     if (e.previous_assignee_id === null) {

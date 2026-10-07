@@ -79,7 +79,7 @@ func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountIn
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, status, priority, subject)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at
+RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at
 `
 
 type CreateConversationParams struct {
@@ -127,12 +127,14 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.RatingComment,
 		&i.RatingResolvedBy,
 		&i.RatedAt,
+		&i.TopicID,
+		&i.TopicAskedAt,
 	)
 	return i, err
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -217,6 +219,8 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.Conversation.RatingComment,
 		&i.Conversation.RatingResolvedBy,
 		&i.Conversation.RatedAt,
+		&i.Conversation.TopicID,
+		&i.Conversation.TopicAskedAt,
 		&i.ContactName,
 		&i.LastSenderType,
 		&i.LastKind,
@@ -231,12 +235,25 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 }
 
 const hasQueued = `-- name: HasQueued :one
-SELECT EXISTS (SELECT 1 FROM conversations WHERE workspace_id = $1 AND status = 'queued')
+SELECT EXISTS (
+    SELECT 1 FROM conversations c
+    WHERE c.workspace_id = $1 AND c.status = 'queued'
+      AND (c.topic_id IS NULL
+           OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+           OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                        AND tm.user_id = ANY($2::uuid[])))
+)
 `
 
-// Whether the queue still holds something, locked rows included.
-func (q *Queries) HasQueued(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, hasQueued, workspaceID)
+type HasQueuedParams struct {
+	WorkspaceID uuid.UUID
+	Available   []uuid.UUID
+}
+
+// Whether the queue still holds something someone of available may take,
+// locked rows included.
+func (q *Queries) HasQueued(ctx context.Context, arg HasQueuedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasQueued, arg.WorkspaceID, arg.Available)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -265,7 +282,7 @@ func (q *Queries) IsActiveMember(ctx context.Context, arg IsActiveMemberParams) 
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -306,10 +323,13 @@ WHERE c.workspace_id = $2
        OR ($5::uuid IS NULL AND c.assignee_id IS NULL)
        OR c.assignee_id = $5::uuid)
   AND ($6::uuid IS NULL OR c.contact_id = $6::uuid)
-  AND ($7::timestamptz IS NULL
-       OR (c.last_message_at, c.id) < ($7::timestamptz, $8::uuid))
+  AND (NOT $7::boolean
+       OR ($8::uuid IS NULL AND c.topic_id IS NULL)
+       OR c.topic_id = $8::uuid)
+  AND ($9::timestamptz IS NULL
+       OR (c.last_message_at, c.id) < ($9::timestamptz, $10::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC
-LIMIT $9
+LIMIT $11
 `
 
 type ListConversationsParams struct {
@@ -319,6 +339,8 @@ type ListConversationsParams struct {
 	ByAssignee  bool
 	AssigneeID  *uuid.UUID
 	ContactID   *uuid.UUID
+	ByTopic     bool
+	TopicID     *uuid.UUID
 	BeforeAt    *time.Time
 	BeforeID    *uuid.UUID
 	Lim         int32
@@ -339,7 +361,8 @@ type ListConversationsRow struct {
 
 // Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 // row of the previous page. by_assignee with a NULL assignee_id lists the
-// unassigned ones. contact_id narrows it to one customer's history (served by
+// unassigned ones, by_topic with a NULL topic_id those without a topic.
+// contact_id narrows it to one customer's history (served by
 // conversations_contact_idx: a contact has few conversations to sort).
 func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsParams) ([]ListConversationsRow, error) {
 	rows, err := q.db.Query(ctx, listConversations,
@@ -349,6 +372,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 		arg.ByAssignee,
 		arg.AssigneeID,
 		arg.ContactID,
+		arg.ByTopic,
+		arg.TopicID,
 		arg.BeforeAt,
 		arg.BeforeID,
 		arg.Lim,
@@ -384,6 +409,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.Conversation.RatingComment,
 			&i.Conversation.RatingResolvedBy,
 			&i.Conversation.RatedAt,
+			&i.Conversation.TopicID,
+			&i.Conversation.TopicAskedAt,
 			&i.ContactName,
 			&i.LastSenderType,
 			&i.LastKind,
@@ -405,7 +432,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const lockConversation = `-- name: LockConversation :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
 WHERE workspace_id = $1 AND id = $2
 FOR UPDATE
 `
@@ -443,28 +470,37 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 		&i.RatingComment,
 		&i.RatingResolvedBy,
 		&i.RatedAt,
+		&i.TopicID,
+		&i.TopicAskedAt,
 	)
 	return i, err
 }
 
 const lockQueue = `-- name: LockQueue :many
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at FROM conversations
-WHERE workspace_id = $1 AND status = 'queued'
-ORDER BY priority DESC, created_at, id
-LIMIT $2
-FOR UPDATE SKIP LOCKED
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations c
+WHERE c.workspace_id = $1 AND c.status = 'queued'
+  AND (c.topic_id IS NULL
+       OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+       OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                    AND tm.user_id = ANY($2::uuid[])))
+ORDER BY c.priority DESC, c.created_at, c.id
+LIMIT $3
+FOR UPDATE OF c SKIP LOCKED
 `
 
 type LockQueueParams struct {
 	WorkspaceID uuid.UUID
+	Available   []uuid.UUID
 	Lim         int32
 }
 
 // The head of the queue for the router (docs/02 §9.2): higher priority
 // first, then the oldest. Rows another transaction holds are skipped, so
-// an operator taking one by hand never waits for the router.
+// an operator taking one by hand never waits for the router. Only
+// conversations someone of available may take: a topic with members goes
+// to them alone, so one nobody online may take does not block the rest.
 func (q *Queries) LockQueue(ctx context.Context, arg LockQueueParams) ([]Conversation, error) {
-	rows, err := q.db.Query(ctx, lockQueue, arg.WorkspaceID, arg.Lim)
+	rows, err := q.db.Query(ctx, lockQueue, arg.WorkspaceID, arg.Available, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -496,6 +532,8 @@ func (q *Queries) LockQueue(ctx context.Context, arg LockQueueParams) ([]Convers
 			&i.RatingComment,
 			&i.RatingResolvedBy,
 			&i.RatedAt,
+			&i.TopicID,
+			&i.TopicAskedAt,
 		); err != nil {
 			return nil, err
 		}

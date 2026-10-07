@@ -237,6 +237,7 @@ type mcpTask struct {
 	Priority  string     `json:"priority"`
 	Assignee  *mcpPerson `json:"assignee"`
 	Queue     *mcpQueue  `json:"queue"`
+	Topic     *mcpQueue  `json:"topic"` // what customers asked about
 	Body      *string    `json:"body,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
@@ -283,15 +284,16 @@ type mcpActivity struct {
 	Files []mcpFile  `json:"files,omitempty"`
 }
 
-// names resolves members and queues for the answers.
+// names resolves members, queues and topics for the answers.
 type names struct {
 	p      authz.Principal
 	people map[uuid.UUID]string
 	queues map[uuid.UUID]string
+	topics map[uuid.UUID]string
 }
 
 func (s *server) names(r *http.Request, p authz.Principal) (names, error) {
-	n := names{p: p, people: map[uuid.UUID]string{}, queues: map[uuid.UUID]string{}}
+	n := names{p: p, people: map[uuid.UUID]string{}, queues: map[uuid.UUID]string{}, topics: map[uuid.UUID]string{}}
 	members, err := s.tenancy.Members(r.Context(), p.WorkspaceID)
 	if err != nil {
 		return n, err
@@ -305,6 +307,13 @@ func (s *server) names(r *http.Request, p authz.Principal) (names, error) {
 	}
 	for _, q := range queues {
 		n.queues[q.ID] = q.Name
+	}
+	topics, err := s.conversations.Topics(r.Context(), p.WorkspaceID)
+	if err != nil {
+		return n, err
+	}
+	for _, t := range topics {
+		n.topics[t.ID] = t.Name
 	}
 	return n, nil
 }
@@ -324,6 +333,9 @@ func (n names) task(t tasks.Task, full bool) mcpTask {
 	}
 	if t.QueueID != nil {
 		out.Queue = &mcpQueue{ID: *t.QueueID, Name: n.queues[*t.QueueID]}
+	}
+	if t.TopicID != nil {
+		out.Topic = &mcpQueue{ID: *t.TopicID, Name: n.topics[*t.TopicID]}
 	}
 	if full {
 		out.Body = &t.Body
@@ -442,6 +454,9 @@ func toolGetTask(s *server, r *http.Request, p authz.Principal, raw json.RawMess
 		if a.Kind == "queue" {
 			line.From, line.To = n.queueName(a.From), n.queueName(a.To)
 		}
+		if a.Kind == "topic" {
+			line.From, line.To = nameOf(n.topics, a.From), nameOf(n.topics, a.To)
+		}
 		out.Activity = append(out.Activity, line)
 	}
 	return out, nil
@@ -456,9 +471,12 @@ func (n names) personName(id string) string {
 	return id
 }
 
-func (n names) queueName(id string) string {
+func (n names) queueName(id string) string { return nameOf(n.queues, id) }
+
+// nameOf names an id of a feed line; an unknown one stays an id.
+func nameOf(names map[uuid.UUID]string, id string) string {
 	if u, err := uuid.Parse(id); err == nil {
-		if name, ok := n.queues[u]; ok {
+		if name, ok := names[u]; ok {
 			return name
 		}
 	}
@@ -560,7 +578,7 @@ func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		}
 		up := tasks.Update{
 			Version: cur.Version, Title: cur.Title, Body: cur.Body, Status: cur.Status, Priority: cur.Priority,
-			QueueID: cur.QueueID, AssigneeID: cur.AssigneeID,
+			QueueID: cur.QueueID, TopicID: cur.TopicID, AssigneeID: cur.AssigneeID,
 		}
 		if in.Title != nil {
 			up.Title = *in.Title

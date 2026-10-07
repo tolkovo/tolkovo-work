@@ -24,6 +24,7 @@ const baseTask: Task = {
   id: "t1",
   number: 12,
   queue_id: null,
+  topic_id: null,
   title: "Кнопка не нажимается",
   body: "",
   status: "open",

@@ -14,6 +14,7 @@
     { "$ref": "#/$defs/conversationStatusChanged" },
     { "$ref": "#/$defs/conversationAssigned" },
     { "$ref": "#/$defs/conversationTagsChanged" },
+    { "$ref": "#/$defs/conversationTopicChanged" },
     { "$ref": "#/$defs/conversationIssuesChanged" },
     { "$ref": "#/$defs/conversationTasksChanged" },
     { "$ref": "#/$defs/conversationRead" },
@@ -38,6 +39,7 @@
         "conversation.status_changed",
         "conversation.assigned",
         "conversation.tags_changed",
+        "conversation.topic_changed",
         "conversation.issues_changed",
         "conversation.tasks_changed",
         "conversation.read",
@@ -256,6 +258,21 @@
           "required": ["conversation_id"],
           "properties": {
             "conversation_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "conversationTopicChanged": {
+      "description": "The topic of a conversation was set, changed or removed, by the customer or an operator; clients fetch it over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "conversation.topic_changed" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "topic_id"],
+          "properties": {
+            "conversation_id": { "$ref": "#/$defs/uuid" },
+            "topic_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] }
           }
         }
       }

@@ -19,9 +19,12 @@ import (
 
 // Task is a task of the section.
 type Task struct {
-	ID         uuid.UUID
-	Number     int64
-	QueueID    *uuid.UUID
+	ID      uuid.UUID
+	Number  int64
+	QueueID *uuid.UUID
+	// TopicID is the topic of conversations (docs/02 §7.3); a task from a
+	// conversation takes the conversation's.
+	TopicID    *uuid.UUID
 	Title      string
 	Body       string
 	Status     string
@@ -41,9 +44,13 @@ type Task struct {
 
 // NewTask is a task to create.
 type NewTask struct {
-	Title      string
-	Body       string
-	QueueID    *uuid.UUID
+	Title   string
+	Body    string
+	QueueID *uuid.UUID
+	// TopicID, when nil, is the conversation's topic for a task from a
+	// conversation; a topic with a task queue gives a task without one
+	// that queue.
+	TopicID    *uuid.UUID
 	Priority   string
 	AssigneeID *uuid.UUID
 	// ConversationID links the task to the conversation it is created
@@ -87,12 +94,15 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 		if err := s.enabled(ctx, q, workspaceID); err != nil {
 			return err
 		}
+		if err := s.topicDefaults(ctx, q, workspaceID, &in); err != nil {
+			return err
+		}
 		n, err := q.NextTaskNumber(ctx, workspaceID)
 		if err != nil {
 			return err
 		}
 		row, err := q.InsertTask(ctx, store.InsertTaskParams{
-			ID: id, WorkspaceID: workspaceID, Number: n, QueueID: in.QueueID, Title: title, Body: body,
+			ID: id, WorkspaceID: workspaceID, Number: n, QueueID: in.QueueID, TopicID: in.TopicID, Title: title, Body: body,
 			Priority: in.Priority, AssigneeID: in.AssigneeID, CreatedBy: &actorID, CreatedAt: now,
 		})
 		if err != nil {
@@ -123,6 +133,33 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 		return Task{}, dbError(err, "create task")
 	}
 	return out, nil
+}
+
+// topicDefaults fills what a new task takes from topics: the topic of the
+// conversation it is created from, and the topic's queue for a task
+// without one. A topic that does not exist is ErrInvalid.
+func (s *Service) topicDefaults(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, in *NewTask) error {
+	if in.TopicID == nil && in.ConversationID != nil {
+		topic, err := q.ConversationTopic(ctx, store.ConversationTopicParams{WorkspaceID: workspaceID, ID: *in.ConversationID})
+		if err != nil {
+			return err // no rows: the conversation does not exist
+		}
+		in.TopicID = topic
+	}
+	if in.TopicID == nil {
+		return nil
+	}
+	t, err := q.TopicQueue(ctx, store.TopicQueueParams{WorkspaceID: workspaceID, ID: *in.TopicID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: unknown topic", ErrInvalid)
+	}
+	if err != nil {
+		return err
+	}
+	if in.QueueID == nil {
+		in.QueueID = t.TaskQueueID
+	}
+	return nil
 }
 
 // Get returns a task with its linked conversations.
@@ -172,6 +209,8 @@ type Filter struct {
 	Unassigned bool
 	QueueID    *uuid.UUID
 	NoQueue    bool
+	TopicID    *uuid.UUID
+	NoTopic    bool
 	// Query matches the title, or the number exactly.
 	Query string
 	// Before is the number to continue below; 0 starts from the newest.
@@ -213,7 +252,7 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		rows, err := store.New(tx).ListTasks(ctx, store.ListTasksParams{
 			WorkspaceID: workspaceID, BeforeNumber: f.Before, OpenOnly: f.State == "open", ClosedOnly: f.State == "closed",
-			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, Status: status,
+			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic, Status: status,
 			Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 		})
 		if err != nil {
@@ -256,6 +295,7 @@ type Update struct {
 	Status     string
 	Priority   string
 	QueueID    *uuid.UUID
+	TopicID    *uuid.UUID
 	AssigneeID *uuid.UUID
 }
 
@@ -301,7 +341,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 			closedAt = nil
 		}
 		row, err := q.UpdateTask(ctx, store.UpdateTaskParams{
-			QueueID: in.QueueID, Title: title, Body: body, Status: in.Status, Priority: in.Priority,
+			QueueID: in.QueueID, TopicID: in.TopicID, Title: title, Body: body, Status: in.Status, Priority: in.Priority,
 			AssigneeID: assignee, ClosedAt: closedAt, UpdatedAt: now, WorkspaceID: workspaceID, ID: taskID,
 		})
 		if err != nil {
@@ -348,6 +388,11 @@ func (s *Service) recordChanges(ctx context.Context, tx pgx.Tx, q *store.Queries
 	}
 	if !sameID(cur.QueueID, row.QueueID) {
 		if _, err := s.addActivity(ctx, q, row, actor, "queue", nil, map[string]any{"from": cur.QueueID, "to": row.QueueID}); err != nil {
+			return err
+		}
+	}
+	if !sameID(cur.TopicID, row.TopicID) {
+		if _, err := s.addActivity(ctx, q, row, actor, "topic", nil, map[string]any{"from": cur.TopicID, "to": row.TopicID}); err != nil {
 			return err
 		}
 	}
@@ -442,13 +487,13 @@ func (s *Service) Delete(ctx context.Context, workspaceID, actorID, taskID uuid.
 type Activity struct {
 	ID      uuid.UUID
 	ActorID *uuid.UUID
-	// Kind is comment, created, status, assignee, queue, priority, edited,
-	// linked or unlinked.
+	// Kind is comment, created, status, assignee, queue, priority, topic,
+	// edited, linked, unlinked or files.
 	Kind string
 	// Body is the text of a comment.
 	Body string
 	// From and To are the values a change moved between: statuses,
-	// priorities, member or queue ids ("" for none).
+	// priorities, member, queue or topic ids ("" for none).
 	From string
 	To   string
 	// Fields are what an edit changed: title, body.
@@ -621,7 +666,7 @@ func (s *Service) enabled(ctx context.Context, q *store.Queries, workspaceID uui
 
 func taskFrom(r store.Task) Task {
 	return Task{
-		ID: r.ID, Number: r.Number, QueueID: r.QueueID, Title: r.Title, Body: r.Body, Status: r.Status, Priority: r.Priority,
+		ID: r.ID, Number: r.Number, QueueID: r.QueueID, TopicID: r.TopicID, Title: r.Title, Body: r.Body, Status: r.Status, Priority: r.Priority,
 		AssigneeID: r.AssigneeID, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ClosedAt: r.ClosedAt,
 		Version: r.Version,
 	}

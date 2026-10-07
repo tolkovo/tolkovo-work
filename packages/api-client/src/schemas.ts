@@ -198,6 +198,7 @@ export const conversationSchema = z.object({
   updated_at: z.string(),
   last_message: conversationPreviewSchema.nullable(),
   tag_ids: z.array(z.string()),
+  topic_id: z.string().nullable(),
   last_read_message_id: z.string().nullable(),
   unread_count: z.number(),
   rating: conversationRatingSchema.nullable(),
@@ -248,6 +249,7 @@ export const messageEventSchema = z.object({
     "task_unlinked",
     "task_closed",
     "task_reopened",
+    "topic_changed",
   ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
@@ -265,6 +267,9 @@ export const messageEventSchema = z.object({
   task: z
     .object({ task_id: z.string(), number: z.number(), reason: z.enum(["done", "canceled"]).optional() })
     .optional() satisfies z.ZodType<Schemas["MessageEventTask"] | undefined>,
+  topic_id: z.string().nullable().optional(),
+  previous_topic_id: z.string().nullable().optional(),
+  by_customer: z.boolean().optional(),
 }) satisfies z.ZodType<Schemas["MessageEvent"]>;
 
 export const signedRequestSchema = z.object({
@@ -325,6 +330,18 @@ export const tagSchema = z.object({
 }) satisfies z.ZodType<Schemas["Tag"]>;
 
 export const tagListSchema = z.object({ items: z.array(tagSchema) }) satisfies z.ZodType<Schemas["TagList"]>;
+
+export const topicSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: tagColorSchema,
+  position: z.number(),
+  priority: z.number(),
+  task_queue_id: z.string().nullable(),
+  member_ids: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["Topic"]>;
+
+export const topicListSchema = z.object({ items: z.array(topicSchema) }) satisfies z.ZodType<Schemas["TopicList"]>;
 
 export const appLimitsSchema = z.object({
   max_file_mb: z.number(),
@@ -521,6 +538,7 @@ export const taskSchema = z.object({
   id: z.string(),
   number: z.number(),
   queue_id: z.string().nullable(),
+  topic_id: z.string().nullable(),
   title: z.string(),
   body: z.string(),
   status: taskStatusSchema,
@@ -545,7 +563,19 @@ export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfi
 export const taskActivitySchema = z.object({
   id: z.string(),
   actor_id: z.string().nullable(),
-  kind: z.enum(["comment", "created", "status", "assignee", "queue", "priority", "edited", "linked", "unlinked", "files"]),
+  kind: z.enum([
+    "comment",
+    "created",
+    "status",
+    "assignee",
+    "queue",
+    "priority",
+    "topic",
+    "edited",
+    "linked",
+    "unlinked",
+    "files",
+  ]),
   body: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),

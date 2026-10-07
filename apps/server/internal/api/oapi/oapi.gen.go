@@ -582,6 +582,7 @@ const (
 	MessageEventTypeTaskLinked    MessageEventType = "task_linked"
 	MessageEventTypeTaskReopened  MessageEventType = "task_reopened"
 	MessageEventTypeTaskUnlinked  MessageEventType = "task_unlinked"
+	MessageEventTypeTopicChanged  MessageEventType = "topic_changed"
 )
 
 // Valid indicates whether the value is a known member of the MessageEventType enum.
@@ -608,6 +609,8 @@ func (e MessageEventType) Valid() bool {
 	case MessageEventTypeTaskReopened:
 		return true
 	case MessageEventTypeTaskUnlinked:
+		return true
+	case MessageEventTypeTopicChanged:
 		return true
 	default:
 		return false
@@ -808,40 +811,43 @@ func (e TaskActivityFields) Valid() bool {
 
 // Defines values for TaskActivityKind.
 const (
-	Assignee TaskActivityKind = "assignee"
-	Comment  TaskActivityKind = "comment"
-	Created  TaskActivityKind = "created"
-	Edited   TaskActivityKind = "edited"
-	Files    TaskActivityKind = "files"
-	Linked   TaskActivityKind = "linked"
-	Priority TaskActivityKind = "priority"
-	Queue    TaskActivityKind = "queue"
-	Status   TaskActivityKind = "status"
-	Unlinked TaskActivityKind = "unlinked"
+	TaskActivityKindAssignee TaskActivityKind = "assignee"
+	TaskActivityKindComment  TaskActivityKind = "comment"
+	TaskActivityKindCreated  TaskActivityKind = "created"
+	TaskActivityKindEdited   TaskActivityKind = "edited"
+	TaskActivityKindFiles    TaskActivityKind = "files"
+	TaskActivityKindLinked   TaskActivityKind = "linked"
+	TaskActivityKindPriority TaskActivityKind = "priority"
+	TaskActivityKindQueue    TaskActivityKind = "queue"
+	TaskActivityKindStatus   TaskActivityKind = "status"
+	TaskActivityKindTopic    TaskActivityKind = "topic"
+	TaskActivityKindUnlinked TaskActivityKind = "unlinked"
 )
 
 // Valid indicates whether the value is a known member of the TaskActivityKind enum.
 func (e TaskActivityKind) Valid() bool {
 	switch e {
-	case Assignee:
+	case TaskActivityKindAssignee:
 		return true
-	case Comment:
+	case TaskActivityKindComment:
 		return true
-	case Created:
+	case TaskActivityKindCreated:
 		return true
-	case Edited:
+	case TaskActivityKindEdited:
 		return true
-	case Files:
+	case TaskActivityKindFiles:
 		return true
-	case Linked:
+	case TaskActivityKindLinked:
 		return true
-	case Priority:
+	case TaskActivityKindPriority:
 		return true
-	case Queue:
+	case TaskActivityKindQueue:
 		return true
-	case Status:
+	case TaskActivityKindStatus:
 		return true
-	case Unlinked:
+	case TaskActivityKindTopic:
+		return true
+	case TaskActivityKindUnlinked:
 		return true
 	default:
 		return false
@@ -1484,8 +1490,10 @@ type Conversation struct {
 	LineLevel         int        `json:"line_level"`
 
 	// Number Human-readable number inside the workspace.
-	Number   int64 `json:"number"`
-	Priority int   `json:"priority"`
+	Number int64 `json:"number"`
+
+	// Priority Higher is taken from the queue first; a topic sets it (`Topic.priority`).
+	Priority int `json:"priority"`
 
 	// Rating The customer's rating of the resolved conversation; `null` until they rate it.
 	Rating     *ConversationRating `json:"rating"`
@@ -1497,6 +1505,9 @@ type Conversation struct {
 
 	// TagIds Tags in the order they were added; names and colors are in `GET /tags`.
 	TagIds []uuid.UUID `json:"tag_ids"`
+
+	// TopicId What the question is about (`GET /topics`); `null` until the customer or an operator picks one.
+	TopicId *uuid.UUID `json:"topic_id"`
 
 	// UnreadCount Customer messages after the caller's read mark, counted up to 100.
 	UnreadCount int       `json:"unread_count"`
@@ -2160,15 +2171,18 @@ type MessageUnsupported string
 // MessageEvent defines model for MessageEvent.
 type MessageEvent struct {
 	AssigneeId *uuid.UUID `json:"assignee_id"`
+	ByCustomer *bool      `json:"by_customer,omitempty"`
 
 	// From State of a conversation.
 	From               ConversationStatus `json:"from"`
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
+	PreviousTopicId    *uuid.UUID         `json:"previous_topic_id,omitempty"`
 	Task               *MessageEventTask  `json:"task,omitempty"`
 
 	// To State of a conversation.
-	To ConversationStatus `json:"to"`
+	To      ConversationStatus `json:"to"`
+	TopicId *uuid.UUID         `json:"topic_id,omitempty"`
 
 	// Type `assigned` covers taking, transferring and releasing. `issue_created` and
 	// `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -2179,6 +2193,9 @@ type MessageEvent struct {
 	// reopened one put it to wait for the fix again. `task_*`: the same for a task of the
 	// tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
 	// conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
+	// `topic_changed`: the topic was set, changed or removed (`topic_id`,
+	// `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
+	// current status.
 	Type MessageEventType `json:"type"`
 }
 
@@ -2191,6 +2208,9 @@ type MessageEvent struct {
 // reopened one put it to wait for the fix again. `task_*`: the same for a task of the
 // tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
 // conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
+// `topic_changed`: the topic was set, changed or removed (`topic_id`,
+// `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
+// current status.
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
@@ -2391,6 +2411,15 @@ type SetTagsRequest struct {
 	Version *int `json:"version,omitempty"`
 }
 
+// SetTopicRequest defines model for SetTopicRequest.
+type SetTopicRequest struct {
+	// TopicId A topic of the workspace; `null` removes the topic.
+	TopicId *uuid.UUID `json:"topic_id"`
+
+	// Version The conversation's `version` you read; a mismatch answers `409 version_conflict`.
+	Version *int `json:"version,omitempty"`
+}
+
 // SignedRequest defines model for SignedRequest.
 type SignedRequest struct {
 	ExpiresAt time.Time `json:"expires_at"`
@@ -2455,8 +2484,11 @@ type Task struct {
 	QueueId  *uuid.UUID   `json:"queue_id"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
-	Status    TaskStatus `json:"status"`
-	Title     string     `json:"title"`
+	Status TaskStatus `json:"status"`
+	Title  string     `json:"title"`
+
+	// TopicId The topic of questions (`GET /topics`); a task from a conversation takes the conversation's.
+	TopicId   *uuid.UUID `json:"topic_id"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	Version   int32      `json:"version"`
 }
@@ -2484,7 +2516,7 @@ type TaskActivity struct {
 	// FilesRemoved On `files`
 	FilesRemoved *int `json:"files_removed,omitempty"`
 
-	// From The value a change moved from (a status, a priority, a member or queue id); empty for none.
+	// From The value a change moved from (a status, a priority, a member, queue or topic id); empty for none.
 	From *string          `json:"from,omitempty"`
 	Id   uuid.UUID        `json:"id"`
 	Kind TaskActivityKind `json:"kind"`
@@ -2528,8 +2560,13 @@ type TaskCreate struct {
 	// FileIds Uploaded files (`POST /task-files`) for the description.
 	FileIds  *[]uuid.UUID  `json:"file_ids,omitempty"`
 	Priority *TaskPriority `json:"priority,omitempty"`
-	QueueId  *uuid.UUID    `json:"queue_id,omitempty"`
-	Title    string        `json:"title"`
+
+	// QueueId Absent or `null` with a topic that has a task queue — that queue.
+	QueueId *uuid.UUID `json:"queue_id,omitempty"`
+	Title   string     `json:"title"`
+
+	// TopicId Absent or `null` for a task from a conversation — the conversation's topic.
+	TopicId *uuid.UUID `json:"topic_id,omitempty"`
 }
 
 // TaskDraft defines model for TaskDraft.
@@ -2663,6 +2700,7 @@ type TaskUpdate struct {
 	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
 	Status  TaskStatus `json:"status"`
 	Title   string     `json:"title"`
+	TopicId *uuid.UUID `json:"topic_id"`
 	Version int32      `json:"version"`
 }
 
@@ -2719,6 +2757,50 @@ type TelegramPasswordRequest struct {
 type TokenRequest struct {
 	// Token The fragment of the emailed link.
 	Token string `json:"token"`
+}
+
+// Topic defines model for Topic.
+type Topic struct {
+	// Color A palette key of the panel, readable in both themes.
+	Color TagColor  `json:"color"`
+	Id    uuid.UUID `json:"id"`
+
+	// MemberIds Who gets its conversations from automatic distribution, by user id; empty — everyone.
+	// Taking one from the queue by hand is open to all.
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+
+	// Position The order of the buttons
+	Position int `json:"position"`
+
+	// Priority `Conversation.priority` of its conversations: 0 normal, 1 raised, 2 high, 3 urgent.
+	// Higher conversations are taken from the queue first.
+	Priority int `json:"priority"`
+
+	// TaskQueueId The queue of tasks created from its conversations; `null` — none.
+	TaskQueueId *uuid.UUID `json:"task_queue_id"`
+}
+
+// TopicInput defines model for TopicInput.
+type TopicInput struct {
+	// Color A palette key of the panel, readable in both themes.
+	Color *TagColor `json:"color,omitempty"`
+
+	// MemberIds Active members of the workspace; absent or empty — everyone.
+	MemberIds   *[]uuid.UUID `json:"member_ids,omitempty"`
+	Name        string       `json:"name"`
+	Priority    *int         `json:"priority,omitempty"`
+	TaskQueueId *uuid.UUID   `json:"task_queue_id,omitempty"`
+}
+
+// TopicList defines model for TopicList.
+type TopicList struct {
+	Items []Topic `json:"items"`
+}
+
+// TopicOrder defines model for TopicOrder.
+type TopicOrder struct {
+	Ids []uuid.UUID `json:"ids"`
 }
 
 // UpdateGitHubIntegrationRequest defines model for UpdateGitHubIntegrationRequest.
@@ -2830,6 +2912,9 @@ type WidgetConversation struct {
 
 	// Status `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
 	Status WidgetConversationStatus `json:"status"`
+
+	// TopicId The topic picked; `null` — none yet.
+	TopicId *uuid.UUID `json:"topic_id"`
 }
 
 // WidgetConversationStatus `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
@@ -2862,6 +2947,11 @@ type WidgetMessageRequest struct {
 	// AttachmentIds Ids of `POST /widget/uploads`, in the order to show.
 	AttachmentIds *[]uuid.UUID `json:"attachment_ids,omitempty"`
 	Message       *string      `json:"message,omitempty"`
+
+	// TopicId A topic of `WidgetSession.topics` the visitor picked before writing; it goes to the
+	// conversation the message opens, or to an open one without a topic. An unknown id
+	// is ignored.
+	TopicId *uuid.UUID `json:"topic_id,omitempty"`
 }
 
 // WidgetMessages defines model for WidgetMessages.
@@ -2918,6 +3008,10 @@ type WidgetSession struct {
 
 	// SessionToken `tk_wsess_…`; keep it and send it as `Authorization: Bearer`.
 	SessionToken string `json:"session_token"`
+
+	// Topics Topics of questions in the order to show; empty — the widget asks none. The widget
+	// offers them while the conversation has no topic.
+	Topics []WidgetTopic `json:"topics"`
 }
 
 // WidgetSessionIdentity defines model for WidgetSession.Identity.
@@ -2929,6 +3023,18 @@ type WidgetSessionRequest struct {
 	SessionToken *string     `json:"session_token,omitempty"`
 	User         *WidgetUser `json:"user,omitempty"`
 	WidgetKey    string      `json:"widget_key"`
+}
+
+// WidgetTopic defines model for WidgetTopic.
+type WidgetTopic struct {
+	Id   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// WidgetTopicRequest defines model for WidgetTopicRequest.
+type WidgetTopicRequest struct {
+	ConversationId uuid.UUID `json:"conversation_id"`
+	TopicId        uuid.UUID `json:"topic_id"`
 }
 
 // WidgetUpload defines model for WidgetUpload.
@@ -3080,6 +3186,9 @@ type TelegramUnavailable = Problem
 // TooManyRequests RFC 9457 problem details.
 type TooManyRequests = Problem
 
+// TopicExists RFC 9457 problem details.
+type TopicExists = Problem
+
 // Unauthenticated RFC 9457 problem details.
 type Unauthenticated = Problem
 
@@ -3108,6 +3217,9 @@ type ListConversationsParams struct {
 
 	// Assignee `me`, `none` (unassigned) or a member's user id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// Topic `none` (without a topic) or a topic id.
+	Topic *string `form:"topic,omitempty" json:"topic,omitempty"`
 
 	// ContactId Only this contact's conversations: the history in the customer card. An unknown id
 	// gives an empty page.
@@ -3179,6 +3291,9 @@ type ListTasksParams struct {
 
 	// Queue `none` or a queue id.
 	Queue *string `form:"queue,omitempty" json:"queue,omitempty"`
+
+	// Topic `none` or a topic id.
+	Topic *string `form:"topic,omitempty" json:"topic,omitempty"`
 
 	// Q Part of the title, or the task number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
@@ -3299,6 +3414,9 @@ type ChangeConversationStatusJSONRequestBody = ChangeStatusRequest
 // SetConversationTagsJSONRequestBody defines body for SetConversationTags for application/json ContentType.
 type SetConversationTagsJSONRequestBody = SetTagsRequest
 
+// SetConversationTopicJSONRequestBody defines body for SetConversationTopic for application/json ContentType.
+type SetConversationTopicJSONRequestBody = SetTopicRequest
+
 // CreateIngestReportJSONRequestBody defines body for CreateIngestReport for application/json ContentType.
 type CreateIngestReportJSONRequestBody = IngestReportRequest
 
@@ -3374,6 +3492,15 @@ type LinkTaskConversationJSONRequestBody = TaskLinkRequest
 // AddTaskFilesJSONRequestBody defines body for AddTaskFiles for application/json ContentType.
 type AddTaskFilesJSONRequestBody = TaskFilesAdd
 
+// CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
+type CreateTopicJSONRequestBody = TopicInput
+
+// ReorderTopicsJSONRequestBody defines body for ReorderTopics for application/json ContentType.
+type ReorderTopicsJSONRequestBody = TopicOrder
+
+// UpdateTopicJSONRequestBody defines body for UpdateTopic for application/json ContentType.
+type UpdateTopicJSONRequestBody = TopicInput
+
 // SubmitWidgetContactJSONRequestBody defines body for SubmitWidgetContact for application/json ContentType.
 type SubmitWidgetContactJSONRequestBody = WidgetContactRequest
 
@@ -3388,6 +3515,9 @@ type MarkWidgetReceiptJSONRequestBody = WidgetReceiptRequest
 
 // StartWidgetSessionJSONRequestBody defines body for StartWidgetSession for application/json ContentType.
 type StartWidgetSessionJSONRequestBody = WidgetSessionRequest
+
+// ChooseWidgetTopicJSONRequestBody defines body for ChooseWidgetTopic for application/json ContentType.
+type ChooseWidgetTopicJSONRequestBody = WidgetTopicRequest
 
 // CreateWidgetUploadJSONRequestBody defines body for CreateWidgetUpload for application/json ContentType.
 type CreateWidgetUploadJSONRequestBody = WidgetUploadRequest
@@ -3565,6 +3695,9 @@ type ServerInterface interface {
 	// GetConversationTaskDraft The task form filled from the conversation
 	// (GET /conversations/{id}/tasks/draft)
 	GetConversationTaskDraft(w http.ResponseWriter, r *http.Request, id Id)
+	// SetConversationTopic Set, change or remove the topic of the conversation
+	// (PUT /conversations/{id}/topic)
+	SetConversationTopic(w http.ResponseWriter, r *http.Request, id Id)
 	// CreateIngestReport Register a problem report and get upload links for its files
 	// (POST /ingest/reports)
 	CreateIngestReport(w http.ResponseWriter, r *http.Request, params CreateIngestReportParams)
@@ -3757,6 +3890,21 @@ type ServerInterface interface {
 	// RemoveTaskFile Take a file out of a task's description
 	// (DELETE /tasks/{id}/files/{file_id})
 	RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID)
+	// ListTopics The topics of questions, in the order of the buttons
+	// (GET /topics)
+	ListTopics(w http.ResponseWriter, r *http.Request)
+	// CreateTopic Add a topic after the others
+	// (POST /topics)
+	CreateTopic(w http.ResponseWriter, r *http.Request)
+	// ReorderTopics Put the topics in a new order
+	// (PUT /topics/order)
+	ReorderTopics(w http.ResponseWriter, r *http.Request)
+	// DeleteTopic Delete a topic
+	// (DELETE /topics/{id})
+	DeleteTopic(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTopic Change a topic
+	// (PUT /topics/{id})
+	UpdateTopic(w http.ResponseWriter, r *http.Request, id Id)
 	// GetWidgetAvailability Whether someone takes conversations now
 	// (GET /widget/availability)
 	GetWidgetAvailability(w http.ResponseWriter, r *http.Request)
@@ -3781,6 +3929,9 @@ type ServerInterface interface {
 	// StartWidgetSession Start or continue a visitor's session in the widget
 	// (POST /widget/session)
 	StartWidgetSession(w http.ResponseWriter, r *http.Request)
+	// ChooseWidgetTopic The visitor picks the topic of their open conversation
+	// (POST /widget/topic)
+	ChooseWidgetTopic(w http.ResponseWriter, r *http.Request)
 	// CreateWidgetUpload Register a visitor's file and get a signed upload request
 	// (POST /widget/uploads)
 	CreateWidgetUpload(w http.ResponseWriter, r *http.Request)
@@ -4126,6 +4277,12 @@ func (_ Unimplemented) ListConversationTasks(w http.ResponseWriter, r *http.Requ
 // GetConversationTaskDraft The task form filled from the conversation
 // (GET /conversations/{id}/tasks/draft)
 func (_ Unimplemented) GetConversationTaskDraft(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetConversationTopic Set, change or remove the topic of the conversation
+// (PUT /conversations/{id}/topic)
+func (_ Unimplemented) SetConversationTopic(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4513,6 +4670,36 @@ func (_ Unimplemented) RemoveTaskFile(w http.ResponseWriter, r *http.Request, id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListTopics The topics of questions, in the order of the buttons
+// (GET /topics)
+func (_ Unimplemented) ListTopics(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTopic Add a topic after the others
+// (POST /topics)
+func (_ Unimplemented) CreateTopic(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReorderTopics Put the topics in a new order
+// (PUT /topics/order)
+func (_ Unimplemented) ReorderTopics(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTopic Delete a topic
+// (DELETE /topics/{id})
+func (_ Unimplemented) DeleteTopic(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTopic Change a topic
+// (PUT /topics/{id})
+func (_ Unimplemented) UpdateTopic(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetWidgetAvailability Whether someone takes conversations now
 // (GET /widget/availability)
 func (_ Unimplemented) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
@@ -4558,6 +4745,12 @@ func (_ Unimplemented) EndWidgetSession(w http.ResponseWriter, r *http.Request) 
 // StartWidgetSession Start or continue a visitor's session in the widget
 // (POST /widget/session)
 func (_ Unimplemented) StartWidgetSession(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChooseWidgetTopic The visitor picks the topic of their open conversation
+// (POST /widget/topic)
+func (_ Unimplemented) ChooseWidgetTopic(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5342,6 +5535,19 @@ func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "topic" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "topic", r.URL.Query(), &params.Topic, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "contact_id" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "contact_id", r.URL.Query(), &params.ContactId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
@@ -5933,6 +6139,32 @@ func (siw *ServerInterfaceWrapper) GetConversationTaskDraft(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetConversationTaskDraft(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetConversationTopic operation middleware
+func (siw *ServerInterfaceWrapper) SetConversationTopic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetConversationTopic(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6994,6 +7226,19 @@ func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "topic" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "topic", r.URL.Query(), &params.Topic, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "q" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -7324,6 +7569,100 @@ func (siw *ServerInterfaceWrapper) RemoveTaskFile(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListTopics operation middleware
+func (siw *ServerInterfaceWrapper) ListTopics(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTopics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTopic operation middleware
+func (siw *ServerInterfaceWrapper) CreateTopic(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTopic(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReorderTopics operation middleware
+func (siw *ServerInterfaceWrapper) ReorderTopics(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderTopics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTopic operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTopic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTopic(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTopic operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTopic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTopic(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWidgetAvailability operation middleware
 func (siw *ServerInterfaceWrapper) GetWidgetAvailability(w http.ResponseWriter, r *http.Request) {
 
@@ -7473,6 +7812,20 @@ func (siw *ServerInterfaceWrapper) StartWidgetSession(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartWidgetSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChooseWidgetTopic operation middleware
+func (siw *ServerInterfaceWrapper) ChooseWidgetTopic(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChooseWidgetTopic(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7858,6 +8211,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/widget/receipts", wrapper.MarkWidgetReceipt)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/widget/topic", wrapper.ChooseWidgetTopic)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/widget/rating", wrapper.RateWidgetConversation)
 	})
 	r.Group(func(r chi.Router) {
@@ -7889,6 +8245,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/conversations/{id}/tags", wrapper.SetConversationTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/conversations/{id}/topic", wrapper.SetConversationTopic)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations/{id}/issues", wrapper.ListConversationIssues)
@@ -7928,6 +8287,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tags", wrapper.CreateTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/topics", wrapper.ListTopics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/topics", wrapper.CreateTopic)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/topics/order", wrapper.ReorderTopics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/topics/{id}", wrapper.DeleteTopic)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/topics/{id}", wrapper.UpdateTopic)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/contacts", wrapper.ListContacts)

@@ -1,5 +1,5 @@
 import type { Task } from "@tolkovo/api-client";
-import { useTaskQueues, useTasks, useTaskSummary } from "@tolkovo/api-client/react";
+import { useTaskQueues, useTasks, useTaskSummary, useTopics } from "@tolkovo/api-client/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Button, Select, Skeleton, cn } from "@tolkovo/ui";
 import { Plus, Search } from "lucide-react";
@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { TASK_VIEWS, taskFilter, type TasksSearch } from "../../lib/tasks/tasks";
 import { useMemberNames } from "../inbox/presence";
+import { TopicPill, useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge } from "./task-bits";
 
 type TaskListProps = {
@@ -16,14 +17,16 @@ type TaskListProps = {
   className?: string;
 };
 
-/** The left column of the tasks section: views, the queue filter, search and the list. */
+/** The left column of the tasks section: views, the queue and topic filters, search and the list. */
 export function TaskList({ search, selectedId, className }: TaskListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const view = search.view ?? "mine";
   const { data: mine } = useTaskSummary();
   const { data: queues } = useTaskQueues();
+  const { data: topics } = useTopics();
   const queueId = useId();
+  const topicId = useId();
   const searchId = useId();
   const [query, setQuery] = useState(search.q ?? "");
   // The search goes to the URL after a pause in typing, so every letter is not a request.
@@ -102,6 +105,29 @@ export function TaskList({ search, selectedId, className }: TaskListProps) {
             </Select>
           </div>
         )}
+        {(topics?.length ?? 0) > 0 && (
+          <div>
+            <label htmlFor={topicId} className="sr-only">
+              {t("tasks.topicFilter")}
+            </label>
+            <Select
+              id={topicId}
+              value={search.topic ?? ""}
+              onChange={(e) => {
+                const topic = e.currentTarget.value || undefined;
+                void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, topic }) });
+              }}
+            >
+              <option value="">{t("tasks.allTopics")}</option>
+              {topics?.map((topic) => (
+                <option key={topic.id} value={topic.id}>
+                  {topic.name}
+                </option>
+              ))}
+              <option value="none">{t("inbox.topic.without")}</option>
+            </Select>
+          </div>
+        )}
       </div>
       <ListBody search={search} selectedId={selectedId} />
     </section>
@@ -162,8 +188,10 @@ function ListBody({ search, selectedId }: { search: TasksSearch; selectedId?: st
 function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; selected: boolean }) {
   const { t } = useTranslation();
   const names = useMemberNames();
+  const topics = useTopicMap();
   const { data: queues } = useTaskQueues();
   const queue = task.queue_id ? queues?.find((q) => q.id === task.queue_id)?.name : undefined;
+  const topic = task.topic_id ? topics.get(task.topic_id) : undefined;
   const assignee = task.assignee_id ? (names.get(task.assignee_id) ?? t("inbox.colleague")) : t("tasks.unassigned");
   return (
     <Link
@@ -182,6 +210,7 @@ function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; 
         <TaskPriorityMark priority={task.priority} />
         <span className="min-w-0 truncate">{assignee}</span>
         {queue && <span className="min-w-0 truncate text-ink-3">· {queue}</span>}
+        {topic && <TopicPill topic={topic} />}
       </span>
     </Link>
   );

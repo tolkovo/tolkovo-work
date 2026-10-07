@@ -29,6 +29,9 @@ const (
 type Inbox interface {
 	InboundState(ctx context.Context, workspaceID, channelID uuid.UUID, thread, externalID string) (seen, open bool, err error)
 	Receive(ctx context.Context, workspaceID uuid.UUID, in conversations.Inbound) (conversations.Received, error)
+	// Topics the bot offers and the one the customer picked (docs/02 §7.3).
+	TopicQuestion(ctx context.Context, workspaceID uuid.UUID) (conversations.TopicQuestion, error)
+	ChooseThreadTopic(ctx context.Context, workspaceID, channelID uuid.UUID, thread string, topicID uuid.UUID) (conversations.Topic, error)
 	// Replies (T-03).
 	Outgoing(ctx context.Context, workspaceID, messageID uuid.UUID) (conversations.Outgoing, error)
 	AddSentPart(ctx context.Context, workspaceID, messageID uuid.UUID, externalID string) error
@@ -51,8 +54,11 @@ type fetchFunc func(ctx context.Context, f telegram.File, w io.Writer, limit int
 // deliver stores one received message: files go to storage first (no
 // network inside the transaction), then conversations records it. A
 // message seen before, or an owner's message without an open conversation,
-// is dropped before anything is downloaded.
-func (s *Service) deliver(ctx context.Context, workspaceID, channelID uuid.UUID, m telegram.Message, fetch fetchFunc, limit int64) error {
+// is dropped before anything is downloaded. botToken is set for a bot,
+// which then asks the customer for the topic when conversations says so.
+func (s *Service) deliver(
+	ctx context.Context, workspaceID, channelID uuid.UUID, m telegram.Message, fetch fetchFunc, limit int64, botToken string,
+) error {
 	thread, ext := threadOf(m.ChatID), strconv.FormatInt(m.ID, 10)
 	seen, open, err := s.opts.Inbox.InboundState(ctx, workspaceID, channelID, thread, ext)
 	if err != nil {
@@ -66,7 +72,7 @@ func (s *Service) deliver(ctx context.Context, workspaceID, channelID uuid.UUID,
 		Sender: conversations.InboundSender{
 			ExternalUserID: strconv.FormatInt(m.From.ID, 10), Name: m.From.Name(), Username: m.From.Username,
 		},
-		Body: m.Text, Unsupported: m.Unsupported,
+		Body: m.Text, Unsupported: m.Unsupported, CanAskTopic: botToken != "" && !m.Out,
 	}
 	var stored []string
 	for _, f := range m.Files {
@@ -82,6 +88,9 @@ func (s *Service) deliver(ctx context.Context, workspaceID, channelID uuid.UUID,
 		return err
 	}
 	s.markInbound(ctx, workspaceID, channelID)
+	if res.AskTopic {
+		s.askTopic(ctx, workspaceID, channelID, botToken, m.ChatID)
+	}
 	return nil
 }
 
@@ -139,10 +148,12 @@ func (s *Service) markInbound(ctx context.Context, workspaceID, channelID uuid.U
 // deliverRetrying retries a failed delivery (the database or storage is
 // briefly away) until ctx ends: Telegram does not resend a message once
 // the receiver moved past it. Invalid messages are skipped.
-func (s *Service) deliverRetrying(ctx context.Context, workspaceID, channelID uuid.UUID, m telegram.Message, fetch fetchFunc, limit int64) error {
+func (s *Service) deliverRetrying(
+	ctx context.Context, workspaceID, channelID uuid.UUID, m telegram.Message, fetch fetchFunc, limit int64, botToken string,
+) error {
 	wait := time.Second
 	for {
-		err := s.deliver(ctx, workspaceID, channelID, m, fetch, limit)
+		err := s.deliver(ctx, workspaceID, channelID, m, fetch, limit, botToken)
 		if err == nil || ctx.Err() != nil {
 			return err
 		}

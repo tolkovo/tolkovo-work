@@ -481,6 +481,47 @@
       "nobodyOnline": "Nobody takes conversations now: new ones will wait in the queue.",
       "saved": "Saved."
     },
+    "topics": {
+      "title": "Topics",
+      "lead": "The customer picks a topic before writing: the Telegram bot shows a button per topic, the widget shows them above the message field. The inbox shows the topic and filters by it. A topic sets the priority, who gets its conversations from automatic distribution and the queue of tasks.",
+      "add": "Add topic",
+      "empty": "No topics yet. Without them the bot and the widget ask nothing.",
+      "up": "Move «{name}» up",
+      "down": "Move «{name}» down",
+      "priorities": {
+        "0": "Normal priority",
+        "1": "Raised priority",
+        "2": "High priority",
+        "3": "Urgent"
+      },
+      "everyone": "goes to everyone",
+      "queueShort": "tasks → {name}",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete the topic? Its conversations and tasks will have none.",
+      "deleteSubmit": "Delete topic",
+      "name": "Name",
+      "nameHint": "The customer sees it on a button in the bot and the widget.",
+      "nameRequired": "Write the topic's name.",
+      "color": "Color",
+      "colors": {
+        "gray": "Gray",
+        "teal": "Teal",
+        "amber": "Yellow",
+        "red": "Red",
+        "violet": "Violet",
+        "blue": "Blue",
+        "green": "Green"
+      },
+      "priority": "Priority",
+      "priorityHint": "Conversations with a higher priority are given out of the queue first.",
+      "members": "Who gets the topic's conversations",
+      "membersHint": "With «In turn» distribution only the checked members get the topic's conversations. None checked — everyone. Anyone may take one from the queue by hand.",
+      "queue": "Task queue",
+      "queueHint": "A task from a conversation of this topic goes to this queue unless another is picked.",
+      "noQueue": "No queue",
+      "save": "Save topic"
+    },
     "ai": {
       "nav": "AI",
       "title": "Provider, key and spending",
@@ -799,7 +840,8 @@
     "tooManyTokens": "You may have at most 20 tokens. Revoke one you no longer need and try again.",
     "invalidAccessToken": "This token is not valid: it was revoked or has expired.",
     "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
-    "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later."
+    "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
+    "topicExists": "A topic with this name exists."
   },
   "error": {
     "title": "Something went wrong",
@@ -1006,6 +1048,14 @@
       "createError": "The tag was not created. Try again.",
       "full": "A conversation can have at most {max} tags."
     },
+    "topic": {
+      "label": "Topic",
+      "none": "No topic",
+      "deleted": "Deleted topic",
+      "filter": "Topics",
+      "all": "All topics",
+      "without": "No topic"
+    },
     "event": {
       "taken": "Taken by {name}",
       "assigned": "Assigned to {name}",
@@ -1036,7 +1086,10 @@
       "taskUnlinked": "Unlinked from task {number}",
       "taskReopened": "Task {number} reopened",
       "taskDone": "Task {number} done",
-      "taskCanceled": "Task {number} closed: won't do"
+      "taskCanceled": "Task {number} closed: won't do",
+      "topicChosen": "The customer chose the topic «{name}»",
+      "topicSet": "Topic: {name}",
+      "topicRemoved": "Topic removed"
     },
     "card": {
       "label": "Customer card",
@@ -1255,7 +1308,8 @@
       "status": "Status",
       "priority": "Priority",
       "assignee": "Assignee",
-      "queue": "Queue"
+      "queue": "Queue",
+      "topic": "Topic"
     },
     "fieldsLabel": "Task fields",
     "loadError": "Could not load the tasks.",
@@ -1300,7 +1354,9 @@
       "linked": "Conversation linked",
       "unlinked": "Conversation unlinked",
       "filesAdded": "Files added: {count}",
-      "filesRemoved": "A file was removed from the description"
+      "filesRemoved": "A file was removed from the description",
+      "topic": "Topic: {name}",
+      "noTopic": "Topic removed"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1322,7 +1378,11 @@
       "tooMany": "At most {count} files at once.",
       "unchoose": "Remove \"{name}\"",
       "remove": "Remove \"{name}\" from the task"
-    }
+    },
+    "topicFilter": "Topic",
+    "allTopics": "All topics",
+    "topicOfConversation": "As the conversation's",
+    "queueOfTopic": "The topic's, or none"
   },
   "notifications": {
     "alert": {

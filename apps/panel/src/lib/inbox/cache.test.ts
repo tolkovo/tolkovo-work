@@ -36,6 +36,7 @@ function conv(id: string, minute: number, patch: Partial<Conversation> = {}): Co
     updated_at: "2026-10-04T12:00:00Z",
     last_message: null,
     tag_ids: [],
+    topic_id: null,
     last_read_message_id: null,
     unread_count: 0,
     rating: null,

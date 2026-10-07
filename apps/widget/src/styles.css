@@ -380,6 +380,46 @@ a.tk-file:hover .tk-file-name {
   background: var(--tk-surface);
 }
 
+.tk-topics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.tk-topics-label {
+  flex-basis: 100%;
+  color: var(--tk-ink-2);
+  font-size: 12px;
+}
+
+.tk-topic {
+  padding: 4px 10px;
+  border: 1px solid var(--tk-line);
+  border-radius: 999px;
+  background: var(--tk-surface);
+  color: var(--tk-ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tk-topic:hover {
+  background: var(--tk-sunk);
+}
+
+.tk-topic[aria-pressed="true"] {
+  border-color: var(--tk-accent);
+  background: var(--tk-accent);
+  color: var(--tk-on-accent);
+}
+
+.tk-topic:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+
 .tk-chips {
   display: flex;
   flex-basis: 100%;

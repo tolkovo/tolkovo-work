@@ -216,9 +216,35 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
       ) : asking ? (
         <ContactForm key="prechat" c={c} view={view} form={view.prechat!} />
       ) : (
-        <Composer c={c} view={view} draft={draft} disabled={!canAttach} />
+        <>
+          {s.topics.length > 0 && !s.conversation?.topicId ? <Topics c={c} s={s} view={view} /> : null}
+          <Composer c={c} view={view} draft={draft} disabled={!canAttach} />
+        </>
       )}
     </section>
+  );
+}
+
+/** What the question is about: picked before writing, or for an open conversation without one. */
+function Topics({ c, s, view }: { c: Controller; s: State; view: View }) {
+  const picked = s.conversation?.topicId ?? s.topic;
+  return (
+    <div class="tk-topics" role="group" aria-label={view.t("topic")}>
+      <span class="tk-topics-label" aria-hidden="true">
+        {view.t("topic")}
+      </span>
+      {s.topics.map((topic) => (
+        <button
+          key={topic.id}
+          type="button"
+          class="tk-topic"
+          aria-pressed={picked === topic.id}
+          onClick={() => void c.chooseTopic(topic.id).catch(() => undefined)}
+        >
+          {topic.name}
+        </button>
+      ))}
+    </div>
   );
 }
 

@@ -114,6 +114,51 @@ func (b *BotAPI) SendNotice(ctx context.Context, token string, chatID int64, tex
 	return res.MessageID, botSendErr(err)
 }
 
+// Button is an inline button under a message; Data (up to 64 bytes) comes
+// back in the Callback when it is pressed.
+type Button struct {
+	Text string
+	Data string
+}
+
+// SendButtons sends text with inline buttons, one row per slice, to a
+// private chat and returns the message id.
+func (b *BotAPI) SendButtons(ctx context.Context, token string, chatID int64, text string, rows [][]Button) (int64, error) {
+	keyboard := make([][]map[string]string, 0, len(rows))
+	for _, row := range rows {
+		r := make([]map[string]string, 0, len(row))
+		for _, btn := range row {
+			r = append(r, map[string]string{"text": btn.Text, "callback_data": btn.Data})
+		}
+		keyboard = append(keyboard, r)
+	}
+	var res struct {
+		MessageID int64 `json:"message_id"`
+	}
+	err := b.call(ctx, token, "sendMessage", map[string]any{
+		"chat_id": chatID, "text": text, "reply_markup": map[string]any{"inline_keyboard": keyboard},
+	}, &res)
+	return res.MessageID, botSendErr(err)
+}
+
+// AnswerCallback ends the spinner of a pressed button; text, when not
+// empty, shows briefly at the top of the chat.
+func (b *BotAPI) AnswerCallback(ctx context.Context, token, callbackID, text string) error {
+	params := map[string]any{"callback_query_id": callbackID}
+	if text != "" {
+		params["text"] = text
+	}
+	return b.call(ctx, token, "answerCallbackQuery", params, nil)
+}
+
+// EditText replaces the text of a message the bot sent and drops its
+// buttons.
+func (b *BotAPI) EditText(ctx context.Context, token string, chatID, messageID int64, text string) error {
+	return b.call(ctx, token, "editMessageText", map[string]any{
+		"chat_id": chatID, "message_id": messageID, "text": text,
+	}, nil)
+}
+
 // SendFile uploads a file from r to a private chat (multipart, as the Bot
 // API takes uploads) and returns the message id.
 func (b *BotAPI) SendFile(ctx context.Context, token string, chatID int64, f OutFile, r io.Reader) (int64, error) {

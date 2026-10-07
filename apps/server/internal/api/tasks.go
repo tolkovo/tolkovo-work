@@ -165,6 +165,12 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 		}
 		f.QueueID = &id
 	}
+	byTopic, topic, err := topicFilter(deref(params.Topic))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	f.TopicID, f.NoTopic = topic, byTopic && topic == nil
 	if c := deref(params.Cursor); c != "" {
 		n, err := strconv.ParseInt(c, 10, 64)
 		if err != nil || n <= 0 {
@@ -209,8 +215,8 @@ func (s *server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := tasks.NewTask{
-		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, AssigneeID: req.AssigneeId, ConversationID: req.ConversationId,
-		FileIDs: deref(req.FileIds),
+		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
+		ConversationID: req.ConversationId, FileIDs: deref(req.FileIds),
 	}
 	if req.Priority != nil {
 		in.Priority = string(*req.Priority)
@@ -258,7 +264,8 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 		return
 	}
 	var req oapi.TaskUpdate
-	if err := decodeJSON(w, r, &req); err != nil {
+	// A missing topic_id must not clear the topic of a client that does not know it.
+	if err := decodeRequired(w, r, &req, "topic_id"); err != nil {
 		s.writeError(w, r, err)
 		return
 	}
@@ -267,7 +274,7 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 	}
 	t, err := s.tasks.Update(r.Context(), p.WorkspaceID, p.UserID, id, tasks.Update{
 		Version: req.Version, Title: req.Title, Body: req.Body, Status: string(req.Status), Priority: string(req.Priority),
-		QueueID: req.QueueId, AssigneeID: req.AssigneeId,
+		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -487,7 +494,7 @@ func (s *server) checkMember(ctx context.Context, workspaceID uuid.UUID, userID 
 
 func taskBody(t tasks.Task) oapi.Task {
 	return oapi.Task{
-		Id: t.ID, Number: t.Number, QueueId: t.QueueID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
+		Id: t.ID, Number: t.Number, QueueId: t.QueueID, TopicId: t.TopicID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, Version: t.Version, ConversationIds: nonNil(t.ConversationIDs),
 		Files: taskFileList(t.Files),

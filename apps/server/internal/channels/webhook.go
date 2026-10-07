@@ -22,8 +22,8 @@ var ErrHookSecret = errors.New("channels: webhook secret does not match")
 // BotWebhook handles an update Telegram posted to HookPath (docs/02 §11.2):
 // the X-Telegram-Bot-Api-Secret-Token must match, then a private message
 // is stored before the answer, so Telegram keeps the order within a chat
-// and retries what failed. Anything else in the update is acknowledged
-// and dropped. ErrNotFound covers unknown, inactive and polling channels.
+// and retries what failed; a press of a topic button picks the topic.
+// Anything else in the update is acknowledged and dropped. ErrNotFound covers unknown, inactive and polling channels.
 func (s *Service) BotWebhook(ctx context.Context, workspaceID, channelID uuid.UUID, secret string, body []byte) error {
 	sec, err := s.activeBot(ctx, workspaceID, channelID)
 	if err != nil {
@@ -38,10 +38,14 @@ func (s *Service) BotWebhook(ctx context.Context, workspaceID, channelID uuid.UU
 		s.log.Warn("telegram update unreadable", "workspace_id", workspaceID, "channel_id", channelID, "error", err)
 		return nil
 	}
+	if u.Callback != nil {
+		s.chooseTopic(ctx, workspaceID, channelID, sec.Token, *u.Callback)
+		return nil
+	}
 	if u.Message == nil {
 		return nil
 	}
-	return s.deliver(ctx, workspaceID, channelID, *u.Message, s.botFetch(sec.Token), BotFileLimit)
+	return s.deliver(ctx, workspaceID, channelID, *u.Message, s.botFetch(sec.Token), BotFileLimit, sec.Token)
 }
 
 // activeBot opens the secret of an active bot channel that gets webhooks.

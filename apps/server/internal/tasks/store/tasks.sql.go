@@ -75,7 +75,7 @@ func (q *Queries) ClearQueueMembers(ctx context.Context, arg ClearQueueMembersPa
 
 const conversationTasks = `-- name: ConversationTasks :many
 
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2
 ORDER BY l.created_at, t.id
@@ -112,6 +112,7 @@ func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksPa
 			&i.UpdatedAt,
 			&i.ClosedAt,
 			&i.Version,
+			&i.TopicID,
 		); err != nil {
 			return nil, err
 		}
@@ -121,6 +122,23 @@ func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const conversationTopic = `-- name: ConversationTopic :one
+SELECT topic_id FROM conversations WHERE workspace_id = $1 AND id = $2
+`
+
+type ConversationTopicParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// The topic of a conversation a task is created from.
+func (q *Queries) ConversationTopic(ctx context.Context, arg ConversationTopicParams) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, conversationTopic, arg.WorkspaceID, arg.ID)
+	var topic_id *uuid.UUID
+	err := row.Scan(&topic_id)
+	return topic_id, err
 }
 
 const countOpenAssigned = `-- name: CountOpenAssigned :one
@@ -234,7 +252,7 @@ func (q *Queries) DetachTaskFile(ctx context.Context, arg DetachTaskFileParams) 
 }
 
 const doneTask = `-- name: DoneTask :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2 AND t.status = 'done'
 ORDER BY t.closed_at DESC, t.id DESC
@@ -272,6 +290,7 @@ func (q *Queries) DoneTask(ctx context.Context, arg DoneTaskParams) ([]Task, err
 			&i.UpdatedAt,
 			&i.ClosedAt,
 			&i.Version,
+			&i.TopicID,
 		); err != nil {
 			return nil, err
 		}
@@ -323,7 +342,7 @@ func (q *Queries) GetSettings(ctx context.Context, workspaceID uuid.UUID) (TaskS
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version FROM tasks WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks WHERE workspace_id = $1 AND id = $2
 `
 
 type GetTaskParams struct {
@@ -349,6 +368,7 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) 
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
 	)
 	return i, err
 }
@@ -382,7 +402,7 @@ func (q *Queries) GetTaskFile(ctx context.Context, arg GetTaskFileParams) (TaskF
 }
 
 const getTaskForUpdate = `-- name: GetTaskForUpdate :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
 `
 
 type GetTaskForUpdateParams struct {
@@ -408,6 +428,7 @@ func (q *Queries) GetTaskForUpdate(ctx context.Context, arg GetTaskForUpdatePara
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
 	)
 	return i, err
 }
@@ -494,9 +515,9 @@ func (q *Queries) InsertQueue(ctx context.Context, arg InsertQueueParams) (TaskQ
 }
 
 const insertTask = `-- name: InsertTask :one
-INSERT INTO tasks (id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10, $10)
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version
+INSERT INTO tasks (id, workspace_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9, $10, $11, $11)
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id
 `
 
 type InsertTaskParams struct {
@@ -504,6 +525,7 @@ type InsertTaskParams struct {
 	WorkspaceID uuid.UUID
 	Number      int64
 	QueueID     *uuid.UUID
+	TopicID     *uuid.UUID
 	Title       string
 	Body        string
 	Priority    string
@@ -518,6 +540,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 		arg.WorkspaceID,
 		arg.Number,
 		arg.QueueID,
+		arg.TopicID,
 		arg.Title,
 		arg.Body,
 		arg.Priority,
@@ -541,6 +564,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
 	)
 	return i, err
 }
@@ -710,7 +734,7 @@ func (q *Queries) ListQueues(ctx context.Context, workspaceID uuid.UUID) ([]List
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version FROM tasks
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks
 WHERE workspace_id = $1
   AND ($2::bigint = 0 OR number < $2::bigint)
   AND (NOT $3::boolean OR closed_at IS NULL)
@@ -719,10 +743,12 @@ WHERE workspace_id = $1
   AND (NOT $6::boolean OR assignee_id IS NULL)
   AND ($7::uuid IS NULL OR queue_id = $7::uuid)
   AND (NOT $8::boolean OR queue_id IS NULL)
-  AND ($9::text IS NULL OR status = $9::text)
-  AND ($10::text = '' OR title ILIKE '%' || $10::text || '%' OR number::text = $10::text)
+  AND ($9::uuid IS NULL OR topic_id = $9::uuid)
+  AND (NOT $10::boolean OR topic_id IS NULL)
+  AND ($11::text IS NULL OR status = $11::text)
+  AND ($12::text = '' OR title ILIKE '%' || $12::text || '%' OR number::text = $12::text)
 ORDER BY number DESC
-LIMIT $11
+LIMIT $13
 `
 
 type ListTasksParams struct {
@@ -734,6 +760,8 @@ type ListTasksParams struct {
 	Unassigned   bool
 	QueueID      *uuid.UUID
 	NoQueue      bool
+	TopicID      *uuid.UUID
+	NoTopic      bool
 	Status       *string
 	Query        string
 	Lim          int32
@@ -741,7 +769,8 @@ type ListTasksParams struct {
 
 // A page of tasks, newest first, before the number before_number (0: from
 // the newest). open_only and closed_only pick the state; assignee_id and
-// queue_id filter when set; unassigned and no_queue ask for NULL.
+// queue_id and topic_id filter when set; unassigned, no_queue and no_topic
+// ask for NULL.
 func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listTasks,
 		arg.WorkspaceID,
@@ -752,6 +781,8 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 		arg.Unassigned,
 		arg.QueueID,
 		arg.NoQueue,
+		arg.TopicID,
+		arg.NoTopic,
 		arg.Status,
 		arg.Query,
 		arg.Lim,
@@ -778,6 +809,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.UpdatedAt,
 			&i.ClosedAt,
 			&i.Version,
+			&i.TopicID,
 		); err != nil {
 			return nil, err
 		}
@@ -1034,6 +1066,29 @@ func (q *Queries) TaskIDByNumber(ctx context.Context, arg TaskIDByNumberParams) 
 	return id, err
 }
 
+const topicQueue = `-- name: TopicQueue :one
+SELECT id, task_queue_id FROM topics WHERE workspace_id = $1 AND id = $2
+`
+
+type TopicQueueParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+type TopicQueueRow struct {
+	ID          uuid.UUID
+	TaskQueueID *uuid.UUID
+}
+
+// A topic of the workspace and the queue of its tasks (topics belongs to
+// conversations; tasks only reads it). No row: no such topic.
+func (q *Queries) TopicQueue(ctx context.Context, arg TopicQueueParams) (TopicQueueRow, error) {
+	row := q.db.QueryRow(ctx, topicQueue, arg.WorkspaceID, arg.ID)
+	var i TopicQueueRow
+	err := row.Scan(&i.ID, &i.TaskQueueID)
+	return i, err
+}
+
 const unlinkConversation = `-- name: UnlinkConversation :execrows
 DELETE FROM task_conversations
 WHERE workspace_id = $1 AND task_id = $2 AND conversation_id = $3
@@ -1055,15 +1110,16 @@ func (q *Queries) UnlinkConversation(ctx context.Context, arg UnlinkConversation
 
 const updateTask = `-- name: UpdateTask :one
 UPDATE tasks
-SET queue_id = $1, title = $2, body = $3, status = $4, priority = $5,
-    assignee_id = $6, closed_at = $7, updated_at = $8,
+SET queue_id = $1, topic_id = $2, title = $3, body = $4, status = $5, priority = $6,
+    assignee_id = $7, closed_at = $8, updated_at = $9,
     version = version + 1
-WHERE workspace_id = $9 AND id = $10
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version
+WHERE workspace_id = $10 AND id = $11
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id
 `
 
 type UpdateTaskParams struct {
 	QueueID     *uuid.UUID
+	TopicID     *uuid.UUID
 	Title       string
 	Body        string
 	Status      string
@@ -1078,6 +1134,7 @@ type UpdateTaskParams struct {
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
 	row := q.db.QueryRow(ctx, updateTask,
 		arg.QueueID,
+		arg.TopicID,
 		arg.Title,
 		arg.Body,
 		arg.Status,
@@ -1104,6 +1161,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.UpdatedAt,
 		&i.ClosedAt,
 		&i.Version,
+		&i.TopicID,
 	)
 	return i, err
 }

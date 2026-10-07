@@ -29,6 +29,7 @@ const conv = (id: string, minute: number, patch: Partial<Conversation> = {}): Co
   updated_at: "2026-10-04T12:00:00Z",
   last_message: null,
   tag_ids: [],
+  topic_id: null,
   last_read_message_id: null,
   unread_count: 0,
   rating: null,
@@ -167,7 +168,7 @@ describe("createInboxSync", () => {
     vi.setSystemTime(new Date("2026-10-04T12:00:30Z"));
     const me = ownerSession.user.id;
     const task = {
-      id: "t1", number: 7, queue_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
+      id: "t1", number: 7, queue_id: null, topic_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
       assignee_id: me, created_by: "u2", created_at: "2026-10-04T12:00:00Z", updated_at: "2026-10-04T12:00:00Z",
       closed_at: null, version: 2, conversation_ids: [], files: [],
     };

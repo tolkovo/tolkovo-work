@@ -11,6 +11,7 @@ import {
   useTask,
   useTaskActivity,
   useTaskQueues,
+  useTopics,
   useUnlinkTaskConversation,
   useUpdateTask,
 } from "@tolkovo/api-client/react";
@@ -24,6 +25,7 @@ import { describeApiError } from "../../lib/api-errors";
 import { TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
+import { useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge, control } from "./task-bits";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
 
@@ -112,14 +114,15 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
   );
 }
 
-/** Status, priority, assignee and queue: each change is saved at once. */
+/** Status, priority, assignee, queue and topic: each change is saved at once. */
 function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; onChange: (patch: Partial<Omit<TaskUpdate, "version">>) => void }) {
   const { t } = useTranslation();
   const { data: session } = useSession();
   const { data: members } = useMembers();
   const { data: queues } = useTaskQueues();
+  const { data: topics } = useTopics();
   const canManage = useCan("tasks.manage");
-  const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId() };
+  const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId(), topic: useId() };
   const me = session?.user.id;
   return (
     <aside aria-label={t("tasks.fieldsLabel")} className="flex flex-col gap-3">
@@ -175,6 +178,20 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
           ))}
         </Select>
       </div>
+      {((topics?.length ?? 0) > 0 || task.topic_id) && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={ids.topic}>{t("tasks.fields.topic")}</Label>
+          <Select id={ids.topic} value={task.topic_id ?? ""} disabled={disabled} onChange={(e) => onChange({ topic_id: e.currentTarget.value || null })}>
+            <option value="">{t("inbox.topic.none")}</option>
+            {topics?.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+            {task.topic_id && !topics?.some((x) => x.id === task.topic_id) && <option value={task.topic_id}>{t("inbox.topic.deleted")}</option>}
+          </Select>
+        </div>
+      )}
       <Dates task={task} />
       {canManage && <DeleteTask task={task} />}
     </aside>
@@ -356,6 +373,7 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
   const { t, i18n } = useTranslation();
   const names = useMemberNames();
   const { data: queues } = useTaskQueues();
+  const topics = useTopicMap();
   const who = a.actor_id ? (names.get(a.actor_id) ?? t("inbox.colleague")) : t("inbox.sender.system");
   const time = new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(new Date(a.created_at));
   if (a.kind === "comment") {
@@ -387,6 +405,11 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
       break;
     case "queue":
       text = t("tasks.activity.queue", { name: queue(a.to) });
+      break;
+    case "topic":
+      text = a.to
+        ? t("tasks.activity.topic", { name: topics.get(a.to)?.name ?? t("inbox.topic.deleted") })
+        : t("tasks.activity.noTopic");
       break;
     case "edited":
       text = t("tasks.activity.edited");

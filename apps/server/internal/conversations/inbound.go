@@ -54,6 +54,9 @@ type Inbound struct {
 	// Unsupported names what the message holds instead of text and files
 	// (UnsupportedSticker…); empty for ordinary messages.
 	Unsupported string
+	// CanAskTopic: the channel can ask the customer for the topic (the
+	// Telegram bot's buttons); Received.AskTopic says when to.
+	CanAskTopic bool
 }
 
 // InboundSender is the person who wrote, as the channel knows them.
@@ -82,6 +85,9 @@ type Received struct {
 	ConversationID      uuid.UUID
 	MessageID           uuid.UUID
 	CreatedConversation bool
+	// AskTopic: the channel asks the customer for the topic now (see
+	// TopicQuestion). Asked once per conversation.
+	AskTopic bool
 }
 
 // InboundState tells a channel, before it fetches files, whether the
@@ -170,6 +176,11 @@ func (s *Service) receive(ctx context.Context, q *store.Queries, tx pgx.Tx, work
 	out.ConversationID = conv.ID
 	if out.MessageID, err = s.storeCustomerMessage(ctx, q, tx, conv, in, now); err != nil {
 		return Received{}, err
+	}
+	if in.CanAskTopic {
+		if out.AskTopic, err = s.askTopic(ctx, q, conv, now); err != nil {
+			return Received{}, err
+		}
 	}
 	return out, nil
 }

@@ -41,6 +41,7 @@ import { Route as AppSettingsRoutingRouteImport } from "./routes/_app/settings/r
 import { Route as AppSettingsSecurityRouteImport } from "./routes/_app/settings/security"
 import { Route as AppSettingsTasksRouteImport } from "./routes/_app/settings/tasks"
 import { Route as AppSettingsTeamRouteImport } from "./routes/_app/settings/team"
+import { Route as AppSettingsTopicsRouteImport } from "./routes/_app/settings/topics"
 import { Route as AppTasksIndexRouteImport } from "./routes/_app/tasks/index"
 import { Route as AppTasksTaskIdRouteImport } from "./routes/_app/tasks/$taskId"
 import { Route as AppTasksNewRouteImport } from "./routes/_app/tasks/new"
@@ -203,6 +204,11 @@ const AppSettingsTeamRoute = AppSettingsTeamRouteImport.update({
   path: "/team",
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsTopicsRoute = AppSettingsTopicsRouteImport.update({
+  id: "/topics",
+  path: "/topics",
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppTasksIndexRoute = AppTasksIndexRouteImport.update({
   id: "/",
   path: "/",
@@ -247,6 +253,7 @@ export interface FileRoutesByFullPath {
   "/settings/security": typeof AppSettingsSecurityRoute
   "/settings/tasks": typeof AppSettingsTasksRoute
   "/settings/team": typeof AppSettingsTeamRoute
+  "/settings/topics": typeof AppSettingsTopicsRoute
   "/tasks/$taskId": typeof AppTasksTaskIdRoute
   "/tasks/new": typeof AppTasksNewRoute
   "/inbox/": typeof AppInboxIndexRoute
@@ -278,6 +285,7 @@ export interface FileRoutesByTo {
   "/settings/security": typeof AppSettingsSecurityRoute
   "/settings/tasks": typeof AppSettingsTasksRoute
   "/settings/team": typeof AppSettingsTeamRoute
+  "/settings/topics": typeof AppSettingsTopicsRoute
   "/tasks/$taskId": typeof AppTasksTaskIdRoute
   "/tasks/new": typeof AppTasksNewRoute
   "/inbox": typeof AppInboxIndexRoute
@@ -316,6 +324,7 @@ export interface FileRoutesById {
   "/_app/settings/security": typeof AppSettingsSecurityRoute
   "/_app/settings/tasks": typeof AppSettingsTasksRoute
   "/_app/settings/team": typeof AppSettingsTeamRoute
+  "/_app/settings/topics": typeof AppSettingsTopicsRoute
   "/_app/tasks/$taskId": typeof AppTasksTaskIdRoute
   "/_app/tasks/new": typeof AppTasksNewRoute
   "/_app/inbox/": typeof AppInboxIndexRoute
@@ -352,6 +361,7 @@ export interface FileRouteTypes {
     | "/settings/security"
     | "/settings/tasks"
     | "/settings/team"
+    | "/settings/topics"
     | "/tasks/$taskId"
     | "/tasks/new"
     | "/inbox/"
@@ -383,6 +393,7 @@ export interface FileRouteTypes {
     | "/settings/security"
     | "/settings/tasks"
     | "/settings/team"
+    | "/settings/topics"
     | "/tasks/$taskId"
     | "/tasks/new"
     | "/inbox"
@@ -420,6 +431,7 @@ export interface FileRouteTypes {
     | "/_app/settings/security"
     | "/_app/settings/tasks"
     | "/_app/settings/team"
+    | "/_app/settings/topics"
     | "/_app/tasks/$taskId"
     | "/_app/tasks/new"
     | "/_app/inbox/"
@@ -660,6 +672,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppSettingsTeamRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    "/_app/settings/topics": {
+      id: "/_app/settings/topics"
+      path: "/topics"
+      fullPath: "/settings/topics"
+      preLoaderRoute: typeof AppSettingsTopicsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     "/_app/tasks/": {
       id: "/_app/tasks/"
       path: "/"
@@ -711,6 +730,7 @@ interface AppSettingsRouteChildren {
   AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
   AppSettingsTasksRoute: typeof AppSettingsTasksRoute
   AppSettingsTeamRoute: typeof AppSettingsTeamRoute
+  AppSettingsTopicsRoute: typeof AppSettingsTopicsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -727,6 +747,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsSecurityRoute: AppSettingsSecurityRoute,
   AppSettingsTasksRoute: AppSettingsTasksRoute,
   AppSettingsTeamRoute: AppSettingsTeamRoute,
+  AppSettingsTopicsRoute: AppSettingsTopicsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

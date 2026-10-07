@@ -6,6 +6,7 @@ export type SettingsPath =
   | "/settings/integrations"
   | "/settings/tasks"
   | "/settings/routing"
+  | "/settings/topics"
   | "/settings/ai"
   | "/settings/team"
   | "/settings/profile"
@@ -22,6 +23,7 @@ type SettingsSection = {
     | "settings.integrations.title"
     | "settings.tasks.title"
     | "settings.routing.title"
+    | "settings.topics.title"
     | "settings.ai.nav"
     | "settings.team.title"
     | "settings.profile.title"
@@ -56,6 +58,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/tasks", label: "settings.tasks.title", permission: "tasks.manage" },
       { to: "/settings/team", label: "settings.team.title", permission: "members.view" },
       { to: "/settings/routing", label: "settings.routing.title", permission: "routing.manage" },
+      { to: "/settings/topics", label: "settings.topics.title", permission: "routing.manage" },
       { to: "/settings/ai", label: "settings.ai.nav", permission: "ai.manage" },
     ],
   },

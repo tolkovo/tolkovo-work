@@ -1571,6 +1571,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/widget/topic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The visitor picks the topic of their open conversation
+         * @description For a visitor who wrote before picking a topic (`WidgetSession.topics`; a topic picked
+         *     before the first message goes with it, `WidgetMessageRequest.topic_id`). The
+         *     conversation must be open (`conversation` of `GET /widget/messages`); picking again
+         *     changes the topic. Rate: 10 a minute per session.
+         */
+        post: operations["chooseWidgetTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/widget/rating": {
         parameters: {
             query?: never;
@@ -1822,6 +1845,30 @@ export interface paths {
          *     At most 20 tags; every id must be a tag of the workspace (`GET /tags`).
          */
         put: operations["setConversationTags"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{id}/topic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set, change or remove the topic of the conversation
+         * @description Requires `conversations.tag`; works in any visible conversation, closed ones too. The
+         *     conversation takes the topic's priority (none: 0) and stays with whoever has it; a
+         *     queued one is distributed again. The feed gets a line.
+         */
+        put: operations["setConversationTopic"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2115,6 +2162,81 @@ export interface paths {
          */
         post: operations["createTag"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The topics of questions, in the order of the buttons
+         * @description Requires `conversations.view` or `tasks.view`. At most 20, so there are no pages. The
+         *     customer picks a topic before writing: the Telegram bot shows a button per topic after
+         *     the first message of a conversation, the widget shows them above the message field. An
+         *     operator can set or change it (`PUT /conversations/{id}/topic`).
+         */
+        get: operations["listTopics"];
+        put?: never;
+        /**
+         * Add a topic after the others
+         * @description Requires `routing.manage` (owner, admin): a topic decides who gets its conversations
+         *     and how soon. Names are unique without regard to case (`409 topic_exists`).
+         */
+        post: operations["createTopic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/topics/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put the topics in a new order
+         * @description Requires `routing.manage`. `ids` names every topic once.
+         */
+        put: operations["reorderTopics"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/topics/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a topic
+         * @description Requires `routing.manage`. Conversations of the topic keep the priority they have;
+         *     new ones get the new one. Changed members apply to the queue at once.
+         */
+        put: operations["updateTopic"];
+        post?: never;
+        /**
+         * Delete a topic
+         * @description Requires `routing.manage`. Its conversations and tasks are left without a topic.
+         */
+        delete: operations["deleteTopic"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2869,6 +2991,7 @@ export interface components {
              */
             number: number;
             status: components["schemas"]["ConversationStatus"];
+            /** @description Higher is taken from the queue first; a topic sets it (`Topic.priority`). */
             priority: number;
             line_level: number;
             contact: components["schemas"]["ContactRef"];
@@ -2902,6 +3025,8 @@ export interface components {
             last_message: components["schemas"]["ConversationPreview"] | null;
             /** @description Tags in the order they were added; names and colors are in `GET /tags`. */
             tag_ids: string[];
+            /** @description What the question is about (`GET /topics`); `null` until the customer or an operator picks one. */
+            topic_id: string | null;
             /** @description The caller's read mark; `null` when they have not read the conversation. */
             last_read_message_id: string | null;
             /** @description Customer messages after the caller's read mark, counted up to 100. */
@@ -3064,15 +3189,21 @@ export interface components {
              *     reopened one put it to wait for the fix again. `task_*`: the same for a task of the
              *     tasks section, with `task`; `task_closed` with `task.reason` (`done` brings the
              *     conversation back, `canceled` does not), `task_unlinked` ends waiting for that task.
+             *     `topic_changed`: the topic was set, changed or removed (`topic_id`,
+             *     `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
+             *     current status.
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
             previous_assignee_id: string | null;
             issue?: components["schemas"]["MessageEventIssue"];
             task?: components["schemas"]["MessageEventTask"];
+            topic_id?: string | null;
+            previous_topic_id?: string | null;
+            by_customer?: boolean;
         };
         MessageEventIssue: {
             link_id: string;
@@ -3133,6 +3264,8 @@ export interface components {
             /** Format: int64 */
             number: number;
             queue_id: string | null;
+            /** @description The topic of questions (`GET /topics`); a task from a conversation takes the conversation's. */
+            topic_id: string | null;
             title: string;
             body: string;
             status: components["schemas"]["TaskStatus"];
@@ -3185,7 +3318,10 @@ export interface components {
         TaskCreate: {
             title: string;
             body?: string;
+            /** @description Absent or `null` with a topic that has a task queue — that queue. */
             queue_id?: string | null;
+            /** @description Absent or `null` for a task from a conversation — the conversation's topic. */
+            topic_id?: string | null;
             priority?: components["schemas"]["TaskPriority"];
             assignee_id?: string | null;
             /** @description The conversation the task is created from. */
@@ -3201,6 +3337,7 @@ export interface components {
             status: components["schemas"]["TaskStatus"];
             priority: components["schemas"]["TaskPriority"];
             queue_id: string | null;
+            topic_id: string | null;
             assignee_id: string | null;
         };
         TaskSummary: {
@@ -3214,10 +3351,10 @@ export interface components {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "edited" | "linked" | "unlinked" | "files";
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files";
             /** @description The text of a comment. */
             body?: string;
-            /** @description The value a change moved from (a status, a priority, a member or queue id); empty for none. */
+            /** @description The value a change moved from (a status, a priority, a member, queue or topic id); empty for none. */
             from?: string;
             /** @description The value a change moved to; empty for none. */
             to?: string;
@@ -3338,6 +3475,46 @@ export interface components {
         SetTagsRequest: {
             tag_ids: string[];
             /** @description When set, must equal the current version, otherwise `409 version_conflict`. */
+            version?: number;
+        };
+        Topic: {
+            id: string;
+            name: string;
+            color: components["schemas"]["TagColor"];
+            /** @description The order of the buttons */
+            position: number;
+            /**
+             * @description `Conversation.priority` of its conversations: 0 normal, 1 raised, 2 high, 3 urgent.
+             *     Higher conversations are taken from the queue first.
+             */
+            priority: number;
+            /** @description The queue of tasks created from its conversations; `null` — none. */
+            task_queue_id: string | null;
+            /**
+             * @description Who gets its conversations from automatic distribution, by user id; empty — everyone.
+             *     Taking one from the queue by hand is open to all.
+             */
+            member_ids: string[];
+        };
+        TopicList: {
+            items: components["schemas"]["Topic"][];
+        };
+        TopicInput: {
+            name: string;
+            color?: components["schemas"]["TagColor"];
+            /** @default 0 */
+            priority: number;
+            task_queue_id?: string | null;
+            /** @description Active members of the workspace; absent or empty — everyone. */
+            member_ids?: string[];
+        };
+        TopicOrder: {
+            ids: string[];
+        };
+        SetTopicRequest: {
+            /** @description A topic of the workspace; `null` removes the topic. */
+            topic_id: string | null;
+            /** @description The conversation's `version` you read; a mismatch answers `409 version_conflict`. */
             version?: number;
         };
         MarkReadRequest: {
@@ -3965,12 +4142,22 @@ export interface components {
         /** @description The visitor's newest conversation as they see it. */
         WidgetConversation: {
             id: string;
+            /** @description The topic picked; `null` — none yet. */
+            topic_id: string | null;
             /**
              * @description `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.
              * @enum {string}
              */
             status: "open" | "resolved";
             rating: components["schemas"]["ConversationRating"] | null;
+        };
+        WidgetTopicRequest: {
+            conversation_id: string;
+            topic_id: string;
+        };
+        WidgetTopic: {
+            id: string;
+            name: string;
         };
         WidgetRatingRequest: {
             conversation_id: string;
@@ -3991,6 +4178,11 @@ export interface components {
             /** @description As in `WidgetAvailability`. */
             operators_online: boolean;
             analytics: components["schemas"]["WidgetAnalytics"];
+            /**
+             * @description Topics of questions in the order to show; empty — the widget asks none. The widget
+             *     offers them while the conversation has no topic.
+             */
+            topics: components["schemas"]["WidgetTopic"][];
         };
         WidgetMessages: {
             /** @description The visitor's newest conversation; `null` before the first message. */
@@ -4017,6 +4209,12 @@ export interface components {
         /** @description Text, files or both. */
         WidgetMessageRequest: {
             message?: string;
+            /**
+             * @description A topic of `WidgetSession.topics` the visitor picked before writing; it goes to the
+             *     conversation the message opens, or to an open one without a topic. An unknown id
+             *     is ignored.
+             */
+            topic_id?: string;
             /** @description Ids of `POST /widget/uploads`, in the order to show. */
             attachment_ids?: string[];
         };
@@ -4084,6 +4282,15 @@ export interface components {
         };
         /** @description `link_invalid` (bad signature or parameters) or `link_expired`. */
         LinkRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `topic_exists`: a topic with this name exists. */
+        TopicExists: {
             headers: {
                 [name: string]: unknown;
             };
@@ -6754,6 +6961,41 @@ export interface operations {
             429: components["responses"]["WidgetLimited"];
         };
     };
+    chooseWidgetTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WidgetTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["WidgetSessionEnded"];
+            403: components["responses"]["WidgetOriginNotAllowed"];
+            /** @description `not_found`: no such open conversation in the visitor's chat, or no such topic. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["WidgetLimited"];
+        };
+    };
     rateWidgetConversation: {
         parameters: {
             query?: never;
@@ -6941,6 +7183,8 @@ export interface operations {
                 status?: components["schemas"]["ConversationStatus"][];
                 /** @description `me`, `none` (unassigned) or a member's user id. */
                 assignee?: string;
+                /** @description `none` (without a topic) or a topic id. */
+                topic?: string;
                 /**
                  * @description Only this contact's conversations: the history in the customer card. An unknown id
                  *     gives an empty page.
@@ -7244,6 +7488,37 @@ export interface operations {
         };
         responses: {
             /** @description The conversation with its new tags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    setConversationTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation with its new topic. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7618,6 +7893,137 @@ export interface operations {
             };
         };
     };
+    listTopics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The topics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topic"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TopicExists"];
+        };
+    };
+    reorderTopics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicOrder"];
+            };
+        };
+        responses: {
+            /** @description The topics in the new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicList"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicInput"];
+            };
+        };
+        responses: {
+            /** @description The changed topic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topic"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TopicExists"];
+        };
+    };
+    deleteTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listContacts: {
         parameters: {
             query?: {
@@ -7738,6 +8144,8 @@ export interface operations {
                 assignee?: string;
                 /** @description `none` or a queue id. */
                 queue?: string;
+                /** @description `none` or a topic id. */
+                topic?: string;
                 /** @description Part of the title, or the task number. */
                 q?: string;
                 /** @description Opaque `next_cursor` of the previous page. */

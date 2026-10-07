@@ -3,6 +3,7 @@ package conversations
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -16,10 +17,11 @@ type Assignment struct {
 	UserID         uuid.UUID
 }
 
-// HasQueued reports whether the queue still holds conversations, those
-// another transaction holds included, in the router's transaction tx.
-func (s *Service) HasQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) (bool, error) {
-	ok, err := store.New(tx).HasQueued(ctx, workspaceID)
+// HasQueued reports whether the queue still holds conversations one of
+// available may take, those another transaction holds included, in the
+// router's transaction tx.
+func (s *Service) HasQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, available []uuid.UUID) (bool, error) {
+	ok, err := store.New(tx).HasQueued(ctx, store.HasQueuedParams{WorkspaceID: workspaceID, Available: available})
 	if err != nil {
 		return false, wrap(err, "has queued")
 	}
@@ -27,11 +29,13 @@ func (s *Service) HasQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUI
 }
 
 // AssignQueued gives up to limit conversations from the head of the queue
-// to assignees in turn: the first to assignees[0], the second to
-// assignees[1], and around again. It runs in the router's tenant
-// transaction tx (docs/02 §9.3) and records each assignment as a change by
-// the system: events, the system line and the reminder. Conversations
-// another transaction holds are left for the next round.
+// to assignees in turn: each goes to the first of assignees, in turn order,
+// who may take it, and that one moves to the end. A conversation whose
+// topic has members goes to one of them only (docs/02 §7.3). It runs in
+// the router's tenant transaction tx (docs/02 §9.3) and records each
+// assignment as a change by the system: events, the system line and the
+// reminder. Conversations another transaction holds are left for the next
+// round.
 func (s *Service) AssignQueued(
 	ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, assignees []uuid.UUID, limit int,
 ) ([]Assignment, error) {
@@ -39,13 +43,26 @@ func (s *Service) AssignQueued(
 		return nil, nil
 	}
 	q := store.New(tx)
-	rows, err := q.LockQueue(ctx, store.LockQueueParams{WorkspaceID: workspaceID, Lim: pageSize(limit)})
+	rows, err := q.LockQueue(ctx, store.LockQueueParams{WorkspaceID: workspaceID, Available: assignees, Lim: pageSize(limit)})
 	if err != nil {
 		return nil, wrap(err, "lock queue")
 	}
+	members, err := topicMembers(ctx, q, workspaceID, rows)
+	if err != nil {
+		return nil, wrap(err, "lock queue")
+	}
+	turn := slices.Clone(assignees)
 	out := make([]Assignment, 0, len(rows))
-	for i, row := range rows {
-		user := assignees[i%len(assignees)]
+	for _, row := range rows {
+		i := 0
+		if row.TopicID != nil && len(members[*row.TopicID]) > 0 {
+			i = slices.IndexFunc(turn, func(u uuid.UUID) bool { return slices.Contains(members[*row.TopicID], u) })
+			if i < 0 {
+				continue // LockQueue picked it for someone: cannot happen
+			}
+		}
+		user := turn[i]
+		turn = append(append(turn[:i:i], turn[i+1:]...), user)
 		cur := state{Status: Status(row.Status), AssigneeID: row.AssigneeID, ResolvedAt: row.ResolvedAt, ClosedAt: row.ClosedAt}
 		next, err := assign(cur, &user, s.now())
 		if err != nil {
@@ -67,4 +84,23 @@ func (s *Service) AssignQueued(
 		out = append(out, Assignment{ConversationID: row.ID, UserID: user})
 	}
 	return out, nil
+}
+
+// topicMembers reads the members of the topics of rows, by topic.
+func topicMembers(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, rows []store.Conversation) (map[uuid.UUID][]uuid.UUID, error) {
+	var ids []uuid.UUID
+	for _, r := range rows {
+		if r.TopicID != nil && !slices.Contains(ids, *r.TopicID) {
+			ids = append(ids, *r.TopicID)
+		}
+	}
+	out := map[uuid.UUID][]uuid.UUID{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	got, err := q.TopicMembersOf(ctx, store.TopicMembersOfParams{WorkspaceID: workspaceID, TopicIds: ids})
+	for _, m := range got {
+		out[m.TopicID] = append(out[m.TopicID], m.UserID)
+	}
+	return out, err
 }

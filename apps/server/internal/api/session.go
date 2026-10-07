@@ -50,6 +50,7 @@ var publicOperations = map[string]bool{
 	"POST /api/v1/widget/contact":     true,
 	"GET /api/v1/widget/availability": true,
 	"POST /api/v1/widget/rating":      true,
+	"POST /api/v1/widget/topic":       true,
 }
 
 // tokenOperations are the only routes a personal access token opens
@@ -58,6 +59,7 @@ var publicOperations = map[string]bool{
 // member's role, and cannot issue tokens. The scopes are checked again by
 // authz.Require in the handlers.
 var tokenOperations = map[string]bool{
+	"GET /api/v1/topics":                        true,
 	"GET /api/v1/tasks":                         true,
 	"POST /api/v1/tasks":                        true,
 	"GET /api/v1/tasks/summary":                 true,

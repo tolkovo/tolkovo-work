@@ -204,6 +204,8 @@ func dbError(err error, what string) error {
 			return fmt.Errorf("%w: text holds a character that cannot be stored", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "queue"):
 			return fmt.Errorf("%w: unknown queue", ErrInvalid)
+		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "topic"):
+			return fmt.Errorf("%w: unknown topic", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "conversation"):
 			return ErrNotFound
 		}

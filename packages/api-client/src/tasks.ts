@@ -40,12 +40,16 @@ export type MyTelegram = Schemas["MyTelegram"];
 export type TelegramLinkStart = Schemas["TelegramLinkStart"];
 export type TelegramBotState = Schemas["TelegramBotState"];
 
-/** Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` is `none` or a queue id. */
+/**
+ * Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` and `topic` are
+ * `none` or an id.
+ */
 export type TaskFilter = {
   state?: "open" | "closed";
   status?: TaskStatus;
   assignee?: string;
   queue?: string;
+  topic?: string;
   q?: string;
 };
 

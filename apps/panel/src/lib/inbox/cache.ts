@@ -16,6 +16,7 @@ export function matchesFilter(filter: ConversationFilter, c: Conversation, meId:
   if (filter.status?.length && !filter.status.includes(c.status)) return false;
   if (filter.assignee === "none" && c.assignee_id !== null) return false;
   if (filter.assignee === "me" && (meId === undefined || c.assignee_id !== meId)) return false;
+  if (filter.topic !== undefined && c.topic_id !== (filter.topic === "none" ? null : filter.topic)) return false;
   return true;
 }
 

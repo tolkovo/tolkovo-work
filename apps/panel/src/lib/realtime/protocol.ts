@@ -31,6 +31,7 @@ export const EVENT_TYPES = [
   "conversation.status_changed",
   "conversation.assigned",
   "conversation.tags_changed",
+  "conversation.topic_changed",
   "conversation.issues_changed",
   "conversation.tasks_changed",
   "conversation.read",

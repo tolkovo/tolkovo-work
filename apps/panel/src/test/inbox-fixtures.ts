@@ -45,6 +45,7 @@ export const conv = (id: string, patch: Partial<Conversation> = {}): Conversatio
     created_at: "2026-10-04T12:05:00Z",
   },
   tag_ids: [],
+  topic_id: null,
   last_read_message_id: null,
   unread_count: 0,
   rating: null,

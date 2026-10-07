@@ -1,5 +1,5 @@
-import { isApiError, setConversationTags, type Conversation, type Tag, type TagColor } from "@tolkovo/api-client";
-import { useCreateTag, useTags } from "@tolkovo/api-client/react";
+import { isApiError, setConversationTags, type Conversation, type Tag } from "@tolkovo/api-client";
+import { useCreateTag, useTags, useTopics } from "@tolkovo/api-client/react";
 import { cn } from "@tolkovo/ui";
 import { Plus, X } from "lucide-react";
 import { useId, useState } from "react";
@@ -7,17 +7,8 @@ import { useTranslation } from "react-i18next";
 
 import { useAbilities, type ConversationChange } from "../../lib/inbox/actions";
 import { Popover } from "../menu";
-
-/** The dot of a tag: palette keys of the API mapped to theme tokens (packages/ui/tokens.css). */
-const DOT: Record<TagColor, string> = {
-  gray: "bg-ink-3",
-  teal: "bg-teal",
-  amber: "bg-lamp",
-  red: "bg-danger",
-  violet: "bg-ai",
-  blue: "bg-tag-blue",
-  green: "bg-tag-green",
-};
+import { TAG_DOT as DOT } from "./palette";
+import { ConversationTopic } from "./topics";
 
 /** At most this many tags on one conversation (SetTagsRequest in api/openapi.yaml). */
 const MAX_TAGS = 20;
@@ -45,8 +36,9 @@ export function TagChip({ tag, onRemove }: { tag: Tag; onRemove?: (() => void) |
 }
 
 /**
- * Tags of the conversation under its header (docs/04 §3.1). A change goes to the server at once
- * with the version the operator saw; who may create tags (tags.manage) can do it from the picker.
+ * The topic and tags of the conversation under its header (docs/04 §3.1). A change goes to the
+ * server at once with the version the operator saw; who may create tags (tags.manage) can do it
+ * from the picker.
  */
 export function ConversationTags({ conversation: c, change }: { conversation: Conversation; change: ConversationChange }) {
   const { t } = useTranslation();
@@ -55,11 +47,14 @@ export function ConversationTags({ conversation: c, change }: { conversation: Co
   const byId = new Map((all ?? []).map((tag) => [tag.id, tag]));
   const tags = c.tag_ids.map((id) => byId.get(id)).filter((tag): tag is Tag => tag !== undefined);
 
+  const { data: topics } = useTopics();
+  const topic = (topics?.length ?? 0) > 0 || c.topic_id !== null;
   const save = (ids: string[]) => change.mutate((api) => setConversationTags(api, c.id, ids, c.version));
-  if (tags.length === 0 && !can.tag) return null;
+  if (tags.length === 0 && !can.tag && !topic) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface px-4 py-1.5 max-nav:px-3">
+      {topic && <ConversationTopic conversation={c} change={change} />}
       <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label={t("inbox.tags.label")}>
         {tags.map((tag) => (
           <li key={tag.id}>
