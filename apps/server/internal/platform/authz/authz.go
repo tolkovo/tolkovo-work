@@ -95,6 +95,36 @@ var rolePermissions = map[string][]Permission{
 	},
 }
 
+// Scopes of personal access tokens (ADR-0016) and the permissions each
+// grants. A token never gets more than its member's role allows.
+const (
+	ScopeTasksRead  = "tasks:read"
+	ScopeTasksWrite = "tasks:write"
+)
+
+var scopePermissions = map[string][]Permission{
+	ScopeTasksRead:  {TasksView},
+	ScopeTasksWrite: {TasksView, TasksEdit},
+}
+
+// ScopePermissions returns the permissions granted by scopes; false when
+// one of them is unknown.
+func ScopePermissions(scopes []string) ([]Permission, bool) {
+	out := []Permission{}
+	for _, sc := range scopes {
+		perms, ok := scopePermissions[sc]
+		if !ok {
+			return nil, false
+		}
+		for _, p := range perms {
+			if !slices.Contains(out, p) {
+				out = append(out, p)
+			}
+		}
+	}
+	return out, true
+}
+
 // Allowed reports whether role has permission p. Unknown roles have none.
 func Allowed(role string, p Permission) bool {
 	return slices.Contains(rolePermissions[role], p)
@@ -112,6 +142,15 @@ type Principal struct {
 	UserID      uuid.UUID
 	WorkspaceID uuid.UUID
 	Role        string
+	// Scopes narrow a personal access token (ADR-0016) to these permissions,
+	// within the role. Nil for a session: everything the role allows.
+	Scopes []Permission
+}
+
+// Can reports whether the caller holds p: the role allows it and, for a
+// token, one of its scopes grants it.
+func (pr Principal) Can(p Permission) bool {
+	return Allowed(pr.Role, p) && (pr.Scopes == nil || slices.Contains(pr.Scopes, p))
 }
 
 type principalKey struct{}
@@ -134,7 +173,7 @@ func Require(ctx context.Context, p Permission) (Principal, error) {
 	if !ok {
 		return Principal{}, ErrUnauthenticated
 	}
-	if !Allowed(pr.Role, p) {
+	if !pr.Can(p) {
 		return Principal{}, ErrForbidden
 	}
 	return pr, nil

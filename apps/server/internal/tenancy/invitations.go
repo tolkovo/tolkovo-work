@@ -322,6 +322,10 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInvitationInput
 		if n == 0 {
 			return ErrAlreadyMember
 		}
+		// A member who comes back starts without the tokens they had before.
+		if err := q.DeleteMemberAccessTokens(ctx, store.DeleteMemberAccessTokensParams{WorkspaceID: in.WorkspaceID, UserID: userID}); err != nil {
+			return err
+		}
 		return q.MarkInvitationAccepted(ctx, store.MarkInvitationAcceptedParams{
 			WorkspaceID: in.WorkspaceID, ID: inv.ID, UserID: pgtype.UUID{Bytes: userID, Valid: true},
 		})

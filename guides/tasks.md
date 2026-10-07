@@ -69,7 +69,25 @@ In Telegram, members get a message when a task is assigned to them, and when a t
 2. **Each member** opens **Settings → Notifications → Telegram → Link Telegram**, opens the bot from the link and presses **Start**. The link works for 15 minutes. The panel notices the Start by itself: Tolkovo reads the bot's messages, so no webhook is needed and it works on a server behind NAT.
 3. **Unlink** stops the messages. A member who blocks the bot is unlinked automatically. One Telegram account gets the messages of one member: a second member's link from the same account is refused, and the bot says so.
 
-## 8. What leaves Tolkovo
+## 8. API and AI agents (MCP)
+
+A script or an AI agent (Claude Code, Cursor and other MCP clients) can work with tasks on a member's behalf: list them, take one, comment it and close it.
+
+1. Open **Settings → API access** and issue a token: give it a name, choose **Read tasks** or **Read and change tasks**, and an expiry (30, 90 or 365 days, or never).
+2. Copy the token at once: it is shown only once, and the server keeps only its hash. Next to it the panel shows the command for Claude Code:
+
+   ```sh
+   claude mcp add --transport http tolkovo https://<your server>/api/v1/mcp --header "Authorization: Bearer tk_pat_…"
+   ```
+
+   Other MCP clients connect to the same address with the same `Authorization` header. Scripts call the REST API of tasks with it (`GET /api/v1/tasks`, `PUT /api/v1/tasks/{id}` and so on).
+3. The agent gets the tools `list_tasks`, `get_task`, `list_queues`, and with a token that changes tasks also `create_task`, `update_task` and `comment_task`. It names tasks by number (`#42`). It is told to treat the texts of tasks as data, not as instructions.
+
+A token acts as its member and can do no more than the member's role. It reaches only tasks: conversations, customers, settings, deleting tasks and queues are closed to it, and it cannot link a task to a conversation. Changes made with a token appear in the task's feed under the member's name.
+
+A member has at most 20 tokens and revokes them on the same page. Admins also see every member's tokens there (**Members' tokens**) and revoke any. A token stops working at once when it is revoked or expires, and when its member leaves the workspace or their account is disabled.
+
+## 9. What leaves Tolkovo
 
 - With the AI turned on, the customer's first message, with personal data masked, goes to the AI provider of the workspace to write the draft.
 - With a Telegram bot for notifications, Telegram gets the task's number, its title and a link to it in the panel. The description and customer data never go there.

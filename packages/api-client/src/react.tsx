@@ -43,6 +43,14 @@ import {
   type TaskUpdate,
 } from "./tasks";
 import {
+  createAccessToken,
+  fetchAccessTokens,
+  fetchMyAccessTokens,
+  revokeAccessToken,
+  revokeMyAccessToken,
+  type AccessTokenCreate,
+} from "./tokens";
+import {
   acceptInvitation,
   changePassword,
   connectAppChannel,
@@ -165,6 +173,8 @@ export const queryKeys = {
   members: ["members"] as const,
   invitations: ["invitations"] as const,
   mySessions: ["me", "sessions"] as const,
+  myAccessTokens: ["me", "access-tokens"] as const,
+  accessTokens: ["access-tokens"] as const,
   myNotifications: ["me", "notifications"] as const,
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
@@ -362,6 +372,45 @@ export function useRevokeOtherSessions() {
     mutationFn: () => revokeOtherSessions(client),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.mySessions }),
   });
+}
+
+/** The user's personal access tokens (ADR-0016). */
+export function useMyAccessTokens() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.myAccessTokens, queryFn: () => fetchMyAccessTokens(client) });
+}
+
+/** Every member's tokens, for admins; `enabled` false skips the request. */
+export function useAccessTokens(enabled = true) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.accessTokens, queryFn: () => fetchAccessTokens(client), enabled });
+}
+
+function useInvalidateTokens() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.myAccessTokens }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.accessTokens }),
+    ]);
+}
+
+export function useCreateAccessToken() {
+  const client = useApiClient();
+  const invalidate = useInvalidateTokens();
+  return useMutation({ mutationFn: (body: AccessTokenCreate) => createAccessToken(client, body), onSettled: invalidate });
+}
+
+export function useRevokeMyAccessToken() {
+  const client = useApiClient();
+  const invalidate = useInvalidateTokens();
+  return useMutation({ mutationFn: (id: string) => revokeMyAccessToken(client, id), onSettled: invalidate });
+}
+
+export function useRevokeAccessToken() {
+  const client = useApiClient();
+  const invalidate = useInvalidateTokens();
+  return useMutation({ mutationFn: (id: string) => revokeAccessToken(client, id), onSettled: invalidate });
 }
 
 /** Asks for a new email confirmation link for the signed-in user. */

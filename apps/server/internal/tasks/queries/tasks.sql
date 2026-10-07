@@ -12,6 +12,9 @@ RETURNING *;
 -- name: GetTask :one
 SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id;
 
+-- name: TaskIDByNumber :one
+SELECT id FROM tasks WHERE workspace_id = @workspace_id AND number = @number;
+
 -- name: GetTaskForUpdate :one
 SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id FOR UPDATE;
 

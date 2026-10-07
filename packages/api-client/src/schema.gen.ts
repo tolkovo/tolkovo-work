@@ -361,6 +361,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The current user's personal access tokens in this workspace
+         * @description Live tokens, newest first. The secrets are never returned again.
+         */
+        get: operations["listMyAccessTokens"];
+        put?: never;
+        /**
+         * Issue a personal access token
+         * @description A token for a script or an AI agent (MCP) that works with tasks on the caller's
+         *     behalf (ADR-0016). `tasks:write` includes `tasks:read`. The whole token is in
+         *     `secret` of this answer only; the server keeps its hash. At most 20 live tokens per
+         *     member (`409 too_many_tokens`). Any member may issue tokens; a token cannot issue
+         *     tokens.
+         */
+        post: operations["createAccessToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/access-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of the current user's tokens
+         * @description It stops working at once. A token of someone else answers `404`.
+         */
+        delete: operations["revokeMyAccessToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/notifications": {
         parameters: {
             query?: never;
@@ -516,6 +566,48 @@ export interface paths {
          * @description Requires `workspace.manage` (owner, admin).
          */
         patch: operations["updateWorkspace"];
+        trace?: never;
+    };
+    "/access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every member's personal access tokens
+         * @description Live tokens of the workspace, newest first, with their members. Requires `members.manage`.
+         */
+        get: operations["listAccessTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke any member's token
+         * @description It stops working at once. Requires `members.manage`.
+         */
+        delete: operations["revokeAccessToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/members": {
@@ -2233,6 +2325,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The MCP server of the tasks section
+         * @description Model Context Protocol over Streamable HTTP (protocol 2025-06-18 and later), without
+         *     sessions and without server-sent events: one JSON-RPC message per request, answered
+         *     with one JSON message, or `202` for a notification or a response. An AI agent
+         *     connects with a personal access token, e.g.
+         *     `claude mcp add --transport http tolkovo https://<server>/api/v1/mcp --header
+         *     "Authorization: Bearer tk_pat_…"`. Tools: `list_tasks`, `get_task`, `list_queues`
+         *     (`tasks:read`), `create_task`, `update_task`, `comment_task` (`tasks:write`); a tool
+         *     the token or the role cannot use is not listed. `GET` answers `405`: the server
+         *     sends nothing on its own.
+         */
+        post: operations["mcp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/task-queues": {
         parameters: {
             query?: never;
@@ -3457,6 +3577,52 @@ export interface components {
             /** @description Usually the app's name, e.g. "Зерно для Windows". */
             name: string;
         };
+        /**
+         * @description `tasks:read` reads tasks, comments and queues; `tasks:write` also creates, changes and comments tasks.
+         * @enum {string}
+         */
+        AccessTokenScope: "tasks:read" | "tasks:write";
+        AccessToken: {
+            id: string;
+            user_id: string;
+            /** @description The member the token acts as. */
+            user_name: string;
+            name: string;
+            scopes: components["schemas"]["AccessTokenScope"][];
+            /** @description The start of the token, e.g. "tk_pat_Xb3k9Q". */
+            prefix: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Null for a token without an end.
+             */
+            expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description Updated at most once a minute.
+             */
+            last_used_at: string | null;
+        };
+        AccessTokenList: {
+            items: components["schemas"]["AccessToken"][];
+        };
+        AccessTokenCreate: {
+            /** @description Where the token goes, e.g. "Claude Code, ноутбук". */
+            name: string;
+            scopes: components["schemas"]["AccessTokenScope"][];
+            /** @description Days the token lives, 30, 90 or 365; null for a token without an end. */
+            expires_in_days: number | null;
+        };
+        AccessTokenCreated: {
+            token: components["schemas"]["AccessToken"];
+            /** @description `tk_pat_…`, the whole token. Shown once; the server keeps only its hash. */
+            secret: string;
+        };
+        /** @description One JSON-RPC 2.0 message of the Model Context Protocol. */
+        McpMessage: {
+            [key: string]: unknown;
+        };
         IngestKey: {
             id: string;
             name: string;
@@ -3750,7 +3916,10 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description `unauthenticated` (no or expired session) or `invalid_credentials` (login). */
+        /**
+         * @description `unauthenticated` (no or expired session), `invalid_credentials` (login) or
+         *     `invalid_access_token` (a bad, expired or revoked personal access token).
+         */
         Unauthenticated: {
             headers: {
                 [name: string]: unknown;
@@ -3759,7 +3928,11 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description `forbidden` (missing permission), `csrf_failed`, `cross_origin` or `no_workspace`. */
+        /**
+         * @description `forbidden` (missing permission, also a scope a token lacks), `csrf_failed`,
+         *     `cross_origin`, `no_workspace` or `token_not_allowed` (the operation does not take a
+         *     personal access token).
+         */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -4571,6 +4744,88 @@ export interface operations {
             };
         };
     };
+    listMyAccessTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createAccessToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenCreated"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `too_many_tokens`: revoke a token first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    revokeMyAccessToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMyNotificationSettings: {
         parameters: {
             query?: never;
@@ -4806,6 +5061,51 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listAccessTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeAccessToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listMembers: {
@@ -7548,6 +7848,49 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    mcp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpMessage"];
+            };
+        };
+        responses: {
+            /** @description The JSON-RPC response; errors of the protocol are JSON-RPC errors too. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMessage"];
+                };
+            };
+            /** @description A notification or a response was taken. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not one JSON-RPC message, or an unsupported `MCP-Protocol-Version`; a JSON-RPC error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMessage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     listTaskQueues: {

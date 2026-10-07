@@ -126,7 +126,7 @@ func (s *server) AssignConversation(w http.ResponseWriter, r *http.Request, id o
 	if !ok {
 		return
 	}
-	if !authz.Allowed(p.Role, authz.ConversationsTake) && !authz.Allowed(p.Role, authz.ConversationsAssign) {
+	if !p.Can(authz.ConversationsTake) && !p.Can(authz.ConversationsAssign) {
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
@@ -256,7 +256,7 @@ func (s *server) PostMessage(w http.ResponseWriter, r *http.Request, id oapi.Id,
 	if private {
 		need = authz.ConversationsNote
 	}
-	if !authz.Allowed(p.Role, need) {
+	if !p.Can(need) {
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
@@ -294,7 +294,7 @@ func (s *server) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	if !authz.Allowed(p.Role, authz.ConversationsReply) && !authz.Allowed(p.Role, authz.ConversationsNote) {
+	if !p.Can(authz.ConversationsReply) && !p.Can(authz.ConversationsNote) {
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
@@ -440,8 +440,8 @@ func (s *server) requirePrincipal(w http.ResponseWriter, r *http.Request, perm a
 func actorOf(p authz.Principal) conversations.Actor {
 	return conversations.Actor{
 		UserID:          p.UserID,
-		AnyConversation: authz.Allowed(p.Role, authz.ConversationsManage),
-		AssignOthers:    authz.Allowed(p.Role, authz.ConversationsAssign),
+		AnyConversation: p.Can(authz.ConversationsManage),
+		AssignOthers:    p.Can(authz.ConversationsAssign),
 	}
 }
 

@@ -14,8 +14,17 @@ info:
     Sessions live on the server (Redis): logout, workspace switching, a password change
     and `/me/sessions` revoke them immediately.
 
-    The workspace of a request always comes from the session, never from the body or
-    the URL. A resource of another workspace answers `404`, a missing permission in
+    Scripts and AI agents use a personal access token instead (ADR-0016): send
+    `Authorization: Bearer tk_pat_…`. A member issues tokens for themselves in
+    `/me/access-tokens` (scopes `tasks:read`, `tasks:write`) and sees each one once. A
+    token acts as its member and can do no more than the member's current role allows
+    and no more than its scopes; it opens only the operations that list `accessToken`
+    in their security (the tasks API and `POST /mcp`), others answer `403
+    token_not_allowed`. A bad, expired or revoked token answers `401 invalid_access_token`.
+    Requests with a token need no CSRF token: they carry no cookie.
+
+    The workspace of a request always comes from the session or the token, never from
+    the body or the URL. A resource of another workspace answers `404`, a missing permission in
     your own workspace answers `403`.
 
     ## CSRF
@@ -511,6 +520,72 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /me/access-tokens:
+    get:
+      tags: [auth]
+      operationId: listMyAccessTokens
+      summary: The current user's personal access tokens in this workspace
+      description: Live tokens, newest first. The secrets are never returned again.
+      responses:
+        '200':
+          description: The tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessTokenList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [auth]
+      operationId: createAccessToken
+      summary: Issue a personal access token
+      description: |
+        A token for a script or an AI agent (MCP) that works with tasks on the caller's
+        behalf (ADR-0016). `tasks:write` includes `tasks:read`. The whole token is in
+        `secret` of this answer only; the server keeps its hash. At most 20 live tokens per
+        member (`409 too_many_tokens`). Any member may issue tokens; a token cannot issue
+        tokens.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccessTokenCreate' }
+      responses:
+        '201':
+          description: Issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessTokenCreated' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`too_many_tokens`: revoke a token first.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /me/access-tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags: [auth]
+      operationId: revokeMyAccessToken
+      summary: Revoke one of the current user's tokens
+      description: It stops working at once. A token of someone else answers `404`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Revoked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /me/notifications:
     get:
       tags: [auth]
@@ -702,6 +777,39 @@ paths:
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /access-tokens:
+    get:
+      tags: [workspace]
+      operationId: listAccessTokens
+      summary: Every member's personal access tokens
+      description: Live tokens of the workspace, newest first, with their members. Requires `members.manage`.
+      responses:
+        '200':
+          description: The tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessTokenList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /access-tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags: [workspace]
+      operationId: revokeAccessToken
+      summary: Revoke any member's token
+      description: It stops working at once. Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Revoked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /members:
     get:
@@ -2913,6 +3021,9 @@ paths:
     get:
       tags: [tasks]
       operationId: listTasks
+      security:
+        - sessionCookie: []
+        - accessToken: []
       summary: Tasks, newest first
       description: Requires `tasks.view`.
       parameters:
@@ -2959,6 +3070,7 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
+        - accessToken: []
       requestBody:
         required: true
         content:
@@ -2980,6 +3092,9 @@ paths:
     get:
       tags: [tasks]
       operationId: getTaskSummary
+      security:
+        - sessionCookie: []
+        - accessToken: []
       summary: The caller's open tasks, for the menu
       description: Requires `tasks.view`.
       responses:
@@ -2997,6 +3112,9 @@ paths:
     get:
       tags: [tasks]
       operationId: getTask
+      security:
+        - sessionCookie: []
+        - accessToken: []
       summary: A task with its linked conversations
       description: Requires `tasks.view`.
       responses:
@@ -3021,6 +3139,7 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
+        - accessToken: []
       requestBody:
         required: true
         content:
@@ -3058,6 +3177,9 @@ paths:
     get:
       tags: [tasks]
       operationId: listTaskActivity
+      security:
+        - sessionCookie: []
+        - accessToken: []
       summary: Comments and changes of a task, oldest first
       description: The latest 500 lines at most. Requires `tasks.view`.
       responses:
@@ -3077,6 +3199,7 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
+        - accessToken: []
       requestBody:
         required: true
         content:
@@ -3149,10 +3272,54 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /mcp:
+    post:
+      tags: [tasks]
+      operationId: mcp
+      summary: The MCP server of the tasks section
+      description: |
+        Model Context Protocol over Streamable HTTP (protocol 2025-06-18 and later), without
+        sessions and without server-sent events: one JSON-RPC message per request, answered
+        with one JSON message, or `202` for a notification or a response. An AI agent
+        connects with a personal access token, e.g.
+        `claude mcp add --transport http tolkovo https://<server>/api/v1/mcp --header
+        "Authorization: Bearer tk_pat_…"`. Tools: `list_tasks`, `get_task`, `list_queues`
+        (`tasks:read`), `create_task`, `update_task`, `comment_task` (`tasks:write`); a tool
+        the token or the role cannot use is not listed. `GET` answers `405`: the server
+        sends nothing on its own.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+        - accessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/McpMessage' }
+      responses:
+        '200':
+          description: The JSON-RPC response; errors of the protocol are JSON-RPC errors too.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpMessage' }
+        '202':
+          description: A notification or a response was taken.
+        '400':
+          description: Not one JSON-RPC message, or an unsupported `MCP-Protocol-Version`; a JSON-RPC error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpMessage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /task-queues:
     get:
       tags: [tasks]
       operationId: listTaskQueues
+      security:
+        - sessionCookie: []
+        - accessToken: []
       summary: Queues of tasks, by name
       description: Requires `tasks.view`.
       responses:
@@ -3412,6 +3579,12 @@ components:
       type: http
       scheme: bearer
       description: An ingest key of an app channel, `tk_ingest_…`.
+    accessToken:
+      type: http
+      scheme: bearer
+      description: |
+        A personal access token, `tk_pat_…` (ADR-0016). Acts as its member within its
+        scopes.
     sessionCookie:
       type: apiKey
       in: cookie
@@ -3453,12 +3626,17 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Unauthenticated:
-      description: '`unauthenticated` (no or expired session) or `invalid_credentials` (login).'
+      description: |
+        `unauthenticated` (no or expired session), `invalid_credentials` (login) or
+        `invalid_access_token` (a bad, expired or revoked personal access token).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Forbidden:
-      description: '`forbidden` (missing permission), `csrf_failed`, `cross_origin` or `no_workspace`.'
+      description: |
+        `forbidden` (missing permission, also a scope a token lacks), `csrf_failed`,
+        `cross_origin`, `no_workspace` or `token_not_allowed` (the operation does not take a
+        personal access token).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -5385,6 +5563,71 @@ components:
       required: [name]
       properties:
         name: { type: string, maxLength: 120, description: 'Usually the app''s name, e.g. "Зерно для Windows".' }
+
+    AccessTokenScope:
+      type: string
+      enum: [tasks:read, tasks:write]
+      x-enum-varnames: [ScopeTasksRead, ScopeTasksWrite]
+      description: '`tasks:read` reads tasks, comments and queues; `tasks:write` also creates, changes and comments tasks.'
+
+    AccessToken:
+      type: object
+      required: [id, user_id, user_name, name, scopes, prefix, created_at, expires_at, last_used_at]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        user_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        user_name: { type: string, description: The member the token acts as. }
+        name: { type: string }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/AccessTokenScope' }
+        prefix: { type: string, description: 'The start of the token, e.g. "tk_pat_Xb3k9Q".' }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time, description: Null for a token without an end. }
+        last_used_at: { type: [string, 'null'], format: date-time, description: Updated at most once a minute. }
+
+    AccessTokenList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AccessToken' }
+
+    AccessTokenCreate:
+      type: object
+      additionalProperties: false
+      required: [name, scopes, expires_in_days]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80, description: 'Where the token goes, e.g. "Claude Code, ноутбук".' }
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items: { $ref: '#/components/schemas/AccessTokenScope' }
+        expires_in_days:
+          type: [integer, 'null']
+          description: Days the token lives, 30, 90 or 365; null for a token without an end.
+
+    AccessTokenCreated:
+      type: object
+      required: [token, secret]
+      properties:
+        token: { $ref: '#/components/schemas/AccessToken' }
+        secret:
+          type: string
+          description: '`tk_pat_…`, the whole token. Shown once; the server keeps only its hash.'
+
+    McpMessage:
+      type: object
+      description: One JSON-RPC 2.0 message of the Model Context Protocol.
+      additionalProperties: true
 
     IngestKey:
       type: object

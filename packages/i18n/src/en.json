@@ -646,6 +646,56 @@
         "revokedOthers": "Signed out on other devices.",
         "none": "No other active sessions."
       }
+    },
+    "api": {
+      "title": "API access",
+      "lead": "A token lets a script or an AI agent (Claude Code, Cursor) work with tasks on your behalf. It can do no more than you, and only in tasks: conversations, customers and settings stay closed to it.",
+      "new": {
+        "title": "New token",
+        "name": "Name",
+        "nameHint": "Where it will work, e.g. \"Claude Code, laptop\".",
+        "access": "Access",
+        "read": "Read tasks",
+        "write": "Read and change tasks",
+        "expires": "Expires",
+        "days30": "In 30 days",
+        "days90": "In 90 days",
+        "days365": "In 1 year",
+        "never": "Never",
+        "submit": "Issue token",
+        "pending": "Issuing…"
+      },
+      "issued": {
+        "title": "Token issued",
+        "token": "Token",
+        "once": "Copy it now: it will not be shown again. Keep it like a password.",
+        "mcp": "Connect Claude Code",
+        "mcpHint": "Run the command in a terminal: the agent sees tasks through MCP. Other MCP clients connect to the same address with the Authorization header.",
+        "hide": "Hide"
+      },
+      "mine": {
+        "title": "My tokens",
+        "none": "No tokens yet."
+      },
+      "all": {
+        "title": "Members' tokens",
+        "text": "Every live token of the workspace. Revoke a token that leaked or is no longer needed.",
+        "none": "No member has a token."
+      },
+      "row": {
+        "read": "read",
+        "write": "read and change",
+        "created": "Issued {date}",
+        "expires": "until {date}",
+        "noExpiry": "no expiry",
+        "used": "Used {date}",
+        "unused": "Not used yet",
+        "owner": "Member: {name}",
+        "revoke": "Revoke",
+        "revokeLabel": "Revoke the token \"{name}\"",
+        "revoked": "The token is revoked and no longer works.",
+        "gone": "This token is already revoked."
+      }
     }
   },
   "roles": {
@@ -745,7 +795,9 @@
     "tasksDisabled": "The tasks section is turned off in the settings.",
     "noNotifyBot": "An admin has not added a bot for notifications yet.",
     "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications.",
-    "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks."
+    "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks.",
+    "tooManyTokens": "You may have at most 20 tokens. Revoke one you no longer need and try again.",
+    "invalidAccessToken": "This token is not valid: it was revoked or has expired."
   },
   "error": {
     "title": "Something went wrong",

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -50,10 +51,16 @@ func (s *server) writeTaskError(w http.ResponseWriter, r *http.Request, err erro
 	return false
 }
 
-// conversationForTasks checks perm and that the caller sees the conversation.
+// conversationForTasks checks perm and that the caller sees the
+// conversation. A personal access token, which has no conversation scope,
+// is refused here.
 func (s *server) conversationForTasks(w http.ResponseWriter, r *http.Request, id uuid.UUID, perm authz.Permission) (authz.Principal, bool) {
 	p, ok := s.requirePrincipal(w, r, perm)
 	if !ok {
+		return p, false
+	}
+	if !p.Can(authz.ConversationsView) {
+		s.writeError(w, r, authz.ErrForbidden)
 		return p, false
 	}
 	if _, err := s.conversations.Conversation(r.Context(), p.WorkspaceID, p.UserID, id); err != nil {
@@ -442,18 +449,24 @@ func (s *server) UpdateTaskSettings(w http.ResponseWriter, r *http.Request) {
 // activeMember refuses an assignee who is not an active member of the
 // caller's workspace; nil passes.
 func (s *server) activeMember(w http.ResponseWriter, r *http.Request, p authz.Principal, userID *uuid.UUID) bool {
-	if userID == nil {
-		return true
-	}
-	_, err := s.tenancy.Membership(r.Context(), p.WorkspaceID, *userID)
-	if errors.Is(err, tenancy.ErrNotFound) {
-		err = tasks.ErrMember
-	}
-	if err != nil {
+	if err := s.checkMember(r.Context(), p.WorkspaceID, userID); err != nil {
 		s.writeError(w, r, err)
 		return false
 	}
 	return true
+}
+
+// checkMember is nil for no member or an active one, tasks.ErrMember for
+// anyone else.
+func (s *server) checkMember(ctx context.Context, workspaceID uuid.UUID, userID *uuid.UUID) error {
+	if userID == nil {
+		return nil
+	}
+	_, err := s.tenancy.Membership(ctx, workspaceID, *userID)
+	if errors.Is(err, tenancy.ErrNotFound) {
+		return tasks.ErrMember
+	}
+	return err
 }
 
 func taskBody(t tasks.Task) oapi.Task {

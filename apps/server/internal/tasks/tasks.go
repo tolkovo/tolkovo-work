@@ -131,6 +131,21 @@ func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task,
 	return out, nil
 }
 
+// IDByNumber finds a task by its number in the workspace (#42), as people
+// and agents call it.
+func (s *Service) IDByNumber(ctx context.Context, workspaceID uuid.UUID, number int64) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		var err error
+		id, err = store.New(tx).TaskIDByNumber(ctx, store.TaskIDByNumberParams{WorkspaceID: workspaceID, Number: number})
+		return err
+	})
+	if err != nil {
+		return uuid.Nil, dbError(err, "find task")
+	}
+	return id, nil
+}
+
 // Filter narrows the list. Zero values do not filter.
 type Filter struct {
 	// State is "open" (not done or canceled), "closed" or "" for all.

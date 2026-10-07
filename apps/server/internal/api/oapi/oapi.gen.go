@@ -38,6 +38,24 @@ func (e AIProvider) Valid() bool {
 	}
 }
 
+// Defines values for AccessTokenScope.
+const (
+	ScopeTasksRead  AccessTokenScope = "tasks:read"
+	ScopeTasksWrite AccessTokenScope = "tasks:write"
+)
+
+// Valid indicates whether the value is a known member of the AccessTokenScope enum.
+func (e AccessTokenScope) Valid() bool {
+	switch e {
+	case ScopeTasksRead:
+		return true
+	case ScopeTasksWrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AttachmentStatus.
 const (
 	AttachmentStatusExpired   AttachmentStatus = "expired"
@@ -1162,6 +1180,52 @@ type AcceptInvitationRequest struct {
 	Token    string `json:"token"`
 }
 
+// AccessToken defines model for AccessToken.
+type AccessToken struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// ExpiresAt Null for a token without an end.
+	ExpiresAt *time.Time `json:"expires_at"`
+	Id        uuid.UUID  `json:"id"`
+
+	// LastUsedAt Updated at most once a minute.
+	LastUsedAt *time.Time `json:"last_used_at"`
+	Name       string     `json:"name"`
+
+	// Prefix The start of the token, e.g. "tk_pat_Xb3k9Q".
+	Prefix string             `json:"prefix"`
+	Scopes []AccessTokenScope `json:"scopes"`
+	UserId uuid.UUID          `json:"user_id"`
+
+	// UserName The member the token acts as.
+	UserName string `json:"user_name"`
+}
+
+// AccessTokenCreate defines model for AccessTokenCreate.
+type AccessTokenCreate struct {
+	// ExpiresInDays Days the token lives, 30, 90 or 365; null for a token without an end.
+	ExpiresInDays *int `json:"expires_in_days"`
+
+	// Name Where the token goes, e.g. "Claude Code, ноутбук".
+	Name   string             `json:"name"`
+	Scopes []AccessTokenScope `json:"scopes"`
+}
+
+// AccessTokenCreated defines model for AccessTokenCreated.
+type AccessTokenCreated struct {
+	// Secret `tk_pat_…`, the whole token. Shown once; the server keeps only its hash.
+	Secret string      `json:"secret"`
+	Token  AccessToken `json:"token"`
+}
+
+// AccessTokenList defines model for AccessTokenList.
+type AccessTokenList struct {
+	Items []AccessToken `json:"items"`
+}
+
+// AccessTokenScope `tasks:read` reads tasks, comments and queues; `tasks:write` also creates, changes and comments tasks.
+type AccessTokenScope string
+
 // AppChannelCreated defines model for AppChannelCreated.
 type AppChannelCreated struct {
 	Channel Channel `json:"channel"`
@@ -1994,6 +2058,9 @@ type MarkReadRequest struct {
 	// UpToMessageId The newest message the caller has seen; a message of this conversation.
 	UpToMessageId uuid.UUID `json:"up_to_message_id"`
 }
+
+// McpMessage One JSON-RPC 2.0 message of the Model Context Protocol.
+type McpMessage map[string]interface{}
 
 // Member defines model for Member.
 type Member struct {
@@ -3194,8 +3261,14 @@ type StartGitHubIntegrationJSONRequestBody = StartGitHubIntegrationRequest
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
+// McpJSONRequestBody defines body for Mcp for application/json ContentType.
+type McpJSONRequestBody = McpMessage
+
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = UpdateMeRequest
+
+// CreateAccessTokenJSONRequestBody defines body for CreateAccessToken for application/json ContentType.
+type CreateAccessTokenJSONRequestBody = AccessTokenCreate
 
 // UpdateMyNotificationSettingsJSONRequestBody defines body for UpdateMyNotificationSettings for application/json ContentType.
 type UpdateMyNotificationSettingsJSONRequestBody = UpdateNotificationSettingsRequest
@@ -3259,6 +3332,12 @@ type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAccessTokens Every member's personal access tokens
+	// (GET /access-tokens)
+	ListAccessTokens(w http.ResponseWriter, r *http.Request)
+	// RevokeAccessToken Revoke any member's token
+	// (DELETE /access-tokens/{id})
+	RevokeAccessToken(w http.ResponseWriter, r *http.Request, id Id)
 	// GetAISettings The workspace's AI settings and the month's spending
 	// (GET /ai/settings)
 	GetAISettings(w http.ResponseWriter, r *http.Request)
@@ -3469,12 +3548,24 @@ type ServerInterface interface {
 	// ResendInvitation Issue a new link for an open invitation
 	// (POST /invitations/{id}/resend)
 	ResendInvitation(w http.ResponseWriter, r *http.Request, id Id)
+	// Mcp The MCP server of the tasks section
+	// (POST /mcp)
+	Mcp(w http.ResponseWriter, r *http.Request)
 	// GetMe Current user, workspace, role and permissions
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
 	// UpdateMe Change the current user's profile
 	// (PATCH /me)
 	UpdateMe(w http.ResponseWriter, r *http.Request)
+	// ListMyAccessTokens The current user's personal access tokens in this workspace
+	// (GET /me/access-tokens)
+	ListMyAccessTokens(w http.ResponseWriter, r *http.Request)
+	// CreateAccessToken Issue a personal access token
+	// (POST /me/access-tokens)
+	CreateAccessToken(w http.ResponseWriter, r *http.Request)
+	// RevokeMyAccessToken Revoke one of the current user's tokens
+	// (DELETE /me/access-tokens/{id})
+	RevokeMyAccessToken(w http.ResponseWriter, r *http.Request, id Id)
 	// ResendEmailVerification Send the email confirmation link again
 	// (POST /me/email/verification)
 	ResendEmailVerification(w http.ResponseWriter, r *http.Request)
@@ -3624,6 +3715,18 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// ListAccessTokens Every member's personal access tokens
+// (GET /access-tokens)
+func (_ Unimplemented) ListAccessTokens(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeAccessToken Revoke any member's token
+// (DELETE /access-tokens/{id})
+func (_ Unimplemented) RevokeAccessToken(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // GetAISettings The workspace's AI settings and the month's spending
 // (GET /ai/settings)
@@ -4045,6 +4148,12 @@ func (_ Unimplemented) ResendInvitation(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Mcp The MCP server of the tasks section
+// (POST /mcp)
+func (_ Unimplemented) Mcp(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetMe Current user, workspace, role and permissions
 // (GET /me)
 func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -4054,6 +4163,24 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMe Change the current user's profile
 // (PATCH /me)
 func (_ Unimplemented) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListMyAccessTokens The current user's personal access tokens in this workspace
+// (GET /me/access-tokens)
+func (_ Unimplemented) ListMyAccessTokens(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAccessToken Issue a personal access token
+// (POST /me/access-tokens)
+func (_ Unimplemented) CreateAccessToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeMyAccessToken Revoke one of the current user's tokens
+// (DELETE /me/access-tokens/{id})
+func (_ Unimplemented) RevokeMyAccessToken(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4353,6 +4480,46 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAccessTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListAccessTokens(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccessTokens(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAccessToken operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAccessToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAccessToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetAISettings operation middleware
 func (siw *ServerInterfaceWrapper) GetAISettings(w http.ResponseWriter, r *http.Request) {
@@ -6101,6 +6268,20 @@ func (siw *ServerInterfaceWrapper) ResendInvitation(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// Mcp operation middleware
+func (siw *ServerInterfaceWrapper) Mcp(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Mcp(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -6120,6 +6301,60 @@ func (siw *ServerInterfaceWrapper) UpdateMe(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyAccessTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListMyAccessTokens(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyAccessTokens(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccessToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccessToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccessToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeMyAccessToken operation middleware
+func (siw *ServerInterfaceWrapper) RevokeMyAccessToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeMyAccessToken(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7238,6 +7473,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/me/sessions/{id}", wrapper.RevokeSession)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/access-tokens", wrapper.ListMyAccessTokens)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/me/access-tokens", wrapper.CreateAccessToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/me/access-tokens/{id}", wrapper.RevokeMyAccessToken)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/notifications", wrapper.GetMyNotificationSettings)
 	})
 	r.Group(func(r chi.Router) {
@@ -7266,6 +7510,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/workspace", wrapper.UpdateWorkspace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/access-tokens", wrapper.ListAccessTokens)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/access-tokens/{id}", wrapper.RevokeAccessToken)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
@@ -7518,6 +7768,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/tasks/{id}/conversations/{conversation_id}", wrapper.UnlinkTaskConversation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/mcp", wrapper.Mcp)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/task-queues", wrapper.ListTaskQueues)

@@ -734,6 +734,22 @@ func (q *Queries) TaskConversationIDs(ctx context.Context, arg TaskConversationI
 	return items, nil
 }
 
+const taskIDByNumber = `-- name: TaskIDByNumber :one
+SELECT id FROM tasks WHERE workspace_id = $1 AND number = $2
+`
+
+type TaskIDByNumberParams struct {
+	WorkspaceID uuid.UUID
+	Number      int64
+}
+
+func (q *Queries) TaskIDByNumber(ctx context.Context, arg TaskIDByNumberParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, taskIDByNumber, arg.WorkspaceID, arg.Number)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const unlinkConversation = `-- name: UnlinkConversation :execrows
 DELETE FROM task_conversations
 WHERE workspace_id = $1 AND task_id = $2 AND conversation_id = $3

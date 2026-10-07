@@ -11,7 +11,8 @@ export type SettingsPath =
   | "/settings/profile"
   | "/settings/appearance"
   | "/settings/notifications"
-  | "/settings/security";
+  | "/settings/security"
+  | "/settings/api";
 
 type SettingsSection = {
   to: SettingsPath;
@@ -26,7 +27,8 @@ type SettingsSection = {
     | "settings.profile.title"
     | "settings.appearance.title"
     | "settings.notifications.title"
-    | "settings.security.title";
+    | "settings.security.title"
+    | "settings.api.title";
   /** Permission from GET /me needed to see the section; none means every member sees it. */
   permission?: string;
   /** /settings may open it. Team is not a landing page: for an operator it is a read-only list. */
@@ -64,6 +66,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       { to: "/settings/appearance", label: "settings.appearance.title" },
       { to: "/settings/notifications", label: "settings.notifications.title" },
       { to: "/settings/security", label: "settings.security.title" },
+      { to: "/settings/api", label: "settings.api.title" },
     ],
   },
 ];

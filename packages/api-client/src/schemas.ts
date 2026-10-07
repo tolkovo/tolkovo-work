@@ -593,3 +593,24 @@ export const telegramBotStateSchema = z.object({
   bot: z.object({ username: z.string() }).nullable(),
   encryption_available: z.boolean(),
 }) satisfies z.ZodType<Schemas["TelegramBotState"]>;
+
+const accessTokenSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  user_name: z.string(),
+  name: z.string(),
+  scopes: z.array(z.enum(["tasks:read", "tasks:write"])),
+  prefix: z.string(),
+  created_at: z.string(),
+  expires_at: z.string().nullable(),
+  last_used_at: z.string().nullable(),
+}) satisfies z.ZodType<Schemas["AccessToken"]>;
+
+export const accessTokenListSchema = z.object({
+  items: z.array(accessTokenSchema),
+}) satisfies z.ZodType<Schemas["AccessTokenList"]>;
+
+export const accessTokenCreatedSchema = z.object({
+  token: accessTokenSchema,
+  secret: z.string(),
+}) satisfies z.ZodType<Schemas["AccessTokenCreated"]>;
