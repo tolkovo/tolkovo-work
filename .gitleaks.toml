@@ -3,6 +3,6 @@
 useDefault = true
 
 [allowlist]
-description = "Fake model keys in tests"
+description = "Fake model keys and access tokens in tests"
 regexTarget = "secret"
-regexes = ['''^sk-(test-)?0123456789abcdef$''']
+regexes = ['''^sk-(test-)?0123456789abcdef$''', '''^tk_pat_Xb3k9Qsecret$''']
