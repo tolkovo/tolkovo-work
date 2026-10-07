@@ -129,11 +129,12 @@ const (
 	KindConversation Kind = "conv"
 	KindKB           Kind = "kb"
 	KindReports      Kind = "reports"
+	KindTasks        Kind = "tasks"
 )
 
 func (k Kind) valid() bool {
 	switch k {
-	case KindConversation, KindKB, KindReports:
+	case KindConversation, KindKB, KindReports, KindTasks:
 		return true
 	}
 	return false

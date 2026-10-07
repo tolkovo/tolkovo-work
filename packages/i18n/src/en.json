@@ -797,7 +797,9 @@
     "notifyBotBusy": "This bot already gets its messages another way (for example, it is a support channel). Create a separate bot for notifications.",
     "notifyBotRevoked": "The notifications bot stopped working: Telegram no longer knows its token. Ask an admin to replace the bot in Settings → Tasks.",
     "tooManyTokens": "You may have at most 20 tokens. Revoke one you no longer need and try again.",
-    "invalidAccessToken": "This token is not valid: it was revoked or has expired."
+    "invalidAccessToken": "This token is not valid: it was revoked or has expired.",
+    "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
+    "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later."
   },
   "error": {
     "title": "Something went wrong",
@@ -1296,7 +1298,9 @@
       "queue": "Queue: {name}",
       "edited": "Title or description changed",
       "linked": "Conversation linked",
-      "unlinked": "Conversation unlinked"
+      "unlinked": "Conversation unlinked",
+      "filesAdded": "Files added: {count}",
+      "filesRemoved": "A file was removed from the description"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1305,7 +1309,20 @@
     "create": "Create task",
     "creating": "Creating…",
     "notifyAssignee": "The assignee is notified in the panel, and in Telegram if they linked it.",
-    "notifyQueue": "Without an assignee, the members of the queue are notified."
+    "notifyQueue": "Without an assignee, the members of the queue are notified.",
+    "files": {
+      "title": "Files",
+      "attach": "Attach a file",
+      "hint": "or paste a screenshot (Ctrl+V), or drop files here",
+      "chosen": "Chosen files",
+      "uploading": "uploading…",
+      "failed": "not uploaded",
+      "badType": "this type of file cannot be attached",
+      "tooBig": "larger than 25 MB",
+      "tooMany": "At most {count} files at once.",
+      "unchoose": "Remove \"{name}\"",
+      "remove": "Remove \"{name}\" from the task"
+    }
   },
   "notifications": {
     "alert": {

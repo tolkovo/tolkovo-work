@@ -119,7 +119,7 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 	if rec.Code != http.StatusAccepted || rec.Body.Len() != 0 {
 		t.Fatalf("notification: %d %s", rec.Code, rec.Body)
 	}
-	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "create_task", "update_task", "comment_task"}) {
+	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "read_file", "create_task", "update_task", "attach_file", "comment_task"}) {
 		t.Fatalf("tools: %v", got)
 	}
 
@@ -213,7 +213,7 @@ func TestMCP_ScopesAndProtocol(t *testing.T) {
 	in := setupInbox(t)
 	e, op := in.e, in.op
 	agent := &mcpAgent{t: t, c: e.client(), secret: issueToken(t, op, "reader", "tasks:read").Secret}
-	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues"}) {
+	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "read_file"}) {
 		t.Fatalf("read tools: %v", got)
 	}
 	if msg := agent.call("create_task", map[string]any{"title": "x"}, nil); !strings.Contains(msg, "does not allow") {

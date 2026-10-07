@@ -155,3 +155,50 @@ ON CONFLICT (workspace_id) DO UPDATE
 SET enabled = EXCLUDED.enabled, conversation_button = EXCLUDED.conversation_button,
     reply_ru = EXCLUDED.reply_ru, reply_en = EXCLUDED.reply_en, updated_at = EXCLUDED.updated_at
 RETURNING *;
+
+-- Files of tasks (migration 00033).
+
+-- name: InsertTaskFile :one
+INSERT INTO task_files (id, workspace_id, storage_key, file_name, content_type, size, uploaded_by, created_at)
+VALUES (@id, @workspace_id, @storage_key, @file_name, @content_type, @size, @uploaded_by, @created_at)
+RETURNING *;
+
+-- name: LooseTaskFiles :many
+-- Files of the member not taken yet, among ids.
+SELECT * FROM task_files
+WHERE workspace_id = @workspace_id AND id = ANY(@ids::uuid[]) AND uploaded_by = @uploaded_by
+  AND task_id IS NULL AND attached_at IS NULL
+ORDER BY id;
+
+-- name: AttachTaskFiles :execrows
+UPDATE task_files SET task_id = @task_id, activity_id = sqlc.narg(activity_id), attached_at = @attached_at
+WHERE workspace_id = @workspace_id AND id = ANY(@ids::uuid[]) AND uploaded_by = @uploaded_by
+  AND task_id IS NULL AND attached_at IS NULL;
+
+-- name: TaskFiles :many
+-- The files of a task, in the order they came.
+SELECT * FROM task_files
+WHERE workspace_id = @workspace_id AND task_id = @task_id
+ORDER BY created_at, id;
+
+-- name: CountTaskFiles :one
+SELECT count(*) FROM task_files WHERE workspace_id = @workspace_id AND task_id = @task_id;
+
+-- name: GetTaskFile :one
+SELECT * FROM task_files WHERE workspace_id = @workspace_id AND id = @id;
+
+-- name: DetachTaskFile :execrows
+-- Removes a file from a task's description; the cleanup deletes it.
+UPDATE task_files SET task_id = NULL
+WHERE workspace_id = @workspace_id AND id = @id AND task_id = @task_id AND activity_id IS NULL;
+
+-- name: DeleteTaskFile :exec
+DELETE FROM task_files WHERE workspace_id = @workspace_id AND id = @id;
+
+-- name: LooseTaskFilesToClean :many
+-- Runs as tolkovo_system (policy system_see_loose): files a task gave up,
+-- and files nobody took within the upload's lifetime.
+SELECT id, workspace_id FROM task_files
+WHERE task_id IS NULL AND (attached_at IS NOT NULL OR created_at < @before)
+ORDER BY created_at
+LIMIT @lim;

@@ -35,6 +35,8 @@ type Task struct {
 	// ConversationIDs are the linked conversations, oldest link first;
 	// filled by Get, not by lists.
 	ConversationIDs []uuid.UUID
+	// Files of the description; filled for one task, not in lists.
+	Files []File
 }
 
 // NewTask is a task to create.
@@ -47,6 +49,8 @@ type NewTask struct {
 	// ConversationID links the task to the conversation it is created
 	// from, which then waits for the fix; nil for a task made by hand.
 	ConversationID *uuid.UUID
+	// FileIDs are the creator's uploaded files for the description.
+	FileIDs []uuid.UUID
 }
 
 // Create records a task by actorID. A task from a conversation is linked
@@ -68,6 +72,9 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 	}
 	if in.ConversationID != nil && s.opts.Conversations == nil {
 		return Task{}, errors.New("tasks: no conversations to link")
+	}
+	if err := s.checkFiles(ctx, workspaceID, actorID, in.FileIDs); err != nil {
+		return Task{}, err
 	}
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -94,7 +101,13 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 		if _, err := s.addActivity(ctx, q, row, &actorID, "created", nil, nil); err != nil {
 			return err
 		}
+		if err := s.attachFiles(ctx, q, row, actorID, nil, in.FileIDs); err != nil {
+			return err
+		}
 		out = taskFrom(row)
+		if out.Files, _, err = taskFiles(ctx, q, workspaceID, id); err != nil {
+			return err
+		}
 		if in.ConversationID != nil {
 			if err := s.link(ctx, tx, q, row, *in.ConversationID, actorID, conversations.EventTaskCreated); err != nil {
 				return err
@@ -123,6 +136,10 @@ func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task,
 		}
 		out = taskFrom(row)
 		out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
+		if err != nil {
+			return err
+		}
+		out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID)
 		return err
 	})
 	if err != nil {
@@ -295,6 +312,10 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		}
 		out = taskFrom(row)
 		out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
+		if err != nil {
+			return err
+		}
+		out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID)
 		return err
 	})
 	if err != nil {
@@ -434,7 +455,13 @@ type Activity struct {
 	Fields []string
 	// ConversationID is set on linked and unlinked.
 	ConversationID *uuid.UUID
-	CreatedAt      time.Time
+	// Files of a comment.
+	Files []File
+	// FilesAdded and FilesRemoved count the files a "files" line added to
+	// the description or took out of it.
+	FilesAdded   int
+	FilesRemoved int
+	CreatedAt    time.Time
 }
 
 // Activity returns the feed of a task, oldest first.
@@ -449,8 +476,19 @@ func (s *Service) Activity(ctx context.Context, workspaceID, taskID uuid.UUID) (
 		if err != nil {
 			return err
 		}
+		_, byComment, err := taskFiles(ctx, q, workspaceID, taskID)
+		if err != nil {
+			return err
+		}
 		for _, r := range rows {
-			out = append(out, activityFrom(r))
+			a := activityFrom(r)
+			if a.Kind == "comment" {
+				a.Files = byComment[a.ID]
+				if a.Files == nil {
+					a.Files = []File{}
+				}
+			}
+			out = append(out, a)
 		}
 		return nil
 	})
@@ -460,11 +498,15 @@ func (s *Service) Activity(ctx context.Context, workspaceID, taskID uuid.UUID) (
 	return out, nil
 }
 
-// Comment adds a comment to a task's feed.
-func (s *Service) Comment(ctx context.Context, workspaceID, actorID, taskID uuid.UUID, text string) (Activity, error) {
+// Comment adds a comment to a task's feed, with the actor's uploaded
+// files. A comment of files only may have no text.
+func (s *Service) Comment(ctx context.Context, workspaceID, actorID, taskID uuid.UUID, text string, fileIDs []uuid.UUID) (Activity, error) {
 	body := strings.TrimSpace(text)
-	if body == "" || utf8.RuneCountInString(body) > MaxComment || !validText(body) {
+	if (body == "" && len(fileIDs) == 0) || utf8.RuneCountInString(body) > MaxComment || !validText(body) {
 		return Activity{}, fmt.Errorf("%w: comment must be 1 to %d characters", ErrInvalid, MaxComment)
+	}
+	if err := s.checkFiles(ctx, workspaceID, actorID, fileIDs); err != nil {
+		return Activity{}, err
 	}
 	var out Activity
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
@@ -477,7 +519,17 @@ func (s *Service) Comment(ctx context.Context, workspaceID, actorID, taskID uuid
 		if err != nil {
 			return err
 		}
-		out = Activity{ID: id, ActorID: &actorID, Kind: "comment", Body: body, CreatedAt: s.now()}
+		if err := s.attachFiles(ctx, q, row, actorID, &id, fileIDs); err != nil {
+			return err
+		}
+		out = Activity{ID: id, ActorID: &actorID, Kind: "comment", Body: body, CreatedAt: s.now(), Files: []File{}}
+		if len(fileIDs) > 0 {
+			_, byComment, err := taskFiles(ctx, q, workspaceID, taskID)
+			if err != nil {
+				return err
+			}
+			out.Files = byComment[id]
+		}
 		return changed(ctx, tx, row, actorID, false)
 	})
 	if err != nil {
@@ -585,8 +637,11 @@ func activityFrom(r store.TaskActivity) Activity {
 		To             *string    `json:"to"`
 		Fields         []string   `json:"fields"`
 		ConversationID *uuid.UUID `json:"conversation_id"`
+		Added          int        `json:"added"`
+		Removed        int        `json:"removed"`
 	}
 	if json.Unmarshal(r.Meta, &meta) == nil {
+		out.FilesAdded, out.FilesRemoved = meta.Added, meta.Removed
 		if meta.From != nil {
 			out.From = *meta.From
 		}

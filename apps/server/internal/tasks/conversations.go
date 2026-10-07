@@ -42,6 +42,10 @@ func (s *Service) Link(ctx context.Context, workspaceID, actorID, taskID, conver
 		}
 		out = taskFrom(row)
 		out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
+		if err != nil {
+			return err
+		}
+		out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID)
 		return err
 	})
 	if err != nil {

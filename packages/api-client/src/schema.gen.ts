@@ -2341,13 +2341,107 @@ export interface paths {
          *     with one JSON message, or `202` for a notification or a response. An AI agent
          *     connects with a personal access token, e.g.
          *     `claude mcp add --transport http tolkovo https://<server>/api/v1/mcp --header
-         *     "Authorization: Bearer tk_pat_…"`. Tools: `list_tasks`, `get_task`, `list_queues`
-         *     (`tasks:read`), `create_task`, `update_task`, `comment_task` (`tasks:write`); a tool
-         *     the token or the role cannot use is not listed. `GET` answers `405`: the server
+         *     "Authorization: Bearer tk_pat_…"`. Tools: `list_tasks`, `get_task`, `list_queues`,
+         *     `read_file` (`tasks:read`), `create_task`, `update_task`, `attach_file`, `comment_task`
+         *     (`tasks:write`); a tool the token or the role cannot use is not listed. Requests are up
+         *     to 16 MB (`attach_file` carries a file of up to 10 MB in base64). `GET` answers `405`: the server
          *     sends nothing on its own.
          */
         post: operations["mcp"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a file for a task and get a signed upload request
+         * @description Requires `tasks.edit`. Upload the file with exactly the returned method, URL and
+         *     headers, then send its id in `file_ids` of `POST /tasks`, `POST /tasks/{id}/activity`
+         *     or `POST /tasks/{id}/files`. Only the member who registered a file can send it. The
+         *     upload lives an hour; a file no task took is deleted after that. Up to 25 MB.
+         */
+        post: operations["createTaskFileUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-files/{id}/download-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A short-lived signed download request for a file of a task
+         * @description Requires `tasks.view`. A file of no task (not sent, removed, its task deleted) answers `404`.
+         */
+        get: operations["getTaskFileDownloadLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add uploaded files to a task's description
+         * @description Requires `tasks.edit`. Each file is checked (whole, its content fits its type, and
+         *     clean when the server has ClamAV). A line `files` goes to the feed. A task holds at
+         *     most 100 files.
+         */
+        post: operations["addTaskFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take a file out of a task's description
+         * @description Requires `tasks.edit`. Files of comments stay, as comments do. The file is deleted
+         *     from storage shortly after. A line `files` goes to the feed.
+         */
+        delete: operations["removeTaskFile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3056,6 +3150,33 @@ export interface components {
             version: number;
             /** @description Linked conversations, oldest link first; empty in lists. */
             conversation_ids: string[];
+            /** @description Files of the description, in the order they came; empty in lists. */
+            files: components["schemas"]["TaskFile"][];
+        };
+        TaskFile: {
+            id: string;
+            file_name: string;
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+            /** @description `null` when the member left. */
+            uploaded_by: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskFileUploadRequest: {
+            file_name: string;
+            /** @description Images (PNG, JPEG, GIF, WebP), PDF, text, CSV, JSON, ZIP, GZIP and Office documents. */
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+        };
+        TaskFileUpload: {
+            file: components["schemas"]["TaskFile"];
+            upload: components["schemas"]["SignedRequest"];
+        };
+        TaskFilesAdd: {
+            file_ids: string[];
         };
         TaskPage: {
             items: components["schemas"]["Task"][];
@@ -3069,6 +3190,8 @@ export interface components {
             assignee_id?: string | null;
             /** @description The conversation the task is created from. */
             conversation_id?: string | null;
+            /** @description Uploaded files (`POST /task-files`) for the description. */
+            file_ids?: string[];
         };
         TaskUpdate: {
             /** Format: int32 */
@@ -3091,7 +3214,7 @@ export interface components {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "edited" | "linked" | "unlinked";
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "edited" | "linked" | "unlinked" | "files";
             /** @description The text of a comment. */
             body?: string;
             /** @description The value a change moved from (a status, a priority, a member or queue id); empty for none. */
@@ -3102,6 +3225,12 @@ export interface components {
             fields?: ("title" | "body")[];
             /** @description On `linked` and `unlinked`. */
             conversation_id?: string;
+            /** @description The files of a comment. */
+            files?: components["schemas"]["TaskFile"][];
+            /** @description On `files` */
+            files_added?: number;
+            /** @description On `files` */
+            files_removed?: number;
             /** Format: date-time */
             created_at: string;
         };
@@ -3109,7 +3238,10 @@ export interface components {
             items: components["schemas"]["TaskActivity"][];
         };
         TaskComment: {
+            /** @description May be empty when the comment has files. */
             body: string;
+            /** @description Uploaded files (`POST /task-files`) for the comment. */
+            file_ids?: string[];
         };
         TaskLinkRequest: {
             conversation_id: string;
@@ -4180,6 +4312,29 @@ export interface components {
          *     replaces the bot).
          */
         NotifyBotConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description `file_rejected`: a file is not uploaded whole yet (`not_uploaded`, upload it and send
+         *     again), its content does not fit its type (`type_mismatch`) or the antivirus found a
+         *     virus (`infected`); `detail` names the file and the reason. A rejected file of the
+         *     last two kinds is deleted.
+         */
+        TaskFileRejected: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `scan_unavailable`: the antivirus did not answer; send the file again later. */
+        TaskFilesUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -7637,6 +7792,8 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["TaskConflict"];
+            422: components["responses"]["TaskFileRejected"];
+            503: components["responses"]["TaskFilesUnavailable"];
         };
     };
     getTaskSummary: {
@@ -7793,6 +7950,8 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["TaskFileRejected"];
+            503: components["responses"]["TaskFilesUnavailable"];
         };
     };
     linkTaskConversation: {
@@ -7891,6 +8050,116 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createTaskFileUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFileUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; upload the file next. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskFileUpload"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    getTaskFileDownloadLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed request (15 minutes by default). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedRequest"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTaskFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFilesAdd"];
+            };
+        };
+        responses: {
+            /** @description The task with its files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+            422: components["responses"]["TaskFileRejected"];
+            503: components["responses"]["TaskFilesUnavailable"];
+        };
+    };
+    removeTaskFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listTaskQueues: {

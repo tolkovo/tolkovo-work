@@ -136,6 +136,8 @@ type envOptions struct {
 	registration string
 	// widgetScanner checks visitors' files, like TOLKOVO_CLAMAV_ADDR.
 	widgetScanner widget.Scanner
+	// taskScanner checks files of tasks, like TOLKOVO_CLAMAV_ADDR.
+	taskScanner tasks.Scanner
 }
 
 // panelURL is where test links point.
@@ -228,7 +230,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 		Sealer: sealer, GitHub: gh, PublicURL: "https://support.example.com", PanelURL: panelURL,
 		Conversations: convs, Jobs: inserter, Drafter: ais, Log: quiet,
 	})
-	taskSvc := tasks.New(app, tasks.Options{Conversations: convs, Drafter: ais, Log: quiet})
+	taskSvc := tasks.New(app, tasks.Options{Conversations: convs, Drafter: ais, Files: files, Scanner: o.taskScanner, Log: quiet})
 	// Messages about tasks go through the fake Bot API as well (TK-02).
 	notifs.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: bots, Channels: chans, Jobs: inserter, Log: quiet})
 	taskSvc.SetNotifier(notifs)

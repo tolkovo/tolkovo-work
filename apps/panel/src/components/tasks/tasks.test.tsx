@@ -28,6 +28,7 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   closed_at: null,
   version: 3,
   conversation_ids: [],
+  files: [],
   ...patch,
 });
 

@@ -58,15 +58,19 @@ var publicOperations = map[string]bool{
 // member's role, and cannot issue tokens. The scopes are checked again by
 // authz.Require in the handlers.
 var tokenOperations = map[string]bool{
-	"GET /api/v1/tasks":                true,
-	"POST /api/v1/tasks":               true,
-	"GET /api/v1/tasks/summary":        true,
-	"GET /api/v1/tasks/{id}":           true,
-	"PUT /api/v1/tasks/{id}":           true,
-	"GET /api/v1/tasks/{id}/activity":  true,
-	"POST /api/v1/tasks/{id}/activity": true,
-	"GET /api/v1/task-queues":          true,
-	"POST /api/v1/mcp":                 true,
+	"GET /api/v1/tasks":                         true,
+	"POST /api/v1/tasks":                        true,
+	"GET /api/v1/tasks/summary":                 true,
+	"GET /api/v1/tasks/{id}":                    true,
+	"PUT /api/v1/tasks/{id}":                    true,
+	"GET /api/v1/tasks/{id}/activity":           true,
+	"POST /api/v1/tasks/{id}/activity":          true,
+	"GET /api/v1/task-queues":                   true,
+	"POST /api/v1/mcp":                          true,
+	"POST /api/v1/task-files":                   true,
+	"GET /api/v1/task-files/{id}/download-link": true,
+	"POST /api/v1/tasks/{id}/files":             true,
+	"DELETE /api/v1/tasks/{id}/files/{file_id}": true,
 }
 
 // sessionCookies writes and reads the session cookie.

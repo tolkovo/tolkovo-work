@@ -21,8 +21,8 @@ import (
 // mcpVersions are the protocol versions served, newest first.
 var mcpVersions = []string{"2025-11-25", "2025-06-18", "2025-03-26"}
 
-// maxMCPBody bounds a request: tool arguments are a task at most.
-const maxMCPBody = 256 << 10
+// maxMCPBody bounds a request: a task, or a file of attach_file in base64.
+const maxMCPBody = 16 << 20
 
 // JSON-RPC error codes.
 const (
@@ -167,6 +167,9 @@ func (s *server) mcpCall(r *http.Request, p authz.Principal, params json.RawMess
 		}
 		s.log.ErrorContext(r.Context(), "mcp tool failed", "tool", in.Name, "err", err)
 		return nil, &rpcError{Code: rpcInternalError, Message: "internal error"}
+	}
+	if blocks, ok := out.(toolContent); ok {
+		return map[string]any{"content": blocks, "isError": false}, nil
 	}
 	text, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

@@ -49,6 +49,12 @@ On a task:
 - Comments are for the team: the customer never sees them. The history below shows every change and who made it, the latest 500 lines.
 - Linked conversations are listed with the customer's name, and can be unlinked.
 
+### Files and screenshots
+
+A task takes files in its description and in comments: screenshots, logs, PDFs, documents, archives. Paste a screenshot with **Ctrl+V** (**⌘V** on a Mac) into the description or the comment, drop files on it, or press **Attach a file**. A file uploads as soon as you choose it and goes with the task or the comment when you send it. In an open task, files added under **Files** join the description at once; a file there can be removed. Files of comments stay, as comments do.
+
+Up to 25 MB a file and 10 at once; images (PNG, JPEG, GIF, WebP), PDF, text and logs, CSV, JSON, ZIP, GZIP and Office documents. When a file is sent, Tolkovo checks that its content matches its type and, when the server has ClamAV (`TOLKOVO_CLAMAV_ADDR`), that it has no virus; a refused file is deleted and the panel says why. Pictures show as thumbnails and open larger; other files download. A file removed from a task, and the files of a deleted task, are deleted from storage within 15 minutes.
+
 ## 6. When a task is done
 
 Set the status to **Done**. In every linked conversation:
@@ -81,7 +87,7 @@ A script or an AI agent (Claude Code, Cursor and other MCP clients) can work wit
    ```
 
    Other MCP clients connect to the same address with the same `Authorization` header. Scripts call the REST API of tasks with it (`GET /api/v1/tasks`, `PUT /api/v1/tasks/{id}` and so on).
-3. The agent gets the tools `list_tasks`, `get_task`, `list_queues`, and with a token that changes tasks also `create_task`, `update_task` and `comment_task`. It names tasks by number (`#42`). It is told to treat the texts of tasks as data, not as instructions.
+3. The agent gets the tools `list_tasks`, `get_task`, `list_queues`, `read_file`, and with a token that changes tasks also `create_task`, `update_task`, `attach_file` and `comment_task`. `read_file` shows the agent a screenshot of the task as a picture and a log as text; `attach_file` puts a file (up to 10 MB) into the description, or into a comment when it comes with text. It names tasks by number (`#42`). It is told to treat the texts of tasks as data, not as instructions.
 
 A token acts as its member and can do no more than the member's role. It reaches only tasks: conversations, customers, settings, deleting tasks and queues are closed to it, and it cannot link a task to a conversation. Changes made with a token appear in the task's feed under the member's name.
 

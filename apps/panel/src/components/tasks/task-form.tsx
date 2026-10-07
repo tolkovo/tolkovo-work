@@ -8,6 +8,7 @@ import { describeApiError } from "../../lib/api-errors";
 import { TASK_PRIORITIES } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { control } from "./task-bits";
+import { AttachArea, useFileDrafts } from "./task-files";
 
 type NewTaskFormProps = {
   /** Where the form starts: empty by hand, the draft from a conversation. */
@@ -30,6 +31,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [assignee, setAssignee] = useState("");
   const [titleError, setTitleError] = useState<string | undefined>();
+  const files = useFileDrafts();
   const ids = { body: useId(), queue: useId(), priority: useId(), assignee: useId() };
 
   const submit = (e: FormEvent) => {
@@ -48,6 +50,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
         queue_id: queue || null,
         assignee_id: assignee || null,
         ...(conversationId ? { conversation_id: conversationId } : {}),
+        ...(files.ids.length > 0 ? { file_ids: files.ids } : {}),
       },
       { onSuccess: onDone },
     );
@@ -66,14 +69,16 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
       />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={ids.body}>{t("tasks.fields.body")}</Label>
-        <textarea
-          id={ids.body}
-          value={body}
-          rows={10}
-          maxLength={20000}
-          onChange={(e) => setBody(e.currentTarget.value)}
-          className={cn(control, "py-2 leading-relaxed")}
-        />
+        <AttachArea drafts={files}>
+          <textarea
+            id={ids.body}
+            value={body}
+            rows={10}
+            maxLength={20000}
+            onChange={(e) => setBody(e.currentTarget.value)}
+            className={cn(control, "py-2 leading-relaxed")}
+          />
+        </AttachArea>
       </div>
       <div className="grid grid-cols-3 gap-3 max-nav:grid-cols-1">
         <div className="flex flex-col gap-1.5">
@@ -112,7 +117,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
       <p className="m-0 text-[12.5px] text-ink-3">{t(assignee ? "tasks.notifyAssignee" : "tasks.notifyQueue")}</p>
       <FormMessage tone="error" message={create.isError ? describeApiError(t, create.error).message : null} />
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="primary" disabled={create.isPending}>
+        <Button type="submit" variant="primary" disabled={create.isPending || files.uploading}>
           {create.isPending ? t("tasks.creating") : t("tasks.create")}
         </Button>
         <Button type="button" onClick={onCancel}>

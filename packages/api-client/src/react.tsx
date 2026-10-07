@@ -11,7 +11,10 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import {
+  addTaskFiles,
   commentTask,
+  fetchTaskFileLink,
+  removeTaskFile,
   createTask,
   createTaskQueue,
   deleteTask,
@@ -961,7 +964,29 @@ export function useDeleteTask() {
 }
 
 export function useCommentTask(id: string) {
-  return useTaskMutation((client, body: string) => commentTask(client, id, body));
+  return useTaskMutation((client, { body, fileIds = [] }: { body: string; fileIds?: string[] }) => commentTask(client, id, body, fileIds));
+}
+
+export function useAddTaskFiles(id: string) {
+  return useTaskMutation((client, fileIds: string[]) => addTaskFiles(client, id, fileIds));
+}
+
+export function useRemoveTaskFile(id: string) {
+  return useTaskMutation((client, fileId: string) => removeTaskFile(client, id, fileId));
+}
+
+/** The signed link of a file of a task, for showing a picture; links live 15 minutes. */
+export function useTaskFileLink(id: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({
+    // Outside "tasks": changing a task must not sign every link again.
+    queryKey: ["task-file-link", id] as const,
+    queryFn: () => fetchTaskFileLink(client, id),
+    enabled,
+    staleTime: 10 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+  });
 }
 
 export function useLinkTaskConversation() {

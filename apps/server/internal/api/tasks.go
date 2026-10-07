@@ -44,6 +44,21 @@ func (s *server) writeTaskError(w http.ResponseWriter, r *http.Request, err erro
 			return true
 		}
 	}
+	var rejected *tasks.FileError
+	if errors.As(err, &rejected) {
+		writeProblem(w, r, Problem{
+			Status: http.StatusUnprocessableEntity, Code: "file_rejected", Title: "Unprocessable Content",
+			Detail: rejected.FileName + ": " + rejected.Reason,
+		})
+		return true
+	}
+	if errors.Is(err, tasks.ErrScanUnavailable) {
+		writeProblem(w, r, Problem{
+			Status: http.StatusServiceUnavailable, Code: "scan_unavailable", Title: "Service Unavailable",
+			Detail: "the antivirus did not answer; send the file again later",
+		})
+		return true
+	}
 	if errors.Is(err, tasks.ErrInvalid) {
 		writeProblem(w, r, Problem{Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: detail(err)})
 		return true
@@ -195,6 +210,7 @@ func (s *server) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	in := tasks.NewTask{
 		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, AssigneeID: req.AssigneeId, ConversationID: req.ConversationId,
+		FileIDs: deref(req.FileIds),
 	}
 	if req.Priority != nil {
 		in.Priority = string(*req.Priority)
@@ -302,7 +318,7 @@ func (s *server) CommentTask(w http.ResponseWriter, r *http.Request, id oapi.Id)
 		s.writeError(w, r, err)
 		return
 	}
-	a, err := s.tasks.Comment(r.Context(), p.WorkspaceID, p.UserID, id, req.Body)
+	a, err := s.tasks.Comment(r.Context(), p.WorkspaceID, p.UserID, id, req.Body, deref(req.FileIds))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -474,6 +490,7 @@ func taskBody(t tasks.Task) oapi.Task {
 		Id: t.ID, Number: t.Number, QueueId: t.QueueID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, Version: t.Version, ConversationIds: nonNil(t.ConversationIDs),
+		Files: taskFileList(t.Files),
 	}
 }
 
@@ -482,8 +499,15 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 	if a.Body != "" {
 		out.Body = &a.Body
 	}
-	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" {
+	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" {
 		out.From, out.To = &a.From, &a.To
+	}
+	if a.Kind == "comment" {
+		files := taskFileList(a.Files)
+		out.Files = &files
+	}
+	if a.Kind == "files" {
+		out.FilesAdded, out.FilesRemoved = &a.FilesAdded, &a.FilesRemoved
 	}
 	if len(a.Fields) > 0 {
 		fields := make([]oapi.TaskActivityFields, len(a.Fields))

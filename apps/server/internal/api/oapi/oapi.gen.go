@@ -812,6 +812,7 @@ const (
 	Comment  TaskActivityKind = "comment"
 	Created  TaskActivityKind = "created"
 	Edited   TaskActivityKind = "edited"
+	Files    TaskActivityKind = "files"
 	Linked   TaskActivityKind = "linked"
 	Priority TaskActivityKind = "priority"
 	Queue    TaskActivityKind = "queue"
@@ -829,6 +830,8 @@ func (e TaskActivityKind) Valid() bool {
 	case Created:
 		return true
 	case Edited:
+		return true
+	case Files:
 		return true
 	case Linked:
 		return true
@@ -2442,11 +2445,14 @@ type Task struct {
 	CreatedAt       time.Time   `json:"created_at"`
 
 	// CreatedBy `null` when the author is no longer a member.
-	CreatedBy *uuid.UUID   `json:"created_by"`
-	Id        uuid.UUID    `json:"id"`
-	Number    int64        `json:"number"`
-	Priority  TaskPriority `json:"priority"`
-	QueueId   *uuid.UUID   `json:"queue_id"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+
+	// Files Files of the description, in the order they came; empty in lists.
+	Files    []TaskFile   `json:"files"`
+	Id       uuid.UUID    `json:"id"`
+	Number   int64        `json:"number"`
+	Priority TaskPriority `json:"priority"`
+	QueueId  *uuid.UUID   `json:"queue_id"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
 	Status    TaskStatus `json:"status"`
@@ -2468,6 +2474,15 @@ type TaskActivity struct {
 
 	// Fields What an edit changed.
 	Fields *[]TaskActivityFields `json:"fields,omitempty"`
+
+	// Files The files of a comment.
+	Files *[]TaskFile `json:"files,omitempty"`
+
+	// FilesAdded On `files`
+	FilesAdded *int `json:"files_added,omitempty"`
+
+	// FilesRemoved On `files`
+	FilesRemoved *int `json:"files_removed,omitempty"`
 
 	// From The value a change moved from (a status, a priority, a member or queue id); empty for none.
 	From *string          `json:"from,omitempty"`
@@ -2495,7 +2510,11 @@ type TaskButton string
 
 // TaskComment defines model for TaskComment.
 type TaskComment struct {
+	// Body May be empty when the comment has files.
 	Body string `json:"body"`
+
+	// FileIds Uploaded files (`POST /task-files`) for the comment.
+	FileIds *[]uuid.UUID `json:"file_ids,omitempty"`
 }
 
 // TaskCreate defines model for TaskCreate.
@@ -2504,10 +2523,13 @@ type TaskCreate struct {
 	Body       *string    `json:"body,omitempty"`
 
 	// ConversationId The conversation the task is created from.
-	ConversationId *uuid.UUID    `json:"conversation_id,omitempty"`
-	Priority       *TaskPriority `json:"priority,omitempty"`
-	QueueId        *uuid.UUID    `json:"queue_id,omitempty"`
-	Title          string        `json:"title"`
+	ConversationId *uuid.UUID `json:"conversation_id,omitempty"`
+
+	// FileIds Uploaded files (`POST /task-files`) for the description.
+	FileIds  *[]uuid.UUID  `json:"file_ids,omitempty"`
+	Priority *TaskPriority `json:"priority,omitempty"`
+	QueueId  *uuid.UUID    `json:"queue_id,omitempty"`
+	Title    string        `json:"title"`
 }
 
 // TaskDraft defines model for TaskDraft.
@@ -2524,6 +2546,37 @@ type TaskDraftAiFallback string
 
 // TaskDraftDraftedBy defines model for TaskDraft.DraftedBy.
 type TaskDraftDraftedBy string
+
+// TaskFile defines model for TaskFile.
+type TaskFile struct {
+	ContentType string    `json:"content_type"`
+	CreatedAt   time.Time `json:"created_at"`
+	FileName    string    `json:"file_name"`
+	Id          uuid.UUID `json:"id"`
+	Size        int64     `json:"size"`
+
+	// UploadedBy `null` when the member left.
+	UploadedBy *uuid.UUID `json:"uploaded_by"`
+}
+
+// TaskFileUpload defines model for TaskFileUpload.
+type TaskFileUpload struct {
+	File   TaskFile      `json:"file"`
+	Upload SignedRequest `json:"upload"`
+}
+
+// TaskFileUploadRequest defines model for TaskFileUploadRequest.
+type TaskFileUploadRequest struct {
+	// ContentType Images (PNG, JPEG, GIF, WebP), PDF, text, CSV, JSON, ZIP, GZIP and Office documents.
+	ContentType string `json:"content_type"`
+	FileName    string `json:"file_name"`
+	Size        int64  `json:"size"`
+}
+
+// TaskFilesAdd defines model for TaskFilesAdd.
+type TaskFilesAdd struct {
+	FileIds []uuid.UUID `json:"file_ids"`
+}
 
 // TaskLinkRequest defines model for TaskLinkRequest.
 type TaskLinkRequest struct {
@@ -3012,6 +3065,12 @@ type ReportTooLarge = Problem
 // TaskConflict RFC 9457 problem details.
 type TaskConflict = Problem
 
+// TaskFileRejected RFC 9457 problem details.
+type TaskFileRejected = Problem
+
+// TaskFilesUnavailable RFC 9457 problem details.
+type TaskFilesUnavailable = Problem
+
 // TelegramLoginRejected RFC 9457 problem details.
 type TelegramLoginRejected = Problem
 
@@ -3285,6 +3344,9 @@ type SetRoutingJSONRequestBody = RoutingSettings
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
+// CreateTaskFileUploadJSONRequestBody defines body for CreateTaskFileUpload for application/json ContentType.
+type CreateTaskFileUploadJSONRequestBody = TaskFileUploadRequest
+
 // CreateTaskQueueJSONRequestBody defines body for CreateTaskQueue for application/json ContentType.
 type CreateTaskQueueJSONRequestBody = TaskQueueInput
 
@@ -3308,6 +3370,9 @@ type CommentTaskJSONRequestBody = TaskComment
 
 // LinkTaskConversationJSONRequestBody defines body for LinkTaskConversation for application/json ContentType.
 type LinkTaskConversationJSONRequestBody = TaskLinkRequest
+
+// AddTaskFilesJSONRequestBody defines body for AddTaskFiles for application/json ContentType.
+type AddTaskFilesJSONRequestBody = TaskFilesAdd
 
 // SubmitWidgetContactJSONRequestBody defines body for SubmitWidgetContact for application/json ContentType.
 type SubmitWidgetContactJSONRequestBody = WidgetContactRequest
@@ -3623,6 +3688,12 @@ type ServerInterface interface {
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	// CreateTaskFileUpload Register a file for a task and get a signed upload request
+	// (POST /task-files)
+	CreateTaskFileUpload(w http.ResponseWriter, r *http.Request)
+	// GetTaskFileDownloadLink A short-lived signed download request for a file of a task
+	// (GET /task-files/{id}/download-link)
+	GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTaskQueues Queues of tasks, by name
 	// (GET /task-queues)
 	ListTaskQueues(w http.ResponseWriter, r *http.Request)
@@ -3680,6 +3751,12 @@ type ServerInterface interface {
 	// UnlinkTaskConversation Unlink a conversation from the task
 	// (DELETE /tasks/{id}/conversations/{conversation_id})
 	UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID)
+	// AddTaskFiles Add uploaded files to a task's description
+	// (POST /tasks/{id}/files)
+	AddTaskFiles(w http.ResponseWriter, r *http.Request, id Id)
+	// RemoveTaskFile Take a file out of a task's description
+	// (DELETE /tasks/{id}/files/{file_id})
+	RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID)
 	// GetWidgetAvailability Whether someone takes conversations now
 	// (GET /widget/availability)
 	GetWidgetAvailability(w http.ResponseWriter, r *http.Request)
@@ -4298,6 +4375,18 @@ func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// CreateTaskFileUpload Register a file for a task and get a signed upload request
+// (POST /task-files)
+func (_ Unimplemented) CreateTaskFileUpload(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskFileDownloadLink A short-lived signed download request for a file of a task
+// (GET /task-files/{id}/download-link)
+func (_ Unimplemented) GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListTaskQueues Queues of tasks, by name
 // (GET /task-queues)
 func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
@@ -4409,6 +4498,18 @@ func (_ Unimplemented) LinkTaskConversation(w http.ResponseWriter, r *http.Reque
 // UnlinkTaskConversation Unlink a conversation from the task
 // (DELETE /tasks/{id}/conversations/{conversation_id})
 func (_ Unimplemented) UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddTaskFiles Add uploaded files to a task's description
+// (POST /tasks/{id}/files)
+func (_ Unimplemented) AddTaskFiles(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveTaskFile Take a file out of a task's description
+// (DELETE /tasks/{id}/files/{file_id})
+func (_ Unimplemented) RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6642,6 +6743,46 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// CreateTaskFileUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskFileUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskFileUpload(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskFileDownloadLink operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskFileDownloadLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTaskQueues operation middleware
 func (siw *ServerInterfaceWrapper) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
 
@@ -7113,6 +7254,67 @@ func (siw *ServerInterfaceWrapper) UnlinkTaskConversation(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UnlinkTaskConversation(w, r, id, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTaskFiles operation middleware
+func (siw *ServerInterfaceWrapper) AddTaskFiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTaskFiles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTaskFile operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTaskFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "file_id" -------------
+	var fileId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "file_id", chi.URLParam(r, "file_id"), &fileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "file_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTaskFile(w, r, id, fileId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7771,6 +7973,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/mcp", wrapper.Mcp)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/task-files", wrapper.CreateTaskFileUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-files/{id}/download-link", wrapper.GetTaskFileDownloadLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/files", wrapper.AddTaskFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/files/{file_id}", wrapper.RemoveTaskFile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/task-queues", wrapper.ListTaskQueues)

@@ -120,7 +120,11 @@ type Options struct {
 	Drafter Drafter
 	// Notifier sends notices outside the panel; nil sends none.
 	Notifier Notifier
-	Log      *slog.Logger
+	// Files keeps the files of tasks; nil refuses files.
+	Files Storage
+	// Scanner checks files for viruses; nil checks their type only.
+	Scanner Scanner
+	Log     *slog.Logger
 }
 
 // Service is the facade of the module.

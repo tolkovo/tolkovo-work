@@ -503,6 +503,20 @@ export const taskStatusSchema = z.enum(["open", "in_progress", "done", "canceled
 export const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]) satisfies z.ZodType<Schemas["TaskPriority"]>;
 export const taskButtonSchema = z.enum(["tasks", "github", "both"]) satisfies z.ZodType<Schemas["TaskButton"]>;
 
+export const taskFileSchema = z.object({
+  id: z.string(),
+  file_name: z.string(),
+  content_type: z.string(),
+  size: z.number(),
+  uploaded_by: z.string().nullable(),
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskFile"]>;
+
+export const taskFileUploadSchema = z.object({
+  file: taskFileSchema,
+  upload: signedRequestSchema,
+}) satisfies z.ZodType<Schemas["TaskFileUpload"]>;
+
 export const taskSchema = z.object({
   id: z.string(),
   number: z.number(),
@@ -518,6 +532,7 @@ export const taskSchema = z.object({
   closed_at: z.string().nullable(),
   version: z.number(),
   conversation_ids: z.array(z.string()),
+  files: z.array(taskFileSchema),
 }) satisfies z.ZodType<Schemas["Task"]>;
 
 export const taskPageSchema = z.object({
@@ -530,12 +545,15 @@ export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfi
 export const taskActivitySchema = z.object({
   id: z.string(),
   actor_id: z.string().nullable(),
-  kind: z.enum(["comment", "created", "status", "assignee", "queue", "priority", "edited", "linked", "unlinked"]),
+  kind: z.enum(["comment", "created", "status", "assignee", "queue", "priority", "edited", "linked", "unlinked", "files"]),
   body: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   fields: z.array(z.enum(["title", "body"])).optional(),
   conversation_id: z.string().optional(),
+  files: z.array(taskFileSchema).optional(),
+  files_added: z.number().optional(),
+  files_removed: z.number().optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["TaskActivity"]>;
 

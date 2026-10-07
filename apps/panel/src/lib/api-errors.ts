@@ -124,6 +124,10 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.notifyBotBusy") };
     case "notify_bot_revoked":
       return { message: t("errors.notifyBotRevoked") };
+    case "file_rejected":
+      return { message: t("errors.fileRejected") };
+    case "scan_unavailable":
+      return { message: t("errors.scanUnavailable") };
     case "too_many_tokens":
       return { message: t("errors.tooManyTokens") };
     case "invalid_access_token":
