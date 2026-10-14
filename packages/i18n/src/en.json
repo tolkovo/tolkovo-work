@@ -1411,6 +1411,8 @@
     "status": {
       "open": "New",
       "in_progress": "In progress",
+      "review": "In review",
+      "verified": "Verified, awaiting release",
       "done": "Done",
       "canceled": "Won't do"
     },
@@ -1450,6 +1452,11 @@
     "cancel": "Cancel",
     "noBody": "No description.",
     "take": "Take it",
+    "next": {
+      "in_progress": "Send to review",
+      "review": "Verified",
+      "verified": "Released to production"
+    },
     "created": "Created",
     "closed": "Closed",
     "delete": "Delete task",

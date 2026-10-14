@@ -86,7 +86,22 @@ func TestTasks_Lifecycle(t *testing.T) {
 	if rec := op.do(http.MethodPost, base+"/activity", map[string]any{"body": "Сертификат истекает в пятницу"}); rec.Code != http.StatusCreated {
 		t.Fatalf("comment: %d %s", rec.Code, rec.Body)
 	}
-	done := decode[oapi.Task](t, op.do(http.MethodPut, base, taskUpdate(taken, func(b map[string]any) { b["status"] = "done" })))
+	// Checked on the dev server, then waiting for production: the task stays
+	// open and with its assignee until it is done.
+	review := decode[oapi.Task](t, op.do(http.MethodPut, base, taskUpdate(taken, func(b map[string]any) { b["status"] = "review" })))
+	if review.Status != oapi.TaskStatusReview || review.ClosedAt != nil || review.AssigneeId == nil || *review.AssigneeId != in.so.User.Id {
+		t.Fatalf("review: %+v", review)
+	}
+	verified := decode[oapi.Task](t, op.do(http.MethodPut, base, taskUpdate(review, func(b map[string]any) { b["status"] = "verified" })))
+	if verified.Status != oapi.TaskStatusVerified || verified.ClosedAt != nil {
+		t.Fatalf("verified: %+v", verified)
+	}
+	if page := decode[oapi.TaskPage](t, op.do(http.MethodGet, "/api/v1/tasks?state=open&status=verified", nil)); len(page.Items) != 1 {
+		t.Fatalf("verified among open: %+v", page)
+	}
+	wantProblem(t, op.do(http.MethodPut, base, taskUpdate(verified, func(b map[string]any) { b["status"] = "deployed" })),
+		http.StatusBadRequest, "invalid_request")
+	done := decode[oapi.Task](t, op.do(http.MethodPut, base, taskUpdate(verified, func(b map[string]any) { b["status"] = "done" })))
 	if done.Status != oapi.TaskStatusDone || done.ClosedAt == nil {
 		t.Fatalf("done: %+v", done)
 	}
@@ -95,8 +110,11 @@ func TestTasks_Lifecycle(t *testing.T) {
 	for _, a := range feed {
 		kinds = append(kinds, string(a.Kind))
 	}
-	if got := strings.Join(kinds, ","); got != "created,priority,assignee,status,comment,status" {
+	if got := strings.Join(kinds, ","); got != "created,priority,assignee,status,comment,status,status,status" {
 		t.Fatalf("feed: %s", got)
+	}
+	if st := feed[6]; st.From == nil || *st.From != "review" || st.To == nil || *st.To != "verified" {
+		t.Fatalf("verified line: %+v", st)
 	}
 	if st := feed[3]; st.From == nil || *st.From != "open" || st.To == nil || *st.To != "in_progress" {
 		t.Fatalf("status line: %+v", st)
@@ -105,7 +123,7 @@ func TestTasks_Lifecycle(t *testing.T) {
 		t.Fatalf("comment line: %+v", c)
 	}
 	// A long feed shows its latest 500 lines: 500 older comments go before
-	// the six lines above, and the last of those is still there.
+	// the eight lines above, and the last of those is still there.
 	e.ownerExec(`INSERT INTO task_activity (id, workspace_id, task_id, kind, body, created_at)
 		SELECT ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid, workspace_id, id, 'comment', 'старый', created_at
 		FROM tasks, generate_series(1, 500) n WHERE id = $1`, task.Id)
@@ -270,7 +288,12 @@ func TestTasks_FromConversation(t *testing.T) {
 		t.Fatalf("job: %v", err)
 	}
 	base := "/api/v1/tasks/" + task.Id.String()
-	done := decode[oapi.Task](t, c.do(http.MethodPut, base, taskUpdate(task, func(b map[string]any) { b["status"] = "done" })))
+	// In review on the dev server the fix is not out yet: the conversation waits.
+	review := decode[oapi.Task](t, c.do(http.MethodPut, base, taskUpdate(task, func(b map[string]any) { b["status"] = "review" })))
+	if cv := conversation(); !cv.AwaitingFix || lines("task_closed") != 0 {
+		t.Fatalf("review: %+v", cv)
+	}
+	done := decode[oapi.Task](t, c.do(http.MethodPut, base, taskUpdate(review, func(b map[string]any) { b["status"] = "done" })))
 	if cv := conversation(); cv.Status != oapi.ConversationStatusPending || !cv.AwaitingFix || lines("task_closed") != 1 {
 		t.Fatalf("done with an open issue: %+v", cv)
 	}

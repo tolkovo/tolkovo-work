@@ -5407,8 +5407,11 @@ components:
 
     TaskStatus:
       type: string
-      enum: [open, in_progress, done, canceled]
-      description: '`open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.'
+      enum: [open, in_progress, review, verified, done, canceled]
+      description: |
+        `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+        `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+        `review` and `verified` are open statuses. Any status may follow any other.
 
     TaskButton:
       type: string

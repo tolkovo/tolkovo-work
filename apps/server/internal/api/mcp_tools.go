@@ -42,7 +42,7 @@ func argErr(format string, a ...any) error { return &toolArgError{msg: fmt.Sprin
 
 var (
 	numberProp   = map[string]any{"type": "integer", "minimum": 1, "description": "The task number, e.g. 42 for #42."}
-	statusProp   = map[string]any{"type": "string", "enum": []string{"open", "in_progress", "done", "canceled"}}
+	statusProp   = map[string]any{"type": "string", "enum": tasks.Statuses}
 	priorityProp = map[string]any{"type": "string", "enum": []string{"low", "normal", "high", "urgent"}}
 	assigneeProp = map[string]any{"type": "string", "description": `"me", "none" or a member id.`}
 	queueProp    = map[string]any{"type": "string", "description": `"none" or a queue id from list_queues.`}
@@ -134,7 +134,8 @@ var mcpTools = []mcpTool{
 	{
 		Name: "update_task", Title: "Change a task",
 		Description: "Changes only the fields given. Putting a task in_progress without an assignee gives it to you; " +
-			"done or canceled closes it, and its waiting conversations go back to their operators.",
+			"review: on the dev server for checking; verified: checked, waits for production; " +
+			"done (in production) or canceled closes it, and its waiting conversations go back to their operators.",
 		InputSchema: object([]string{"number"}, map[string]any{
 			"number":   numberProp,
 			"title":    map[string]any{"type": "string", "minLength": 1, "maxLength": tasks.MaxTitle},

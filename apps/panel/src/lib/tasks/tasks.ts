@@ -5,7 +5,7 @@ import type { Task, TaskFilter, TaskPriority, TaskStatus, TaskUpdate } from "@to
 export const TASK_VIEWS = ["mine", "open", "unassigned", "closed", "all"] as const;
 export type TaskView = (typeof TASK_VIEWS)[number];
 
-export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "done", "canceled"];
+export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "verified", "done", "canceled"];
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["urgent", "high", "normal", "low"];
 
 export type TasksSearch = {
@@ -61,6 +61,12 @@ export function taskFilter({ view = "mine", queue, topic, tag, q }: TasksSearch)
 export function isClosed(status: TaskStatus): boolean {
   return status === "done" || status === "canceled";
 }
+
+/**
+ * The step the panel suggests after a status: to review on the dev server, verified, then done
+ * in production. Only a hint: any status can be picked.
+ */
+export const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = { in_progress: "review", review: "verified", verified: "done" };
 
 /** The body of PUT /tasks/{id}: the task as read, with the change applied. */
 export function taskUpdate(task: Task, change: Partial<Omit<TaskUpdate, "version">> = {}): TaskUpdate {

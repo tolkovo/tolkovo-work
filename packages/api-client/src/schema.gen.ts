@@ -3479,10 +3479,12 @@ export interface components {
             token: string;
         };
         /**
-         * @description `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+         * @description `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+         *     `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+         *     `review` and `verified` are open statuses. Any status may follow any other.
          * @enum {string}
          */
-        TaskStatus: "open" | "in_progress" | "done" | "canceled";
+        TaskStatus: "open" | "in_progress" | "review" | "verified" | "done" | "canceled";
         /**
          * @description Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
          *     connected) or both.

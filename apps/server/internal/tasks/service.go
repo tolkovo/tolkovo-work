@@ -29,16 +29,19 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 )
 
-// Statuses of a task (migration 00029).
+// Statuses of a task (migrations 00029, 00038). Review and verified are open:
+// checked on the dev server, then waiting for production; done is in production.
 const (
 	StatusOpen       = "open"
 	StatusInProgress = "in_progress"
+	StatusReview     = "review"
+	StatusVerified   = "verified"
 	StatusDone       = "done"
 	StatusCanceled   = "canceled"
 )
 
 // Statuses lists every status in the order of the board.
-var Statuses = []string{StatusOpen, StatusInProgress, StatusDone, StatusCanceled}
+var Statuses = []string{StatusOpen, StatusInProgress, StatusReview, StatusVerified, StatusDone, StatusCanceled}
 
 // Priorities of a task, lowest first.
 var Priorities = []string{"low", "normal", "high", "urgent"}

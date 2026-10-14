@@ -528,7 +528,7 @@ export const notificationSettingsSchema = z.object({
 }) satisfies z.ZodType<Schemas["NotificationSettings"]>;
 
 /** The tasks section (ADR-0015). */
-export const taskStatusSchema = z.enum(["open", "in_progress", "done", "canceled"]) satisfies z.ZodType<Schemas["TaskStatus"]>;
+export const taskStatusSchema = z.enum(["open", "in_progress", "review", "verified", "done", "canceled"]) satisfies z.ZodType<Schemas["TaskStatus"]>;
 export const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]) satisfies z.ZodType<Schemas["TaskPriority"]>;
 export const taskButtonSchema = z.enum(["tasks", "github", "both"]) satisfies z.ZodType<Schemas["TaskButton"]>;
 

@@ -7,6 +7,8 @@ import { useTranslation } from "react-i18next";
 const STATUS_CLASS: Record<TaskStatus, string> = {
   open: "bg-lamp-soft text-ink",
   in_progress: "bg-teal-soft text-ink",
+  review: "bg-ai-soft text-ai-ink",
+  verified: "bg-teal-soft text-teal-ink",
   done: "bg-sunk text-ink-2",
   canceled: "bg-sunk text-ink-3 line-through",
 };

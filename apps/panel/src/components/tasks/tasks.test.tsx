@@ -94,6 +94,37 @@ describe("the tasks section", () => {
     expect(screen.queryByRole("button", { name: "Удалить задачу" })).not.toBeInTheDocument();
   });
 
+  it("leads a task through review on dev and verified to done in production", async () => {
+    const user = userEvent.setup();
+    const { api, state } = server(member, {
+      "PUT /tasks/t1": async (request) => {
+        const body = (await request.json()) as Task;
+        state.task = { ...state.task, ...body, version: state.task.version + 1 };
+        return json(200, state.task);
+      },
+    });
+    state.task = task("t1", { status: "review", assignee_id: admin.user.id });
+    renderApp("/tasks/t1", { api });
+    expect(await screen.findByRole("heading", { name: /З-12/ }, firstLook)).toBeInTheDocument();
+
+    // Taking a task in review keeps it in review.
+    await user.click(screen.getByRole("button", { name: "Взять в работу" }));
+    await waitFor(() => expect(calls(api, "PUT", "/tasks/t1")).toHaveLength(1));
+    expect(calls(api, "PUT", "/tasks/t1")[0]?.body).toMatchObject({ status: "review", assignee_id: member.user.id });
+
+    // The next step is one button; the last one closes the task.
+    for (const [button, status] of [
+      ["Проверено", "verified"],
+      ["Выкатили в прод", "done"],
+    ] as const) {
+      await user.click(await screen.findByRole("button", { name: button }));
+      await waitFor(() => expect(calls(api, "PUT", "/tasks/t1").at(-1)?.body).toMatchObject({ status }));
+    }
+    await waitFor(() => expect(screen.getByLabelText("Статус")).toHaveValue("done"));
+    expect(screen.queryByRole("button", { name: /Проверено|Выкатили в прод|Отправить на проверку/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Проверено, ждёт прода" })).toBeInTheDocument();
+  });
+
   it("creates a task by hand in a queue", async () => {
     const user = userEvent.setup();
     const { api } = server(member, {

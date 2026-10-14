@@ -1019,6 +1019,8 @@ const (
 	TaskStatusDone       TaskStatus = "done"
 	TaskStatusInProgress TaskStatus = "in_progress"
 	TaskStatusOpen       TaskStatus = "open"
+	TaskStatusReview     TaskStatus = "review"
+	TaskStatusVerified   TaskStatus = "verified"
 )
 
 // Valid indicates whether the value is a known member of the TaskStatus enum.
@@ -1031,6 +1033,10 @@ func (e TaskStatus) Valid() bool {
 	case TaskStatusInProgress:
 		return true
 	case TaskStatusOpen:
+		return true
+	case TaskStatusReview:
+		return true
+	case TaskStatusVerified:
 		return true
 	default:
 		return false
@@ -2710,7 +2716,9 @@ type Task struct {
 	Priority TaskPriority `json:"priority"`
 	QueueId  *uuid.UUID   `json:"queue_id"`
 
-	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
 	Status TaskStatus `json:"status"`
 
 	// TagIds Tags of tasks (`GET /task-tags`), in the order they were put on; in lists too.
@@ -2920,7 +2928,9 @@ type TaskSettingsView struct {
 	Settings     TaskSettings `json:"settings"`
 }
 
-// TaskStatus `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+// TaskStatus `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+// `review` and `verified` are open statuses. Any status may follow any other.
 type TaskStatus string
 
 // TaskSummary defines model for TaskSummary.
@@ -2945,7 +2955,9 @@ type TaskUpdate struct {
 	Priority   TaskPriority `json:"priority"`
 	QueueId    *uuid.UUID   `json:"queue_id"`
 
-	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
 	Status TaskStatus `json:"status"`
 
 	// TagIds Replace the task's tags, unique; absent keeps them.

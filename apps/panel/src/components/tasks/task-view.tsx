@@ -22,7 +22,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
-import { TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
+import { NEXT_STATUS, TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
@@ -126,11 +126,23 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
   const canManage = useCan("tasks.manage");
   const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId(), topic: useId() };
   const me = session?.user.id;
+  const next = NEXT_STATUS[task.status];
+  const taking = me !== undefined && task.assignee_id !== me && !isClosed(task.status);
   return (
     <aside aria-label={t("tasks.fieldsLabel")} className="flex flex-col gap-3">
-      {me && task.assignee_id !== me && !isClosed(task.status) && (
-        <Button variant="primary" disabled={disabled} onClick={() => onChange({ assignee_id: me, status: "in_progress" })}>
+      {taking && (
+        // Taking a task in review or verified keeps its step.
+        <Button
+          variant="primary"
+          disabled={disabled}
+          onClick={() => onChange({ assignee_id: me, status: task.status === "open" ? "in_progress" : task.status })}
+        >
           {t("tasks.take")}
+        </Button>
+      )}
+      {next && (
+        <Button variant={taking ? "secondary" : "primary"} disabled={disabled} onClick={() => onChange({ status: next })}>
+          {t(`tasks.next.${task.status as "in_progress" | "review" | "verified"}`)}
         </Button>
       )}
       <div className="flex flex-col gap-1.5">
