@@ -29,6 +29,7 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   closed_at: null,
   version: 3,
   conversation_ids: [],
+  tag_ids: [],
   files: [],
   ...patch,
 });
@@ -142,6 +143,58 @@ describe("the tasks section", () => {
     await user.click(screen.getByRole("button", { name: "Создать задачу" }));
     await waitFor(() => expect(calls(api, "POST", "/tasks")).toHaveLength(1));
     expect(calls(api, "POST", "/tasks")[0]?.body).toMatchObject({ title: "Не грузится список моделей", topic_id: crm, queue_id: null });
+  });
+
+  it("tags a task from the picker, filters by a tag and names the change in the feed", async () => {
+    const user = userEvent.setup();
+    const design = { id: "0199a000-0000-7000-8000-0000000000d1", name: "Дизайн", color: "violet" };
+    const ui = { id: "0199a000-0000-7000-8000-0000000000d2", name: "Интерфейс", color: "gray" };
+    const { api, state } = server(member, {
+      "GET /task-tags": () => json(200, { items: [design, ui] }),
+      "GET /tasks/t1/activity": () =>
+        json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "tags", tags_added: [design.id], tags_removed: [], created_at: "2026-10-06T10:00:00Z" }] }),
+      "PUT /tasks/t1": async (request) => {
+        const body = (await request.json()) as Task;
+        state.task = { ...state.task, ...body, version: state.task.version + 1 };
+        return json(200, state.task);
+      },
+    });
+    state.task = task("t1", { tag_ids: [design.id] });
+    renderApp("/tasks?view=open", { api });
+    const row = await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }, firstLook);
+    expect(within(row).getByText("Дизайн")).toBeInTheDocument();
+
+    // The filter goes to the API as the tag id.
+    await user.selectOptions(screen.getByLabelText("Тег задачи"), ui.id);
+    await waitFor(() => expect(api.fetch.mock.calls.some(([r]) => new URL(r.url).searchParams.get("tag") === ui.id)).toBe(true));
+
+    await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }));
+    expect(await screen.findByText(/Теги добавлены: Дизайн/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Тег" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Интерфейс" }));
+    await waitFor(() => expect(calls(api, "PUT", "/tasks/t1")).toHaveLength(1));
+    expect(calls(api, "PUT", "/tasks/t1")[0]?.body).toMatchObject({ version: 3, tag_ids: [design.id, ui.id] });
+  });
+
+  it("lets admins rename a tag of tasks in the settings", async () => {
+    const user = userEvent.setup();
+    const design = { id: "0199a000-0000-7000-8000-0000000000d1", name: "Дизайн", color: "violet" };
+    const { api } = server(admin, {
+      "GET /task-tags": () => json(200, { items: [design] }),
+      "GET /task-settings/telegram-bot": () => json(200, { bot: null, encryption_available: true }),
+      [`PUT /task-tags/${design.id}`]: () => json(409, { type: "about:blank", title: "x", status: 409, code: "tag_exists" }),
+    });
+    renderApp("/settings/tasks", { api });
+    const tags = await screen.findByRole("region", { name: "Теги задач" }, firstLook);
+    await user.click(await within(tags).findByRole("button", { name: "Изменить" }));
+    const name = within(tags).getByLabelText("Название тега");
+    await user.clear(name);
+    await user.type(name, "Интерфейс");
+    await user.selectOptions(within(tags).getByLabelText("Цвет"), "teal");
+    await user.click(within(tags).getByRole("button", { name: "Сохранить тег" }));
+    await waitFor(() => expect(calls(api, "PUT", `/task-tags/${design.id}`)).toHaveLength(1));
+    expect(calls(api, "PUT", `/task-tags/${design.id}`)[0]?.body).toEqual({ name: "Интерфейс", color: "teal" });
+    expect(await within(tags).findByText("Тег с таким названием уже есть.")).toBeInTheDocument();
   });
 
   it("lets admins connect the Telegram bot for notifications", async () => {

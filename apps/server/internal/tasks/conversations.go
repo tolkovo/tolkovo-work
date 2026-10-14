@@ -45,7 +45,10 @@ func (s *Service) Link(ctx context.Context, workspaceID, actorID, taskID, conver
 		if err != nil {
 			return err
 		}
-		out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID)
+		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
+			return err
+		}
+		out.TagIDs, err = taskTagIDs(ctx, q, workspaceID, taskID)
 		return err
 	})
 	if err != nil {
@@ -174,6 +177,9 @@ func (s *Service) ConversationTasks(ctx context.Context, workspaceID, conversati
 		}
 		for _, r := range rows {
 			out.Items = append(out.Items, taskFrom(r))
+		}
+		if err := fillTags(ctx, q, workspaceID, out.Items); err != nil {
+			return err
 		}
 		got, err := q.DoneTask(ctx, store.DoneTaskParams{WorkspaceID: workspaceID, ConversationID: conversationID})
 		if err != nil || len(got) == 0 {

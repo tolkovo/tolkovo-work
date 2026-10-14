@@ -40,6 +40,8 @@ type Task struct {
 	ConversationIDs []uuid.UUID
 	// Files of the description; filled for one task, not in lists.
 	Files []File
+	// TagIDs are the task's tags (Tags), in the order they were put on.
+	TagIDs []uuid.UUID
 }
 
 // NewTask is a task to create.
@@ -58,6 +60,8 @@ type NewTask struct {
 	ConversationID *uuid.UUID
 	// FileIDs are the creator's uploaded files for the description.
 	FileIDs []uuid.UUID
+	// TagIDs are tags of the workspace to put on the task.
+	TagIDs []uuid.UUID
 }
 
 // Create records a task by actorID. A task from a conversation is linked
@@ -75,6 +79,9 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 		in.Priority = PriorityNormal
 	}
 	if err := validPriority(in.Priority); err != nil {
+		return Task{}, err
+	}
+	if err := validTagIDs(in.TagIDs); err != nil {
 		return Task{}, err
 	}
 	if in.ConversationID != nil && s.opts.Conversations == nil {
@@ -149,6 +156,10 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 	if _, err := s.addActivity(ctx, q, row, actor, "created", nil, nil); err != nil {
 		return Task{}, err
 	}
+	out := taskFrom(row)
+	if out.TagIDs, _, err = s.setTags(ctx, q, row, in.TagIDs); err != nil {
+		return Task{}, err
+	}
 	var actorID uuid.UUID // uuid.Nil for the bot: nobody is left out of the notices
 	if actor != nil {
 		actorID = *actor
@@ -156,7 +167,6 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 			return Task{}, err
 		}
 	}
-	out := taskFrom(row)
 	if out.Files, _, err = taskFiles(ctx, q, workspaceID, id); err != nil {
 		return Task{}, err
 	}
@@ -213,7 +223,10 @@ func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task,
 		if err != nil {
 			return err
 		}
-		out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID)
+		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
+			return err
+		}
+		out.TagIDs, err = taskTagIDs(ctx, q, workspaceID, taskID)
 		return err
 	})
 	if err != nil {
@@ -248,6 +261,8 @@ type Filter struct {
 	NoQueue    bool
 	TopicID    *uuid.UUID
 	NoTopic    bool
+	// TagID keeps the tasks with this tag.
+	TagID *uuid.UUID
 	// Query matches the title, or the number exactly.
 	Query string
 	// Before is the number to continue below; 0 starts from the newest.
@@ -287,10 +302,11 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	}
 	out := Page{Items: []Task{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		rows, err := store.New(tx).ListTasks(ctx, store.ListTasksParams{
+		q := store.New(tx)
+		rows, err := q.ListTasks(ctx, store.ListTasksParams{
 			WorkspaceID: workspaceID, BeforeNumber: f.Before, OpenOnly: f.State == "open", ClosedOnly: f.State == "closed",
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic, Status: status,
-			Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
+			TagID: f.TagID, Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 		})
 		if err != nil {
 			return err
@@ -302,7 +318,7 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 			}
 			out.Items = append(out.Items, taskFrom(r))
 		}
-		return nil
+		return fillTags(ctx, q, workspaceID, out.Items)
 	})
 	if err != nil {
 		return Page{}, dbError(err, "list tasks")
@@ -334,6 +350,9 @@ type Update struct {
 	QueueID    *uuid.UUID
 	TopicID    *uuid.UUID
 	AssigneeID *uuid.UUID
+	// TagIDs replace the task's tags; nil keeps them, for clients that do
+	// not know tags.
+	TagIDs *[]uuid.UUID
 }
 
 // Update changes a task by actorID. Version must be the one the caller
@@ -354,6 +373,11 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 	}
 	if err := validPriority(in.Priority); err != nil {
 		return Task{}, err
+	}
+	if in.TagIDs != nil {
+		if err := validTagIDs(*in.TagIDs); err != nil {
+			return Task{}, err
+		}
 	}
 	var out Task
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
@@ -384,6 +408,18 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if err != nil {
 			return err
 		}
+		if in.TagIDs != nil {
+			added, removed, err := s.setTags(ctx, q, row, *in.TagIDs)
+			if err != nil {
+				return err
+			}
+			if len(added)+len(removed) > 0 {
+				meta := map[string]any{"tags_added": added, "tags_removed": removed}
+				if _, err := s.addActivity(ctx, q, row, &actorID, "tags", nil, meta); err != nil {
+					return err
+				}
+			}
+		}
 		if err := s.recordChanges(ctx, tx, q, cur, row, actorID); err != nil {
 			return err
 		}
@@ -392,7 +428,10 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if err != nil {
 			return err
 		}
-		out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID)
+		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
+			return err
+		}
+		out.TagIDs, err = taskTagIDs(ctx, q, workspaceID, taskID)
 		return err
 	})
 	if err != nil {
@@ -525,7 +564,7 @@ type Activity struct {
 	ID      uuid.UUID
 	ActorID *uuid.UUID
 	// Kind is comment, created, status, assignee, queue, priority, topic,
-	// edited, linked, unlinked or files.
+	// edited, linked, unlinked, files or tags.
 	Kind string
 	// Body is the text of a comment.
 	Body string
@@ -543,7 +582,11 @@ type Activity struct {
 	// the description or took out of it.
 	FilesAdded   int
 	FilesRemoved int
-	CreatedAt    time.Time
+	// TagsAdded and TagsRemoved are the tags a "tags" line put on the task
+	// and took off it.
+	TagsAdded   []uuid.UUID
+	TagsRemoved []uuid.UUID
+	CreatedAt   time.Time
 }
 
 // Activity returns the feed of a task, oldest first.
@@ -716,15 +759,18 @@ func activityFrom(r store.TaskActivity) Activity {
 		out.Body = *r.Body
 	}
 	var meta struct {
-		From           *string    `json:"from"`
-		To             *string    `json:"to"`
-		Fields         []string   `json:"fields"`
-		ConversationID *uuid.UUID `json:"conversation_id"`
-		Added          int        `json:"added"`
-		Removed        int        `json:"removed"`
+		From           *string     `json:"from"`
+		To             *string     `json:"to"`
+		Fields         []string    `json:"fields"`
+		ConversationID *uuid.UUID  `json:"conversation_id"`
+		Added          int         `json:"added"`
+		Removed        int         `json:"removed"`
+		TagsAdded      []uuid.UUID `json:"tags_added"`
+		TagsRemoved    []uuid.UUID `json:"tags_removed"`
 	}
 	if json.Unmarshal(r.Meta, &meta) == nil {
 		out.FilesAdded, out.FilesRemoved = meta.Added, meta.Removed
+		out.TagsAdded, out.TagsRemoved = meta.TagsAdded, meta.TagsRemoved
 		if meta.From != nil {
 			out.From = *meta.From
 		}

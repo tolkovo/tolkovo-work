@@ -1,5 +1,5 @@
 import type { Task } from "@tolkovo/api-client";
-import { useTaskQueues, useTasks, useTaskSummary, useTopics } from "@tolkovo/api-client/react";
+import { useTaskQueues, useTasks, useTaskSummary, useTaskTags, useTopics } from "@tolkovo/api-client/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Button, Select, Skeleton, cn } from "@tolkovo/ui";
 import { Plus, Search } from "lucide-react";
@@ -10,6 +10,7 @@ import { TASK_VIEWS, taskFilter, type TasksSearch } from "../../lib/tasks/tasks"
 import { useMemberNames } from "../inbox/presence";
 import { TopicPill, useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge } from "./task-bits";
+import { TaskTagDots } from "./task-tags";
 
 type TaskListProps = {
   search: TasksSearch;
@@ -17,7 +18,7 @@ type TaskListProps = {
   className?: string;
 };
 
-/** The left column of the tasks section: views, the queue and topic filters, search and the list. */
+/** The left column of the tasks section: views, the queue, topic and tag filters, search and the list. */
 export function TaskList({ search, selectedId, className }: TaskListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -25,8 +26,10 @@ export function TaskList({ search, selectedId, className }: TaskListProps) {
   const { data: mine } = useTaskSummary();
   const { data: queues } = useTaskQueues();
   const { data: topics } = useTopics();
+  const { data: tags } = useTaskTags();
   const queueId = useId();
   const topicId = useId();
+  const tagId = useId();
   const searchId = useId();
   const [query, setQuery] = useState(search.q ?? "");
   // The search goes to the URL after a pause in typing, so every letter is not a request.
@@ -128,6 +131,28 @@ export function TaskList({ search, selectedId, className }: TaskListProps) {
             </Select>
           </div>
         )}
+        {(tags?.length ?? 0) > 0 && (
+          <div>
+            <label htmlFor={tagId} className="sr-only">
+              {t("tasks.tags.filter")}
+            </label>
+            <Select
+              id={tagId}
+              value={search.tag ?? ""}
+              onChange={(e) => {
+                const tag = e.currentTarget.value || undefined;
+                void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, tag }) });
+              }}
+            >
+              <option value="">{t("tasks.tags.all")}</option>
+              {tags?.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
       </div>
       <ListBody search={search} selectedId={selectedId} />
     </section>
@@ -211,6 +236,7 @@ function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; 
         <span className="min-w-0 truncate">{assignee}</span>
         {queue && <span className="min-w-0 truncate text-ink-3">· {queue}</span>}
         {topic && <TopicPill topic={topic} />}
+        <TaskTagDots ids={task.tag_ids} />
       </span>
     </Link>
   );

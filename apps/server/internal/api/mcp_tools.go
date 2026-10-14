@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 )
@@ -45,6 +46,11 @@ var (
 	priorityProp = map[string]any{"type": "string", "enum": []string{"low", "normal", "high", "urgent"}}
 	assigneeProp = map[string]any{"type": "string", "description": `"me", "none" or a member id.`}
 	queueProp    = map[string]any{"type": "string", "description": `"none" or a queue id from list_queues.`}
+	tagsProp     = map[string]any{
+		"type": "array", "maxItems": tasks.MaxTaskTags, "uniqueItems": true,
+		"items":       map[string]any{"type": "string", "minLength": 1, "maxLength": tasks.MaxTagName},
+		"description": "Names of tags from list_tags, what the task is about (design, interface…).",
+	}
 )
 
 func object(required []string, props map[string]any) map[string]any {
@@ -64,6 +70,7 @@ var mcpTools = []mcpTool{
 			"status":   statusProp,
 			"assignee": map[string]any{"type": "string", "description": `"me" (default), "none", "anyone" or a member id.`},
 			"queue":    queueProp,
+			"tag":      map[string]any{"type": "string", "maxLength": tasks.MaxTagName, "description": "Only tasks with this tag: its name from list_tags."},
 			"query":    map[string]any{"type": "string", "maxLength": 100, "description": "Part of the title, or a task number."},
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
 			"cursor":   map[string]any{"type": "string", "description": "next_cursor of the previous page."},
@@ -86,6 +93,23 @@ var mcpTools = []mcpTool{
 		perm:        authz.TasksView, run: toolListQueues,
 	},
 	{
+		Name: "list_tags", Title: "List tags",
+		Description: "Tags of tasks: what a task is about (design, interface, backend…).",
+		InputSchema: object(nil, map[string]any{}),
+		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		perm:        authz.TasksView, run: toolListTags,
+	},
+	{
+		Name: "create_tag", Title: "Create a tag",
+		Description: "Adds a tag of tasks when none of list_tags fits. Every member sees it, so prefer an existing one.",
+		InputSchema: object([]string{"name"}, map[string]any{
+			"name":  map[string]any{"type": "string", "minLength": 1, "maxLength": tasks.MaxTagName},
+			"color": map[string]any{"type": "string", "enum": conversations.TagColors, "default": "gray"},
+		}),
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
+		perm:        authz.TasksEdit, run: toolCreateTag,
+	},
+	{
 		Name: "read_file", Title: "Read a file of a task",
 		Description: "The content of a file from get_task: a picture you can see (up to 5 MB) or a text file (up to 256 KB); " +
 			"for other files, a link to download it within 15 minutes.",
@@ -102,6 +126,7 @@ var mcpTools = []mcpTool{
 			"priority": priorityProp,
 			"assignee": assigneeProp,
 			"queue":    queueProp,
+			"tags":     tagsProp,
 		}),
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
 		perm:        authz.TasksEdit, run: toolCreateTask,
@@ -118,6 +143,7 @@ var mcpTools = []mcpTool{
 			"priority": priorityProp,
 			"assignee": assigneeProp,
 			"queue":    queueProp,
+			"tags":     withDescription(tagsProp, "Names of tags from list_tags; replace the task's tags, [] takes them all off."),
 		}),
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		perm:        authz.TasksEdit, run: toolUpdateTask,
@@ -179,6 +205,8 @@ func (s *server) toolMessage(err error) (string, bool) {
 		return "the tasks section is turned off in this workspace", true
 	case errors.Is(err, tasks.ErrMember):
 		return "the assignee is not an active member of the workspace", true
+	case errors.Is(err, tasks.ErrTagTaken):
+		return "a tag with this name exists; use it", true
 	case errors.Is(err, tasks.ErrInvalid):
 		return strings.TrimPrefix(err.Error(), tasks.ErrInvalid.Error()+": "), true
 	case errors.As(err, new(*tasks.FileError)):
@@ -238,6 +266,7 @@ type mcpTask struct {
 	Assignee  *mcpPerson `json:"assignee"`
 	Queue     *mcpQueue  `json:"queue"`
 	Topic     *mcpQueue  `json:"topic"` // what customers asked about
+	Tags      []string   `json:"tags"`  // what the task is about
 	Body      *string    `json:"body,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
@@ -282,18 +311,22 @@ type mcpActivity struct {
 	From  string     `json:"from,omitempty"`
 	To    string     `json:"to,omitempty"`
 	Files []mcpFile  `json:"files,omitempty"`
+	// Added and Removed are the tags a "tags" line put on and took off.
+	Added   []string `json:"added,omitempty"`
+	Removed []string `json:"removed,omitempty"`
 }
 
-// names resolves members, queues and topics for the answers.
+// names resolves members, queues, topics and tags for the answers.
 type names struct {
 	p      authz.Principal
 	people map[uuid.UUID]string
 	queues map[uuid.UUID]string
 	topics map[uuid.UUID]string
+	tags   map[uuid.UUID]string
 }
 
 func (s *server) names(r *http.Request, p authz.Principal) (names, error) {
-	n := names{p: p, people: map[uuid.UUID]string{}, queues: map[uuid.UUID]string{}, topics: map[uuid.UUID]string{}}
+	n := names{p: p, people: map[uuid.UUID]string{}, queues: map[uuid.UUID]string{}, topics: map[uuid.UUID]string{}, tags: map[uuid.UUID]string{}}
 	members, err := s.tenancy.Members(r.Context(), p.WorkspaceID)
 	if err != nil {
 		return n, err
@@ -315,6 +348,13 @@ func (s *server) names(r *http.Request, p authz.Principal) (names, error) {
 	for _, t := range topics {
 		n.topics[t.ID] = t.Name
 	}
+	tags, err := s.tasks.Tags(r.Context(), p.WorkspaceID)
+	if err != nil {
+		return n, err
+	}
+	for _, t := range tags {
+		n.tags[t.ID] = t.Name
+	}
 	return n, nil
 }
 
@@ -329,7 +369,10 @@ func (n names) task(t tasks.Task, full bool) mcpTask {
 	out := mcpTask{
 		Number: t.Number, ID: t.ID, Title: t.Title, Status: t.Status, Priority: t.Priority,
 		Assignee: n.person(t.AssigneeID), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt,
-		LinkedConversations: len(t.ConversationIDs),
+		LinkedConversations: len(t.ConversationIDs), Tags: make([]string, 0, len(t.TagIDs)),
+	}
+	for _, id := range t.TagIDs {
+		out.Tags = append(out.Tags, nameOf(n.tags, id.String()))
 	}
 	if t.QueueID != nil {
 		out.Queue = &mcpQueue{ID: *t.QueueID, Name: n.queues[*t.QueueID]}
@@ -350,6 +393,7 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 		Status   string `json:"status"`
 		Assignee string `json:"assignee"`
 		Queue    string `json:"queue"`
+		Tag      string `json:"tag"`
 		Query    string `json:"query"`
 		Limit    int    `json:"limit"`
 		Cursor   string `json:"cursor"`
@@ -386,6 +430,13 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 		return nil, err
 	} else {
 		f.QueueID = q
+	}
+	if in.Tag != "" {
+		ids, err := s.tagIDs(r, p, []string{in.Tag})
+		if err != nil {
+			return nil, err
+		}
+		f.TagID = &ids[0]
 	}
 	if in.Limit < 0 || in.Limit > 50 {
 		return nil, argErr("limit must be 1 to 50")
@@ -457,6 +508,9 @@ func toolGetTask(s *server, r *http.Request, p authz.Principal, raw json.RawMess
 		if a.Kind == "topic" {
 			line.From, line.To = nameOf(n.topics, a.From), nameOf(n.topics, a.To)
 		}
+		if a.Kind == "tags" {
+			line.Added, line.Removed = n.tagNames(a.TagsAdded), n.tagNames(a.TagsRemoved)
+		}
 		out.Activity = append(out.Activity, line)
 	}
 	return out, nil
@@ -507,13 +561,18 @@ func toolListQueues(s *server, r *http.Request, p authz.Principal, raw json.RawM
 
 func toolCreateTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
-		Title    string `json:"title"`
-		Body     string `json:"body"`
-		Priority string `json:"priority"`
-		Assignee string `json:"assignee"`
-		Queue    string `json:"queue"`
+		Title    string   `json:"title"`
+		Body     string   `json:"body"`
+		Priority string   `json:"priority"`
+		Assignee string   `json:"assignee"`
+		Queue    string   `json:"queue"`
+		Tags     []string `json:"tags"`
 	}
 	if err := decodeArgs(raw, &in); err != nil {
+		return nil, err
+	}
+	tagIDs, err := s.tagIDs(r, p, in.Tags)
+	if err != nil {
 		return nil, err
 	}
 	assignee, err := person(p, in.Assignee)
@@ -528,7 +587,7 @@ func toolCreateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		return nil, err
 	}
 	t, err := s.tasks.Create(r.Context(), p.WorkspaceID, p.UserID, tasks.NewTask{
-		Title: in.Title, Body: in.Body, Priority: in.Priority, AssigneeID: assignee, QueueID: queue,
+		Title: in.Title, Body: in.Body, Priority: in.Priority, AssigneeID: assignee, QueueID: queue, TagIDs: tagIDs,
 	})
 	if err != nil {
 		return nil, err
@@ -542,19 +601,28 @@ func toolCreateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 
 func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
-		Number   int64   `json:"number"`
-		Title    *string `json:"title"`
-		Body     *string `json:"body"`
-		Status   *string `json:"status"`
-		Priority *string `json:"priority"`
-		Assignee *string `json:"assignee"`
-		Queue    *string `json:"queue"`
+		Number   int64     `json:"number"`
+		Title    *string   `json:"title"`
+		Body     *string   `json:"body"`
+		Status   *string   `json:"status"`
+		Priority *string   `json:"priority"`
+		Assignee *string   `json:"assignee"`
+		Queue    *string   `json:"queue"`
+		Tags     *[]string `json:"tags"`
 	}
 	if err := decodeArgs(raw, &in); err != nil {
 		return nil, err
 	}
 	var assignee, queue *uuid.UUID
+	var tagIDs *[]uuid.UUID
 	var err error
+	if in.Tags != nil {
+		ids, err := s.tagIDs(r, p, *in.Tags)
+		if err != nil {
+			return nil, err
+		}
+		tagIDs = &ids
+	}
 	if in.Assignee != nil {
 		if assignee, err = person(p, *in.Assignee); err != nil {
 			return nil, err
@@ -578,7 +646,7 @@ func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		}
 		up := tasks.Update{
 			Version: cur.Version, Title: cur.Title, Body: cur.Body, Status: cur.Status, Priority: cur.Priority,
-			QueueID: cur.QueueID, TopicID: cur.TopicID, AssigneeID: cur.AssigneeID,
+			QueueID: cur.QueueID, TopicID: cur.TopicID, AssigneeID: cur.AssigneeID, TagIDs: tagIDs,
 		}
 		if in.Title != nil {
 			up.Title = *in.Title
@@ -734,4 +802,84 @@ func toolAttachFile(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		return nil, err
 	}
 	return map[string]any{"attached": true, "task": t.Number, "file_id": f.ID, "to": "description"}, nil
+}
+
+func withDescription(prop map[string]any, description string) map[string]any {
+	out := make(map[string]any, len(prop))
+	for k, v := range prop {
+		out[k] = v
+	}
+	out["description"] = description
+	return out
+}
+
+func (n names) tagNames(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, nameOf(n.tags, id.String()))
+	}
+	return out
+}
+
+// tagIDs finds tags of tasks by name, ignoring case, as agents call them.
+// An unknown name is told to the model with the names there are.
+func (s *server) tagIDs(r *http.Request, p authz.Principal, wanted []string) ([]uuid.UUID, error) {
+	if len(wanted) == 0 {
+		return []uuid.UUID{}, nil
+	}
+	tags, err := s.tasks.Tags(r.Context(), p.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]uuid.UUID, len(tags))
+	known := make([]string, 0, len(tags))
+	for _, t := range tags {
+		byName[strings.ToLower(t.Name)] = t.ID
+		known = append(known, t.Name)
+	}
+	out := make([]uuid.UUID, 0, len(wanted))
+	for _, w := range wanted {
+		id, ok := byName[strings.ToLower(strings.Join(strings.Fields(w), " "))]
+		if !ok {
+			return nil, argErr("no tag %q; the tags are: %s. Use one of them or create_tag", w, strings.Join(known, ", "))
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func toolListTags(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
+	if err := decodeArgs(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
+	tags, err := s.tasks.Tags(r.Context(), p.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	type tag struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+	out := struct {
+		Tags []tag `json:"tags"`
+	}{Tags: make([]tag, 0, len(tags))}
+	for _, t := range tags {
+		out.Tags = append(out.Tags, tag{Name: t.Name, Color: t.Color})
+	}
+	return out, nil
+}
+
+func toolCreateTag(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
+	var in struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+	if err := decodeArgs(raw, &in); err != nil {
+		return nil, err
+	}
+	t, err := s.tasks.CreateTag(r.Context(), p.WorkspaceID, p.UserID, tasks.TagInput{Name: in.Name, Color: in.Color})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"created": true, "name": t.Name, "color": t.Color}, nil
 }

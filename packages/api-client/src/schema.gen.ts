@@ -2774,6 +2774,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/task-tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tags of tasks, by name
+         * @description What tasks are about: design, interface, backend. A list of its own, apart from the
+         *     tags of conversations (`GET /tags`). Requires `tasks.view`. At most 200, so there are
+         *     no pages.
+         */
+        get: operations["listTaskTags"];
+        put?: never;
+        /**
+         * Add a tag of tasks
+         * @description Any member adds one while tagging a task: requires `tasks.edit`. Names are unique
+         *     without regard to case; a taken name answers `409 tag_exists`.
+         */
+        post: operations["createTaskTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a tag of tasks and change its color
+         * @description Its tasks keep it. Requires `tasks.manage`.
+         */
+        put: operations["updateTaskTag"];
+        post?: never;
+        /**
+         * Delete a tag of tasks
+         * @description It comes off every task. Requires `tasks.manage`.
+         */
+        delete: operations["deleteTaskTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/task-settings/telegram-bot": {
         parameters: {
             query?: never;
@@ -3464,6 +3517,14 @@ export interface components {
             conversation_ids: string[];
             /** @description Files of the description, in the order they came; empty in lists. */
             files: components["schemas"]["TaskFile"][];
+            /** @description Tags of tasks (`GET /task-tags`), in the order they were put on; in lists too. */
+            tag_ids: string[];
+        };
+        TaskTagInput: {
+            /** @description Spaces are collapsed; must contain more than spaces. */
+            name: string;
+            /** @description Absent is `gray`. */
+            color?: components["schemas"]["TagColor"];
         };
         TaskFile: {
             id: string;
@@ -3507,6 +3568,8 @@ export interface components {
             conversation_id?: string | null;
             /** @description Uploaded files (`POST /task-files`) for the description. */
             file_ids?: string[];
+            /** @description Tags of tasks (`GET /task-tags`), unique. */
+            tag_ids?: string[];
         };
         TaskUpdate: {
             /** Format: int32 */
@@ -3518,6 +3581,8 @@ export interface components {
             queue_id: string | null;
             topic_id: string | null;
             assignee_id: string | null;
+            /** @description Replace the task's tags, unique; absent keeps them. */
+            tag_ids?: string[];
         };
         TaskSummary: {
             /**
@@ -3530,7 +3595,7 @@ export interface components {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files";
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags";
             /** @description The text of a comment. */
             body?: string;
             /** @description The value a change moved from (a status, a priority, a member, queue or topic id); empty for none. */
@@ -3547,6 +3612,10 @@ export interface components {
             files_added?: number;
             /** @description On `files` */
             files_removed?: number;
+            /** @description On `tags`, the tags put on the task. */
+            tags_added?: string[];
+            /** @description On `tags`, the tags taken off it. */
+            tags_removed?: string[];
             /** Format: date-time */
             created_at: string;
         };
@@ -8691,6 +8760,8 @@ export interface operations {
                 queue?: string;
                 /** @description `none` or a topic id. */
                 topic?: string;
+                /** @description A tag of tasks (`GET /task-tags`); only the tasks with it. */
+                tag?: string;
                 /** @description Part of the title, or the task number. */
                 q?: string;
                 /** @description Opaque `next_cursor` of the previous page. */
@@ -9197,6 +9268,126 @@ export interface operations {
         };
     };
     deleteTaskQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTaskTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTaskTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTagInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `tag_exists`: a tag with this name exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateTaskTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTagInput"];
+            };
+        };
+        responses: {
+            /** @description The tag. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `tag_exists`: a tag with this name exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteTaskTag: {
         parameters: {
             query?: never;
             header?: never;

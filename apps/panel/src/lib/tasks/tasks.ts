@@ -14,6 +14,8 @@ export type TasksSearch = {
   queue?: string;
   /** A topic id or `none`. */
   topic?: string;
+  /** A tag id of tasks. */
+  tag?: string;
   q?: string;
 };
 
@@ -23,12 +25,13 @@ export function validateTasksSearch(search: Record<string, unknown>): TasksSearc
   if (typeof search.view === "string" && (TASK_VIEWS as readonly string[]).includes(search.view)) out.view = search.view as TaskView;
   if (typeof search.queue === "string" && /^(none|[0-9a-f-]{36})$/.test(search.queue)) out.queue = search.queue;
   if (typeof search.topic === "string" && /^(none|[0-9a-f-]{36})$/.test(search.topic)) out.topic = search.topic;
+  if (typeof search.tag === "string" && /^[0-9a-f-]{36}$/.test(search.tag)) out.tag = search.tag;
   if (typeof search.q === "string" && search.q.trim() !== "") out.q = search.q.slice(0, 100);
   return out;
 }
 
 /** The API filter of a view. */
-export function taskFilter({ view = "mine", queue, topic, q }: TasksSearch): TaskFilter {
+export function taskFilter({ view = "mine", queue, topic, tag, q }: TasksSearch): TaskFilter {
   const filter: TaskFilter = {};
   switch (view) {
     case "mine":
@@ -50,6 +53,7 @@ export function taskFilter({ view = "mine", queue, topic, q }: TasksSearch): Tas
   }
   if (queue) filter.queue = queue;
   if (topic) filter.topic = topic;
+  if (tag) filter.tag = tag;
   if (q) filter.q = q.trim();
   return filter;
 }

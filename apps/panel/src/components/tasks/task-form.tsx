@@ -9,6 +9,7 @@ import { TASK_PRIORITIES } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { control } from "./task-bits";
 import { AttachArea, useFileDrafts } from "./task-files";
+import { TaskTagsEditor } from "./task-tags";
 
 type NewTaskFormProps = {
   /** Where the form starts: empty by hand, the draft from a conversation. */
@@ -20,7 +21,7 @@ type NewTaskFormProps = {
 };
 
 /**
- * A new task (ADR-0015): title, description, topic, queue, priority and assignee. A task from a
+ * A new task (ADR-0015): title, description, topic, queue, priority, assignee and tags. A task from a
  * conversation takes the conversation's topic and the topic's queue unless they are picked here.
  */
 export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTaskFormProps) {
@@ -35,6 +36,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
   const [queue, setQueue] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [assignee, setAssignee] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [titleError, setTitleError] = useState<string | undefined>();
   const files = useFileDrafts();
   const ids = { body: useId(), topic: useId(), queue: useId(), priority: useId(), assignee: useId() };
@@ -57,6 +59,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
         assignee_id: assignee || null,
         ...(conversationId ? { conversation_id: conversationId } : {}),
         ...(files.ids.length > 0 ? { file_ids: files.ids } : {}),
+        ...(tags.length > 0 ? { tag_ids: tags } : {}),
       },
       { onSuccess: onDone },
     );
@@ -132,6 +135,12 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
             ))}
           </Select>
         </div>
+      </div>
+      <div role="group" aria-labelledby="task-form-tags" className="flex flex-col gap-1.5">
+        <span id="task-form-tags" className="text-[13px] font-medium">
+          {t("tasks.tags.label")}
+        </span>
+        <TaskTagsEditor selected={tags} onChange={setTags} />
       </div>
       <p className="m-0 text-[12.5px] text-ink-3">{t(assignee ? "tasks.notifyAssignee" : "tasks.notifyQueue")}</p>
       <FormMessage tone="error" message={create.isError ? describeApiError(t, create.error).message : null} />

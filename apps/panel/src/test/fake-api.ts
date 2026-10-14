@@ -116,6 +116,7 @@ export function fakeApi(
     "GET /ai/settings": () => json(200, aiSettingsOff),
     "GET /ai/bot": () => json(200, { channel_ids: [], topics_off: [], min_confidence: 75, handoff_message: "" }),
     "GET /tags": () => json(200, { items: [] }),
+    "GET /task-tags": () => json(200, { items: [] }),
     "GET /topics": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.

@@ -17,13 +17,16 @@ import {
   removeTaskFile,
   createTask,
   createTaskQueue,
+  createTaskTag,
   deleteTask,
   deleteTaskQueue,
+  deleteTaskTag,
   fetchConversationTasks,
   fetchTask,
   fetchTaskActivity,
   fetchTaskDraft,
   fetchTaskQueues,
+  fetchTaskTags,
   fetchTasks,
   fetchTaskSettings,
   fetchTaskSummary,
@@ -32,6 +35,7 @@ import {
   updateTask,
   updateTaskQueue,
   updateTaskSettings,
+  updateTaskTag,
   fetchTaskTelegramBot,
   setTaskTelegramBot,
   deleteTaskTelegramBot,
@@ -43,6 +47,7 @@ import {
   type TaskFilter,
   type TaskQueueInput,
   type TaskSettings,
+  type TaskTagInput,
   type TaskUpdate,
 } from "./tasks";
 import {
@@ -240,6 +245,7 @@ export const queryKeys = {
   taskActivity: (id: string) => ["tasks", "activity", id] as const,
   taskSummary: ["tasks", "summary"] as const,
   taskQueues: ["tasks", "queues"] as const,
+  taskTags: ["tasks", "tags"] as const,
   taskSettings: ["tasks", "settings"] as const,
   taskTelegramBot: ["tasks", "telegram-bot"] as const,
   myTelegram: ["me", "telegram"] as const,
@@ -970,6 +976,12 @@ export function useTaskQueues({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({ queryKey: queryKeys.taskQueues, queryFn: () => fetchTaskQueues(client), enabled });
 }
 
+/** Tags of tasks, a list apart from the tags of conversations (useTags). */
+export function useTaskTags({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskTags, queryFn: () => fetchTaskTags(client), enabled, staleTime: 5 * 60_000 });
+}
+
 export function useTaskSettings({ enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskSettings, queryFn: () => fetchTaskSettings(client), enabled });
@@ -1077,6 +1089,18 @@ export function useUpdateTaskQueue() {
 
 export function useDeleteTaskQueue() {
   return useTaskMutation((client, id: string) => deleteTaskQueue(client, id));
+}
+
+export function useCreateTaskTag() {
+  return useTaskMutation((client, body: TaskTagInput) => createTaskTag(client, body));
+}
+
+export function useUpdateTaskTag() {
+  return useTaskMutation((client, { id, ...body }: TaskTagInput & { id: string }) => updateTaskTag(client, id, body));
+}
+
+export function useDeleteTaskTag() {
+  return useTaskMutation((client, id: string) => deleteTaskTag(client, id));
 }
 
 export function useUpdateTaskSettings() {

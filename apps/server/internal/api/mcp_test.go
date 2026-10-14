@@ -119,7 +119,9 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 	if rec.Code != http.StatusAccepted || rec.Body.Len() != 0 {
 		t.Fatalf("notification: %d %s", rec.Code, rec.Body)
 	}
-	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "read_file", "create_task", "update_task", "attach_file", "comment_task"}) {
+	if got := agent.tools(); !slices.Equal(got, []string{
+		"list_tasks", "get_task", "list_queues", "list_tags", "create_tag", "read_file", "create_task", "update_task", "attach_file", "comment_task",
+	}) {
 		t.Fatalf("tools: %v", got)
 	}
 
@@ -186,6 +188,36 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 		t.Fatalf("queues: %q %+v", msg, queues)
 	}
 
+	// Tags by name: an unknown one names the tags there are; the agent adds
+	// one, tags a task, finds it by the tag and takes the tag off.
+	decode[oapi.Tag](t, owner.do(http.MethodPost, "/api/v1/task-tags", map[string]any{"name": "Бэкенд"}))
+	if msg := agent.call("update_task", map[string]any{"number": task.Number, "tags": []string{"Экспорт"}}, nil); !strings.Contains(msg, `no tag "Экспорт"`) ||
+		!strings.Contains(msg, "Бэкенд") {
+		t.Fatalf("unknown tag: %q", msg)
+	}
+	if msg := agent.call("create_tag", map[string]any{"name": "Экспорт", "color": "blue"}, nil); msg != "" {
+		t.Fatalf("create tag: %s", msg)
+	}
+	if msg := agent.call("create_tag", map[string]any{"name": "экспорт"}, nil); !strings.Contains(msg, "exists") {
+		t.Fatalf("taken tag: %q", msg)
+	}
+	if msg := agent.call("update_task", map[string]any{"number": task.Number, "tags": []string{"экспорт", "бэкенд"}}, &task); msg != "" ||
+		strings.Join(task.Tags, ",") != "Бэкенд,Экспорт" { // put on together: in the order of the tags' ids
+		t.Fatalf("tag: %q %+v", msg, task)
+	}
+	if msg := agent.call("list_tasks", map[string]any{"tag": "Экспорт"}, &page); msg != "" || len(page.Tasks) != 1 || page.Tasks[0].Number != task.Number {
+		t.Fatalf("by tag: %q %+v", msg, page)
+	}
+	if msg := agent.call("update_task", map[string]any{"number": task.Number, "tags": []string{"Бэкенд"}}, &task); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := agent.call("get_task", map[string]any{"number": task.Number}, &task); msg != "" || strings.Join(task.Tags, ",") != "Бэкенд" {
+		t.Fatalf("untag: %q %+v", msg, task)
+	}
+	if last := task.Activity[len(task.Activity)-1]; last.Kind != "tags" || strings.Join(last.Removed, ",") != "Экспорт" {
+		t.Fatalf("tags line: %+v", last)
+	}
+
 	// Mistakes are told to the model, not thrown.
 	for _, c := range []struct {
 		tool string
@@ -213,7 +245,7 @@ func TestMCP_ScopesAndProtocol(t *testing.T) {
 	in := setupInbox(t)
 	e, op := in.e, in.op
 	agent := &mcpAgent{t: t, c: e.client(), secret: issueToken(t, op, "reader", "tasks:read").Secret}
-	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "read_file"}) {
+	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "list_tags", "read_file"}) {
 		t.Fatalf("read tools: %v", got)
 	}
 	if msg := agent.call("create_task", map[string]any{"title": "x"}, nil); !strings.Contains(msg, "does not allow") {
