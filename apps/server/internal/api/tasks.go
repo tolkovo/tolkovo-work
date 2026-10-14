@@ -28,6 +28,7 @@ var taskProblems = []struct {
 	}},
 	{tasks.ErrLinked, Problem{Status: http.StatusConflict, Code: "task_linked", Title: "Conflict"}},
 	{tasks.ErrQueueTaken, Problem{Status: http.StatusConflict, Code: "queue_exists", Title: "Conflict"}},
+	{tasks.ErrTagTaken, Problem{Status: http.StatusConflict, Code: "tag_exists", Title: "Conflict"}},
 	{tasks.ErrDisabled, Problem{
 		Status: http.StatusConflict, Code: "tasks_disabled", Title: "Conflict", Detail: "the tasks section is turned off",
 	}},
@@ -171,6 +172,7 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 		return
 	}
 	f.TopicID, f.NoTopic = topic, byTopic && topic == nil
+	f.TagID = params.Tag
 	if c := deref(params.Cursor); c != "" {
 		n, err := strconv.ParseInt(c, 10, 64)
 		if err != nil || n <= 0 {
@@ -216,7 +218,7 @@ func (s *server) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	in := tasks.NewTask{
 		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
-		ConversationID: req.ConversationId, FileIDs: deref(req.FileIds),
+		ConversationID: req.ConversationId, FileIDs: deref(req.FileIds), TagIDs: deref(req.TagIds),
 	}
 	if req.Priority != nil {
 		in.Priority = string(*req.Priority)
@@ -274,7 +276,7 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 	}
 	t, err := s.tasks.Update(r.Context(), p.WorkspaceID, p.UserID, id, tasks.Update{
 		Version: req.Version, Title: req.Title, Body: req.Body, Status: string(req.Status), Priority: string(req.Priority),
-		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
+		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId, TagIDs: req.TagIds,
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -434,6 +436,75 @@ func (s *server) DeleteTaskQueue(w http.ResponseWriter, r *http.Request, id oapi
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ListTaskTags implements GET /task-tags.
+func (s *server) ListTaskTags(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksView)
+	if !ok {
+		return
+	}
+	tags, err := s.tasks.Tags(r.Context(), p.WorkspaceID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	out := oapi.TagList{Items: make([]oapi.Tag, 0, len(tags))}
+	for _, t := range tags {
+		out.Items = append(out.Items, taskTagBody(t))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// CreateTaskTag implements POST /task-tags: any member tags tasks.
+func (s *server) CreateTaskTag(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksEdit)
+	if !ok {
+		return
+	}
+	var req oapi.TaskTagInput
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	t, err := s.tasks.CreateTag(r.Context(), p.WorkspaceID, p.UserID, taskTagInput(req))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, taskTagBody(t))
+}
+
+// UpdateTaskTag implements PUT /task-tags/{id}.
+func (s *server) UpdateTaskTag(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksManage)
+	if !ok {
+		return
+	}
+	var req oapi.TaskTagInput
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	t, err := s.tasks.UpdateTag(r.Context(), p.WorkspaceID, id, taskTagInput(req))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, taskTagBody(t))
+}
+
+// DeleteTaskTag implements DELETE /task-tags/{id}.
+func (s *server) DeleteTaskTag(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksManage)
+	if !ok {
+		return
+	}
+	if err := s.tasks.DeleteTag(r.Context(), p.WorkspaceID, id); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetTaskSettings implements GET /task-settings.
 func (s *server) GetTaskSettings(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.requirePrincipal(w, r, authz.TasksView)
@@ -497,8 +568,20 @@ func taskBody(t tasks.Task) oapi.Task {
 		Id: t.ID, Number: t.Number, QueueId: t.QueueID, TopicId: t.TopicID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, Version: t.Version, ConversationIds: nonNil(t.ConversationIDs),
-		Files: taskFileList(t.Files),
+		Files: taskFileList(t.Files), TagIds: nonNil(t.TagIDs),
 	}
+}
+
+func taskTagBody(t tasks.Tag) oapi.Tag {
+	return oapi.Tag{Id: t.ID, Name: t.Name, Color: oapi.TagColor(t.Color)}
+}
+
+func taskTagInput(req oapi.TaskTagInput) tasks.TagInput {
+	in := tasks.TagInput{Name: req.Name}
+	if req.Color != nil {
+		in.Color = string(*req.Color)
+	}
+	return in
 }
 
 func activityBody(a tasks.Activity) oapi.TaskActivity {
@@ -506,7 +589,8 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 	if a.Body != "" {
 		out.Body = &a.Body
 	}
-	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" {
+	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" &&
+		a.Kind != "tags" {
 		out.From, out.To = &a.From, &a.To
 	}
 	if a.Kind == "comment" {
@@ -515,6 +599,10 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 	}
 	if a.Kind == "files" {
 		out.FilesAdded, out.FilesRemoved = &a.FilesAdded, &a.FilesRemoved
+	}
+	if a.Kind == "tags" {
+		added, removed := nonNil(a.TagsAdded), nonNil(a.TagsRemoved)
+		out.TagsAdded, out.TagsRemoved = &added, &removed
 	}
 	if len(a.Fields) > 0 {
 		fields := make([]oapi.TaskActivityFields, len(a.Fields))

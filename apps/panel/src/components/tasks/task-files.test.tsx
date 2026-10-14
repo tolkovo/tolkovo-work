@@ -36,6 +36,7 @@ const baseTask: Task = {
   closed_at: null,
   version: 1,
   conversation_ids: [],
+  tag_ids: [],
   files: [shot],
 };
 

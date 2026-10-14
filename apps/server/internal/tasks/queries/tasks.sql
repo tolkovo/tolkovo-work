@@ -33,21 +33,24 @@ DELETE FROM tasks WHERE workspace_id = @workspace_id AND id = @id;
 -- A page of tasks, newest first, before the number before_number (0: from
 -- the newest). open_only and closed_only pick the state; assignee_id and
 -- queue_id and topic_id filter when set; unassigned, no_queue and no_topic
--- ask for NULL.
-SELECT * FROM tasks
-WHERE workspace_id = @workspace_id
-  AND (@before_number::bigint = 0 OR number < @before_number::bigint)
-  AND (NOT @open_only::boolean OR closed_at IS NULL)
-  AND (NOT @closed_only::boolean OR closed_at IS NOT NULL)
-  AND (sqlc.narg(assignee_id)::uuid IS NULL OR assignee_id = sqlc.narg(assignee_id)::uuid)
-  AND (NOT @unassigned::boolean OR assignee_id IS NULL)
-  AND (sqlc.narg(queue_id)::uuid IS NULL OR queue_id = sqlc.narg(queue_id)::uuid)
-  AND (NOT @no_queue::boolean OR queue_id IS NULL)
-  AND (sqlc.narg(topic_id)::uuid IS NULL OR topic_id = sqlc.narg(topic_id)::uuid)
-  AND (NOT @no_topic::boolean OR topic_id IS NULL)
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (@query::text = '' OR title ILIKE '%' || @query::text || '%' OR number::text = @query::text)
-ORDER BY number DESC
+-- ask for NULL; tag_id keeps the tasks with that tag.
+SELECT t.* FROM tasks t
+WHERE t.workspace_id = @workspace_id
+  AND (@before_number::bigint = 0 OR t.number < @before_number::bigint)
+  AND (NOT @open_only::boolean OR t.closed_at IS NULL)
+  AND (NOT @closed_only::boolean OR t.closed_at IS NOT NULL)
+  AND (sqlc.narg(assignee_id)::uuid IS NULL OR t.assignee_id = sqlc.narg(assignee_id)::uuid)
+  AND (NOT @unassigned::boolean OR t.assignee_id IS NULL)
+  AND (sqlc.narg(queue_id)::uuid IS NULL OR t.queue_id = sqlc.narg(queue_id)::uuid)
+  AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
+  AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
+  AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
+  AND (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
+  AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
+       SELECT 1 FROM task_tag_links l
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
+  AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text)
+ORDER BY t.number DESC
 LIMIT @lim;
 
 -- name: CountOpenAssigned :one
@@ -205,6 +208,54 @@ SELECT id, workspace_id FROM task_files
 WHERE task_id IS NULL AND (attached_at IS NOT NULL OR created_at < @before)
 ORDER BY created_at
 LIMIT @lim;
+
+-- Tags of tasks (migration 00037).
+
+-- name: ListTaskTags :many
+-- Every tag of the workspace by name; the number is bounded by MaxTags.
+SELECT * FROM task_tags
+WHERE workspace_id = @workspace_id
+ORDER BY lower(name), id;
+
+-- name: CountTaskTags :one
+SELECT count(*) FROM task_tags WHERE workspace_id = @workspace_id;
+
+-- name: InsertTaskTag :one
+INSERT INTO task_tags (id, workspace_id, name, color, created_by, created_at)
+VALUES (@id, @workspace_id, @name, @color, sqlc.narg(created_by), @created_at)
+RETURNING *;
+
+-- name: UpdateTaskTag :one
+UPDATE task_tags SET name = @name, color = @color
+WHERE workspace_id = @workspace_id AND id = @id
+RETURNING *;
+
+-- name: DeleteTaskTag :execrows
+DELETE FROM task_tags WHERE workspace_id = @workspace_id AND id = @id;
+
+-- name: CountTaskTagsByID :one
+SELECT count(*) FROM task_tags WHERE workspace_id = @workspace_id AND id = ANY(@ids::uuid[]);
+
+-- name: TagsOfTasks :many
+-- The tags of a page of tasks in one query, in the order they were put on.
+SELECT task_id, tag_id FROM task_tag_links
+WHERE workspace_id = @workspace_id AND task_id = ANY(@task_ids::uuid[])
+ORDER BY task_id, created_at, tag_id;
+
+-- name: AddTaskTags :many
+-- Puts the tags on the task; returns the ones it did not have.
+INSERT INTO task_tag_links (workspace_id, task_id, tag_id, created_at)
+SELECT @workspace_id, @task_id, t, @created_at
+FROM unnest(@tag_ids::uuid[]) AS t
+ON CONFLICT DO NOTHING
+RETURNING tag_id;
+
+-- name: RemoveTaskTags :many
+-- Takes every tag of the task not in keep off it; returns them.
+DELETE FROM task_tag_links
+WHERE workspace_id = @workspace_id AND task_id = @task_id
+  AND NOT (tag_id = ANY(@keep::uuid[]))
+RETURNING tag_id;
 
 -- name: TopicQueue :one
 -- A topic of the workspace and the queue of its tasks (topics belongs to

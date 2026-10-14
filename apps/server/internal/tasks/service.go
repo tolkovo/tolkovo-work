@@ -29,16 +29,19 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 )
 
-// Statuses of a task (migration 00029).
+// Statuses of a task (migrations 00029, 00038). Review and verified are open:
+// checked on the dev server, then waiting for production; done is in production.
 const (
 	StatusOpen       = "open"
 	StatusInProgress = "in_progress"
+	StatusReview     = "review"
+	StatusVerified   = "verified"
 	StatusDone       = "done"
 	StatusCanceled   = "canceled"
 )
 
 // Statuses lists every status in the order of the board.
-var Statuses = []string{StatusOpen, StatusInProgress, StatusDone, StatusCanceled}
+var Statuses = []string{StatusOpen, StatusInProgress, StatusReview, StatusVerified, StatusDone, StatusCanceled}
 
 // Priorities of a task, lowest first.
 var Priorities = []string{"low", "normal", "high", "urgent"}
@@ -66,6 +69,8 @@ var (
 	ErrConflict = errors.New("tasks: the task changed meanwhile")
 	// ErrQueueTaken: a queue of the workspace has this name.
 	ErrQueueTaken = errors.New("tasks: a queue with this name exists")
+	// ErrTagTaken: a tag of tasks has this name.
+	ErrTagTaken = errors.New("tasks: a tag with this name exists")
 	// ErrMember: the assignee or a queue member is not a member of the workspace.
 	ErrMember = errors.New("tasks: not a member of the workspace")
 	// ErrLinked: the conversation is linked to this task already.
@@ -196,6 +201,10 @@ func dbError(err error, what string) error {
 		switch {
 		case pg.Code == "23505" && pg.ConstraintName == "task_queues_name_uq":
 			return ErrQueueTaken
+		case pg.Code == "23505" && pg.ConstraintName == "task_tags_name_uq":
+			return ErrTagTaken
+		case pg.Code == "23503" && strings.HasSuffix(pg.ConstraintName, "tag_id_fkey"): // a tag deleted meanwhile
+			return fmt.Errorf("%w: unknown tag", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "assignee"),
 			pg.Code == "23503" && strings.Contains(pg.ConstraintName, "user"),
 			pg.Code == "23503" && strings.Contains(pg.ConstraintName, "created_by"):
@@ -213,7 +222,7 @@ func dbError(err error, what string) error {
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, conversations.ErrNotFound) {
 		return ErrNotFound
 	}
-	for _, d := range []error{ErrInvalid, ErrNotFound, ErrConflict, ErrQueueTaken, ErrMember, ErrLinked, ErrDisabled} {
+	for _, d := range []error{ErrInvalid, ErrNotFound, ErrConflict, ErrQueueTaken, ErrTagTaken, ErrMember, ErrLinked, ErrDisabled} {
 		if errors.Is(err, d) {
 			return err
 		}

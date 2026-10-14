@@ -895,6 +895,7 @@ const (
 	TaskActivityKindPriority TaskActivityKind = "priority"
 	TaskActivityKindQueue    TaskActivityKind = "queue"
 	TaskActivityKindStatus   TaskActivityKind = "status"
+	TaskActivityKindTags     TaskActivityKind = "tags"
 	TaskActivityKindTopic    TaskActivityKind = "topic"
 	TaskActivityKindUnlinked TaskActivityKind = "unlinked"
 )
@@ -919,6 +920,8 @@ func (e TaskActivityKind) Valid() bool {
 	case TaskActivityKindQueue:
 		return true
 	case TaskActivityKindStatus:
+		return true
+	case TaskActivityKindTags:
 		return true
 	case TaskActivityKindTopic:
 		return true
@@ -1016,6 +1019,8 @@ const (
 	TaskStatusDone       TaskStatus = "done"
 	TaskStatusInProgress TaskStatus = "in_progress"
 	TaskStatusOpen       TaskStatus = "open"
+	TaskStatusReview     TaskStatus = "review"
+	TaskStatusVerified   TaskStatus = "verified"
 )
 
 // Valid indicates whether the value is a known member of the TaskStatus enum.
@@ -1028,6 +1033,10 @@ func (e TaskStatus) Valid() bool {
 	case TaskStatusInProgress:
 		return true
 	case TaskStatusOpen:
+		return true
+	case TaskStatusReview:
+		return true
+	case TaskStatusVerified:
 		return true
 	default:
 		return false
@@ -2707,9 +2716,14 @@ type Task struct {
 	Priority TaskPriority `json:"priority"`
 	QueueId  *uuid.UUID   `json:"queue_id"`
 
-	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
 	Status TaskStatus `json:"status"`
-	Title  string     `json:"title"`
+
+	// TagIds Tags of tasks (`GET /task-tags`), in the order they were put on; in lists too.
+	TagIds []uuid.UUID `json:"tag_ids"`
+	Title  string      `json:"title"`
 
 	// TopicId The topic of questions (`GET /topics`); a task from a conversation takes the conversation's.
 	TopicId   *uuid.UUID `json:"topic_id"`
@@ -2744,6 +2758,12 @@ type TaskActivity struct {
 	From *string          `json:"from,omitempty"`
 	Id   uuid.UUID        `json:"id"`
 	Kind TaskActivityKind `json:"kind"`
+
+	// TagsAdded On `tags`, the tags put on the task.
+	TagsAdded *[]uuid.UUID `json:"tags_added,omitempty"`
+
+	// TagsRemoved On `tags`, the tags taken off it.
+	TagsRemoved *[]uuid.UUID `json:"tags_removed,omitempty"`
 
 	// To The value a change moved to; empty for none.
 	To *string `json:"to,omitempty"`
@@ -2787,7 +2807,10 @@ type TaskCreate struct {
 
 	// QueueId Absent or `null` with a topic that has a task queue — that queue.
 	QueueId *uuid.UUID `json:"queue_id,omitempty"`
-	Title   string     `json:"title"`
+
+	// TagIds Tags of tasks (`GET /task-tags`), unique.
+	TagIds *[]uuid.UUID `json:"tag_ids,omitempty"`
+	Title  string       `json:"title"`
 
 	// TopicId Absent or `null` for a task from a conversation — the conversation's topic.
 	TopicId *uuid.UUID `json:"topic_id,omitempty"`
@@ -2905,13 +2928,24 @@ type TaskSettingsView struct {
 	Settings     TaskSettings `json:"settings"`
 }
 
-// TaskStatus `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
+// TaskStatus `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+// `review` and `verified` are open statuses. Any status may follow any other.
 type TaskStatus string
 
 // TaskSummary defines model for TaskSummary.
 type TaskSummary struct {
 	// AssignedOpen Open tasks assigned to the caller.
 	AssignedOpen int64 `json:"assigned_open"`
+}
+
+// TaskTagInput defines model for TaskTagInput.
+type TaskTagInput struct {
+	// Color Absent is `gray`.
+	Color *TagColor `json:"color,omitempty"`
+
+	// Name Spaces are collapsed; must contain more than spaces.
+	Name string `json:"name"`
 }
 
 // TaskUpdate defines model for TaskUpdate.
@@ -2921,11 +2955,16 @@ type TaskUpdate struct {
 	Priority   TaskPriority `json:"priority"`
 	QueueId    *uuid.UUID   `json:"queue_id"`
 
-	// Status `open`: new; `in_progress`: someone works on it; `done`; `canceled`: will not be done.
-	Status  TaskStatus `json:"status"`
-	Title   string     `json:"title"`
-	TopicId *uuid.UUID `json:"topic_id"`
-	Version int32      `json:"version"`
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status TaskStatus `json:"status"`
+
+	// TagIds Replace the task's tags, unique; absent keeps them.
+	TagIds  *[]uuid.UUID `json:"tag_ids,omitempty"`
+	Title   string       `json:"title"`
+	TopicId *uuid.UUID   `json:"topic_id"`
+	Version int32        `json:"version"`
 }
 
 // TelegramBotInput defines model for TelegramBotInput.
@@ -3525,6 +3564,9 @@ type ListTasksParams struct {
 	// Topic `none` or a topic id.
 	Topic *string `form:"topic,omitempty" json:"topic,omitempty"`
 
+	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
+	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
+
 	// Q Part of the title, or the task number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
@@ -3721,6 +3763,12 @@ type UpdateTaskSettingsJSONRequestBody = TaskSettings
 
 // SetTaskTelegramBotJSONRequestBody defines body for SetTaskTelegramBot for application/json ContentType.
 type SetTaskTelegramBotJSONRequestBody = TelegramBotInput
+
+// CreateTaskTagJSONRequestBody defines body for CreateTaskTag for application/json ContentType.
+type CreateTaskTagJSONRequestBody = TaskTagInput
+
+// UpdateTaskTagJSONRequestBody defines body for UpdateTaskTag for application/json ContentType.
+type UpdateTaskTagJSONRequestBody = TaskTagInput
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = TaskCreate
@@ -4132,6 +4180,18 @@ type ServerInterface interface {
 	// SetTaskTelegramBot Add or replace the notifications bot
 	// (PUT /task-settings/telegram-bot)
 	SetTaskTelegramBot(w http.ResponseWriter, r *http.Request)
+	// ListTaskTags Tags of tasks, by name
+	// (GET /task-tags)
+	ListTaskTags(w http.ResponseWriter, r *http.Request)
+	// CreateTaskTag Add a tag of tasks
+	// (POST /task-tags)
+	CreateTaskTag(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskTag Delete a tag of tasks
+	// (DELETE /task-tags/{id})
+	DeleteTaskTag(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTaskTag Rename a tag of tasks and change its color
+	// (PUT /task-tags/{id})
+	UpdateTaskTag(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTasks Tasks, newest first
 	// (GET /tasks)
 	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
@@ -4939,6 +4999,30 @@ func (_ Unimplemented) GetTaskTelegramBot(w http.ResponseWriter, r *http.Request
 // SetTaskTelegramBot Add or replace the notifications bot
 // (PUT /task-settings/telegram-bot)
 func (_ Unimplemented) SetTaskTelegramBot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskTags Tags of tasks, by name
+// (GET /task-tags)
+func (_ Unimplemented) ListTaskTags(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTaskTag Add a tag of tasks
+// (POST /task-tags)
+func (_ Unimplemented) CreateTaskTag(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskTag Delete a tag of tasks
+// (DELETE /task-tags/{id})
+func (_ Unimplemented) DeleteTaskTag(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskTag Rename a tag of tasks and change its color
+// (PUT /task-tags/{id})
+func (_ Unimplemented) UpdateTaskTag(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7731,6 +7815,86 @@ func (siw *ServerInterfaceWrapper) SetTaskTelegramBot(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListTaskTags operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTaskTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskTag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskTag(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskTag operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskTag(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
 
@@ -7801,6 +7965,19 @@ func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Requ
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
 		}
 		return
 	}
@@ -8970,6 +9147,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/task-queues/{id}", wrapper.UpdateTaskQueue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-tags", wrapper.ListTaskTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/task-tags", wrapper.CreateTaskTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-tags/{id}", wrapper.DeleteTaskTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-tags/{id}", wrapper.UpdateTaskTag)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/task-settings/telegram-bot", wrapper.DeleteTaskTelegramBot)

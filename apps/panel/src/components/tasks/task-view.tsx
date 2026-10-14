@@ -22,12 +22,13 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
-import { TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
+import { NEXT_STATUS, TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge, control } from "./task-bits";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
+import { TaskTagsEditor, useTaskTagMap } from "./task-tags";
 
 /** The open task (ADR-0015): its fields, description, conversations and feed. */
 export function TaskView({ taskId, search }: { taskId: string; search: TasksSearch }) {
@@ -84,6 +85,7 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
         <div className="flex flex-wrap items-center gap-2">
           <TaskStatusBadge status={task.status} />
           <TaskPriorityMark priority={task.priority} quietNormal={false} />
+          <TaskTagsEditor selected={task.tag_ids} busy={update.isPending} onChange={(tag_ids) => change({ tag_ids })} />
         </div>
       </header>
       {update.isError && (
@@ -124,11 +126,23 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
   const canManage = useCan("tasks.manage");
   const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId(), topic: useId() };
   const me = session?.user.id;
+  const next = NEXT_STATUS[task.status];
+  const taking = me !== undefined && task.assignee_id !== me && !isClosed(task.status);
   return (
     <aside aria-label={t("tasks.fieldsLabel")} className="flex flex-col gap-3">
-      {me && task.assignee_id !== me && !isClosed(task.status) && (
-        <Button variant="primary" disabled={disabled} onClick={() => onChange({ assignee_id: me, status: "in_progress" })}>
+      {taking && (
+        // Taking a task in review or verified keeps its step.
+        <Button
+          variant="primary"
+          disabled={disabled}
+          onClick={() => onChange({ assignee_id: me, status: task.status === "open" ? "in_progress" : task.status })}
+        >
           {t("tasks.take")}
+        </Button>
+      )}
+      {next && (
+        <Button variant={taking ? "secondary" : "primary"} disabled={disabled} onClick={() => onChange({ status: next })}>
+          {t(`tasks.next.${task.status as "in_progress" | "review" | "verified"}`)}
         </Button>
       )}
       <div className="flex flex-col gap-1.5">
@@ -374,6 +388,7 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
   const names = useMemberNames();
   const { data: queues } = useTaskQueues();
   const topics = useTopicMap();
+  const tags = useTaskTagMap();
   const who = a.actor_id ? (names.get(a.actor_id) ?? t("inbox.colleague")) : t("inbox.sender.system");
   const time = new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(new Date(a.created_at));
   if (a.kind === "comment") {
@@ -423,6 +438,14 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
     case "files":
       text = a.files_removed ? t("tasks.activity.filesRemoved") : t("tasks.activity.filesAdded", { count: a.files_added ?? 0 });
       break;
+    case "tags": {
+      const names = (ids: string[] = []) => ids.map((id) => tags.get(id)?.name ?? t("tasks.tags.deleted")).join(", ");
+      const parts = [];
+      if (a.tags_added?.length) parts.push(t("tasks.activity.tagsAdded", { names: names(a.tags_added) }));
+      if (a.tags_removed?.length) parts.push(t("tasks.activity.tagsRemoved", { names: names(a.tags_removed) }));
+      text = parts.join("; ");
+      break;
+    }
     default:
       text = "";
   }

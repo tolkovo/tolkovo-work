@@ -528,7 +528,7 @@ export const notificationSettingsSchema = z.object({
 }) satisfies z.ZodType<Schemas["NotificationSettings"]>;
 
 /** The tasks section (ADR-0015). */
-export const taskStatusSchema = z.enum(["open", "in_progress", "done", "canceled"]) satisfies z.ZodType<Schemas["TaskStatus"]>;
+export const taskStatusSchema = z.enum(["open", "in_progress", "review", "verified", "done", "canceled"]) satisfies z.ZodType<Schemas["TaskStatus"]>;
 export const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]) satisfies z.ZodType<Schemas["TaskPriority"]>;
 export const taskButtonSchema = z.enum(["tasks", "github", "both"]) satisfies z.ZodType<Schemas["TaskButton"]>;
 
@@ -563,6 +563,7 @@ export const taskSchema = z.object({
   version: z.number(),
   conversation_ids: z.array(z.string()),
   files: z.array(taskFileSchema),
+  tag_ids: z.array(z.string()),
 }) satisfies z.ZodType<Schemas["Task"]>;
 
 export const taskPageSchema = z.object({
@@ -587,6 +588,7 @@ export const taskActivitySchema = z.object({
     "linked",
     "unlinked",
     "files",
+    "tags",
   ]),
   body: z.string().optional(),
   from: z.string().optional(),
@@ -596,6 +598,8 @@ export const taskActivitySchema = z.object({
   files: z.array(taskFileSchema).optional(),
   files_added: z.number().optional(),
   files_removed: z.number().optional(),
+  tags_added: z.array(z.string()).optional(),
+  tags_removed: z.array(z.string()).optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["TaskActivity"]>;
 

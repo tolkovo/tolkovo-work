@@ -428,6 +428,26 @@
         "tokenHint": "Create a bot with @BotFather and paste its token. The token is stored encrypted and never shown again.",
         "tokenRequired": "Paste the bot token.",
         "save": "Connect the bot"
+      },
+      "tags": "Task tags",
+      "tagsHint": "A tag shows what a task is about: design, interface, backend. Members tag tasks and can create a new tag right there. Here tags are renamed and deleted. Task tags are separate from conversation tags.",
+      "addTag": "Add tag",
+      "noTags": "No tags yet. They can be created right in a task.",
+      "editTag": "Edit",
+      "deleteTag": "Delete",
+      "deleteTagConfirm": "The tag will be removed from every task.",
+      "tagName": "Tag name",
+      "tagNameRequired": "Write the tag name.",
+      "tagColor": "Color",
+      "saveTag": "Save tag",
+      "colors": {
+        "gray": "Gray",
+        "teal": "Teal",
+        "amber": "Amber",
+        "red": "Red",
+        "violet": "Violet",
+        "blue": "Blue",
+        "green": "Green"
       }
     },
     "team": {
@@ -926,7 +946,8 @@
     "invalidAccessToken": "This token is not valid: it was revoked or has expired.",
     "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
     "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
-    "topicExists": "A topic with this name exists."
+    "topicExists": "A topic with this name exists.",
+    "tagExists": "A tag with this name exists."
   },
   "error": {
     "title": "Something went wrong",
@@ -1390,6 +1411,8 @@
     "status": {
       "open": "New",
       "in_progress": "In progress",
+      "review": "In review",
+      "verified": "Verified, awaiting release",
       "done": "Done",
       "canceled": "Won't do"
     },
@@ -1429,6 +1452,11 @@
     "cancel": "Cancel",
     "noBody": "No description.",
     "take": "Take it",
+    "next": {
+      "in_progress": "Send to review",
+      "review": "Verified",
+      "verified": "Released to production"
+    },
     "created": "Created",
     "closed": "Closed",
     "delete": "Delete task",
@@ -1453,7 +1481,9 @@
       "filesAdded": "Files added: {count}",
       "filesRemoved": "A file was removed from the description",
       "topic": "Topic: {name}",
-      "noTopic": "Topic removed"
+      "noTopic": "Topic removed",
+      "tagsAdded": "Tags added: {names}",
+      "tagsRemoved": "Tags removed: {names}"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1479,7 +1509,21 @@
     "topicFilter": "Topic",
     "allTopics": "All topics",
     "topicOfConversation": "As the conversation's",
-    "queueOfTopic": "The topic's, or none"
+    "queueOfTopic": "The topic's, or none",
+    "tags": {
+      "label": "Tags",
+      "add": "Tag",
+      "pick": "Task tags",
+      "search": "Find a tag",
+      "none": "No tags found",
+      "create": "Create tag “{name}”",
+      "exists": "This tag already exists.",
+      "createError": "The tag was not created. Try again.",
+      "full": "A task can have at most {max} tags.",
+      "filter": "Task tag",
+      "all": "All tags",
+      "deleted": "deleted tag"
+    }
   },
   "notifications": {
     "alert": {

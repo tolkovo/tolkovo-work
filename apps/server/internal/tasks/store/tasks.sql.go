@@ -29,6 +29,47 @@ func (q *Queries) AddQueueMember(ctx context.Context, arg AddQueueMemberParams) 
 	return err
 }
 
+const addTaskTags = `-- name: AddTaskTags :many
+INSERT INTO task_tag_links (workspace_id, task_id, tag_id, created_at)
+SELECT $1, $2, t, $3
+FROM unnest($4::uuid[]) AS t
+ON CONFLICT DO NOTHING
+RETURNING tag_id
+`
+
+type AddTaskTagsParams struct {
+	WorkspaceID uuid.UUID
+	TaskID      uuid.UUID
+	CreatedAt   time.Time
+	TagIds      []uuid.UUID
+}
+
+// Puts the tags on the task; returns the ones it did not have.
+func (q *Queries) AddTaskTags(ctx context.Context, arg AddTaskTagsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, addTaskTags,
+		arg.WorkspaceID,
+		arg.TaskID,
+		arg.CreatedAt,
+		arg.TagIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var tag_id uuid.UUID
+		if err := rows.Scan(&tag_id); err != nil {
+			return nil, err
+		}
+		items = append(items, tag_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const attachTaskFiles = `-- name: AttachTaskFiles :execrows
 UPDATE task_files SET task_id = $1, activity_id = $2, attached_at = $3
 WHERE workspace_id = $4 AND id = ANY($5::uuid[]) AND uploaded_by = $6
@@ -186,6 +227,33 @@ func (q *Queries) CountTaskFiles(ctx context.Context, arg CountTaskFilesParams) 
 	return count, err
 }
 
+const countTaskTags = `-- name: CountTaskTags :one
+SELECT count(*) FROM task_tags WHERE workspace_id = $1
+`
+
+func (q *Queries) CountTaskTags(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countTaskTags, workspaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTaskTagsByID = `-- name: CountTaskTagsByID :one
+SELECT count(*) FROM task_tags WHERE workspace_id = $1 AND id = ANY($2::uuid[])
+`
+
+type CountTaskTagsByIDParams struct {
+	WorkspaceID uuid.UUID
+	Ids         []uuid.UUID
+}
+
+func (q *Queries) CountTaskTagsByID(ctx context.Context, arg CountTaskTagsByIDParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTaskTagsByID, arg.WorkspaceID, arg.Ids)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteQueue = `-- name: DeleteQueue :execrows
 DELETE FROM task_queues WHERE workspace_id = $1 AND id = $2
 `
@@ -229,6 +297,23 @@ type DeleteTaskFileParams struct {
 func (q *Queries) DeleteTaskFile(ctx context.Context, arg DeleteTaskFileParams) error {
 	_, err := q.db.Exec(ctx, deleteTaskFile, arg.WorkspaceID, arg.ID)
 	return err
+}
+
+const deleteTaskTag = `-- name: DeleteTaskTag :execrows
+DELETE FROM task_tags WHERE workspace_id = $1 AND id = $2
+`
+
+type DeleteTaskTagParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) DeleteTaskTag(ctx context.Context, arg DeleteTaskTagParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTaskTag, arg.WorkspaceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const detachTaskFile = `-- name: DetachTaskFile :execrows
@@ -616,6 +701,42 @@ func (q *Queries) InsertTaskFile(ctx context.Context, arg InsertTaskFileParams) 
 	return i, err
 }
 
+const insertTaskTag = `-- name: InsertTaskTag :one
+INSERT INTO task_tags (id, workspace_id, name, color, created_by, created_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, name, color, created_by, created_at
+`
+
+type InsertTaskTagParams struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Name        string
+	Color       string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}
+
+func (q *Queries) InsertTaskTag(ctx context.Context, arg InsertTaskTagParams) (TaskTag, error) {
+	row := q.db.QueryRow(ctx, insertTaskTag,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.Name,
+		arg.Color,
+		arg.CreatedBy,
+		arg.CreatedAt,
+	)
+	var i TaskTag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const linkConversation = `-- name: LinkConversation :execrows
 INSERT INTO task_conversations (workspace_id, task_id, conversation_id, created_by, created_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -733,22 +854,61 @@ func (q *Queries) ListQueues(ctx context.Context, workspaceID uuid.UUID) ([]List
 	return items, nil
 }
 
-const listTasks = `-- name: ListTasks :many
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id FROM tasks
+const listTaskTags = `-- name: ListTaskTags :many
+
+SELECT id, workspace_id, name, color, created_by, created_at FROM task_tags
 WHERE workspace_id = $1
-  AND ($2::bigint = 0 OR number < $2::bigint)
-  AND (NOT $3::boolean OR closed_at IS NULL)
-  AND (NOT $4::boolean OR closed_at IS NOT NULL)
-  AND ($5::uuid IS NULL OR assignee_id = $5::uuid)
-  AND (NOT $6::boolean OR assignee_id IS NULL)
-  AND ($7::uuid IS NULL OR queue_id = $7::uuid)
-  AND (NOT $8::boolean OR queue_id IS NULL)
-  AND ($9::uuid IS NULL OR topic_id = $9::uuid)
-  AND (NOT $10::boolean OR topic_id IS NULL)
-  AND ($11::text IS NULL OR status = $11::text)
-  AND ($12::text = '' OR title ILIKE '%' || $12::text || '%' OR number::text = $12::text)
-ORDER BY number DESC
-LIMIT $13
+ORDER BY lower(name), id
+`
+
+// Tags of tasks (migration 00037).
+// Every tag of the workspace by name; the number is bounded by MaxTags.
+func (q *Queries) ListTaskTags(ctx context.Context, workspaceID uuid.UUID) ([]TaskTag, error) {
+	rows, err := q.db.Query(ctx, listTaskTags, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskTag
+	for rows.Next() {
+		var i TaskTag
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Color,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTasks = `-- name: ListTasks :many
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id FROM tasks t
+WHERE t.workspace_id = $1
+  AND ($2::bigint = 0 OR t.number < $2::bigint)
+  AND (NOT $3::boolean OR t.closed_at IS NULL)
+  AND (NOT $4::boolean OR t.closed_at IS NOT NULL)
+  AND ($5::uuid IS NULL OR t.assignee_id = $5::uuid)
+  AND (NOT $6::boolean OR t.assignee_id IS NULL)
+  AND ($7::uuid IS NULL OR t.queue_id = $7::uuid)
+  AND (NOT $8::boolean OR t.queue_id IS NULL)
+  AND ($9::uuid IS NULL OR t.topic_id = $9::uuid)
+  AND (NOT $10::boolean OR t.topic_id IS NULL)
+  AND ($11::text IS NULL OR t.status = $11::text)
+  AND ($12::uuid IS NULL OR EXISTS (
+       SELECT 1 FROM task_tag_links l
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $12::uuid))
+  AND ($13::text = '' OR t.title ILIKE '%' || $13::text || '%' OR t.number::text = $13::text)
+ORDER BY t.number DESC
+LIMIT $14
 `
 
 type ListTasksParams struct {
@@ -763,6 +923,7 @@ type ListTasksParams struct {
 	TopicID      *uuid.UUID
 	NoTopic      bool
 	Status       *string
+	TagID        *uuid.UUID
 	Query        string
 	Lim          int32
 }
@@ -770,7 +931,7 @@ type ListTasksParams struct {
 // A page of tasks, newest first, before the number before_number (0: from
 // the newest). open_only and closed_only pick the state; assignee_id and
 // queue_id and topic_id filter when set; unassigned, no_queue and no_topic
-// ask for NULL.
+// ask for NULL; tag_id keeps the tasks with that tag.
 func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listTasks,
 		arg.WorkspaceID,
@@ -784,6 +945,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 		arg.TopicID,
 		arg.NoTopic,
 		arg.Status,
+		arg.TagID,
 		arg.Query,
 		arg.Lim,
 	)
@@ -951,6 +1113,40 @@ func (q *Queries) QueueMemberIDs(ctx context.Context, arg QueueMemberIDsParams) 
 	return items, nil
 }
 
+const removeTaskTags = `-- name: RemoveTaskTags :many
+DELETE FROM task_tag_links
+WHERE workspace_id = $1 AND task_id = $2
+  AND NOT (tag_id = ANY($3::uuid[]))
+RETURNING tag_id
+`
+
+type RemoveTaskTagsParams struct {
+	WorkspaceID uuid.UUID
+	TaskID      uuid.UUID
+	Keep        []uuid.UUID
+}
+
+// Takes every tag of the task not in keep off it; returns them.
+func (q *Queries) RemoveTaskTags(ctx context.Context, arg RemoveTaskTagsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, removeTaskTags, arg.WorkspaceID, arg.TaskID, arg.Keep)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var tag_id uuid.UUID
+		if err := rows.Scan(&tag_id); err != nil {
+			return nil, err
+		}
+		items = append(items, tag_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const renameQueue = `-- name: RenameQueue :one
 UPDATE task_queues SET name = $1
 WHERE workspace_id = $2 AND id = $3
@@ -973,6 +1169,43 @@ func (q *Queries) RenameQueue(ctx context.Context, arg RenameQueueParams) (TaskQ
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const tagsOfTasks = `-- name: TagsOfTasks :many
+SELECT task_id, tag_id FROM task_tag_links
+WHERE workspace_id = $1 AND task_id = ANY($2::uuid[])
+ORDER BY task_id, created_at, tag_id
+`
+
+type TagsOfTasksParams struct {
+	WorkspaceID uuid.UUID
+	TaskIds     []uuid.UUID
+}
+
+type TagsOfTasksRow struct {
+	TaskID uuid.UUID
+	TagID  uuid.UUID
+}
+
+// The tags of a page of tasks in one query, in the order they were put on.
+func (q *Queries) TagsOfTasks(ctx context.Context, arg TagsOfTasksParams) ([]TagsOfTasksRow, error) {
+	rows, err := q.db.Query(ctx, tagsOfTasks, arg.WorkspaceID, arg.TaskIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TagsOfTasksRow
+	for rows.Next() {
+		var i TagsOfTasksRow
+		if err := rows.Scan(&i.TaskID, &i.TagID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const taskConversationIDs = `-- name: TaskConversationIDs :many
@@ -1162,6 +1395,38 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.ClosedAt,
 		&i.Version,
 		&i.TopicID,
+	)
+	return i, err
+}
+
+const updateTaskTag = `-- name: UpdateTaskTag :one
+UPDATE task_tags SET name = $1, color = $2
+WHERE workspace_id = $3 AND id = $4
+RETURNING id, workspace_id, name, color, created_by, created_at
+`
+
+type UpdateTaskTagParams struct {
+	Name        string
+	Color       string
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) UpdateTaskTag(ctx context.Context, arg UpdateTaskTagParams) (TaskTag, error) {
+	row := q.db.QueryRow(ctx, updateTaskTag,
+		arg.Name,
+		arg.Color,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	var i TaskTag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedBy,
+		&i.CreatedAt,
 	)
 	return i, err
 }

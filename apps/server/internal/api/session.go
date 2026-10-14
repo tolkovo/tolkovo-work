@@ -68,6 +68,8 @@ var tokenOperations = map[string]bool{
 	"GET /api/v1/tasks/{id}/activity":           true,
 	"POST /api/v1/tasks/{id}/activity":          true,
 	"GET /api/v1/task-queues":                   true,
+	"GET /api/v1/task-tags":                     true,
+	"POST /api/v1/task-tags":                    true,
 	"POST /api/v1/mcp":                          true,
 	"POST /api/v1/task-files":                   true,
 	"GET /api/v1/task-files/{id}/download-link": true,

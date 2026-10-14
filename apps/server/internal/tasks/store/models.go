@@ -68,3 +68,12 @@ type TaskSetting struct {
 	ReplyEn            *string
 	UpdatedAt          time.Time
 }
+
+type TaskTag struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Name        string
+	Color       string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}

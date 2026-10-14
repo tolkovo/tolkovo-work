@@ -1,29 +1,35 @@
-import type { TaskButton, TaskQueue, TaskSettingsView } from "@tolkovo/api-client";
+import type { TagColor, TaskButton, TaskQueue, TaskSettingsView, TaskTag } from "@tolkovo/api-client";
 import {
   useCreateTaskQueue,
+  useCreateTaskTag,
   useDeleteTaskQueue,
+  useDeleteTaskTag,
   useDeleteTaskTelegramBot,
   useSetTaskTelegramBot,
   useTaskTelegramBot,
   useMembers,
   useTaskQueues,
   useTaskSettings,
+  useTaskTags,
   useUpdateTaskQueue,
   useUpdateTaskSettings,
+  useUpdateTaskTag,
 } from "@tolkovo/api-client/react";
-import { Button, Label, Skeleton, cn } from "@tolkovo/ui";
+import { Button, Label, Select, Skeleton, cn } from "@tolkovo/ui";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
 import { FormMessage, TextField } from "../form/fields";
+import { TAG_DOT } from "../inbox/palette";
 import { control } from "../tasks/task-bits";
 
 const BUTTONS: readonly TaskButton[] = ["both", "tasks", "github"];
+const COLORS: readonly TagColor[] = ["gray", "teal", "amber", "red", "violet", "blue", "green"];
 
 /**
  * «Задачи» (ADR-0015): the section on or off, which buttons conversations show, the reply about a
- * done task and the queues with the members told about new tasks in them.
+ * done task, the queues with the members told about new tasks in them and the tags of tasks.
  */
 export function TaskSettingsPage() {
   const { t } = useTranslation();
@@ -47,6 +53,7 @@ export function TaskSettingsPage() {
         <>
           <SettingsForm view={query.data} />
           <Queues />
+          <Tags />
           <TelegramBot />
         </>
       )}
@@ -285,6 +292,147 @@ function QueueForm({ queue, onDone }: { queue?: TaskQueue; onDone: () => void })
       <div className="flex gap-2">
         <Button type="submit" size="sm" variant="primary" disabled={save.isPending}>
           {t("settings.tasks.saveQueue")}
+        </Button>
+        <Button type="button" size="sm" onClick={onDone}>
+          {t("tasks.cancel")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Tags of tasks: any member adds them from a task; here admins add, rename, recolor and delete them. */
+function Tags() {
+  const { t } = useTranslation();
+  const tags = useTaskTags();
+  const [adding, setAdding] = useState(false);
+  return (
+    <section aria-labelledby="settings-task-tags-title" className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <h3 id="settings-task-tags-title" className="m-0 mr-auto text-[14px] font-semibold">
+          {t("settings.tasks.tags")}
+        </h3>
+        {!adding && (
+          <Button size="sm" onClick={() => setAdding(true)}>
+            {t("settings.tasks.addTag")}
+          </Button>
+        )}
+      </div>
+      <p className="m-0 text-[12.5px] text-ink-2">{t("settings.tasks.tagsHint")}</p>
+      {adding && <TagForm onDone={() => setAdding(false)} />}
+      {tags.isPending ? (
+        <Skeleton className="h-16" />
+      ) : tags.isError ? (
+        <p role="alert" className="m-0 text-[13px] text-ink-2">
+          {describeApiError(t, tags.error).message}
+        </p>
+      ) : tags.data.length === 0 && !adding ? (
+        <p className="m-0 text-[13px] text-ink-3">{t("settings.tasks.noTags")}</p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {tags.data.map((tag) => (
+            <TagItem key={tag.id} tag={tag} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function TagItem({ tag }: { tag: TaskTag }) {
+  const { t } = useTranslation();
+  const remove = useDeleteTaskTag();
+  const [editing, setEditing] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  if (editing) {
+    return (
+      <li>
+        <TagForm tag={tag} onDone={() => setEditing(false)} />
+      </li>
+    );
+  }
+  return (
+    <li className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[13px]">
+      <span aria-hidden="true" className={cn("size-2.5 shrink-0 rounded-full", TAG_DOT[tag.color])} />
+      <span className="mr-auto min-w-0 font-medium break-words">{tag.name}</span>
+      {confirm ? (
+        <>
+          <span className="text-ink-2">{t("settings.tasks.deleteTagConfirm")}</span>
+          <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate(tag.id)}>
+            {t("settings.tasks.deleteTag")}
+          </Button>
+          <Button size="sm" onClick={() => setConfirm(false)}>
+            {t("tasks.cancel")}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+            {t("settings.tasks.editTag")}
+          </Button>
+          <Button size="sm" variant="ghost" className="text-danger" onClick={() => setConfirm(true)}>
+            {t("settings.tasks.deleteTag")}
+          </Button>
+        </>
+      )}
+      {remove.isError && <p className="m-0 w-full text-danger">{describeApiError(t, remove.error).message}</p>}
+    </li>
+  );
+}
+
+function TagForm({ tag, onDone }: { tag?: TaskTag; onDone: () => void }) {
+  const { t } = useTranslation();
+  const create = useCreateTaskTag();
+  const update = useUpdateTaskTag();
+  const save = tag ? update : create;
+  const [name, setName] = useState(tag?.name ?? "");
+  const [color, setColor] = useState<TagColor>(tag?.color ?? "gray");
+  const [nameError, setNameError] = useState<string | undefined>();
+  const fieldId = tag ? `task-tag-name-${tag.id}` : "task-tag-name-new";
+  const colorId = useId();
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setNameError(t("settings.tasks.tagNameRequired"));
+      document.getElementById(fieldId)?.focus();
+      return;
+    }
+    setNameError(undefined);
+    const body = { name: name.trim(), color };
+    if (tag) update.mutate({ id: tag.id, ...body }, { onSuccess: onDone });
+    else create.mutate(body, { onSuccess: onDone });
+  };
+
+  const error = save.isError ? describeApiError(t, save.error, { tag_exists: "name" }) : null;
+  return (
+    <form noValidate onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-teal bg-surface p-3">
+      <TextField
+        id={fieldId}
+        name="name"
+        label={t("settings.tasks.tagName")}
+        value={name}
+        maxLength={40}
+        error={nameError ?? (error?.field === "name" ? error.message : undefined)}
+        onChange={(e) => setName(e.currentTarget.value)}
+      />
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={colorId}>{t("settings.tasks.tagColor")}</Label>
+        <div className="flex items-center gap-2">
+          <span aria-hidden="true" className={cn("size-3 shrink-0 rounded-full", TAG_DOT[color])} />
+          <Select id={colorId} value={color} onChange={(e) => setColor(e.currentTarget.value as TagColor)}>
+            {COLORS.map((c) => (
+              <option key={c} value={c}>
+                {t(`settings.tasks.colors.${c}`)}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+      <FormMessage tone="error" message={error && error.field !== "name" ? error.message : null} />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" variant="primary" disabled={save.isPending}>
+          {t("settings.tasks.saveTag")}
         </Button>
         <Button type="button" size="sm" onClick={onDone}>
           {t("tasks.cancel")}

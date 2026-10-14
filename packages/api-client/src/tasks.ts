@@ -13,6 +13,8 @@ import {
   taskSchema,
   taskSettingsViewSchema,
   taskSummarySchema,
+  tagListSchema,
+  tagSchema,
   myTelegramSchema,
   telegramBotStateSchema,
   telegramLinkStartSchema,
@@ -32,6 +34,9 @@ export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
 export type TaskQueue = Schemas["TaskQueue"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
+/** A tag of tasks has the shape of a conversation's tag, in a list of its own (GET /task-tags). */
+export type TaskTag = Schemas["Tag"];
+export type TaskTagInput = Schemas["TaskTagInput"];
 export type TaskSettings = Schemas["TaskSettings"];
 export type TaskSettingsView = Schemas["TaskSettingsView"];
 export type ConversationTasks = Schemas["ConversationTasks"];
@@ -42,7 +47,7 @@ export type TelegramBotState = Schemas["TelegramBotState"];
 
 /**
  * Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` and `topic` are
- * `none` or an id.
+ * `none` or an id, `tag` is a tag id.
  */
 export type TaskFilter = {
   state?: "open" | "closed";
@@ -50,6 +55,7 @@ export type TaskFilter = {
   assignee?: string;
   queue?: string;
   topic?: string;
+  tag?: string;
   q?: string;
 };
 
@@ -113,6 +119,23 @@ export async function updateTaskQueue(client: ApiClient, id: string, body: TaskQ
 
 export async function deleteTaskQueue(client: ApiClient, id: string): Promise<void> {
   await unwrap(client.DELETE("/task-queues/{id}", { params: { path: { id } } }));
+}
+
+export async function fetchTaskTags(client: ApiClient): Promise<TaskTag[]> {
+  return parseAnswer(tagListSchema, await unwrap(client.GET("/task-tags"))).items;
+}
+
+/** Any member adds a tag of tasks; a taken name answers `409 tag_exists`. */
+export async function createTaskTag(client: ApiClient, body: TaskTagInput): Promise<TaskTag> {
+  return parseAnswer(tagSchema, await unwrap(client.POST("/task-tags", { body })), 201);
+}
+
+export async function updateTaskTag(client: ApiClient, id: string, body: TaskTagInput): Promise<TaskTag> {
+  return parseAnswer(tagSchema, await unwrap(client.PUT("/task-tags/{id}", { params: { path: { id } }, body })));
+}
+
+export async function deleteTaskTag(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/task-tags/{id}", { params: { path: { id } } }));
 }
 
 export async function fetchTaskSettings(client: ApiClient): Promise<TaskSettingsView> {
