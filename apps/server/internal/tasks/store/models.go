@@ -11,21 +11,22 @@ import (
 )
 
 type Task struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Number      int64
-	QueueID     *uuid.UUID
-	Title       string
-	Body        string
-	Status      string
-	Priority    string
-	AssigneeID  *uuid.UUID
-	CreatedBy   *uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ClosedAt    *time.Time
-	Version     int32
-	TopicID     *uuid.UUID
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	Number          int64
+	QueueID         *uuid.UUID
+	Title           string
+	Body            string
+	Status          string
+	Priority        string
+	AssigneeID      *uuid.UUID
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ClosedAt        *time.Time
+	Version         int32
+	TopicID         *uuid.UUID
+	StatusChangedAt time.Time
 }
 
 type TaskActivity struct {

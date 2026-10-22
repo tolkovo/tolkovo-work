@@ -4,6 +4,7 @@ import {
   conversationTasksSchema,
   taskActivityListSchema,
   taskActivitySchema,
+  taskBoardSchema,
   taskDraftSchema,
   taskPageSchema,
   taskQueueListSchema,
@@ -29,6 +30,8 @@ export type TaskStatus = Schemas["TaskStatus"];
 export type TaskPriority = Schemas["TaskPriority"];
 export type TaskButton = Schemas["TaskButton"];
 export type TaskPage = Schemas["TaskPage"];
+export type TaskBoard = Schemas["TaskBoard"];
+export type TaskBoardColumn = Schemas["TaskBoardColumn"];
 export type TaskCreate = Schemas["TaskCreate"];
 export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
@@ -61,6 +64,21 @@ export type TaskFilter = {
 
 export async function fetchTasks(client: ApiClient, filter: TaskFilter, cursor?: string): Promise<TaskPage> {
   const query = { ...filter, ...(cursor ? { cursor } : {}) };
+  return parseAnswer(taskPageSchema, await unwrap(client.GET("/tasks", { params: { query } })));
+}
+
+/** Filter of the board (ADR-0019): the list's, without the state; `closed_days` bounds done. */
+export type TaskBoardFilter = Omit<TaskFilter, "state" | "status"> & { closed_days?: number; canceled?: boolean };
+
+/** The whole board in one answer, a column by status, so the counts agree. */
+export async function fetchTaskBoard(client: ApiClient, filter: TaskBoardFilter): Promise<TaskBoard> {
+  return parseAnswer(taskBoardSchema, await unwrap(client.GET("/tasks/board", { params: { query: filter } })));
+}
+
+/** The rest of a board column from its `next_cursor`, in the order of the column. */
+export async function fetchTaskColumn(client: ApiClient, filter: TaskBoardFilter, status: TaskStatus, cursor: string): Promise<TaskPage> {
+  const { canceled: _, ...rest } = filter;
+  const query = { ...rest, status, sort: "flow" as const, cursor };
   return parseAnswer(taskPageSchema, await unwrap(client.GET("/tasks", { params: { query } })));
 }
 

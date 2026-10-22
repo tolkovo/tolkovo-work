@@ -1184,6 +1184,24 @@ func (e ListTasksParamsState) Valid() bool {
 	}
 }
 
+// Defines values for ListTasksParamsSort.
+const (
+	Flow   ListTasksParamsSort = "flow"
+	Number ListTasksParamsSort = "number"
+)
+
+// Valid indicates whether the value is a known member of the ListTasksParamsSort enum.
+func (e ListTasksParamsSort) Valid() bool {
+	switch e {
+	case Flow:
+		return true
+	case Number:
+		return true
+	default:
+		return false
+	}
+}
+
 // AIBot defines model for AIBot.
 type AIBot struct {
 	// ChannelIds The channels whose new conversations the bot answers.
@@ -2702,6 +2720,9 @@ type Task struct {
 	Body       string     `json:"body"`
 	ClosedAt   *time.Time `json:"closed_at"`
 
+	// ConversationCount The number of linked conversations; in lists and on the board too.
+	ConversationCount int `json:"conversation_count"`
+
 	// ConversationIds Linked conversations, oldest link first; empty in lists.
 	ConversationIds []uuid.UUID `json:"conversation_ids"`
 	CreatedAt       time.Time   `json:"created_at"`
@@ -2720,6 +2741,9 @@ type Task struct {
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
 	// `review` and `verified` are open statuses. Any status may follow any other.
 	Status TaskStatus `json:"status"`
+
+	// StatusChangedAt When the task came into its status; the board counts the time in a column from it.
+	StatusChangedAt time.Time `json:"status_changed_at"`
 
 	// TagIds Tags of tasks (`GET /task-tags`), in the order they were put on; in lists too.
 	TagIds []uuid.UUID `json:"tag_ids"`
@@ -2778,6 +2802,31 @@ type TaskActivityKind string
 // TaskActivityList defines model for TaskActivityList.
 type TaskActivityList struct {
 	Items []TaskActivity `json:"items"`
+}
+
+// TaskBoard defines model for TaskBoard.
+type TaskBoard struct {
+	// Columns Every status in the order of the path; `canceled` only when asked.
+	Columns []TaskBoardColumn `json:"columns"`
+}
+
+// TaskBoardColumn defines model for TaskBoardColumn.
+type TaskBoardColumn struct {
+	// Count All tasks of the column under the filters, shown or not.
+	Count int64 `json:"count"`
+
+	// Items The first 50 tasks in the order of the column: an open one puts the most urgent
+	// first, then the one standing longest in it; `done` and `canceled` the latest first.
+	Items []Task `json:"items"`
+
+	// NextCursor Continues the column by `GET /tasks?status=<status>&sort=flow&cursor=…` with the same
+	// filters (and `closed_days` for `done` and `canceled`); `null` when every task is shown.
+	NextCursor *string `json:"next_cursor"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status TaskStatus `json:"status"`
 }
 
 // TaskButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
@@ -3347,6 +3396,9 @@ type WorkspaceSummary struct {
 	Slug string `json:"slug"`
 }
 
+// ClosedDays defines model for ClosedDays.
+type ClosedDays = int
+
 // Cursor defines model for Cursor.
 type Cursor = string
 
@@ -3570,6 +3622,13 @@ type ListTasksParams struct {
 	// Q Part of the title, or the task number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
+	// Sort `number` (newest first, the default) or `flow`: the order of a column of the board
+	// (`GET /tasks/board`), which takes `status` and no `state`.
+	Sort *ListTasksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// ClosedDays With `sort=flow` and a closed status, keeps the tasks closed in the last that many days, 1–90.
+	ClosedDays *int `form:"closed_days,omitempty" json:"closed_days,omitempty"`
+
 	// Cursor Opaque `next_cursor` of the previous page.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -3579,6 +3638,33 @@ type ListTasksParams struct {
 
 // ListTasksParamsState defines parameters for ListTasks.
 type ListTasksParamsState string
+
+// ListTasksParamsSort defines parameters for ListTasks.
+type ListTasksParamsSort string
+
+// GetTaskBoardParams defines parameters for GetTaskBoard.
+type GetTaskBoardParams struct {
+	// Assignee `me`, `none` or a member id.
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// Queue `none` or a queue id.
+	Queue *string `form:"queue,omitempty" json:"queue,omitempty"`
+
+	// Topic `none` or a topic id.
+	Topic *string `form:"topic,omitempty" json:"topic,omitempty"`
+
+	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
+	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Q Part of the title, or the task number.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// ClosedDays How many days back closed tasks of the board reach, 1–90; 14 when absent.
+	ClosedDays *ClosedDays `form:"closed_days,omitempty" json:"closed_days,omitempty"`
+
+	// Canceled Adds the column of tasks canceled in the last `closed_days` days.
+	Canceled *bool `form:"canceled,omitempty" json:"canceled,omitempty"`
+}
 
 // ListWidgetMessagesParams defines parameters for ListWidgetMessages.
 type ListWidgetMessagesParams struct {
@@ -4192,12 +4278,15 @@ type ServerInterface interface {
 	// UpdateTaskTag Rename a tag of tasks and change its color
 	// (PUT /task-tags/{id})
 	UpdateTaskTag(w http.ResponseWriter, r *http.Request, id Id)
-	// ListTasks Tasks, newest first
+	// ListTasks Tasks, newest first or in the order of a column of the board
 	// (GET /tasks)
 	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
 	// CreateTask Create a task
 	// (POST /tasks)
 	CreateTask(w http.ResponseWriter, r *http.Request)
+	// GetTaskBoard The board of tasks, a column by status (ADR-0019)
+	// (GET /tasks/board)
+	GetTaskBoard(w http.ResponseWriter, r *http.Request, params GetTaskBoardParams)
 	// GetTaskSummary The caller's open tasks, for the menu
 	// (GET /tasks/summary)
 	GetTaskSummary(w http.ResponseWriter, r *http.Request)
@@ -5026,7 +5115,7 @@ func (_ Unimplemented) UpdateTaskTag(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ListTasks Tasks, newest first
+// ListTasks Tasks, newest first or in the order of a column of the board
 // (GET /tasks)
 func (_ Unimplemented) ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -5035,6 +5124,12 @@ func (_ Unimplemented) ListTasks(w http.ResponseWriter, r *http.Request, params 
 // CreateTask Create a task
 // (POST /tasks)
 func (_ Unimplemented) CreateTask(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskBoard The board of tasks, a column by status (ADR-0019)
+// (GET /tasks/board)
+func (_ Unimplemented) GetTaskBoard(w http.ResponseWriter, r *http.Request, params GetTaskBoardParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7995,6 +8090,32 @@ func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "closed_days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "closed_days", r.URL.Query(), &params.ClosedDays, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "closed_days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "closed_days", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "cursor" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8037,6 +8158,117 @@ func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateTask(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTaskBoard operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTaskBoardParams
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "queue" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "queue", r.URL.Query(), &params.Queue, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "queue"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "queue", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "topic" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "topic", r.URL.Query(), &params.Topic, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "closed_days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "closed_days", r.URL.Query(), &params.ClosedDays, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "closed_days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "closed_days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "canceled" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "canceled", r.URL.Query(), &params.Canceled, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "canceled"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "canceled", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskBoard(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9096,6 +9328,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks", wrapper.CreateTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/board", wrapper.GetTaskBoard)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tasks/summary", wrapper.GetTaskSummary)

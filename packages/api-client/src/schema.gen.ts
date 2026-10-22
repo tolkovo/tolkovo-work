@@ -2456,7 +2456,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Tasks, newest first
+         * Tasks, newest first or in the order of a column of the board
          * @description Requires `tasks.view`.
          */
         get: operations["listTasks"];
@@ -2470,6 +2470,28 @@ export interface paths {
          *     they linked it). `409 tasks_disabled` while the section is off.
          */
         post: operations["createTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The board of tasks, a column by status (ADR-0019)
+         * @description Requires `tasks.view`. One query for every column, so their counts agree. The filters
+         *     are those of `GET /tasks`; `done` holds the tasks closed in the last `closed_days` days.
+         *     A task moves between columns by `PUT /tasks/{id}` with its new status.
+         */
+        get: operations["getTaskBoard"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3513,10 +3535,17 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             closed_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the task came into its status; the board counts the time in a column from it.
+             */
+            status_changed_at: string;
             /** Format: int32 */
             version: number;
             /** @description Linked conversations, oldest link first; empty in lists. */
             conversation_ids: string[];
+            /** @description The number of linked conversations; in lists and on the board too. */
+            conversation_count: number;
             /** @description Files of the description, in the order they came; empty in lists. */
             files: components["schemas"]["TaskFile"][];
             /** @description Tags of tasks (`GET /task-tags`), in the order they were put on; in lists too. */
@@ -3555,6 +3584,28 @@ export interface components {
         };
         TaskPage: {
             items: components["schemas"]["Task"][];
+            next_cursor: string | null;
+        };
+        TaskBoard: {
+            /** @description Every status in the order of the path; `canceled` only when asked. */
+            columns: components["schemas"]["TaskBoardColumn"][];
+        };
+        TaskBoardColumn: {
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Format: int64
+             * @description All tasks of the column under the filters, shown or not.
+             */
+            count: number;
+            /**
+             * @description The first 50 tasks in the order of the column: an open one puts the most urgent
+             *     first, then the one standing longest in it; `done` and `canceled` the latest first.
+             */
+            items: components["schemas"]["Task"][];
+            /**
+             * @description Continues the column by `GET /tasks?status=<status>&sort=flow&cursor=…` with the same
+             *     filters (and `closed_days` for `done` and `canceled`); `null` when every task is shown.
+             */
             next_cursor: string | null;
         };
         TaskCreate: {
@@ -4947,6 +4998,8 @@ export interface components {
         Cursor: string;
         /** @description Page size, 1–100; 50 when absent. */
         Limit: number;
+        /** @description How many days back closed tasks of the board reach, 1–90; 14 when absent. */
+        ClosedDays: number;
         /**
          * @description Makes a retry return the first result instead of acting twice. A
          *     reused key with a different body answers `422`.
@@ -8766,6 +8819,13 @@ export interface operations {
                 tag?: string;
                 /** @description Part of the title, or the task number. */
                 q?: string;
+                /**
+                 * @description `number` (newest first, the default) or `flow`: the order of a column of the board
+                 *     (`GET /tasks/board`), which takes `status` and no `state`.
+                 */
+                sort?: "number" | "flow";
+                /** @description With `sort=flow` and a closed status, keeps the tasks closed in the last that many days, 1–90. */
+                closed_days?: number;
                 /** @description Opaque `next_cursor` of the previous page. */
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Page size, 1–100; 50 when absent. */
@@ -8820,6 +8880,44 @@ export interface operations {
             409: components["responses"]["TaskConflict"];
             422: components["responses"]["TaskFileRejected"];
             503: components["responses"]["TaskFilesUnavailable"];
+        };
+    };
+    getTaskBoard: {
+        parameters: {
+            query?: {
+                /** @description `me`, `none` or a member id. */
+                assignee?: string;
+                /** @description `none` or a queue id. */
+                queue?: string;
+                /** @description `none` or a topic id. */
+                topic?: string;
+                /** @description A tag of tasks (`GET /task-tags`); only the tasks with it. */
+                tag?: string;
+                /** @description Part of the title, or the task number. */
+                q?: string;
+                /** @description How many days back closed tasks of the board reach, 1–90; 14 when absent. */
+                closed_days?: components["parameters"]["ClosedDays"];
+                /** @description Adds the column of tasks canceled in the last `closed_days` days. */
+                canceled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The columns. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBoard"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getTaskSummary: {

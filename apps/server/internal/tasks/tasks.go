@@ -34,10 +34,16 @@ type Task struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	ClosedAt   *time.Time
-	Version    int32
+	// StatusChangedAt is when the task came into its status: the time in
+	// its column of the board (ADR-0019).
+	StatusChangedAt time.Time
+	Version         int32
 	// ConversationIDs are the linked conversations, oldest link first;
 	// filled by Get, not by lists.
 	ConversationIDs []uuid.UUID
+	// ConversationCount is the number of linked conversations, filled by
+	// lists and the board as well.
+	ConversationCount int
 	// Files of the description; filled for one task, not in lists.
 	Files []File
 	// TagIDs are the task's tags (Tags), in the order they were put on.
@@ -174,7 +180,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 		if err := s.link(ctx, tx, q, row, *in.ConversationID, actor, conversations.EventTaskCreated); err != nil {
 			return Task{}, err
 		}
-		out.ConversationIDs = []uuid.UUID{*in.ConversationID}
+		out.ConversationIDs, out.ConversationCount = []uuid.UUID{*in.ConversationID}, 1
 	}
 	if err := s.notifyNew(ctx, tx, q, row, actorID); err != nil {
 		return Task{}, err
@@ -223,6 +229,7 @@ func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task,
 		if err != nil {
 			return err
 		}
+		out.ConversationCount = len(out.ConversationIDs)
 		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
 			return err
 		}
@@ -268,13 +275,21 @@ type Filter struct {
 	// Before is the number to continue below; 0 starts from the newest.
 	Before int64
 	Limit  int
+	// Flow orders the tasks of Status as its column of the board (Board),
+	// continuing after the task at After when set; ClosedDays, when set,
+	// then keeps the tasks closed in the last that many days.
+	Flow       bool
+	After      *FlowKey
+	ClosedDays int
 }
 
 // Page is one page of tasks; Next is the number to pass as Before for the
-// next one, 0 on the last page.
+// next one, 0 on the last page. With Filter.Flow it is NextKey, nil on the
+// last page.
 type Page struct {
-	Items []Task
-	Next  int64
+	Items   []Task
+	Next    int64
+	NextKey *FlowKey
 }
 
 // List returns tasks newest first.
@@ -295,6 +310,9 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	limit := 50
 	if f.Limit > 0 {
 		limit = min(f.Limit, pageLimit)
+	}
+	if f.Flow {
+		return s.listFlow(ctx, workspaceID, f, limit)
 	}
 	var status *string
 	if f.Status != "" {
@@ -318,7 +336,7 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 			}
 			out.Items = append(out.Items, taskFrom(r))
 		}
-		return fillTags(ctx, q, workspaceID, out.Items)
+		return fillLists(ctx, q, workspaceID, out.Items)
 	})
 	if err != nil {
 		return Page{}, dbError(err, "list tasks")
@@ -428,6 +446,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if err != nil {
 			return err
 		}
+		out.ConversationCount = len(out.ConversationIDs)
 		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
 			return err
 		}
@@ -749,7 +768,7 @@ func taskFrom(r store.Task) Task {
 	return Task{
 		ID: r.ID, Number: r.Number, QueueID: r.QueueID, TopicID: r.TopicID, Title: r.Title, Body: r.Body, Status: r.Status, Priority: r.Priority,
 		AssigneeID: r.AssigneeID, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ClosedAt: r.ClosedAt,
-		Version: r.Version,
+		StatusChangedAt: r.StatusChangedAt, Version: r.Version,
 	}
 }
 

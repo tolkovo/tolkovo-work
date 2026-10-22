@@ -560,8 +560,10 @@ export const taskSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   closed_at: z.string().nullable(),
+  status_changed_at: z.string(),
   version: z.number(),
   conversation_ids: z.array(z.string()),
+  conversation_count: z.number(),
   files: z.array(taskFileSchema),
   tag_ids: z.array(z.string()),
 }) satisfies z.ZodType<Schemas["Task"]>;
@@ -570,6 +572,17 @@ export const taskPageSchema = z.object({
   items: z.array(taskSchema),
   next_cursor: z.string().nullable(),
 }) satisfies z.ZodType<Schemas["TaskPage"]>;
+
+export const taskBoardSchema = z.object({
+  columns: z.array(
+    z.object({
+      status: taskStatusSchema,
+      count: z.number(),
+      items: z.array(taskSchema),
+      next_cursor: z.string().nullable(),
+    }) satisfies z.ZodType<Schemas["TaskBoardColumn"]>,
+  ),
+}) satisfies z.ZodType<Schemas["TaskBoard"]>;
 
 export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfies z.ZodType<Schemas["TaskSummary"]>;
 

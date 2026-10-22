@@ -220,6 +220,8 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 		// Tasks (ADR-0015): every member works on them, queues and settings are the admins'.
 		{http.MethodGet, "/api/v1/tasks", nil,
 			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
+		{http.MethodGet, "/api/v1/tasks/board", nil,
+			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
 		{http.MethodGet, "/api/v1/task-queues", nil,
 			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
 		{http.MethodPut, "/api/v1/task-settings", map[string]any{"enabled": true, "conversation_button": "both", "reply_ru": "", "reply_en": ""},

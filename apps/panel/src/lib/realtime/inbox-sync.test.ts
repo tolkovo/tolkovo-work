@@ -170,7 +170,7 @@ describe("createInboxSync", () => {
     const task = {
       id: "t1", number: 7, queue_id: null, topic_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
       assignee_id: me, created_by: "u2", created_at: "2026-10-04T12:00:00Z", updated_at: "2026-10-04T12:00:00Z",
-      closed_at: null, version: 2, conversation_ids: [], files: [], tag_ids: [],
+      closed_at: null, status_changed_at: "2026-10-04T12:00:00Z", version: 2, conversation_ids: [], conversation_count: 0, files: [], tag_ids: [],
     };
     const api = fakeApi({ routes: { "GET /tasks/t1": () => json(200, task) } });
     const queryClient = new QueryClient();
