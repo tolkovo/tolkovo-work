@@ -71,6 +71,7 @@ var mcpTools = []mcpTool{
 			"assignee": map[string]any{"type": "string", "description": `"me" (default), "none", "anyone" or a member id.`},
 			"queue":    queueProp,
 			"tag":      map[string]any{"type": "string", "maxLength": tasks.MaxTagName, "description": "Only tasks with this tag: its name from list_tags."},
+			"blocked":  map[string]any{"type": "boolean", "description": "true: only the blocked tasks; false: only the others."},
 			"query":    map[string]any{"type": "string", "maxLength": 100, "description": "Part of the title, or a task number."},
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
 			"cursor":   map[string]any{"type": "string", "description": "next_cursor of the previous page."},
@@ -135,16 +136,19 @@ var mcpTools = []mcpTool{
 		Name: "update_task", Title: "Change a task",
 		Description: "Changes only the fields given. Putting a task in_progress without an assignee gives it to you; " +
 			"review: on the dev server for checking; verified: checked, waits for production; " +
-			"done (in production) or canceled closes it, and its waiting conversations go back to their operators.",
+			"done (in production) or canceled closes it, and its waiting conversations go back to their operators. " +
+			"blocked_reason marks an open task as blocked by something outside the work (an answer, an access, another task); " +
+			`"" takes the mark off.`,
 		InputSchema: object([]string{"number"}, map[string]any{
-			"number":   numberProp,
-			"title":    map[string]any{"type": "string", "minLength": 1, "maxLength": tasks.MaxTitle},
-			"body":     map[string]any{"type": "string", "maxLength": tasks.MaxBody},
-			"status":   statusProp,
-			"priority": priorityProp,
-			"assignee": assigneeProp,
-			"queue":    queueProp,
-			"tags":     withDescription(tagsProp, "Names of tags from list_tags; replace the task's tags, [] takes them all off."),
+			"number":         numberProp,
+			"title":          map[string]any{"type": "string", "minLength": 1, "maxLength": tasks.MaxTitle},
+			"body":           map[string]any{"type": "string", "maxLength": tasks.MaxBody},
+			"status":         statusProp,
+			"priority":       priorityProp,
+			"assignee":       assigneeProp,
+			"queue":          queueProp,
+			"tags":           withDescription(tagsProp, "Names of tags from list_tags; replace the task's tags, [] takes them all off."),
+			"blocked_reason": map[string]any{"type": "string", "maxLength": tasks.MaxBlockedReason, "description": `What blocks the task; "" unblocks it.`},
 		}),
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		perm:        authz.TasksEdit, run: toolUpdateTask,
@@ -272,6 +276,8 @@ type mcpTask struct {
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at,omitempty"`
+	// BlockedReason is set while the task is blocked.
+	BlockedReason *string `json:"blocked_reason,omitempty"`
 	// LinkedConversations counts the customer conversations waiting for it.
 	LinkedConversations int           `json:"linked_conversations"`
 	Files               []mcpFile     `json:"files,omitempty"`
@@ -370,7 +376,8 @@ func (n names) task(t tasks.Task, full bool) mcpTask {
 	out := mcpTask{
 		Number: t.Number, ID: t.ID, Title: t.Title, Status: t.Status, Priority: t.Priority,
 		Assignee: n.person(t.AssigneeID), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt,
-		LinkedConversations: len(t.ConversationIDs), Tags: make([]string, 0, len(t.TagIDs)),
+		LinkedConversations: max(len(t.ConversationIDs), t.ConversationCount), Tags: make([]string, 0, len(t.TagIDs)),
+		BlockedReason: t.BlockedReason,
 	}
 	for _, id := range t.TagIDs {
 		out.Tags = append(out.Tags, nameOf(n.tags, id.String()))
@@ -395,6 +402,7 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 		Assignee string `json:"assignee"`
 		Queue    string `json:"queue"`
 		Tag      string `json:"tag"`
+		Blocked  *bool  `json:"blocked"`
 		Query    string `json:"query"`
 		Limit    int    `json:"limit"`
 		Cursor   string `json:"cursor"`
@@ -402,7 +410,7 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 	if err := decodeArgs(raw, &in); err != nil {
 		return nil, err
 	}
-	f := tasks.Filter{Status: in.Status, Query: in.Query, Limit: 20}
+	f := tasks.Filter{Status: in.Status, Query: in.Query, Blocked: in.Blocked, Limit: 20}
 	switch in.State {
 	case "", "open":
 		f.State = "open"
@@ -610,6 +618,7 @@ func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		Assignee *string   `json:"assignee"`
 		Queue    *string   `json:"queue"`
 		Tags     *[]string `json:"tags"`
+		Blocked  *string   `json:"blocked_reason"`
 	}
 	if err := decodeArgs(raw, &in); err != nil {
 		return nil, err
@@ -647,7 +656,7 @@ func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		}
 		up := tasks.Update{
 			Version: cur.Version, Title: cur.Title, Body: cur.Body, Status: cur.Status, Priority: cur.Priority,
-			QueueID: cur.QueueID, TopicID: cur.TopicID, AssigneeID: cur.AssigneeID, TagIDs: tagIDs,
+			QueueID: cur.QueueID, TopicID: cur.TopicID, AssigneeID: cur.AssigneeID, TagIDs: tagIDs, BlockedReason: in.Blocked,
 		}
 		if in.Title != nil {
 			up.Title = *in.Title

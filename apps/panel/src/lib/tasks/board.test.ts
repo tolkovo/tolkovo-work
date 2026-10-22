@@ -19,6 +19,7 @@ const task = (number: number, patch: Partial<Task> = {}): Task => ({
   updated_at: "2026-10-01T10:00:00Z",
   closed_at: null,
   status_changed_at: "2026-10-10T10:00:00Z",
+  blocked_reason: null,
   version: 1,
   conversation_ids: [],
   conversation_count: 0,
@@ -53,8 +54,8 @@ describe("the order of a column", () => {
 describe("moving a card before the server answers", () => {
   const board = (): TaskBoard => ({
     columns: [
-      { status: "open", count: 2, items: [task(1), task(2, { status_changed_at: "2026-10-01T00:00:00Z" })], next_cursor: null },
-      { status: "in_progress", count: 1, items: [task(3, { status: "in_progress", assignee_id: "u-petr", status_changed_at: "2026-10-01T00:00:00Z" })], next_cursor: null },
+      { status: "open", count: 2, items: [task(1), task(2, { status_changed_at: "2026-10-01T00:00:00Z" })], next_cursor: null, wip_limit: null, age_days: null },
+      { status: "in_progress", count: 1, items: [task(3, { status: "in_progress", assignee_id: "u-petr", status_changed_at: "2026-10-01T00:00:00Z" })], next_cursor: null, wip_limit: null, age_days: null },
     ],
   });
   const now = new Date("2026-10-22T12:00:00Z");

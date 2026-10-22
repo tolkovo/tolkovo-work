@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
@@ -169,5 +170,158 @@ func TestTasks_Board(t *testing.T) {
 		if c.Count != 0 || len(c.Items) != 0 {
 			t.Fatalf("foreign column %s: %+v", c.Status, c)
 		}
+	}
+}
+
+// A blocked task (ADR-0019, K2): the mark is set and taken off by PUT, kept
+// by a client that does not send it, and taken off by closing; the feed
+// records both, the reason as the body.
+func TestTasks_Blocked(t *testing.T) {
+	in := setupInbox(t)
+	op := in.op
+	task := decode[oapi.Task](t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Выгрузка в 1С"}))
+	base := "/api/v1/tasks/" + task.Id.String()
+	put := func(cur oapi.Task, edit func(map[string]any)) oapi.Task {
+		t.Helper()
+		rec := op.do(http.MethodPut, base, taskUpdate(cur, edit))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("put: %d %s", rec.Code, rec.Body)
+		}
+		return decode[oapi.Task](t, rec)
+	}
+	blocked := put(task, func(m map[string]any) { m["blocked_reason"] = "  Ждём ответа бухгалтерии  " })
+	if blocked.BlockedReason == nil || *blocked.BlockedReason != "Ждём ответа бухгалтерии" || blocked.Status != oapi.TaskStatusOpen {
+		t.Fatalf("blocked: %+v", blocked)
+	}
+	// A client that does not know the mark keeps it.
+	kept := put(blocked, func(m map[string]any) { m["status"] = "in_progress" })
+	if kept.BlockedReason == nil {
+		t.Fatalf("an update without the field took the mark off: %+v", kept)
+	}
+	only := func(query string) []int64 {
+		t.Helper()
+		return numbers(decode[oapi.TaskPage](t, op.do(http.MethodGet, "/api/v1/tasks"+query, nil)).Items)
+	}
+	other := decode[oapi.Task](t, op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": "Не заблокирована"}))
+	if got := fmt.Sprint(only("?blocked=true")); got != fmt.Sprint([]int64{task.Number}) {
+		t.Fatalf("blocked filter: %s", got)
+	}
+	if got := fmt.Sprint(only("?blocked=false")); got != fmt.Sprint([]int64{other.Number}) {
+		t.Fatalf("not blocked filter: %s", got)
+	}
+	b := decode[oapi.TaskBoard](t, op.do(http.MethodGet, "/api/v1/tasks/board?blocked=true", nil))
+	if c := boardColumn(t, b, oapi.TaskStatusInProgress); len(c.Items) != 1 || c.Items[0].BlockedReason == nil {
+		t.Fatalf("blocked on the board: %+v", c)
+	}
+	wantProblem(t, op.do(http.MethodPut, base, taskUpdate(kept, func(m map[string]any) { m["blocked_reason"] = strings.Repeat("я", 501) })),
+		http.StatusBadRequest, "invalid_request")
+
+	unblocked := put(kept, func(m map[string]any) { m["blocked_reason"] = "" })
+	if unblocked.BlockedReason != nil {
+		t.Fatalf("unblocked: %+v", unblocked)
+	}
+	again := put(unblocked, func(m map[string]any) { m["blocked_reason"] = "Нет доступа к серверу" })
+	done := put(again, func(m map[string]any) { m["status"] = "done" })
+	if done.BlockedReason != nil || done.ClosedAt == nil {
+		t.Fatalf("closing kept the mark: %+v", done)
+	}
+	// A closed task cannot be blocked: the mark is dropped.
+	if stays := put(done, func(m map[string]any) { m["blocked_reason"] = "Поздно" }); stays.BlockedReason != nil {
+		t.Fatalf("a closed task got blocked: %+v", stays)
+	}
+
+	feed := decode[oapi.TaskActivityList](t, op.do(http.MethodGet, base+"/activity", nil)).Items
+	var lines []string
+	for _, a := range feed {
+		switch a.Kind {
+		case oapi.TaskActivityKindBlocked:
+			lines = append(lines, "blocked:"+deref(a.Body))
+		case oapi.TaskActivityKindUnblocked, oapi.TaskActivityKindStatus:
+			lines = append(lines, string(a.Kind))
+		}
+	}
+	want := "blocked:Ждём ответа бухгалтерии status unblocked blocked:Нет доступа к серверу unblocked status"
+	if got := strings.Join(lines, " "); got != want {
+		t.Fatalf("feed:\n got %s\nwant %s", got, want)
+	}
+}
+
+// The rules of the columns (ADR-0019, K2): admins set soft limits and ages
+// for the workspace and for a queue; the board shows the queue's when it
+// shows one queue that has it.
+func TestTasks_BoardRules(t *testing.T) {
+	in := setupInbox(t)
+	e, owner, op := in.e, in.owner, in.op
+	dev := decode[oapi.TaskQueue](t, owner.do(http.MethodPost, "/api/v1/task-queues", map[string]any{"name": "Разработка", "member_ids": []string{}}))
+	ops := decode[oapi.TaskQueue](t, owner.do(http.MethodPost, "/api/v1/task-queues", map[string]any{"name": "Сисадмины", "member_ids": []string{}}))
+	rules := map[string]any{"rules": []map[string]any{
+		{"queue_id": nil, "status": "in_progress", "wip_limit": 2, "age_days": 3},
+		{"queue_id": nil, "status": "review", "wip_limit": nil, "age_days": 2},
+		{"queue_id": dev.Id, "status": "in_progress", "wip_limit": 5, "age_days": nil},
+		{"queue_id": ops.Id, "status": "open", "wip_limit": nil, "age_days": nil}, // dropped: says nothing
+	}}
+	wantProblem(t, op.do(http.MethodPut, "/api/v1/task-board-settings", rules), http.StatusForbidden, "forbidden")
+	set := decode[oapi.TaskBoardSettings](t, owner.do(http.MethodPut, "/api/v1/task-board-settings", rules))
+	if len(set.Rules) != 3 {
+		t.Fatalf("stored rules: %+v", set.Rules)
+	}
+	if got := decode[oapi.TaskBoardSettings](t, op.do(http.MethodGet, "/api/v1/task-board-settings", nil)); len(got.Rules) != 3 ||
+		got.Rules[0].QueueId != nil {
+		t.Fatalf("read rules, the workspace's first: %+v", got.Rules)
+	}
+
+	rule := func(query string, status oapi.TaskStatus) string {
+		t.Helper()
+		c := boardColumn(t, decode[oapi.TaskBoard](t, op.do(http.MethodGet, "/api/v1/tasks/board"+query, nil)), status)
+		return fmt.Sprintf("%v/%v", deref(c.WipLimit), deref(c.AgeDays))
+	}
+	for _, tc := range []struct {
+		query  string
+		status oapi.TaskStatus
+		want   string
+	}{
+		{"", oapi.TaskStatusInProgress, "2/3"},
+		{"", oapi.TaskStatusReview, "0/2"},
+		{"", oapi.TaskStatusOpen, "0/0"},
+		{"?queue=" + dev.Id.String(), oapi.TaskStatusInProgress, "5/0"}, // the queue's rule, whole
+		{"?queue=" + dev.Id.String(), oapi.TaskStatusReview, "0/2"},     // none of its own: the workspace's
+		{"?queue=" + ops.Id.String(), oapi.TaskStatusInProgress, "2/3"},
+		{"?queue=none", oapi.TaskStatusInProgress, "2/3"},
+	} {
+		if got := rule(tc.query, tc.status); got != tc.want {
+			t.Errorf("rule of %s %q: %s, want %s", tc.status, tc.query, got, tc.want)
+		}
+	}
+
+	for name, bad := range map[string][]map[string]any{
+		"done has no rule": {{"queue_id": nil, "status": "done", "wip_limit": 3, "age_days": nil}},
+		"limit too big":    {{"queue_id": nil, "status": "open", "wip_limit": 1000, "age_days": nil}},
+		"two for a column": {
+			{"queue_id": dev.Id, "status": "open", "wip_limit": 3, "age_days": nil},
+			{"queue_id": dev.Id, "status": "open", "wip_limit": 4, "age_days": nil},
+		},
+	} {
+		if rec := owner.do(http.MethodPut, "/api/v1/task-board-settings", map[string]any{"rules": bad}); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: want 400, got %d %s", name, rec.Code, rec.Body)
+		}
+	}
+
+	// A queue of another workspace is no queue here; that workspace sees none of ours.
+	_, _ = e.register("stranger@example.test", "stranger")
+	foreign, _ := e.login("stranger@example.test")
+	fq := decode[oapi.TaskQueue](t, foreign.do(http.MethodPost, "/api/v1/task-queues", map[string]any{"name": "Чужая", "member_ids": []string{}}))
+	wantProblem(t, owner.do(http.MethodPut, "/api/v1/task-board-settings", map[string]any{"rules": []map[string]any{
+		{"queue_id": fq.Id, "status": "open", "wip_limit": 3, "age_days": nil},
+	}}), http.StatusBadRequest, "invalid_request")
+	if got := decode[oapi.TaskBoardSettings](t, foreign.do(http.MethodGet, "/api/v1/task-board-settings", nil)); len(got.Rules) != 0 {
+		t.Fatalf("foreign rules: %+v", got.Rules)
+	}
+
+	// Deleting a queue deletes its rules.
+	if rec := owner.do(http.MethodDelete, "/api/v1/task-queues/"+dev.Id.String(), nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete queue: %d", rec.Code)
+	}
+	if got := decode[oapi.TaskBoardSettings](t, op.do(http.MethodGet, "/api/v1/task-board-settings", nil)); len(got.Rules) != 2 {
+		t.Fatalf("rules after the queue went: %+v", got.Rules)
 	}
 }

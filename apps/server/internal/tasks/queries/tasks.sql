@@ -24,6 +24,7 @@ SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id FOR UPDATE;
 UPDATE tasks
 SET queue_id = sqlc.narg(queue_id), topic_id = sqlc.narg(topic_id), title = @title, body = @body, status = @status, priority = @priority,
     assignee_id = sqlc.narg(assignee_id), closed_at = sqlc.narg(closed_at), updated_at = @updated_at,
+    blocked_reason = sqlc.narg(blocked_reason),
     status_changed_at = CASE WHEN status = @status THEN status_changed_at ELSE @updated_at END,
     version = version + 1
 WHERE workspace_id = @workspace_id AND id = @id
@@ -48,6 +49,7 @@ WHERE t.workspace_id = @workspace_id
   AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
   AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
   AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
+  AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = sqlc.narg(blocked)::boolean)
   AND (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
@@ -79,6 +81,7 @@ WITH ranked AS (
       AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
       AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
       AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
+      AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = sqlc.narg(blocked)::boolean)
       AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
            SELECT 1 FROM task_tag_links l
            WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
@@ -108,6 +111,7 @@ WHERE t.workspace_id = @workspace_id AND t.status = @status
   AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
   AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
   AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
+  AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = sqlc.narg(blocked)::boolean)
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
@@ -337,3 +341,17 @@ SELECT id, task_queue_id FROM topics WHERE workspace_id = @workspace_id AND id =
 -- name: ConversationTopic :one
 -- The topic of a conversation a task is created from.
 SELECT topic_id FROM conversations WHERE workspace_id = @workspace_id AND id = @id;
+
+-- name: ListColumnRules :many
+-- The rules of the board's columns: the workspace's (queue_id NULL) and the
+-- queues'.
+SELECT * FROM task_column_rules
+WHERE workspace_id = @workspace_id
+ORDER BY queue_id NULLS FIRST, status;
+
+-- name: DeleteColumnRules :exec
+DELETE FROM task_column_rules WHERE workspace_id = @workspace_id;
+
+-- name: InsertColumnRule :exec
+INSERT INTO task_column_rules (workspace_id, queue_id, status, wip_limit, age_days)
+VALUES (@workspace_id, sqlc.narg(queue_id), @status, sqlc.narg(wip_limit), sqlc.narg(age_days));

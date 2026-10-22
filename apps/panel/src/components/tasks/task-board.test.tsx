@@ -27,6 +27,7 @@ const task = (number: number, patch: Partial<Task> = {}): Task => ({
   updated_at: "2026-10-01T10:00:00Z",
   closed_at: null,
   status_changed_at: "2026-10-10T10:00:00Z",
+  blocked_reason: null,
   version: 1,
   conversation_ids: [],
   conversation_count: 0,
@@ -41,7 +42,7 @@ function boardOf(tasks: Task[]): TaskBoard {
   return {
     columns: STATUSES.map((status) => {
       const items = tasks.filter((x) => x.status === status);
-      return { status, count: items.length, items, next_cursor: null };
+      return { status, count: items.length, items, next_cursor: null, wip_limit: null, age_days: null };
     }),
   };
 }

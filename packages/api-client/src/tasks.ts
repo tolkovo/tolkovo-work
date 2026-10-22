@@ -5,6 +5,7 @@ import {
   taskActivityListSchema,
   taskActivitySchema,
   taskBoardSchema,
+  taskBoardSettingsSchema,
   taskDraftSchema,
   taskPageSchema,
   taskQueueListSchema,
@@ -32,6 +33,8 @@ export type TaskButton = Schemas["TaskButton"];
 export type TaskPage = Schemas["TaskPage"];
 export type TaskBoard = Schemas["TaskBoard"];
 export type TaskBoardColumn = Schemas["TaskBoardColumn"];
+export type TaskBoardSettings = Schemas["TaskBoardSettings"];
+export type TaskColumnRule = Schemas["TaskColumnRule"];
 export type TaskCreate = Schemas["TaskCreate"];
 export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
@@ -59,6 +62,7 @@ export type TaskFilter = {
   queue?: string;
   topic?: string;
   tag?: string;
+  blocked?: boolean;
   q?: string;
 };
 
@@ -73,6 +77,15 @@ export type TaskBoardFilter = Omit<TaskFilter, "state" | "status"> & { closed_da
 /** The whole board in one answer, a column by status, so the counts agree. */
 export async function fetchTaskBoard(client: ApiClient, filter: TaskBoardFilter): Promise<TaskBoard> {
   return parseAnswer(taskBoardSchema, await unwrap(client.GET("/tasks/board", { params: { query: filter } })));
+}
+
+/** Soft limits and age thresholds of the board's open columns, the workspace's and the queues'. */
+export async function fetchTaskBoardSettings(client: ApiClient): Promise<TaskBoardSettings> {
+  return parseAnswer(taskBoardSettingsSchema, await unwrap(client.GET("/task-board-settings")));
+}
+
+export async function updateTaskBoardSettings(client: ApiClient, body: TaskBoardSettings): Promise<TaskBoardSettings> {
+  return parseAnswer(taskBoardSettingsSchema, await unwrap(client.PUT("/task-board-settings", { body })));
 }
 
 /** The rest of a board column from its `next_cursor`, in the order of the column. */

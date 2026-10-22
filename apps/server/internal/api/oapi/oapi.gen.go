@@ -886,24 +886,28 @@ func (e TaskActivityFields) Valid() bool {
 
 // Defines values for TaskActivityKind.
 const (
-	TaskActivityKindAssignee TaskActivityKind = "assignee"
-	TaskActivityKindComment  TaskActivityKind = "comment"
-	TaskActivityKindCreated  TaskActivityKind = "created"
-	TaskActivityKindEdited   TaskActivityKind = "edited"
-	TaskActivityKindFiles    TaskActivityKind = "files"
-	TaskActivityKindLinked   TaskActivityKind = "linked"
-	TaskActivityKindPriority TaskActivityKind = "priority"
-	TaskActivityKindQueue    TaskActivityKind = "queue"
-	TaskActivityKindStatus   TaskActivityKind = "status"
-	TaskActivityKindTags     TaskActivityKind = "tags"
-	TaskActivityKindTopic    TaskActivityKind = "topic"
-	TaskActivityKindUnlinked TaskActivityKind = "unlinked"
+	TaskActivityKindAssignee  TaskActivityKind = "assignee"
+	TaskActivityKindBlocked   TaskActivityKind = "blocked"
+	TaskActivityKindComment   TaskActivityKind = "comment"
+	TaskActivityKindCreated   TaskActivityKind = "created"
+	TaskActivityKindEdited    TaskActivityKind = "edited"
+	TaskActivityKindFiles     TaskActivityKind = "files"
+	TaskActivityKindLinked    TaskActivityKind = "linked"
+	TaskActivityKindPriority  TaskActivityKind = "priority"
+	TaskActivityKindQueue     TaskActivityKind = "queue"
+	TaskActivityKindStatus    TaskActivityKind = "status"
+	TaskActivityKindTags      TaskActivityKind = "tags"
+	TaskActivityKindTopic     TaskActivityKind = "topic"
+	TaskActivityKindUnblocked TaskActivityKind = "unblocked"
+	TaskActivityKindUnlinked  TaskActivityKind = "unlinked"
 )
 
 // Valid indicates whether the value is a known member of the TaskActivityKind enum.
 func (e TaskActivityKind) Valid() bool {
 	switch e {
 	case TaskActivityKindAssignee:
+		return true
+	case TaskActivityKindBlocked:
 		return true
 	case TaskActivityKindComment:
 		return true
@@ -924,6 +928,8 @@ func (e TaskActivityKind) Valid() bool {
 	case TaskActivityKindTags:
 		return true
 	case TaskActivityKindTopic:
+		return true
+	case TaskActivityKindUnblocked:
 		return true
 	case TaskActivityKindUnlinked:
 		return true
@@ -947,6 +953,30 @@ func (e TaskButton) Valid() bool {
 	case Github:
 		return true
 	case Tasks:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskColumnRuleStatus.
+const (
+	TaskColumnRuleStatusInProgress TaskColumnRuleStatus = "in_progress"
+	TaskColumnRuleStatusOpen       TaskColumnRuleStatus = "open"
+	TaskColumnRuleStatusReview     TaskColumnRuleStatus = "review"
+	TaskColumnRuleStatusVerified   TaskColumnRuleStatus = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TaskColumnRuleStatus enum.
+func (e TaskColumnRuleStatus) Valid() bool {
+	switch e {
+	case TaskColumnRuleStatusInProgress:
+		return true
+	case TaskColumnRuleStatusOpen:
+		return true
+	case TaskColumnRuleStatusReview:
+		return true
+	case TaskColumnRuleStatusVerified:
 		return true
 	default:
 		return false
@@ -2717,8 +2747,11 @@ type TagList struct {
 // Task defines model for Task.
 type Task struct {
 	AssigneeId *uuid.UUID `json:"assignee_id"`
-	Body       string     `json:"body"`
-	ClosedAt   *time.Time `json:"closed_at"`
+
+	// BlockedReason Set while an open task is blocked, with what blocks it; a mark over the status, not a step.
+	BlockedReason *string    `json:"blocked_reason"`
+	Body          string     `json:"body"`
+	ClosedAt      *time.Time `json:"closed_at"`
 
 	// ConversationCount The number of linked conversations; in lists and on the board too.
 	ConversationCount int `json:"conversation_count"`
@@ -2759,7 +2792,7 @@ type Task struct {
 type TaskActivity struct {
 	ActorId *uuid.UUID `json:"actor_id"`
 
-	// Body The text of a comment.
+	// Body The text of a comment; the reason of a blocked line.
 	Body *string `json:"body,omitempty"`
 
 	// ConversationId On `linked` and `unlinked`.
@@ -2812,6 +2845,9 @@ type TaskBoard struct {
 
 // TaskBoardColumn defines model for TaskBoardColumn.
 type TaskBoardColumn struct {
+	// AgeDays Days after which a card stands too long in the column; `null` for none.
+	AgeDays *int `json:"age_days"`
+
 	// Count All tasks of the column under the filters, shown or not.
 	Count int64 `json:"count"`
 
@@ -2827,11 +2863,33 @@ type TaskBoardColumn struct {
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
 	// `review` and `verified` are open statuses. Any status may follow any other.
 	Status TaskStatus `json:"status"`
+
+	// WipLimit The soft limit of the column (`GET /task-board-settings`), the queue's when the board shows one queue that has it; `null` for none.
+	WipLimit *int `json:"wip_limit"`
+}
+
+// TaskBoardSettings defines model for TaskBoardSettings.
+type TaskBoardSettings struct {
+	// Rules One rule a column and queue; a rule with neither a limit nor an age is dropped.
+	Rules []TaskColumnRule `json:"rules"`
 }
 
 // TaskButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
 // connected) or both.
 type TaskButton string
+
+// TaskColumnRule defines model for TaskColumnRule.
+type TaskColumnRule struct {
+	AgeDays *int `json:"age_days"`
+
+	// QueueId `null` for the workspace's rule, a queue id for the queue's.
+	QueueId  *uuid.UUID           `json:"queue_id"`
+	Status   TaskColumnRuleStatus `json:"status"`
+	WipLimit *int                 `json:"wip_limit"`
+}
+
+// TaskColumnRuleStatus defines model for TaskColumnRule.Status.
+type TaskColumnRuleStatus string
 
 // TaskComment defines model for TaskComment.
 type TaskComment struct {
@@ -2999,10 +3057,14 @@ type TaskTagInput struct {
 
 // TaskUpdate defines model for TaskUpdate.
 type TaskUpdate struct {
-	AssigneeId *uuid.UUID   `json:"assignee_id"`
-	Body       string       `json:"body"`
-	Priority   TaskPriority `json:"priority"`
-	QueueId    *uuid.UUID   `json:"queue_id"`
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+
+	// BlockedReason Blocks the open task with this reason, or changes the reason; `""` unblocks it; absent
+	// keeps the mark. Closing the task unblocks it.
+	BlockedReason *string      `json:"blocked_reason,omitempty"`
+	Body          string       `json:"body"`
+	Priority      TaskPriority `json:"priority"`
+	QueueId       *uuid.UUID   `json:"queue_id"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
@@ -3622,6 +3684,9 @@ type ListTasksParams struct {
 	// Q Part of the title, or the task number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
+	// Blocked `true` only the blocked tasks, `false` only the others.
+	Blocked *bool `form:"blocked,omitempty" json:"blocked,omitempty"`
+
 	// Sort `number` (newest first, the default) or `flow`: the order of a column of the board
 	// (`GET /tasks/board`), which takes `status` and no `state`.
 	Sort *ListTasksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
@@ -3658,6 +3723,9 @@ type GetTaskBoardParams struct {
 
 	// Q Part of the title, or the task number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Blocked `true` only the blocked tasks, `false` only the others.
+	Blocked *bool `form:"blocked,omitempty" json:"blocked,omitempty"`
 
 	// ClosedDays How many days back closed tasks of the board reach, 1–90; 14 when absent.
 	ClosedDays *ClosedDays `form:"closed_days,omitempty" json:"closed_days,omitempty"`
@@ -3834,6 +3902,9 @@ type SetRoutingJSONRequestBody = RoutingSettings
 
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
+
+// UpdateTaskBoardSettingsJSONRequestBody defines body for UpdateTaskBoardSettings for application/json ContentType.
+type UpdateTaskBoardSettingsJSONRequestBody = TaskBoardSettings
 
 // CreateTaskFileUploadJSONRequestBody defines body for CreateTaskFileUpload for application/json ContentType.
 type CreateTaskFileUploadJSONRequestBody = TaskFileUploadRequest
@@ -4233,6 +4304,12 @@ type ServerInterface interface {
 	// CreateTag Create a tag
 	// (POST /tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	// GetTaskBoardSettings The rules of the board's columns
+	// (GET /task-board-settings)
+	GetTaskBoardSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTaskBoardSettings Replace the rules of the board's columns
+	// (PUT /task-board-settings)
+	UpdateTaskBoardSettings(w http.ResponseWriter, r *http.Request)
 	// CreateTaskFileUpload Register a file for a task and get a signed upload request
 	// (POST /task-files)
 	CreateTaskFileUpload(w http.ResponseWriter, r *http.Request)
@@ -5022,6 +5099,18 @@ func (_ Unimplemented) ListTags(w http.ResponseWriter, r *http.Request) {
 // CreateTag Create a tag
 // (POST /tags)
 func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskBoardSettings The rules of the board's columns
+// (GET /task-board-settings)
+func (_ Unimplemented) GetTaskBoardSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskBoardSettings Replace the rules of the board's columns
+// (PUT /task-board-settings)
+func (_ Unimplemented) UpdateTaskBoardSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7720,6 +7809,34 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetTaskBoardSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskBoardSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskBoardSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskBoardSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskBoardSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskBoardSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateTaskFileUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateTaskFileUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -8090,6 +8207,19 @@ func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "blocked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "blocked", r.URL.Query(), &params.Blocked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "blocked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "blocked", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8237,6 +8367,19 @@ func (siw *ServerInterfaceWrapper) GetTaskBoard(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "blocked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "blocked", r.URL.Query(), &params.Blocked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "blocked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "blocked", Err: err})
 		}
 		return
 	}
@@ -9331,6 +9474,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tasks/board", wrapper.GetTaskBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-board-settings", wrapper.GetTaskBoardSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-board-settings", wrapper.UpdateTaskBoardSettings)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tasks/summary", wrapper.GetTaskSummary)

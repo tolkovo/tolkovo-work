@@ -28,6 +28,7 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   updated_at: "2026-10-06T10:00:00Z",
   closed_at: null,
   status_changed_at: "2026-10-06T10:00:00Z",
+  blocked_reason: null,
   version: 3,
   conversation_ids: [],
   conversation_count: 0,

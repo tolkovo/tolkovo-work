@@ -2498,6 +2498,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/task-board-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The rules of the board's columns
+         * @description Requires `tasks.view`. Soft limits and age thresholds of the open columns, the workspace's and the queues'.
+         */
+        get: operations["getTaskBoardSettings"];
+        /**
+         * Replace the rules of the board's columns
+         * @description Requires `tasks.manage`. A queue of another workspace or two rules for one column are `400`.
+         */
+        put: operations["updateTaskBoardSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks/summary": {
         parameters: {
             query?: never;
@@ -3540,6 +3564,8 @@ export interface components {
              * @description When the task came into its status; the board counts the time in a column from it.
              */
             status_changed_at: string;
+            /** @description Set while an open task is blocked, with what blocks it; a mark over the status, not a step. */
+            blocked_reason: string | null;
             /** Format: int32 */
             version: number;
             /** @description Linked conversations, oldest link first; empty in lists. */
@@ -3592,6 +3618,10 @@ export interface components {
         };
         TaskBoardColumn: {
             status: components["schemas"]["TaskStatus"];
+            /** @description The soft limit of the column (`GET /task-board-settings`), the queue's when the board shows one queue that has it; `null` for none. */
+            wip_limit: number | null;
+            /** @description Days after which a card stands too long in the column; `null` for none. */
+            age_days: number | null;
             /**
              * Format: int64
              * @description All tasks of the column under the filters, shown or not.
@@ -3607,6 +3637,18 @@ export interface components {
              *     filters (and `closed_days` for `done` and `canceled`); `null` when every task is shown.
              */
             next_cursor: string | null;
+        };
+        TaskColumnRule: {
+            /** @description `null` for the workspace's rule, a queue id for the queue's. */
+            queue_id: string | null;
+            /** @enum {string} */
+            status: "open" | "in_progress" | "review" | "verified";
+            wip_limit: number | null;
+            age_days: number | null;
+        };
+        TaskBoardSettings: {
+            /** @description One rule a column and queue; a rule with neither a limit nor an age is dropped. */
+            rules: components["schemas"]["TaskColumnRule"][];
         };
         TaskCreate: {
             title: string;
@@ -3636,6 +3678,11 @@ export interface components {
             assignee_id: string | null;
             /** @description Replace the task's tags, unique; absent keeps them. */
             tag_ids?: string[];
+            /**
+             * @description Blocks the open task with this reason, or changes the reason; `""` unblocks it; absent
+             *     keeps the mark. Closing the task unblocks it.
+             */
+            blocked_reason?: string;
         };
         TaskSummary: {
             /**
@@ -3648,8 +3695,8 @@ export interface components {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags";
-            /** @description The text of a comment. */
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags" | "blocked" | "unblocked";
+            /** @description The text of a comment; the reason of a blocked line. */
             body?: string;
             /** @description The value a change moved from (a status, a priority, a member, queue or topic id); empty for none. */
             from?: string;
@@ -8819,6 +8866,8 @@ export interface operations {
                 tag?: string;
                 /** @description Part of the title, or the task number. */
                 q?: string;
+                /** @description `true` only the blocked tasks, `false` only the others. */
+                blocked?: boolean;
                 /**
                  * @description `number` (newest first, the default) or `flow`: the order of a column of the board
                  *     (`GET /tasks/board`), which takes `status` and no `state`.
@@ -8895,6 +8944,8 @@ export interface operations {
                 tag?: string;
                 /** @description Part of the title, or the task number. */
                 q?: string;
+                /** @description `true` only the blocked tasks, `false` only the others. */
+                blocked?: boolean;
                 /** @description How many days back closed tasks of the board reach, 1–90; 14 when absent. */
                 closed_days?: components["parameters"]["ClosedDays"];
                 /** @description Adds the column of tasks canceled in the last `closed_days` days. */
@@ -8913,6 +8964,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskBoard"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTaskBoardSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rules. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBoardSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTaskBoardSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskBoardSettings"];
+            };
+        };
+        responses: {
+            /** @description The rules as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBoardSettings"];
                 };
             };
             400: components["responses"]["Invalid"];

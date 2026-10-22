@@ -174,6 +174,25 @@ func validBody(body string) (string, error) {
 	return b, nil
 }
 
+// MaxBlockedReason bounds the reason of a blocked task.
+const MaxBlockedReason = 500
+
+// validBlockedReason trims the reason of an update: nil stays nil, "" means
+// unblock and comes back nil.
+func validBlockedReason(reason *string) (*string, error) {
+	if reason == nil {
+		return nil, nil
+	}
+	r := strings.TrimSpace(*reason)
+	if r == "" {
+		return nil, nil
+	}
+	if utf8.RuneCountInString(r) > MaxBlockedReason || !validText(r) {
+		return nil, fmt.Errorf("%w: the reason of a blocked task must be at most %d characters", ErrInvalid, MaxBlockedReason)
+	}
+	return &r, nil
+}
+
 func validPriority(p string) error {
 	for _, v := range Priorities {
 		if p == v {

@@ -142,7 +142,7 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 	f := tasks.Filter{
 		Query: deref(params.Q), Limit: deref(params.Limit), AssigneeID: sc.assigneeID, Unassigned: sc.unassigned,
 		QueueID: sc.queueID, NoQueue: sc.noQueue, TopicID: sc.topicID, NoTopic: sc.noTopic, TagID: params.Tag,
-		Flow: deref(params.Sort) == oapi.Flow, ClosedDays: deref(params.ClosedDays),
+		Flow: deref(params.Sort) == oapi.Flow, ClosedDays: deref(params.ClosedDays), Blocked: params.Blocked,
 	}
 	if params.State != nil {
 		f.State = string(*params.State)
@@ -198,6 +198,7 @@ func (s *server) GetTaskBoard(w http.ResponseWriter, r *http.Request, params oap
 	cols, err := s.tasks.Board(r.Context(), p.WorkspaceID, tasks.BoardFilter{
 		AssigneeID: sc.assigneeID, Unassigned: sc.unassigned, QueueID: sc.queueID, NoQueue: sc.noQueue, TopicID: sc.topicID,
 		NoTopic: sc.noTopic, TagID: params.Tag, Query: deref(params.Q), ClosedDays: deref(params.ClosedDays), Canceled: deref(params.Canceled),
+		Blocked: params.Blocked,
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -205,7 +206,9 @@ func (s *server) GetTaskBoard(w http.ResponseWriter, r *http.Request, params oap
 	}
 	out := oapi.TaskBoard{Columns: make([]oapi.TaskBoardColumn, 0, len(cols))}
 	for _, c := range cols {
-		col := oapi.TaskBoardColumn{Status: oapi.TaskStatus(c.Status), Count: c.Count, Items: make([]oapi.Task, 0, len(c.Items))}
+		col := oapi.TaskBoardColumn{
+			Status: oapi.TaskStatus(c.Status), Count: c.Count, Items: make([]oapi.Task, 0, len(c.Items)), WipLimit: c.WIPLimit, AgeDays: c.AgeDays,
+		}
 		for _, t := range c.Items {
 			col.Items = append(col.Items, taskBody(t))
 		}
@@ -216,6 +219,51 @@ func (s *server) GetTaskBoard(w http.ResponseWriter, r *http.Request, params oap
 		out.Columns = append(out.Columns, col)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// GetTaskBoardSettings implements GET /task-board-settings.
+func (s *server) GetTaskBoardSettings(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksView)
+	if !ok {
+		return
+	}
+	rules, err := s.tasks.ColumnRules(r.Context(), p.WorkspaceID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, boardSettingsBody(rules))
+}
+
+// UpdateTaskBoardSettings implements PUT /task-board-settings.
+func (s *server) UpdateTaskBoardSettings(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksManage)
+	if !ok {
+		return
+	}
+	var req oapi.TaskBoardSettings
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	in := make([]tasks.ColumnRule, 0, len(req.Rules))
+	for _, x := range req.Rules {
+		in = append(in, tasks.ColumnRule{QueueID: x.QueueId, Status: string(x.Status), WIPLimit: x.WipLimit, AgeDays: x.AgeDays})
+	}
+	rules, err := s.tasks.SetColumnRules(r.Context(), p.WorkspaceID, in)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, boardSettingsBody(rules))
+}
+
+func boardSettingsBody(rules []tasks.ColumnRule) oapi.TaskBoardSettings {
+	out := oapi.TaskBoardSettings{Rules: make([]oapi.TaskColumnRule, 0, len(rules))}
+	for _, x := range rules {
+		out.Rules = append(out.Rules, oapi.TaskColumnRule{QueueId: x.QueueID, Status: oapi.TaskColumnRuleStatus(x.Status), WipLimit: x.WIPLimit, AgeDays: x.AgeDays})
+	}
+	return out
 }
 
 // taskScope is what the list and the board filter by besides tags and text.
@@ -359,7 +407,7 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 	}
 	t, err := s.tasks.Update(r.Context(), p.WorkspaceID, p.UserID, id, tasks.Update{
 		Version: req.Version, Title: req.Title, Body: req.Body, Status: string(req.Status), Priority: string(req.Priority),
-		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId, TagIDs: req.TagIds,
+		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId, TagIDs: req.TagIds, BlockedReason: req.BlockedReason,
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -650,7 +698,7 @@ func taskBody(t tasks.Task) oapi.Task {
 	return oapi.Task{
 		Id: t.ID, Number: t.Number, QueueId: t.QueueID, TopicId: t.TopicID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
-		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, StatusChangedAt: t.StatusChangedAt, Version: t.Version,
+		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, StatusChangedAt: t.StatusChangedAt, BlockedReason: t.BlockedReason, Version: t.Version,
 		ConversationIds: nonNil(t.ConversationIDs), ConversationCount: t.ConversationCount, Files: taskFileList(t.Files), TagIds: nonNil(t.TagIDs),
 	}
 }
@@ -673,7 +721,7 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 		out.Body = &a.Body
 	}
 	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" &&
-		a.Kind != "tags" {
+		a.Kind != "tags" && a.Kind != "blocked" && a.Kind != "unblocked" {
 		out.From, out.To = &a.From, &a.To
 	}
 	if a.Kind == "comment" {

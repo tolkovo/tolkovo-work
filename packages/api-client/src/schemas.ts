@@ -561,6 +561,7 @@ export const taskSchema = z.object({
   updated_at: z.string(),
   closed_at: z.string().nullable(),
   status_changed_at: z.string(),
+  blocked_reason: z.string().nullable(),
   version: z.number(),
   conversation_ids: z.array(z.string()),
   conversation_count: z.number(),
@@ -580,9 +581,22 @@ export const taskBoardSchema = z.object({
       count: z.number(),
       items: z.array(taskSchema),
       next_cursor: z.string().nullable(),
+      wip_limit: z.number().nullable(),
+      age_days: z.number().nullable(),
     }) satisfies z.ZodType<Schemas["TaskBoardColumn"]>,
   ),
 }) satisfies z.ZodType<Schemas["TaskBoard"]>;
+
+export const taskBoardSettingsSchema = z.object({
+  rules: z.array(
+    z.object({
+      queue_id: z.string().nullable(),
+      status: z.enum(["open", "in_progress", "review", "verified"]),
+      wip_limit: z.number().nullable(),
+      age_days: z.number().nullable(),
+    }) satisfies z.ZodType<Schemas["TaskColumnRule"]>,
+  ),
+}) satisfies z.ZodType<Schemas["TaskBoardSettings"]>;
 
 export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfies z.ZodType<Schemas["TaskSummary"]>;
 
@@ -602,6 +616,8 @@ export const taskActivitySchema = z.object({
     "unlinked",
     "files",
     "tags",
+    "blocked",
+    "unblocked",
   ]),
   body: z.string().optional(),
   from: z.string().optional(),

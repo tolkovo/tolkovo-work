@@ -65,6 +65,8 @@ type BoardFilter struct {
 	ClosedDays int
 	// Canceled adds the column of canceled tasks, as far back as done.
 	Canceled bool
+	// Blocked, when set, keeps the blocked tasks or the others.
+	Blocked *bool
 }
 
 // Column is one status of the board: its first tasks in the order of the
@@ -75,6 +77,10 @@ type Column struct {
 	Count  int64
 	Items  []Task
 	Next   *FlowKey
+	// WIPLimit and AgeDays are the column's rule (ruleFor): soft, the
+	// board only shows them; nil when none.
+	WIPLimit *int
+	AgeDays  *int
 }
 
 // Board returns the board in one query, so the columns agree with each
@@ -103,10 +109,18 @@ func (s *Service) Board(ctx context.Context, workspaceID uuid.UUID, f BoardFilte
 	}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		rules, err := columnRules(ctx, q, workspaceID)
+		if err != nil {
+			return err
+		}
+		for i := range cols {
+			r := ruleFor(rules, f.QueueID, cols[i].Status)
+			cols[i].WIPLimit, cols[i].AgeDays = r.WIPLimit, r.AgeDays
+		}
 		rows, err := q.BoardTasks(ctx, store.BoardTasksParams{
 			WorkspaceID: workspaceID, PerColumn: BoardColumnLimit, ClosedSince: s.now().AddDate(0, 0, -f.ClosedDays), Canceled: f.Canceled,
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic,
-			TagID: f.TagID, Query: likeEscape(strings.TrimSpace(f.Query)),
+			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)),
 		})
 		if err != nil {
 			return err
@@ -153,7 +167,7 @@ func (s *Service) listFlow(ctx context.Context, workspaceID uuid.UUID, f Filter,
 	p := store.ListTasksFlowParams{
 		WorkspaceID: workspaceID, Status: f.Status, ClosedSince: since, ClosedOrder: closed(f.Status),
 		AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic,
-		TagID: f.TagID, Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
+		TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 	}
 	if f.After != nil {
 		p.AfterRank, p.AfterChanged, p.AfterNumber = f.After.Rank, f.After.Changed, f.After.Number
