@@ -448,6 +448,21 @@
         "violet": "Violet",
         "blue": "Blue",
         "green": "Green"
+      },
+      "board": {
+        "title": "Board",
+        "text": "Soft limits and age thresholds of the open columns. The board highlights what goes over, it never refuses a move.",
+        "scope": "For",
+        "workspace": "All tasks",
+        "limitLabel": "Limit of {column}, {scope}",
+        "ageLabel": "Age threshold in days of {column}, {scope}",
+        "addQueue": "Own rules for a queue",
+        "pickQueue": "Pick a queue",
+        "removeQueue": "Remove the rules of {name}",
+        "save": "Save",
+        "saved": "Saved",
+        "hint": "An empty field means no limit or no threshold. A queue's rules apply when the board shows that queue alone.",
+        "fields": "limit · days"
       }
     },
     "team": {
@@ -1483,7 +1498,9 @@
       "topic": "Topic: {name}",
       "noTopic": "Topic removed",
       "tagsAdded": "Tags added: {names}",
-      "tagsRemoved": "Tags removed: {names}"
+      "tagsRemoved": "Tags removed: {names}",
+      "blocked": "Blocked: {reason}",
+      "unblocked": "Unblocked"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1595,7 +1612,38 @@
         "text": "{count, plural, one {# conversation goes} other {# conversations go}} back to their assignees with a reply draft. An operator sends it.",
         "submit": "Done",
         "cancel": "Cancel"
-      }
+      },
+      "overLimit": "Over the limit ({limit}): finish what is started first",
+      "underLimit": "Limit of the column: {limit}",
+      "dropOver": "It will be {count} of {limit}, over the limit",
+      "tooLong": "Stands longer than the threshold: {days}d",
+      "lanes": {
+        "label": "Group by",
+        "none": "No grouping",
+        "assignee": "By assignee",
+        "queue": "By queue",
+        "priority": "By priority"
+      },
+      "laneNone": {
+        "assignee": "Unassigned",
+        "queue": "No queue"
+      },
+      "laneToggle": "{name}: {count}"
+    },
+    "blocked": {
+      "label": "Blocked",
+      "block": "Block…",
+      "unblock": "Unblock",
+      "title": "Block task {number}",
+      "reason": "What blocks it",
+      "reasonPlaceholder": "Waiting for an answer, an access or another task",
+      "hint": "The status stays. The mark comes off by itself when the task is closed.",
+      "submit": "Block",
+      "cancel": "Cancel",
+      "banner": "Blocked",
+      "filter": "Blocked only",
+      "done": "{number} is blocked",
+      "undone": "{number} is unblocked"
     }
   },
   "notifications": {

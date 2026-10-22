@@ -38,21 +38,23 @@ const task = (number: number, patch: Partial<Task> = {}): Task => ({
 
 const STATUSES: TaskStatus[] = ["open", "in_progress", "review", "verified", "done"];
 
-function boardOf(tasks: Task[]): TaskBoard {
+type Rules = Partial<Record<TaskStatus, { wip_limit: number | null; age_days: number | null }>>;
+
+function boardOf(tasks: Task[], rules: Rules = {}): TaskBoard {
   return {
     columns: STATUSES.map((status) => {
       const items = tasks.filter((x) => x.status === status);
-      return { status, count: items.length, items, next_cursor: null, wip_limit: null, age_days: null };
+      return { status, count: items.length, items, next_cursor: null, wip_limit: null, age_days: null, ...rules[status] };
     }),
   };
 }
 
-function server(tasks: Task[], put?: (body: Task) => Response) {
+function server(tasks: Task[], put?: (body: Task) => Response, rules: Rules = {}) {
   const state = { tasks };
   const api = fakeApi({
     session: member,
     routes: {
-      "GET /tasks/board": () => json(200, boardOf(state.tasks)),
+      "GET /tasks/board": () => json(200, boardOf(state.tasks, rules)),
       "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
       "GET /task-queues": () => json(200, { items: [] }),
       ...Object.fromEntries(
@@ -184,4 +186,58 @@ describe("the board of tasks", () => {
     await user.click(screen.getByRole("button", { name: "Повторить" }));
     expect(await screen.findByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
   });
+
+  it("shows the soft limit, the cards standing too long and the blocked ones", async () => {
+    const { api } = server(
+      [
+        task(1, { status: "in_progress", status_changed_at: "2026-10-01T10:00:00Z" }),
+        task(2, { status: "in_progress", blocked_reason: "Ждём доступ к стенду" }),
+      ],
+      undefined,
+      { in_progress: { wip_limit: 1, age_days: 3 } },
+    );
+    renderApp("/tasks?layout=board", { api });
+    const work = await screen.findByRole("region", { name: /^В работе/ }, firstLook);
+    expect(within(work).getByTitle("Больше лимита (1): сначала закончить начатое")).toHaveTextContent("2/1");
+    const card = within(work).getByRole("link", { name: "#2, Задача 2" }).closest("[data-task-id]") as HTMLElement;
+    expect(within(card).getByText("Заблокирована")).toBeInTheDocument();
+    expect(within(card).getByTitle("Ждём доступ к стенду")).toBeInTheDocument();
+    const old = within(work).getByRole("link", { name: "#1, Задача 1" }).closest("[data-task-id]") as HTMLElement;
+    expect(within(old).getByText(/Стоит дольше порога: 3 д/)).toBeInTheDocument();
+  });
+
+  it("blocks a task from its menu with a reason, and unblocks it", async () => {
+    const user = userEvent.setup();
+    const { api } = server([task(1, { status: "in_progress" })]);
+    renderApp("/tasks?layout=board", { api });
+    await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
+    await user.click(screen.getByRole("button", { name: "Действия с задачей #1" }));
+    await user.click(screen.getByRole("menuitem", { name: "Заблокировать…" }));
+    const dialog = screen.getByRole("dialog", { name: "Заблокировать задачу #1" });
+    const submit = within(dialog).getByRole("button", { name: "Заблокировать" });
+    expect(submit).toBeDisabled();
+    await user.type(within(dialog).getByLabelText("Что мешает"), "Ждём ответа бухгалтерии");
+    await user.click(submit);
+    await waitFor(() => expect(puts(api, "t1")[0]?.body).toMatchObject({ status: "in_progress", blocked_reason: "Ждём ответа бухгалтерии" }));
+    expect(await screen.findByText("#1 заблокирована")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Действия с задачей #1" }));
+    await user.click(screen.getByRole("menuitem", { name: "Снять блокировку" }));
+    await waitFor(() => expect(puts(api, "t1")[1]?.body).toMatchObject({ blocked_reason: "" }));
+  });
+
+  it("groups the cards in swimlanes that fold", async () => {
+    const user = userEvent.setup();
+    const { api } = server([task(1, { priority: "urgent" }), task(2, { status: "review", priority: "low" }), task(3, { priority: "low" })]);
+    renderApp("/tasks?layout=board&lanes=priority", { api });
+    const urgent = await screen.findByRole("button", { name: /^Срочно\s*1$/ }, firstLook);
+    const low = screen.getByRole("button", { name: /^Низкий\s*2$/ });
+    expect(urgent.compareDocumentPosition(low) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("link", { name: "#3, Задача 3" })).toBeInTheDocument();
+    await user.click(low);
+    expect(low).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: "#3, Задача 3" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
+  });
 });
+

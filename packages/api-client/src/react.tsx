@@ -25,6 +25,7 @@ import {
   fetchTask,
   fetchTaskActivity,
   fetchTaskBoard,
+  fetchTaskBoardSettings,
   fetchTaskColumn,
   fetchTaskDraft,
   fetchTaskQueues,
@@ -35,6 +36,7 @@ import {
   linkTaskConversation,
   unlinkTaskConversation,
   updateTask,
+  updateTaskBoardSettings,
   updateTaskQueue,
   updateTaskSettings,
   updateTaskTag,
@@ -48,6 +50,7 @@ import {
   type Task,
   type TaskBoard,
   type TaskBoardFilter,
+  type TaskBoardSettings,
   type TaskCreate,
   type TaskFilter,
   type TaskStatus,
@@ -248,6 +251,7 @@ export const queryKeys = {
   tasks: ["tasks"] as const,
   taskList: (filter: TaskFilter) => ["tasks", "list", filter] as const,
   taskBoard: (filter: TaskBoardFilter) => ["tasks", "board", filter] as const,
+  taskBoardSettings: ["tasks", "board-settings"] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   taskActivity: (id: string) => ["tasks", "activity", id] as const,
   taskSummary: ["tasks", "summary"] as const,
@@ -966,6 +970,16 @@ export function useTasks(filter: TaskFilter, { enabled = true }: { enabled?: boo
 export function useTaskBoard(filter: TaskBoardFilter, { enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskBoard(filter), queryFn: () => fetchTaskBoard(client, filter), enabled });
+}
+
+export function useTaskBoardSettings({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskBoardSettings, queryFn: () => fetchTaskBoardSettings(client), enabled });
+}
+
+/** Replaces the rules; the board reads them again with its columns. */
+export function useUpdateTaskBoardSettings() {
+  return useTaskMutation((client, body: TaskBoardSettings) => updateTaskBoardSettings(client, body));
 }
 
 /** The rest of one board column, loaded on demand from the column's `next_cursor`. */

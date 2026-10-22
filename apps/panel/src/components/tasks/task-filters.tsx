@@ -1,7 +1,7 @@
 import { useTaskQueues, useTaskTags, useTopics } from "@tolkovo/api-client/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Select, cn } from "@tolkovo/ui";
-import { LayoutList, Search, SquareKanban } from "lucide-react";
+import { LayoutList, Lock, Search, SquareKanban } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,7 +12,7 @@ import type { TaskLayout, TasksSearch } from "../../lib/tasks/tasks";
  * The filters the list and the board share: search, queue, topic and tag, kept in the URL.
  * The list stacks them, the board puts them in a row.
  */
-export function TaskFilters({ search, className }: { search: TasksSearch; className?: string }) {
+export function TaskFilters({ search, className, compact = false }: { search: TasksSearch; className?: string; compact?: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: queues } = useTaskQueues();
@@ -96,6 +96,21 @@ export function TaskFilters({ search, className }: { search: TasksSearch; classN
           </Select>
         </div>
       )}
+      <div className="min-w-0">
+        <button
+          type="button"
+          aria-pressed={search.blocked === true}
+          title={compact ? t("tasks.blocked.filter") : undefined}
+          onClick={() => set({ blocked: search.blocked ? undefined : true })}
+          className={cn(
+            "flex h-9 w-full items-center gap-1.5 rounded-lg border border-input bg-surface px-2.5 text-[13px] whitespace-nowrap text-ink-2 hover:text-ink",
+            "aria-pressed:border-lamp aria-pressed:bg-lamp-soft aria-pressed:text-lamp-ink",
+          )}
+        >
+          <Lock aria-hidden="true" className="size-3.5 shrink-0" />
+          <span className={compact ? "sr-only" : "truncate"}>{t("tasks.blocked.filter")}</span>
+        </button>
+      </div>
     </div>
   );
 }

@@ -50,6 +50,7 @@ function server(session: Session, routes: FakeRoutes = {}) {
       "GET /tasks/t1/activity": () => json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "created", created_at: "2026-10-06T10:00:00Z" }] }),
       "GET /task-queues": () => json(200, { items: [{ id: "q-dev", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
       "GET /task-settings": () => json(200, { settings, defaults: { reply_ru: "Готово", reply_en: "Done" }, placeholders: ["name", "task_number"] }),
+      "GET /task-board-settings": () => json(200, { rules: [] }),
       ...routes,
     },
   });
@@ -208,6 +209,32 @@ describe("the tasks section", () => {
     await user.click(await screen.findByRole("checkbox", { name: "Интерфейс" }));
     await waitFor(() => expect(calls(api, "PUT", "/tasks/t1")).toHaveLength(1));
     expect(calls(api, "PUT", "/tasks/t1")[0]?.body).toMatchObject({ version: 3, tag_ids: [design.id, ui.id] });
+  });
+
+  it("lets admins set the soft limits and ages of the board's columns", async () => {
+    const user = userEvent.setup();
+    const { api } = server(admin, {
+      "GET /task-tags": () => json(200, { items: [] }),
+      "GET /task-settings/telegram-bot": () => json(200, { bot: null, encryption_available: true }),
+      "GET /task-board-settings": () => json(200, { rules: [{ queue_id: null, status: "review", wip_limit: null, age_days: 2 }] }),
+      "PUT /task-board-settings": async (request) => json(200, await request.json()),
+    });
+    renderApp("/settings/tasks", { api });
+    const board = await screen.findByRole("region", { name: "Доска" }, firstLook);
+    expect(await within(board).findByLabelText("Порог возраста в днях, колонка «На проверке» — Все задачи")).toHaveValue(2);
+    await user.type(within(board).getByLabelText("Лимит колонки «В работе» — Все задачи"), "4");
+    await user.selectOptions(within(board).getByLabelText("Свои правила для очереди"), "q-dev");
+    await user.type(within(board).getByLabelText("Лимит колонки «В работе» — Разработка"), "6");
+    await user.click(within(board).getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(calls(api, "PUT", "/task-board-settings")).toHaveLength(1));
+    expect(calls(api, "PUT", "/task-board-settings")[0]?.body).toEqual({
+      rules: [
+        { queue_id: null, status: "in_progress", wip_limit: 4, age_days: null },
+        { queue_id: null, status: "review", wip_limit: null, age_days: 2 },
+        { queue_id: "q-dev", status: "in_progress", wip_limit: 6, age_days: null },
+      ],
+    });
+    expect(await within(board).findByText("Сохранено")).toBeInTheDocument();
   });
 
   it("lets admins rename a tag of tasks in the settings", async () => {

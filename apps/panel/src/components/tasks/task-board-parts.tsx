@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BOARD_STATUSES } from "../../lib/tasks/board";
-import type { TasksSearch } from "../../lib/tasks/tasks";
+import { TASK_LANES, type TasksSearch } from "../../lib/tasks/tasks";
 
 /** Pieces of the board (ADR-0019) around its columns: states, the done question, the assignee filter. */
 
@@ -107,7 +107,7 @@ export function AssigneeFilter({ search }: { search: TasksSearch }) {
   const id = useId();
   const value = search.view === "mine" || search.view === "unassigned" ? search.view : "";
   return (
-    <div className="w-44 min-w-0 shrink-0">
+    <div className="w-40 min-w-0 shrink-0">
       <label htmlFor={id} className="sr-only">
         {t("tasks.board.assignee.label")}
       </label>
@@ -122,6 +122,35 @@ export function AssigneeFilter({ search }: { search: TasksSearch }) {
         <option value="">{t("tasks.board.assignee.all")}</option>
         <option value="mine">{t("tasks.board.assignee.mine")}</option>
         <option value="unassigned">{t("tasks.board.assignee.unassigned")}</option>
+      </Select>
+    </div>
+  );
+}
+
+/** Swimlanes: none, or the cards grouped by assignee, queue or priority. */
+export function LanesFilter({ search }: { search: TasksSearch }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const id = useId();
+  return (
+    <div className="w-40 min-w-0 shrink-0">
+      <label htmlFor={id} className="sr-only">
+        {t("tasks.board.lanes.label")}
+      </label>
+      <Select
+        id={id}
+        value={search.lanes ?? ""}
+        onChange={(e) => {
+          const lanes = (e.currentTarget.value || undefined) as TasksSearch["lanes"];
+          void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, lanes }) });
+        }}
+      >
+        <option value="">{t("tasks.board.lanes.none")}</option>
+        {TASK_LANES.map((x) => (
+          <option key={x} value={x}>
+            {t(`tasks.board.lanes.${x}`)}
+          </option>
+        ))}
       </Select>
     </div>
   );

@@ -2,10 +2,10 @@ import type { Task, TaskStatus } from "@tolkovo/api-client";
 import type { TFunction } from "i18next";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@tolkovo/ui";
-import { Ellipsis, MessageCircle } from "lucide-react";
+import { Ellipsis, Lock, MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { BOARD_STATUSES, daysInColumn, hoursInColumn, nextStep } from "../../lib/tasks/board";
+import { BOARD_STATUSES, daysInColumn, hoursInColumn, nextStep, standsTooLong } from "../../lib/tasks/board";
 import type { TasksSearch } from "../../lib/tasks/tasks";
 import { TAG_DOT } from "../inbox/palette";
 import { useMemberNames } from "../inbox/presence";
@@ -24,15 +24,19 @@ type TaskCardProps = {
   dragging: boolean;
   me: string | undefined;
   now: Date;
+  /** Days after which the card stands too long in its column; null for none. */
+  ageDays: number | null;
   onMove: (task: Task, status: TaskStatus) => void;
   onTake: (task: Task) => void;
+  /** Asks for a reason and blocks the task; with null, takes the mark off. */
+  onBlock: (task: Task, block: boolean) => void;
 };
 
 /**
  * A card of the board (ADR-0019): the whole card opens the task, the "⋯" menu moves it. The
  * card is dragged by HTML5 drag and drop; the board handles the drop and the keys.
  */
-export function TaskCard({ task, search, current, open, dragging, me, now, onMove, onTake }: TaskCardProps) {
+export function TaskCard({ task, search, current, open, dragging, me, now, ageDays, onMove, onTake, onBlock }: TaskCardProps) {
   const { t } = useTranslation();
   const names = useMemberNames();
   const topics = useTopicMap();
@@ -40,6 +44,8 @@ export function TaskCard({ task, search, current, open, dragging, me, now, onMov
   const number = t("tasks.number", { number: task.number });
   const closed = task.status === "done" || task.status === "canceled";
   const age = ageText(t, task, now);
+  const old = standsTooLong(task, ageDays, now);
+  const blocked = task.blocked_reason !== null && !closed;
   const topic = task.topic_id ? topics.get(task.topic_id) : undefined;
   const assignee = task.assignee_id ? (names.get(task.assignee_id) ?? t("inbox.colleague")) : t("tasks.unassigned");
   return (
@@ -53,16 +59,28 @@ export function TaskCard({ task, search, current, open, dragging, me, now, onMov
       className={cn(
         "group relative flex cursor-grab flex-col gap-1.5 rounded-[10px] border border-line bg-surface py-2 pr-2.5 pl-3",
         "hover:border-ink-3 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-1 has-[a:focus-visible]:outline-ring",
+        blocked && "border-lamp/45 bg-[color-mix(in_srgb,var(--color-lamp-soft)_45%,var(--color-surface))]",
         open && "border-teal shadow-[inset_0_0_0_1px_var(--color-teal)]",
         dragging && "opacity-40",
       )}
     >
-      {topic && <span aria-hidden="true" title={topic.name} className={cn("absolute inset-y-0 left-0 w-0.75 rounded-l-[10px]", TAG_DOT[topic.color])} />}
+      {blocked ? (
+        <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.75 rounded-l-[10px] bg-[repeating-linear-gradient(180deg,var(--color-lamp)_0_6px,transparent_6px_10px)]" />
+      ) : (
+        topic && <span aria-hidden="true" title={topic.name} className={cn("absolute inset-y-0 left-0 w-0.75 rounded-l-[10px]", TAG_DOT[topic.color])} />
+      )}
       <span className="flex min-h-5 items-center gap-1.5">
         <span className="font-mono text-[11.5px] text-ink-3 tabular-nums">{number}</span>
         <TaskPriorityMark priority={task.priority} />
+        {blocked && (
+          <span title={task.blocked_reason ?? undefined} className="inline-flex items-center gap-1 text-[11px] font-medium text-lamp-ink">
+            <Lock aria-hidden="true" className="size-3" />
+            {t("tasks.blocked.label")}
+            <span className="sr-only">: {task.blocked_reason}</span>
+          </span>
+        )}
         <span className="ml-auto" />
-        <CardMenu task={task} me={me} onMove={onMove} onTake={onTake} />
+        <CardMenu task={task} me={me} onMove={onMove} onTake={onTake} onBlock={onBlock} />
       </span>
       <Link
         to="/tasks/$taskId"
@@ -110,10 +128,11 @@ export function TaskCard({ task, search, current, open, dragging, me, now, onMov
           </span>
         )}
         <span
-          className="ml-auto font-mono text-[11.5px] tabular-nums"
-          title={t(closed ? "tasks.board.closedAge" : "tasks.board.ageTitle", { age })}
+          className={cn("ml-auto font-mono text-[11.5px] tabular-nums", old && "font-medium text-lamp-ink")}
+          title={old ? t("tasks.board.tooLong", { days: ageDays }) : t(closed ? "tasks.board.closedAge" : "tasks.board.ageTitle", { age })}
         >
           {age}
+          {old && <span className="sr-only">, {t("tasks.board.tooLong", { days: ageDays })}</span>}
         </span>
       </span>
     </div>
@@ -121,7 +140,7 @@ export function TaskCard({ task, search, current, open, dragging, me, now, onMov
 }
 
 /** "Move to…" with the next step first, then taking, opening and canceling. */
-function CardMenu({ task, me, onMove, onTake }: Pick<TaskCardProps, "task" | "me" | "onMove" | "onTake">) {
+function CardMenu({ task, me, onMove, onTake, onBlock }: Pick<TaskCardProps, "task" | "me" | "onMove" | "onTake" | "onBlock">) {
   const { t } = useTranslation();
   const next = nextStep(task.status);
   const targets = BOARD_STATUSES.filter((s) => s !== task.status).sort((a, b) => Number(b === next) - Number(a === next));
@@ -132,6 +151,11 @@ function CardMenu({ task, me, onMove, onTake }: Pick<TaskCardProps, "task" | "me
       onSelect: () => onMove(task, s),
     })),
     { label: t("tasks.board.takeMine"), hint: "A", disabled: task.assignee_id === me || me === undefined, onSelect: () => onTake(task) },
+    ...(task.status === "done" || task.status === "canceled"
+      ? []
+      : task.blocked_reason
+        ? [{ label: t("tasks.blocked.unblock"), onSelect: () => onBlock(task, false) }]
+        : [{ label: t("tasks.blocked.block"), onSelect: () => onBlock(task, true) }]),
     ...(task.status === "canceled" ? [] : [{ label: t("tasks.board.cancelTask"), onSelect: () => onMove(task, "canceled") }]),
   ];
   return (
