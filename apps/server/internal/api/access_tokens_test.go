@@ -58,7 +58,7 @@ func TestAccessTokens_WorkWithTasks(t *testing.T) {
 	if rec := agent.do(http.MethodPost, base+"/activity", map[string]any{"body": "Готово в ветке fix/login"}, bearer(w.Secret)); rec.Code != http.StatusCreated {
 		t.Fatalf("comment by token: %d %s", rec.Code, rec.Body)
 	}
-	for _, path := range []string{"/api/v1/tasks", base, base + "/activity", "/api/v1/tasks/summary", "/api/v1/task-queues"} {
+	for _, path := range []string{"/api/v1/tasks", base, base + "/activity", "/api/v1/tasks/summary", "/api/v1/tasks/board", "/api/v1/task-queues"} {
 		if rec := agent.do(http.MethodGet, path, nil, bearer(r.Secret)); rec.Code != http.StatusOK {
 			t.Fatalf("read %s: %d %s", path, rec.Code, rec.Body)
 		}
