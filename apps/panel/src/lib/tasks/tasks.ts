@@ -8,7 +8,12 @@ export type TaskView = (typeof TASK_VIEWS)[number];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "verified", "done", "canceled"];
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["urgent", "high", "normal", "low"];
 
+/** The section as a list with the open task beside it, or as the board (ADR-0019). */
+export const TASK_LAYOUTS = ["list", "board"] as const;
+export type TaskLayout = (typeof TASK_LAYOUTS)[number];
+
 export type TasksSearch = {
+  layout?: TaskLayout;
   view?: TaskView;
   /** A queue id or `none`. */
   queue?: string;
@@ -22,6 +27,7 @@ export type TasksSearch = {
 /** Keeps only known values from the URL: a hand-edited link never breaks the page. */
 export function validateTasksSearch(search: Record<string, unknown>): TasksSearch {
   const out: TasksSearch = {};
+  if (typeof search.layout === "string" && (TASK_LAYOUTS as readonly string[]).includes(search.layout)) out.layout = search.layout as TaskLayout;
   if (typeof search.view === "string" && (TASK_VIEWS as readonly string[]).includes(search.view)) out.view = search.view as TaskView;
   if (typeof search.queue === "string" && /^(none|[0-9a-f-]{36})$/.test(search.queue)) out.queue = search.queue;
   if (typeof search.topic === "string" && /^(none|[0-9a-f-]{36})$/.test(search.topic)) out.topic = search.topic;

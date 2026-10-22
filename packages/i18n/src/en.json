@@ -1523,6 +1523,79 @@
       "filter": "Task tag",
       "all": "All tags",
       "deleted": "deleted tag"
+    },
+    "layout": {
+      "label": "Section view",
+      "list": "List",
+      "board": "Board"
+    },
+    "board": {
+      "label": "Task board",
+      "help": "Arrows move between cards and columns, Enter opens, Shift and an arrow move to the next column, M moves, A takes.",
+      "assignee": {
+        "label": "Assignee",
+        "all": "All assignees",
+        "mine": "My tasks",
+        "unassigned": "Unassigned"
+      },
+      "column": {
+        "open": "New",
+        "in_progress": "In progress",
+        "review": "In review",
+        "verified": "Verified",
+        "done": "Done",
+        "canceled": "Canceled"
+      },
+      "rule": {
+        "open": "Waiting for someone to take them. The top one goes first.",
+        "in_progress": "Being done. A task without an assignee goes to whoever moved it.",
+        "review": "The change is on the dev server, being checked.",
+        "verified": "Checked on dev, waiting for production.",
+        "done": "In production. Waiting conversations went back to their assignees with a reply draft.",
+        "canceled": "Will not be done."
+      },
+      "emptyColumn": {
+        "open": "No new tasks",
+        "in_progress": "Nothing in progress",
+        "review": "Nothing waits for review",
+        "verified": "Nothing waits for production",
+        "done": "Nothing closed in these days",
+        "canceled": "Nothing canceled"
+      },
+      "closedDays": "last {days} days",
+      "urgent": "Urgent",
+      "rest": "The rest",
+      "more": "Show {count} more",
+      "older": "Older ones are in the Closed list",
+      "empty": "No tasks yet",
+      "emptyHint": "Create the first one, or make a task from a conversation in its More actions menu.",
+      "loadError": "Could not load the board.",
+      "age": {
+        "now": "now",
+        "hours": "{count}h",
+        "days": "{count}d"
+      },
+      "ageTitle": "In this column for {age}",
+      "closedAge": "Closed {age} ago",
+      "conversations": "{count, plural, one {# customer waits for this task} other {# customers wait for this task}}",
+      "card": "{number}, {title}",
+      "actions": "Actions for task {number}",
+      "moveTo": "To {column}",
+      "nextStep": "next step",
+      "takeMine": "Take it",
+      "open": "Open",
+      "cancelTask": "Cancel the task",
+      "dropNext": "Drop: the next step",
+      "dropHere": "Drop to move here",
+      "moved": "{number} is in {column}",
+      "taken": "{number} is yours now",
+      "close": "Close the task",
+      "confirm": {
+        "title": "Is the task in production?",
+        "text": "{count, plural, one {# conversation goes} other {# conversations go}} back to their assignees with a reply draft. An operator sends it.",
+        "submit": "Done",
+        "cancel": "Cancel"
+      }
     }
   },
   "notifications": {

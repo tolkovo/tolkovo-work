@@ -24,6 +24,8 @@ import {
   fetchConversationTasks,
   fetchTask,
   fetchTaskActivity,
+  fetchTaskBoard,
+  fetchTaskColumn,
   fetchTaskDraft,
   fetchTaskQueues,
   fetchTaskTags,
@@ -43,8 +45,12 @@ import {
   startMyTelegramLink,
   checkMyTelegramLink,
   unlinkMyTelegram,
+  type Task,
+  type TaskBoard,
+  type TaskBoardFilter,
   type TaskCreate,
   type TaskFilter,
+  type TaskStatus,
   type TaskQueueInput,
   type TaskSettings,
   type TaskTagInput,
@@ -241,6 +247,7 @@ export const queryKeys = {
   /** Root of the tasks section: task.changed invalidates everything under it. */
   tasks: ["tasks"] as const,
   taskList: (filter: TaskFilter) => ["tasks", "list", filter] as const,
+  taskBoard: (filter: TaskBoardFilter) => ["tasks", "board", filter] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   taskActivity: (id: string) => ["tasks", "activity", id] as const,
   taskSummary: ["tasks", "summary"] as const,
@@ -952,6 +959,47 @@ export function useTasks(filter: TaskFilter, { enabled = true }: { enabled?: boo
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled,
+  });
+}
+
+/** The board of tasks (ADR-0019): every column in one answer. */
+export function useTaskBoard(filter: TaskBoardFilter, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskBoard(filter), queryFn: () => fetchTaskBoard(client, filter), enabled });
+}
+
+/** The rest of one board column, loaded on demand from the column's `next_cursor`. */
+export function useTaskColumnMore(filter: TaskBoardFilter) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: ({ status, cursor }: { status: TaskStatus; cursor: string }) => fetchTaskColumn(client, filter, status, cursor),
+  });
+}
+
+/**
+ * Moves a task on the board by PUT /tasks/{id}: `place` moves the card at once, and a failure
+ * (`409 task_conflict` among them) puts the board back before the section refreshes.
+ */
+export function useMoveTask(filter: TaskBoardFilter, place: (board: TaskBoard, task: Task, body: TaskUpdate) => TaskBoard) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const key = queryKeys.taskBoard(filter);
+  return useMutation({
+    mutationFn: ({ task, body }: { task: Task; body: TaskUpdate }) => updateTask(client, task.id, body),
+    onMutate: async ({ task, body }) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const before = queryClient.getQueryData<TaskBoard>(key);
+      if (before) queryClient.setQueryData(key, place(before, task, body));
+      return { before };
+    },
+    onError: (_err, _args, ctx) => {
+      if (ctx?.before) queryClient.setQueryData(key, ctx.before);
+    },
+    // Not awaited: the caller hears of the move at once, the board refreshes behind it.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    },
   });
 }
 

@@ -73,3 +73,14 @@ export const usePreferences = create<PreferencesState>()((set) => ({
 export function storeLanguage(language: Language): void {
   writeStorage(LANGUAGE_KEY, language);
 }
+
+export const TASKS_LAYOUT_KEY = "tolkovo.tasks.layout";
+
+/** The last view of the tasks section the member picked; a link with ?layout= wins over it. */
+export function readStoredTasksLayout(): "list" | "board" {
+  return z.enum(["list", "board"]).catch("list").parse(readStorage(TASKS_LAYOUT_KEY));
+}
+
+export function storeTasksLayout(layout: "list" | "board"): void {
+  writeStorage(TASKS_LAYOUT_KEY, layout === "list" ? null : layout);
+}

@@ -1,0 +1,89 @@
+import type { Task, TaskBoard, TaskBoardFilter, TaskStatus, TaskUpdate } from "@tolkovo/api-client";
+
+import { NEXT_STATUS, type TasksSearch } from "./tasks";
+
+/** The board of tasks (ADR-0019): a column by status, in the order of the path. */
+
+export const BOARD_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "verified", "done"];
+
+/** Priorities on the board, most urgent first; the server orders by the same rank. */
+const PRIORITY_RANK: Record<Task["priority"], number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+/**
+ * The board's filter of a search: the list's views become the assignee filter, the columns
+ * part open from closed themselves. Without a view the board is the whole team's.
+ */
+export function boardFilter({ view, queue, topic, tag, q }: TasksSearch): TaskBoardFilter {
+  const filter: TaskBoardFilter = {};
+  if (view === "mine") filter.assignee = "me";
+  if (view === "unassigned") filter.assignee = "none";
+  if (queue) filter.queue = queue;
+  if (topic) filter.topic = topic;
+  if (tag) filter.tag = tag;
+  if (q) filter.q = q.trim();
+  return filter;
+}
+
+function isClosedStatus(status: TaskStatus): boolean {
+  return status === "done" || status === "canceled";
+}
+
+/**
+ * The order of a column, as the server sorts it: an open column puts the most urgent first, then
+ * the one standing longest; done and canceled the latest first.
+ */
+export function compareInColumn(a: Task, b: Task): number {
+  const at = Date.parse(a.status_changed_at);
+  const bt = Date.parse(b.status_changed_at);
+  if (isClosedStatus(a.status)) return bt - at || b.number - a.number;
+  return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || at - bt || a.number - b.number;
+}
+
+/**
+ * The board with the task moved by an update, before the server answers: the card leaves its
+ * column and takes its place in the new one. In progress without an assignee goes to `me`,
+ * as the server does.
+ */
+export function placeTask(board: TaskBoard, task: Task, body: TaskUpdate, me: string | undefined, now: Date): TaskBoard {
+  const status = body.status;
+  const moved: Task = {
+    ...task,
+    status,
+    priority: body.priority,
+    assignee_id: status === "in_progress" && task.status !== "in_progress" && !body.assignee_id ? (me ?? null) : (body.assignee_id ?? null),
+    status_changed_at: status === task.status ? task.status_changed_at : now.toISOString(),
+  };
+  return {
+    columns: board.columns.map((col) => {
+      const had = col.items.some((it) => it.id === task.id);
+      let items = col.items.filter((it) => it.id !== task.id);
+      let count = had ? col.count - 1 : col.count;
+      if (col.status === status) {
+        items = [...items, moved].sort(compareInColumn);
+        count += 1;
+      }
+      return { ...col, items, count };
+    }),
+  };
+}
+
+/** The step the board suggests after a status: a new task is taken into work first. */
+export function nextStep(status: TaskStatus): TaskStatus | undefined {
+  return status === "open" ? "in_progress" : NEXT_STATUS[status];
+}
+
+/** The column after or before a status on the board, for Shift+→ and Shift+←. */
+export function neighbourStatus(status: TaskStatus, step: 1 | -1): TaskStatus | undefined {
+  const i = BOARD_STATUSES.indexOf(status);
+  return i < 0 ? undefined : BOARD_STATUSES[i + step];
+}
+
+/** Whole days a task stands in its column, for the age on the card; under a day is 0. */
+export function daysInColumn(task: Task, now: Date): number {
+  return Math.max(0, Math.floor((now.getTime() - Date.parse(task.status_changed_at)) / 86_400_000));
+}
+
+/** Hours under a day, for a card moved today. */
+export function hoursInColumn(task: Task, now: Date): number {
+  return Math.max(0, Math.floor((now.getTime() - Date.parse(task.status_changed_at)) / 3_600_000));
+}
