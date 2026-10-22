@@ -431,7 +431,7 @@ func TestTasks_TelegramNotifications(t *testing.T) {
 	}
 	sent = e.bots.SnapshotSent()
 	msg := sent[len(sent)-1]
-	if msg.ChatID != 555 || !strings.Contains(msg.Text, "З-1") || !strings.Contains(msg.Text, "Обновить сертификат") ||
+	if msg.ChatID != 555 || !strings.Contains(msg.Text, "#1") || !strings.Contains(msg.Text, "Обновить сертификат") ||
 		!strings.Contains(msg.Text, panelURL+"/tasks/"+task.Id.String()) || strings.Contains(msg.Text, "секретная") || !msg.NoPreview {
 		t.Fatalf("message: %+v", msg)
 	}

@@ -1369,17 +1369,17 @@
         "budget_exceeded": "The month's AI budget is spent, so the draft is the customer's words.",
         "failed": "The AI could not write a draft, so it is the customer's words."
       },
-      "created": "Task T-{number} created. The conversation waits until it is closed.",
+      "created": "Task #{number} created. The conversation waits until it is closed.",
       "search": "Find a task",
       "searchHint": "By title or number.",
       "pickRequired": "Pick a task from the list.",
       "noOpen": "No open tasks found.",
       "openTasks": "Open tasks",
       "linkSubmit": "Link",
-      "linked": "The conversation is linked to task T-{number}.",
+      "linked": "The conversation is linked to task #{number}.",
       "loadError": "Could not load the tasks.",
       "none": "No tasks. Create one in the \"More actions\" menu.",
-      "done": "Task T-{number} is done. A draft reply:"
+      "done": "Task #{number} is done. A draft reply:"
     },
     "rating": {
       "short": "Rated {score} of 5",
@@ -1407,7 +1407,7 @@
     "queueFilter": "Filter by queue",
     "noQueue": "No queue",
     "unassigned": "Unassigned",
-    "number": "T-{number}",
+    "number": "#{number}",
     "status": {
       "open": "New",
       "in_progress": "In progress",
@@ -1603,7 +1603,7 @@
       "assigned": "Conversation #{number} is yours",
       "message": "New message · #{number}",
       "queued": "New conversation in the queue · #{number}",
-      "task": "Task T-{number} is assigned to you"
+      "task": "Task #{number} is assigned to you"
     },
     "test": {
       "title": "Tolkovo: test",

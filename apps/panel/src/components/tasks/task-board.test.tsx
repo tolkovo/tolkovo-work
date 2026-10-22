@@ -86,8 +86,8 @@ describe("the board of tasks", () => {
     ]);
     renderApp("/tasks?layout=board", { api });
     const open = await screen.findByRole("region", { name: /^Новые/ }, firstLook);
-    const cards = within(open).getAllByRole("link", { name: /^З-\d+/ });
-    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual(["З-2, Задача 2", "З-1, Задача 1"]);
+    const cards = within(open).getAllByRole("link", { name: /^#\d+/ });
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual(["#2, Задача 2", "#1, Задача 1"]);
     // "Urgent" heads the column and marks the card.
     expect(within(open).getAllByText("Срочно")).toHaveLength(2);
     expect(within(open).getAllByText(/3 клиента ждут эту задачу/).length).toBeGreaterThan(0);
@@ -102,24 +102,24 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(1), task(2, { status: "in_progress" })]);
     renderApp("/tasks?layout=board", { api });
-    const card = await screen.findByRole("link", { name: "З-1, Задача 1" }, firstLook);
+    const card = await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
     card.focus();
     await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
     await waitFor(() => expect(puts(api, "t1")).toHaveLength(1));
     // In progress without an assignee: the server gives it to whoever moved it.
     expect(puts(api, "t1")[0]?.body).toMatchObject({ version: 1, status: "in_progress", assignee_id: null });
-    expect(await within(column(/^В работе/)).findByRole("link", { name: "З-1, Задача 1" })).toBeInTheDocument();
-    expect(await screen.findByText("З-1 — в колонке «В работе»")).toBeInTheDocument();
+    expect(await within(column(/^В работе/)).findByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
+    expect(await screen.findByText("#1 — в колонке «В работе»")).toBeInTheDocument();
   });
 
   it("walks the cards with the arrows and moves one by its menu", async () => {
     const user = userEvent.setup();
     const { api } = server([task(1), task(2, { status: "review" })]);
     renderApp("/tasks?layout=board", { api });
-    const first = await screen.findByRole("link", { name: "З-1, Задача 1" }, firstLook);
+    const first = await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
     first.focus();
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("link", { name: "З-2, Задача 2" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "#2, Задача 2" })).toHaveFocus();
 
     await user.keyboard("m");
     const menu = await screen.findByRole("menu");
@@ -134,7 +134,7 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(5, { status: "verified", conversation_count: 2 })]);
     renderApp("/tasks?layout=board", { api });
-    const card = await screen.findByRole("link", { name: "З-5, Задача 5" }, firstLook);
+    const card = await screen.findByRole("link", { name: "#5, Задача 5" }, firstLook);
     card.focus();
     await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
     let dialog = await screen.findByRole("dialog", { name: "Задача в проде?" });
@@ -154,11 +154,11 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(1)], () => problem(409, "task_conflict"));
     renderApp("/tasks?layout=board", { api });
-    const card = await screen.findByRole("link", { name: "З-1, Задача 1" }, firstLook);
+    const card = await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
     card.focus();
     await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
     expect(await screen.findByRole("alert")).toHaveTextContent("Задачу успели изменить");
-    expect(within(column(/^Новые/)).getByRole("link", { name: "З-1, Задача 1" })).toBeInTheDocument();
+    expect(within(column(/^Новые/)).getByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
   });
 
   it("says when there are no tasks, and offers to retry after an error", async () => {
@@ -181,6 +181,6 @@ describe("the board of tasks", () => {
     expect(await screen.findByText("Не удалось загрузить доску.", undefined, firstLook)).toBeInTheDocument();
     fail = false;
     await user.click(screen.getByRole("button", { name: "Повторить" }));
-    expect(await screen.findByRole("link", { name: "З-1, Задача 1" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
   });
 });
