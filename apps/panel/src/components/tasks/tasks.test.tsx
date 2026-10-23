@@ -27,8 +27,11 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   created_at: "2026-10-06T10:00:00Z",
   updated_at: "2026-10-06T10:00:00Z",
   closed_at: null,
+  status_changed_at: "2026-10-06T10:00:00Z",
+  blocked_reason: null,
   version: 3,
   conversation_ids: [],
+  conversation_count: 0,
   tag_ids: [],
   files: [],
   ...patch,
@@ -47,6 +50,7 @@ function server(session: Session, routes: FakeRoutes = {}) {
       "GET /tasks/t1/activity": () => json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "created", created_at: "2026-10-06T10:00:00Z" }] }),
       "GET /task-queues": () => json(200, { items: [{ id: "q-dev", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
       "GET /task-settings": () => json(200, { settings, defaults: { reply_ru: "Готово", reply_en: "Done" }, placeholders: ["name", "task_number"] }),
+      "GET /task-board-settings": () => json(200, { rules: [] }),
       ...routes,
     },
   });
@@ -72,7 +76,7 @@ describe("the tasks section", () => {
     });
     renderApp("/tasks?view=open", { api });
     await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }, firstLook));
-    const heading = await screen.findByRole("heading", { name: /З-12.*Обновить сертификат на сервере/ });
+    const heading = await screen.findByRole("heading", { name: /#12.*Обновить сертификат на сервере/ });
     expect(heading).toHaveFocus();
     expect(screen.getByText("Истекает в пятницу")).toBeInTheDocument();
     expect(await screen.findByText(/Задача создана/)).toBeInTheDocument();
@@ -105,7 +109,7 @@ describe("the tasks section", () => {
     });
     state.task = task("t1", { status: "review", assignee_id: admin.user.id });
     renderApp("/tasks/t1", { api });
-    expect(await screen.findByRole("heading", { name: /З-12/ }, firstLook)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /#12/ }, firstLook)).toBeInTheDocument();
 
     // Taking a task in review keeps it in review.
     await user.click(screen.getByRole("button", { name: "Взять в работу" }));
@@ -145,7 +149,7 @@ describe("the tasks section", () => {
       queue_id: "q-dev",
       assignee_id: null,
     });
-    expect(await screen.findByRole("heading", { name: /З-12/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /#12/ })).toBeInTheDocument();
   });
 
   it("files a task under a topic, filters by it and names its change in the feed", async () => {
@@ -205,6 +209,32 @@ describe("the tasks section", () => {
     await user.click(await screen.findByRole("checkbox", { name: "Интерфейс" }));
     await waitFor(() => expect(calls(api, "PUT", "/tasks/t1")).toHaveLength(1));
     expect(calls(api, "PUT", "/tasks/t1")[0]?.body).toMatchObject({ version: 3, tag_ids: [design.id, ui.id] });
+  });
+
+  it("lets admins set the soft limits and ages of the board's columns", async () => {
+    const user = userEvent.setup();
+    const { api } = server(admin, {
+      "GET /task-tags": () => json(200, { items: [] }),
+      "GET /task-settings/telegram-bot": () => json(200, { bot: null, encryption_available: true }),
+      "GET /task-board-settings": () => json(200, { rules: [{ queue_id: null, status: "review", wip_limit: null, age_days: 2 }] }),
+      "PUT /task-board-settings": async (request) => json(200, await request.json()),
+    });
+    renderApp("/settings/tasks", { api });
+    const board = await screen.findByRole("region", { name: "Доска" }, firstLook);
+    expect(await within(board).findByLabelText("Порог возраста в днях, колонка «На проверке» — Все задачи")).toHaveValue(2);
+    await user.type(within(board).getByLabelText("Лимит колонки «В работе» — Все задачи"), "4");
+    await user.selectOptions(within(board).getByLabelText("Свои правила для очереди"), "q-dev");
+    await user.type(within(board).getByLabelText("Лимит колонки «В работе» — Разработка"), "6");
+    await user.click(within(board).getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(calls(api, "PUT", "/task-board-settings")).toHaveLength(1));
+    expect(calls(api, "PUT", "/task-board-settings")[0]?.body).toEqual({
+      rules: [
+        { queue_id: null, status: "in_progress", wip_limit: 4, age_days: null },
+        { queue_id: null, status: "review", wip_limit: null, age_days: 2 },
+        { queue_id: "q-dev", status: "in_progress", wip_limit: 6, age_days: null },
+      ],
+    });
+    expect(await within(board).findByText("Сохранено")).toBeInTheDocument();
   });
 
   it("lets admins rename a tag of tasks in the settings", async () => {
@@ -328,7 +358,7 @@ describe("tasks in a conversation", () => {
       assignee_id: null,
       conversation_id: "c1",
     });
-    expect(await screen.findByText("Задача З-12 создана. Диалог ждёт, пока её не закроют.")).toBeInTheDocument();
+    expect(await screen.findByText("Задача #12 создана. Диалог ждёт, пока её не закроют.")).toBeInTheDocument();
   });
 
   it("offers the reply about a done task and no task button when the workspace keeps only GitHub", async () => {
@@ -339,7 +369,7 @@ describe("tasks in a conversation", () => {
       reply_draft: { task_id: "t1", number: 12, text: "Марина, задачу выполнили." },
     });
     renderApp("/inbox/c1", { api });
-    expect(await screen.findByText("Задача З-12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
+    expect(await screen.findByText("Задача #12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Вставить в ответ" }));
     expect(screen.getByLabelText("Ответ клиенту")).toHaveValue("Марина, задачу выполнили.");
     await user.click(screen.getByRole("button", { name: "Ещё действия" }));

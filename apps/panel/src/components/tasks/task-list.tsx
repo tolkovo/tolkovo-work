@@ -1,15 +1,15 @@
 import type { Task } from "@tolkovo/api-client";
-import { useTaskQueues, useTasks, useTaskSummary, useTaskTags, useTopics } from "@tolkovo/api-client/react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Button, Select, Skeleton, cn } from "@tolkovo/ui";
-import { Plus, Search } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useTaskQueues, useTasks, useTaskSummary } from "@tolkovo/api-client/react";
+import { Link } from "@tanstack/react-router";
+import { Button, Skeleton, cn } from "@tolkovo/ui";
+import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { TASK_VIEWS, taskFilter, type TasksSearch } from "../../lib/tasks/tasks";
 import { useMemberNames } from "../inbox/presence";
 import { TopicPill, useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge } from "./task-bits";
+import { LayoutSwitch, TaskFilters } from "./task-filters";
 import { TaskTagDots } from "./task-tags";
 
 type TaskListProps = {
@@ -18,32 +18,17 @@ type TaskListProps = {
   className?: string;
 };
 
-/** The left column of the tasks section: views, the queue, topic and tag filters, search and the list. */
+/** The left column of the tasks section: views, the shared filters (TaskFilters) and the list. */
 export function TaskList({ search, selectedId, className }: TaskListProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const view = search.view ?? "mine";
   const { data: mine } = useTaskSummary();
-  const { data: queues } = useTaskQueues();
-  const { data: topics } = useTopics();
-  const { data: tags } = useTaskTags();
-  const queueId = useId();
-  const topicId = useId();
-  const tagId = useId();
-  const searchId = useId();
-  const [query, setQuery] = useState(search.q ?? "");
-  // The search goes to the URL after a pause in typing, so every letter is not a request.
-  useEffect(() => {
-    const q = query.trim();
-    if (q === (search.q ?? "")) return;
-    const timer = setTimeout(() => void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, q: q || undefined }) }), 300);
-    return () => clearTimeout(timer);
-  }, [query, search.q, navigate]);
 
   return (
     <section aria-label={t("tasks.listLabel")} className={cn("flex min-h-0 min-w-0 flex-col border-r border-line bg-surface", className)}>
       <div className="flex items-center gap-2 px-3 pt-3">
         <h1 className="m-0 mr-auto font-display text-base font-semibold">{t("pages.tasks.title")}</h1>
+        <LayoutSwitch search={search} layout="list" />
         <Button asChild size="sm" variant="primary">
           <Link to="/tasks/new" search={search}>
             <Plus aria-hidden="true" className="size-4" />
@@ -69,91 +54,7 @@ export function TaskList({ search, selectedId, className }: TaskListProps) {
           </Link>
         ))}
       </nav>
-      <div className="flex flex-col gap-2 border-b border-line-2 p-3">
-        <div className="relative">
-          <label htmlFor={searchId} className="sr-only">
-            {t("tasks.search")}
-          </label>
-          <Search aria-hidden="true" className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-ink-3" />
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            maxLength={100}
-            placeholder={t("tasks.searchPlaceholder")}
-            onChange={(e) => setQuery(e.currentTarget.value)}
-            className="h-9 w-full min-w-0 rounded-lg border border-input bg-surface pr-2.5 pl-8 text-sm text-ink focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-          />
-        </div>
-        {(queues?.length ?? 0) > 0 && (
-          <div>
-            <label htmlFor={queueId} className="sr-only">
-              {t("tasks.queueFilter")}
-            </label>
-            <Select
-              id={queueId}
-              value={search.queue ?? ""}
-              onChange={(e) => {
-                const queue = e.currentTarget.value || undefined;
-                void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, queue }) });
-              }}
-            >
-              <option value="">{t("tasks.allQueues")}</option>
-              {queues?.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.name}
-                </option>
-              ))}
-              <option value="none">{t("tasks.noQueue")}</option>
-            </Select>
-          </div>
-        )}
-        {(topics?.length ?? 0) > 0 && (
-          <div>
-            <label htmlFor={topicId} className="sr-only">
-              {t("tasks.topicFilter")}
-            </label>
-            <Select
-              id={topicId}
-              value={search.topic ?? ""}
-              onChange={(e) => {
-                const topic = e.currentTarget.value || undefined;
-                void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, topic }) });
-              }}
-            >
-              <option value="">{t("tasks.allTopics")}</option>
-              {topics?.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.name}
-                </option>
-              ))}
-              <option value="none">{t("inbox.topic.without")}</option>
-            </Select>
-          </div>
-        )}
-        {(tags?.length ?? 0) > 0 && (
-          <div>
-            <label htmlFor={tagId} className="sr-only">
-              {t("tasks.tags.filter")}
-            </label>
-            <Select
-              id={tagId}
-              value={search.tag ?? ""}
-              onChange={(e) => {
-                const tag = e.currentTarget.value || undefined;
-                void navigate({ to: ".", search: (s: TasksSearch) => ({ ...s, tag }) });
-              }}
-            >
-              <option value="">{t("tasks.tags.all")}</option>
-              {tags?.map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  {tag.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-      </div>
+      <TaskFilters search={search} className="flex flex-col gap-2 border-b border-line-2 p-3" />
       <ListBody search={search} selectedId={selectedId} />
     </section>
   );

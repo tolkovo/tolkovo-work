@@ -30,7 +30,7 @@ COPY apps/panel apps/panel
 RUN pnpm --filter @tolkovo/panel run build
 
 # --- Server: a static Go binary, migrations embedded --------------------------
-FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS server
 WORKDIR /src/apps/server
 COPY apps/server/go.mod apps/server/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download

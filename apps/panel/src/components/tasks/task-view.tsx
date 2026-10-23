@@ -17,7 +17,7 @@ import {
 } from "@tolkovo/api-client/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Button, Label, Select, Skeleton, cn } from "@tolkovo/ui";
-import { ArrowLeft, MessagesSquare, X } from "lucide-react";
+import { ArrowLeft, Lock, MessagesSquare, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -27,6 +27,7 @@ import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge, control } from "./task-bits";
+import { BlockDialog, BlockedNote } from "./task-block";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
 import { TaskTagsEditor, useTaskTagMap } from "./task-tags";
 
@@ -92,6 +93,11 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
         <p role="alert" className="m-0 border-b border-line bg-danger-soft px-5 py-2 text-[13px] text-ink">
           {describeApiError(t, update.error).message}
         </p>
+      )}
+      {task.blocked_reason && !isClosed(task.status) && (
+        <div className="px-5 pt-4 max-nav:px-3">
+          <BlockedNote reason={task.blocked_reason} disabled={update.isPending} onUnblock={() => change({ blocked_reason: "" })} />
+        </div>
       )}
       <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-6 px-5 py-4 max-wide:grid-cols-[minmax(0,1fr)] max-nav:px-3">
         <div className="flex min-w-0 flex-col gap-5">
@@ -206,9 +212,38 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
           </Select>
         </div>
       )}
+      {!isClosed(task.status) && !task.blocked_reason && <BlockButton task={task} disabled={disabled} onChange={onChange} />}
       <Dates task={task} />
       {canManage && <DeleteTask task={task} />}
     </aside>
+  );
+}
+
+/** Blocks the task with a reason: a mark over its status (ADR-0019, K2). */
+function BlockButton({ task, disabled, onChange }: { task: Task; disabled: boolean; onChange: (patch: Partial<Omit<TaskUpdate, "version">>) => void }) {
+  const { t } = useTranslation();
+  const [asking, setAsking] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <Button ref={button} variant="ghost" size="sm" className="self-start" disabled={disabled} onClick={() => setAsking(true)}>
+        <Lock aria-hidden="true" className="size-4" />
+        {t("tasks.blocked.block")}
+      </Button>
+      {asking && (
+        <BlockDialog
+          number={t("tasks.number", { number: task.number })}
+          onCancel={() => {
+            setAsking(false);
+            button.current?.focus();
+          }}
+          onSubmit={(reason) => {
+            setAsking(false);
+            onChange({ blocked_reason: reason });
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -446,6 +481,12 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
       text = parts.join("; ");
       break;
     }
+    case "blocked":
+      text = t("tasks.activity.blocked", { reason: a.body ?? "" });
+      break;
+    case "unblocked":
+      text = t("tasks.activity.unblocked");
+      break;
     default:
       text = "";
   }

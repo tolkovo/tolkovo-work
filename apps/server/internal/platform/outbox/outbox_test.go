@@ -100,6 +100,7 @@ func TestSince_ReturnsPublishedEventsOfOneWorkspaceAfterSeq(t *testing.T) {
 	pub := &recorder{}
 	stop := runRelay(t, sys, pub)
 	all := pub.waitFor(t, 4)
+	waitMarked(t, d)
 	stop()
 	add(t, app, a, "conversation.updated") // unpublished: never returned
 
@@ -143,6 +144,7 @@ func TestPrune_RaisesWatermarkToHighestDeletedSeq(t *testing.T) {
 	pub := &recorder{}
 	stop := runRelay(t, sys, pub)
 	all := pub.waitFor(t, 3)
+	waitMarked(t, d)
 	stop()
 
 	if _, err := ownerConn(t, d).Exec(ctx, `UPDATE outbox_events SET published_at = now() - interval '48 hours'
@@ -195,6 +197,7 @@ func TestRelay_PublishesCommittedEventsInOrder(t *testing.T) {
 	pub := &recorder{}
 	stop := runRelay(t, sys, pub)
 	got := pub.waitFor(t, 3)
+	waitMarked(t, d)
 	stop()
 
 	wantTopics := []string{"test.thing.created", "test.thing.created", "test.thing.updated"}
@@ -262,6 +265,7 @@ func TestRelay_RetriesAfterPublisherError(t *testing.T) {
 	pub := &recorder{failures: 2}
 	stop := runRelay(t, sys, pub)
 	got := pub.waitFor(t, 1)
+	waitMarked(t, d)
 	stop()
 
 	if got[0].Topic != "test.thing.created" {
@@ -283,6 +287,7 @@ func TestPrune_RunsAsPeriodicRiverJob(t *testing.T) {
 	pub := &recorder{}
 	stop := runRelay(t, sys, pub)
 	pub.waitFor(t, 3)
+	waitMarked(t, d)
 	stop()
 	add(t, app, a, "test.thing.pending") // unpublished: must survive
 
@@ -406,6 +411,27 @@ func newWorkspace(t *testing.T, d dbtest.Database) uuid.UUID {
 		t.Fatalf("insert workspace: %v", err)
 	}
 	return id
+}
+
+// waitMarked waits until the relay has marked every event published. The
+// recorder hears of a batch before the relay writes its seq and
+// published_at; stopping the relay in between cancels that write.
+func waitMarked(t *testing.T, d dbtest.Database) {
+	t.Helper()
+	conn := ownerConn(t, d)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		var n int
+		if err := conn.QueryRow(context.Background(),
+			"SELECT count(*) FROM outbox_events WHERE published_at IS NULL").Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		if n == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for the relay to mark the events published")
 }
 
 func countUnpublished(t *testing.T, d dbtest.Database) int {

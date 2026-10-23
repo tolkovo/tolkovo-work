@@ -448,6 +448,21 @@
         "violet": "Violet",
         "blue": "Blue",
         "green": "Green"
+      },
+      "board": {
+        "title": "Board",
+        "text": "Soft limits and age thresholds of the open columns. The board highlights what goes over, it never refuses a move.",
+        "scope": "For",
+        "workspace": "All tasks",
+        "limitLabel": "Limit of {column}, {scope}",
+        "ageLabel": "Age threshold in days of {column}, {scope}",
+        "addQueue": "Own rules for a queue",
+        "pickQueue": "Pick a queue",
+        "removeQueue": "Remove the rules of {name}",
+        "save": "Save",
+        "saved": "Saved",
+        "hint": "An empty field means no limit or no threshold. A queue's rules apply when the board shows that queue alone.",
+        "fields": "limit · days"
       }
     },
     "team": {
@@ -1369,17 +1384,17 @@
         "budget_exceeded": "The month's AI budget is spent, so the draft is the customer's words.",
         "failed": "The AI could not write a draft, so it is the customer's words."
       },
-      "created": "Task T-{number} created. The conversation waits until it is closed.",
+      "created": "Task #{number} created. The conversation waits until it is closed.",
       "search": "Find a task",
       "searchHint": "By title or number.",
       "pickRequired": "Pick a task from the list.",
       "noOpen": "No open tasks found.",
       "openTasks": "Open tasks",
       "linkSubmit": "Link",
-      "linked": "The conversation is linked to task T-{number}.",
+      "linked": "The conversation is linked to task #{number}.",
       "loadError": "Could not load the tasks.",
       "none": "No tasks. Create one in the \"More actions\" menu.",
-      "done": "Task T-{number} is done. A draft reply:"
+      "done": "Task #{number} is done. A draft reply:"
     },
     "rating": {
       "short": "Rated {score} of 5",
@@ -1407,7 +1422,7 @@
     "queueFilter": "Filter by queue",
     "noQueue": "No queue",
     "unassigned": "Unassigned",
-    "number": "T-{number}",
+    "number": "#{number}",
     "status": {
       "open": "New",
       "in_progress": "In progress",
@@ -1483,7 +1498,9 @@
       "topic": "Topic: {name}",
       "noTopic": "Topic removed",
       "tagsAdded": "Tags added: {names}",
-      "tagsRemoved": "Tags removed: {names}"
+      "tagsRemoved": "Tags removed: {names}",
+      "blocked": "Blocked: {reason}",
+      "unblocked": "Unblocked"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1523,6 +1540,110 @@
       "filter": "Task tag",
       "all": "All tags",
       "deleted": "deleted tag"
+    },
+    "layout": {
+      "label": "Section view",
+      "list": "List",
+      "board": "Board"
+    },
+    "board": {
+      "label": "Task board",
+      "help": "Arrows move between cards and columns, Enter opens, Shift and an arrow move to the next column, M moves, A takes.",
+      "assignee": {
+        "label": "Assignee",
+        "all": "All assignees",
+        "mine": "My tasks",
+        "unassigned": "Unassigned"
+      },
+      "column": {
+        "open": "New",
+        "in_progress": "In progress",
+        "review": "In review",
+        "verified": "Verified",
+        "done": "Done",
+        "canceled": "Canceled"
+      },
+      "rule": {
+        "open": "Waiting for someone to take them. The top one goes first.",
+        "in_progress": "Being done. A task without an assignee goes to whoever moved it.",
+        "review": "The change is on the dev server, being checked.",
+        "verified": "Checked on dev, waiting for production.",
+        "done": "In production. Waiting conversations went back to their assignees with a reply draft.",
+        "canceled": "Will not be done."
+      },
+      "emptyColumn": {
+        "open": "No new tasks",
+        "in_progress": "Nothing in progress",
+        "review": "Nothing waits for review",
+        "verified": "Nothing waits for production",
+        "done": "Nothing closed in these days",
+        "canceled": "Nothing canceled"
+      },
+      "closedDays": "last {days} days",
+      "urgent": "Urgent",
+      "rest": "The rest",
+      "more": "Show {count} more",
+      "older": "Older ones are in the Closed list",
+      "empty": "No tasks yet",
+      "emptyHint": "Create the first one, or make a task from a conversation in its More actions menu.",
+      "loadError": "Could not load the board.",
+      "age": {
+        "now": "now",
+        "hours": "{count}h",
+        "days": "{count}d"
+      },
+      "ageTitle": "In this column for {age}",
+      "closedAge": "Closed {age} ago",
+      "conversations": "{count, plural, one {# customer waits for this task} other {# customers wait for this task}}",
+      "card": "{number}, {title}",
+      "actions": "Actions for task {number}",
+      "moveTo": "To {column}",
+      "nextStep": "next step",
+      "takeMine": "Take it",
+      "open": "Open",
+      "cancelTask": "Cancel the task",
+      "dropNext": "Drop: the next step",
+      "dropHere": "Drop to move here",
+      "moved": "{number} is in {column}",
+      "taken": "{number} is yours now",
+      "close": "Close the task",
+      "confirm": {
+        "title": "Is the task in production?",
+        "text": "{count, plural, one {# conversation goes} other {# conversations go}} back to their assignees with a reply draft. An operator sends it.",
+        "submit": "Done",
+        "cancel": "Cancel"
+      },
+      "overLimit": "Over the limit ({limit}): finish what is started first",
+      "underLimit": "Limit of the column: {limit}",
+      "dropOver": "It will be {count} of {limit}, over the limit",
+      "tooLong": "Stands longer than the threshold: {days}d",
+      "lanes": {
+        "label": "Group by",
+        "none": "No grouping",
+        "assignee": "By assignee",
+        "queue": "By queue",
+        "priority": "By priority"
+      },
+      "laneNone": {
+        "assignee": "Unassigned",
+        "queue": "No queue"
+      },
+      "laneToggle": "{name}: {count}"
+    },
+    "blocked": {
+      "label": "Blocked",
+      "block": "Block…",
+      "unblock": "Unblock",
+      "title": "Block task {number}",
+      "reason": "What blocks it",
+      "reasonPlaceholder": "Waiting for an answer, an access or another task",
+      "hint": "The status stays. The mark comes off by itself when the task is closed.",
+      "submit": "Block",
+      "cancel": "Cancel",
+      "banner": "Blocked",
+      "filter": "Blocked only",
+      "done": "{number} is blocked",
+      "undone": "{number} is unblocked"
     }
   },
   "notifications": {
@@ -1530,7 +1651,7 @@
       "assigned": "Conversation #{number} is yours",
       "message": "New message · #{number}",
       "queued": "New conversation in the queue · #{number}",
-      "task": "Task T-{number} is assigned to you"
+      "task": "Task #{number} is assigned to you"
     },
     "test": {
       "title": "Tolkovo: test",

@@ -149,8 +149,20 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 	if msg := agent.call("comment_task", map[string]any{"number": filed.Number, "text": "Исправлено в fix/export"}, nil); msg != "" {
 		t.Fatalf("comment: %s", msg)
 	}
-	if msg := agent.call("update_task", map[string]any{"number": filed.Number, "status": "done"}, &task); msg != "" || task.Status != "done" || task.ClosedAt == nil {
-		t.Fatalf("close: %q %+v", msg, task)
+	// An agent marks what blocks it, finds it among the blocked; closing takes the mark off.
+	if msg := agent.call("update_task", map[string]any{"number": filed.Number, "blocked_reason": "Ждём доступ к стенду"}, &task); msg != "" ||
+		task.BlockedReason == nil || *task.BlockedReason != "Ждём доступ к стенду" || task.Status != "in_progress" {
+		t.Fatalf("block: %q %+v", msg, task)
+	}
+	if msg := agent.call("list_tasks", map[string]any{"assignee": "anyone", "blocked": true}, &page); msg != "" || len(page.Tasks) != 1 ||
+		page.Tasks[0].Number != filed.Number || page.Tasks[0].BlockedReason == nil {
+		t.Fatalf("blocked tasks: %q %+v", msg, page)
+	}
+	// A fresh value: blocked_reason is left out when there is none.
+	var closed mcpTask
+	if msg := agent.call("update_task", map[string]any{"number": filed.Number, "status": "done"}, &closed); msg != "" || closed.Status != "done" ||
+		closed.ClosedAt == nil || closed.BlockedReason != nil {
+		t.Fatalf("close: %q %+v", msg, closed)
 	}
 	if msg := agent.call("get_task", map[string]any{"number": filed.Number}, &task); msg != "" {
 		t.Fatal(msg)
@@ -165,7 +177,7 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 			t.Fatalf("assignee line names the member: %+v", a)
 		}
 	}
-	if got := strings.Join(kinds, ","); got != "created,assignee,status,comment,status" {
+	if got := strings.Join(kinds, ","); got != "created,assignee,status,comment,blocked,unblocked,status" {
 		t.Fatalf("feed: %s", got)
 	}
 	// Done by the member, in the REST API too.

@@ -8,7 +8,19 @@ export type TaskView = (typeof TASK_VIEWS)[number];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "verified", "done", "canceled"];
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["urgent", "high", "normal", "low"];
 
+/** The section as a list with the open task beside it, or as the board (ADR-0019). */
+export const TASK_LAYOUTS = ["list", "board"] as const;
+export type TaskLayout = (typeof TASK_LAYOUTS)[number];
+
+/** Swimlanes of the board (ADR-0019, K2): cards grouped by who, which queue or how urgent. */
+export const TASK_LANES = ["assignee", "queue", "priority"] as const;
+export type TaskLanes = (typeof TASK_LANES)[number];
+
 export type TasksSearch = {
+  layout?: TaskLayout;
+  lanes?: TaskLanes;
+  /** Only the blocked tasks. */
+  blocked?: true;
   view?: TaskView;
   /** A queue id or `none`. */
   queue?: string;
@@ -22,6 +34,9 @@ export type TasksSearch = {
 /** Keeps only known values from the URL: a hand-edited link never breaks the page. */
 export function validateTasksSearch(search: Record<string, unknown>): TasksSearch {
   const out: TasksSearch = {};
+  if (typeof search.layout === "string" && (TASK_LAYOUTS as readonly string[]).includes(search.layout)) out.layout = search.layout as TaskLayout;
+  if (typeof search.lanes === "string" && (TASK_LANES as readonly string[]).includes(search.lanes)) out.lanes = search.lanes as TaskLanes;
+  if (search.blocked === true || search.blocked === "true") out.blocked = true;
   if (typeof search.view === "string" && (TASK_VIEWS as readonly string[]).includes(search.view)) out.view = search.view as TaskView;
   if (typeof search.queue === "string" && /^(none|[0-9a-f-]{36})$/.test(search.queue)) out.queue = search.queue;
   if (typeof search.topic === "string" && /^(none|[0-9a-f-]{36})$/.test(search.topic)) out.topic = search.topic;
@@ -31,7 +46,7 @@ export function validateTasksSearch(search: Record<string, unknown>): TasksSearc
 }
 
 /** The API filter of a view. */
-export function taskFilter({ view = "mine", queue, topic, tag, q }: TasksSearch): TaskFilter {
+export function taskFilter({ view = "mine", queue, topic, tag, blocked, q }: TasksSearch): TaskFilter {
   const filter: TaskFilter = {};
   switch (view) {
     case "mine":
@@ -54,6 +69,7 @@ export function taskFilter({ view = "mine", queue, topic, tag, q }: TasksSearch)
   if (queue) filter.queue = queue;
   if (topic) filter.topic = topic;
   if (tag) filter.tag = tag;
+  if (blocked) filter.blocked = true;
   if (q) filter.q = q.trim();
   return filter;
 }

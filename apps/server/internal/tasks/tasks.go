@@ -34,10 +34,18 @@ type Task struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	ClosedAt   *time.Time
-	Version    int32
+	// StatusChangedAt is when the task came into its status: the time in
+	// its column of the board (ADR-0019).
+	StatusChangedAt time.Time
+	// BlockedReason marks an open task as blocked, and says by what.
+	BlockedReason *string
+	Version       int32
 	// ConversationIDs are the linked conversations, oldest link first;
 	// filled by Get, not by lists.
 	ConversationIDs []uuid.UUID
+	// ConversationCount is the number of linked conversations, filled by
+	// lists and the board as well.
+	ConversationCount int
 	// Files of the description; filled for one task, not in lists.
 	Files []File
 	// TagIDs are the task's tags (Tags), in the order they were put on.
@@ -174,7 +182,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 		if err := s.link(ctx, tx, q, row, *in.ConversationID, actor, conversations.EventTaskCreated); err != nil {
 			return Task{}, err
 		}
-		out.ConversationIDs = []uuid.UUID{*in.ConversationID}
+		out.ConversationIDs, out.ConversationCount = []uuid.UUID{*in.ConversationID}, 1
 	}
 	if err := s.notifyNew(ctx, tx, q, row, actorID); err != nil {
 		return Task{}, err
@@ -223,6 +231,7 @@ func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task,
 		if err != nil {
 			return err
 		}
+		out.ConversationCount = len(out.ConversationIDs)
 		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
 			return err
 		}
@@ -263,18 +272,28 @@ type Filter struct {
 	NoTopic    bool
 	// TagID keeps the tasks with this tag.
 	TagID *uuid.UUID
+	// Blocked, when set, keeps the blocked tasks or the others.
+	Blocked *bool
 	// Query matches the title, or the number exactly.
 	Query string
 	// Before is the number to continue below; 0 starts from the newest.
 	Before int64
 	Limit  int
+	// Flow orders the tasks of Status as its column of the board (Board),
+	// continuing after the task at After when set; ClosedDays, when set,
+	// then keeps the tasks closed in the last that many days.
+	Flow       bool
+	After      *FlowKey
+	ClosedDays int
 }
 
 // Page is one page of tasks; Next is the number to pass as Before for the
-// next one, 0 on the last page.
+// next one, 0 on the last page. With Filter.Flow it is NextKey, nil on the
+// last page.
 type Page struct {
-	Items []Task
-	Next  int64
+	Items   []Task
+	Next    int64
+	NextKey *FlowKey
 }
 
 // List returns tasks newest first.
@@ -296,6 +315,9 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	if f.Limit > 0 {
 		limit = min(f.Limit, pageLimit)
 	}
+	if f.Flow {
+		return s.listFlow(ctx, workspaceID, f, limit)
+	}
 	var status *string
 	if f.Status != "" {
 		status = &f.Status
@@ -306,7 +328,7 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 		rows, err := q.ListTasks(ctx, store.ListTasksParams{
 			WorkspaceID: workspaceID, BeforeNumber: f.Before, OpenOnly: f.State == "open", ClosedOnly: f.State == "closed",
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic, Status: status,
-			TagID: f.TagID, Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
+			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 		})
 		if err != nil {
 			return err
@@ -318,7 +340,7 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 			}
 			out.Items = append(out.Items, taskFrom(r))
 		}
-		return fillTags(ctx, q, workspaceID, out.Items)
+		return fillLists(ctx, q, workspaceID, out.Items)
 	})
 	if err != nil {
 		return Page{}, dbError(err, "list tasks")
@@ -353,6 +375,9 @@ type Update struct {
 	// TagIDs replace the task's tags; nil keeps them, for clients that do
 	// not know tags.
 	TagIDs *[]uuid.UUID
+	// BlockedReason blocks the task with this reason; "" unblocks it and nil
+	// keeps the mark, for clients that do not know it. Closing unblocks.
+	BlockedReason *string
 }
 
 // Update changes a task by actorID. Version must be the one the caller
@@ -379,6 +404,10 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 			return Task{}, err
 		}
 	}
+	reason, err := validBlockedReason(in.BlockedReason)
+	if err != nil {
+		return Task{}, err
+	}
 	var out Task
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -401,9 +430,16 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		case !closed(in.Status):
 			closedAt = nil
 		}
+		blocked := cur.BlockedReason
+		if in.BlockedReason != nil {
+			blocked = reason
+		}
+		if closed(in.Status) {
+			blocked = nil
+		}
 		row, err := q.UpdateTask(ctx, store.UpdateTaskParams{
 			QueueID: in.QueueID, TopicID: in.TopicID, Title: title, Body: body, Status: in.Status, Priority: in.Priority,
-			AssigneeID: assignee, ClosedAt: closedAt, UpdatedAt: now, WorkspaceID: workspaceID, ID: taskID,
+			AssigneeID: assignee, ClosedAt: closedAt, UpdatedAt: now, BlockedReason: blocked, WorkspaceID: workspaceID, ID: taskID,
 		})
 		if err != nil {
 			return err
@@ -428,6 +464,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if err != nil {
 			return err
 		}
+		out.ConversationCount = len(out.ConversationIDs)
 		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
 			return err
 		}
@@ -469,6 +506,15 @@ func (s *Service) recordChanges(ctx context.Context, tx pgx.Tx, q *store.Queries
 	}
 	if !sameID(cur.TopicID, row.TopicID) {
 		if _, err := s.addActivity(ctx, q, row, actor, "topic", nil, map[string]any{"from": cur.TopicID, "to": row.TopicID}); err != nil {
+			return err
+		}
+	}
+	if !sameText(cur.BlockedReason, row.BlockedReason) {
+		kind := "unblocked"
+		if row.BlockedReason != nil {
+			kind = "blocked"
+		}
+		if _, err := s.addActivity(ctx, q, row, actor, kind, row.BlockedReason, nil); err != nil {
 			return err
 		}
 	}
@@ -749,7 +795,7 @@ func taskFrom(r store.Task) Task {
 	return Task{
 		ID: r.ID, Number: r.Number, QueueID: r.QueueID, TopicID: r.TopicID, Title: r.Title, Body: r.Body, Status: r.Status, Priority: r.Priority,
 		AssigneeID: r.AssigneeID, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ClosedAt: r.ClosedAt,
-		Version: r.Version,
+		StatusChangedAt: r.StatusChangedAt, BlockedReason: r.BlockedReason, Version: r.Version,
 	}
 }
 
@@ -780,6 +826,13 @@ func activityFrom(r store.TaskActivity) Activity {
 		out.Fields, out.ConversationID = meta.Fields, meta.ConversationID
 	}
 	return out
+}
+
+func sameText(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func sameID(a, b *uuid.UUID) bool {

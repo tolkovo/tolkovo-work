@@ -23,13 +23,15 @@ import { describeApiError } from "../../lib/api-errors";
 import { FormMessage, TextField } from "../form/fields";
 import { TAG_DOT } from "../inbox/palette";
 import { control } from "../tasks/task-bits";
+import { BoardRules } from "./task-board-rules";
 
 const BUTTONS: readonly TaskButton[] = ["both", "tasks", "github"];
 const COLORS: readonly TagColor[] = ["gray", "teal", "amber", "red", "violet", "blue", "green"];
 
 /**
  * «Задачи» (ADR-0015): the section on or off, which buttons conversations show, the reply about a
- * done task, the queues with the members told about new tasks in them and the tags of tasks.
+ * done task, the queues with the members told about new tasks in them, the rules of the board
+ * (ADR-0019) and the tags of tasks.
  */
 export function TaskSettingsPage() {
   const { t } = useTranslation();
@@ -53,6 +55,7 @@ export function TaskSettingsPage() {
         <>
           <SettingsForm view={query.data} />
           <Queues />
+          <BoardRules />
           <Tags />
           <TelegramBot />
         </>

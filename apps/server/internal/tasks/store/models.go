@@ -8,24 +8,27 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Task struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Number      int64
-	QueueID     *uuid.UUID
-	Title       string
-	Body        string
-	Status      string
-	Priority    string
-	AssigneeID  *uuid.UUID
-	CreatedBy   *uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ClosedAt    *time.Time
-	Version     int32
-	TopicID     *uuid.UUID
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	Number          int64
+	QueueID         *uuid.UUID
+	Title           string
+	Body            string
+	Status          string
+	Priority        string
+	AssigneeID      *uuid.UUID
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	ClosedAt        *time.Time
+	Version         int32
+	TopicID         *uuid.UUID
+	StatusChangedAt time.Time
+	BlockedReason   *string
 }
 
 type TaskActivity struct {
@@ -37,6 +40,14 @@ type TaskActivity struct {
 	Body        *string
 	Meta        []byte
 	CreatedAt   time.Time
+}
+
+type TaskColumnRule struct {
+	WorkspaceID uuid.UUID
+	QueueID     *uuid.UUID
+	Status      string
+	WipLimit    pgtype.Int4
+	AgeDays     pgtype.Int4
 }
 
 type TaskFile struct {
