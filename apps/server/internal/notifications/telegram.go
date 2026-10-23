@@ -470,22 +470,29 @@ func (TaskMessageArgs) Kind() string { return "notifications.telegram_task" }
 // as long as Telegram asks without spending one.
 func (TaskMessageArgs) InsertOpts() river.InsertOpts { return river.InsertOpts{MaxAttempts: 8} }
 
-// TelegramWorkerOptions configure the sending job (role worker).
+// TelegramWorkerOptions configure the sending jobs (role worker).
 type TelegramWorkerOptions struct {
 	Service *Service
 	Tasks   Tasks
+	// Conversations and Panels send the messages about conversations
+	// (chats.go); nil sends none of them.
+	Conversations Conversations
+	Panels        Panels
 	// Locale is the language of a member, "ru" or "en"; nil writes Russian.
 	Locale func(ctx context.Context, workspaceID, userID uuid.UUID) (string, error)
 	// PanelURL is where the panel lives; the message links to the task.
 	PanelURL string
 }
 
-// AddTelegramWorkers registers the sending job.
+// AddTelegramWorkers registers the sending jobs.
 func AddTelegramWorkers(workers *river.Workers, o TelegramWorkerOptions) error {
 	if o.Service == nil || o.Tasks == nil || o.Service.tg.Bots == nil || o.Service.tg.Sealer == nil {
 		return errors.New("notifications: telegram workers need the service with Telegram, and tasks")
 	}
 	river.AddWorker(workers, &taskMessageWorker{opts: o})
+	if o.Conversations != nil && o.Panels != nil {
+		river.AddWorker(workers, &chatMessageWorker{opts: o})
+	}
 	return nil
 }
 

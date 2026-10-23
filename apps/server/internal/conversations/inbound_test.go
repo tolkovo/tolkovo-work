@@ -110,6 +110,10 @@ func TestReceive_WakesTheConversationUp(t *testing.T) {
 		t.Fatalf("queued conversation notified %v", got)
 	}
 	id := res.ConversationID
+	// A new conversation of a customer waits in the queue (docs/06 I-06).
+	if got := n.inQueue(); !slices.Equal(got, []uuid.UUID{id}) {
+		t.Fatalf("in queue %v, want [%s]", got, id)
+	}
 	if _, err := f.svc.Assign(f.ctx, f.wsA, operator(op), id, &op, nil); err != nil {
 		t.Fatalf("take: %v", err)
 	}
@@ -125,6 +129,9 @@ func TestReceive_WakesTheConversationUp(t *testing.T) {
 	}
 	if got := n.users(); !slices.Equal(got, []uuid.UUID{op}) {
 		t.Fatalf("notified %v", got)
+	}
+	if got := n.reasons(); !slices.Equal(got, []conversations.Attention{conversations.AttentionMessage}) {
+		t.Fatalf("reasons %v", got)
 	}
 
 	// Resolved, then the customer writes: back to the same operator.

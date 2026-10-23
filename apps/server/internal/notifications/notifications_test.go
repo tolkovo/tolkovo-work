@@ -166,20 +166,20 @@ func TestPrefs_DefaultsUpdateAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p != (Prefs{EmailMissed: true, EmailDelay: 15}) {
+	if p != (Prefs{EmailMissed: true, EmailDelay: 15, TgAssigned: true, TgMessages: true, TgQueue: true}) {
 		t.Fatalf("defaults = %+v", p)
 	}
 	off, delay := false, 60
 	if p, err = f.svc.UpdatePrefs(f.ctx, f.wsA, f.ownerA, PrefsPatch{EmailMissed: &off}); err != nil {
 		t.Fatal(err)
 	}
-	if p != (Prefs{EmailMissed: false, EmailDelay: 15}) {
+	if p != (Prefs{EmailMissed: false, EmailDelay: 15, TgAssigned: true, TgMessages: true, TgQueue: true}) {
 		t.Fatalf("after turning off = %+v", p)
 	}
-	if p, err = f.svc.UpdatePrefs(f.ctx, f.wsA, f.ownerA, PrefsPatch{EmailDelay: &delay}); err != nil {
+	if p, err = f.svc.UpdatePrefs(f.ctx, f.wsA, f.ownerA, PrefsPatch{EmailDelay: &delay, TgQueue: &off}); err != nil {
 		t.Fatal(err)
 	}
-	if p != (Prefs{EmailMissed: false, EmailDelay: 60}) {
+	if p != (Prefs{EmailMissed: false, EmailDelay: 60, TgAssigned: true, TgMessages: true, TgQueue: false}) {
 		t.Fatalf("absent field changed: %+v", p)
 	}
 	bad := 7

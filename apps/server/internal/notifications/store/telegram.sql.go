@@ -29,6 +29,30 @@ func (q *Queries) AdvanceNotifyOffset(ctx context.Context, arg AdvanceNotifyOffs
 	return err
 }
 
+const channelName = `-- name: ChannelName :one
+SELECT type, name FROM channels WHERE workspace_id = $1 AND id = $2
+`
+
+type ChannelNameParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+type ChannelNameRow struct {
+	Type string
+	Name string
+}
+
+// The name and type of a conversation's channel for the message text.
+// channels belongs to the channels module; this read-only lookup runs in
+// the job.
+func (q *Queries) ChannelName(ctx context.Context, arg ChannelNameParams) (ChannelNameRow, error) {
+	row := q.db.QueryRow(ctx, channelName, arg.WorkspaceID, arg.ID)
+	var i ChannelNameRow
+	err := row.Scan(&i.Type, &i.Name)
+	return i, err
+}
+
 const chatLinkedToOther = `-- name: ChatLinkedToOther :one
 SELECT EXISTS (
     SELECT 1 FROM telegram_links o
@@ -57,6 +81,73 @@ func (q *Queries) ChatLinkedToOther(ctx context.Context, arg ChatLinkedToOtherPa
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const chatWatchers = `-- name: ChatWatchers :many
+SELECT l.user_id, l.chat_id::bigint AS chat_id
+FROM telegram_links l
+JOIN memberships m ON m.workspace_id = l.workspace_id AND m.user_id = l.user_id
+JOIN roles r ON r.id = m.role_id
+LEFT JOIN notification_prefs p ON p.workspace_id = l.workspace_id AND p.user_id = l.user_id
+WHERE l.workspace_id = $1 AND l.chat_id IS NOT NULL AND m.is_active
+  AND r.key = ANY($2::text[])
+  AND (cardinality($3::uuid[]) = 0 OR l.user_id = ANY($3::uuid[]))
+  -- A topic with members goes to them alone (docs/02 §7.3).
+  AND ($4::uuid IS NULL
+       OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = l.workspace_id AND tm.topic_id = $4::uuid)
+       OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = l.workspace_id AND tm.topic_id = $4::uuid
+                  AND tm.user_id = l.user_id))
+  AND CASE $5::text
+        WHEN 'assigned' THEN coalesce(p.tg_assigned, true)
+        WHEN 'messages' THEN coalesce(p.tg_messages, true)
+        ELSE coalesce(p.tg_queue, true)
+      END
+ORDER BY l.user_id
+`
+
+type ChatWatchersParams struct {
+	WorkspaceID uuid.UUID
+	Answering   []string
+	UserIds     []uuid.UUID
+	TopicID     pgtype.UUID
+	Want        string
+}
+
+type ChatWatchersRow struct {
+	UserID uuid.UUID
+	ChatID int64
+}
+
+// Who hears about conversations in Telegram (docs/06 I-06): active members
+// among user_ids (all when empty) whose role answers customers (answering),
+// who linked their Telegram and did not turn off the kind (want: assigned,
+// messages or queue), of the topic when it has members. memberships,
+// roles, topic_members and notification_prefs are read here, as
+// LinkedChats reads telegram_links of members.
+func (q *Queries) ChatWatchers(ctx context.Context, arg ChatWatchersParams) ([]ChatWatchersRow, error) {
+	rows, err := q.db.Query(ctx, chatWatchers,
+		arg.WorkspaceID,
+		arg.Answering,
+		arg.UserIds,
+		arg.TopicID,
+		arg.Want,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChatWatchersRow
+	for rows.Next() {
+		var i ChatWatchersRow
+		if err := rows.Scan(&i.UserID, &i.ChatID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const clearTelegramLinks = `-- name: ClearTelegramLinks :exec

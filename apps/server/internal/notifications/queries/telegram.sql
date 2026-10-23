@@ -59,3 +59,36 @@ WHERE workspace_id = @workspace_id AND user_id = ANY(@user_ids::uuid[]) AND chat
 -- The member blocked the bot or left Telegram.
 UPDATE telegram_links SET chat_id = NULL, telegram_name = NULL, linked_at = NULL
 WHERE workspace_id = @workspace_id AND user_id = @user_id AND chat_id = @chat_id;
+
+-- name: ChatWatchers :many
+-- Who hears about conversations in Telegram (docs/06 I-06): active members
+-- among user_ids (all when empty) whose role answers customers (answering),
+-- who linked their Telegram and did not turn off the kind (want: assigned,
+-- messages or queue), of the topic when it has members. memberships,
+-- roles, topic_members and notification_prefs are read here, as
+-- LinkedChats reads telegram_links of members.
+SELECT l.user_id, l.chat_id::bigint AS chat_id
+FROM telegram_links l
+JOIN memberships m ON m.workspace_id = l.workspace_id AND m.user_id = l.user_id
+JOIN roles r ON r.id = m.role_id
+LEFT JOIN notification_prefs p ON p.workspace_id = l.workspace_id AND p.user_id = l.user_id
+WHERE l.workspace_id = @workspace_id AND l.chat_id IS NOT NULL AND m.is_active
+  AND r.key = ANY(@answering::text[])
+  AND (cardinality(@user_ids::uuid[]) = 0 OR l.user_id = ANY(@user_ids::uuid[]))
+  -- A topic with members goes to them alone (docs/02 §7.3).
+  AND (sqlc.narg(topic_id)::uuid IS NULL
+       OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = l.workspace_id AND tm.topic_id = sqlc.narg(topic_id)::uuid)
+       OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = l.workspace_id AND tm.topic_id = sqlc.narg(topic_id)::uuid
+                  AND tm.user_id = l.user_id))
+  AND CASE @want::text
+        WHEN 'assigned' THEN coalesce(p.tg_assigned, true)
+        WHEN 'messages' THEN coalesce(p.tg_messages, true)
+        ELSE coalesce(p.tg_queue, true)
+      END
+ORDER BY l.user_id;
+
+-- name: ChannelName :one
+-- The name and type of a conversation's channel for the message text.
+-- channels belongs to the channels module; this read-only lookup runs in
+-- the job.
+SELECT type, name FROM channels WHERE workspace_id = @workspace_id AND id = @id;

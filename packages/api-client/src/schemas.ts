@@ -525,6 +525,9 @@ export const notificationSettingsSchema = z.object({
   email_missed: z.boolean(),
   email_delay_minutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
   email_available: z.boolean(),
+  telegram_assigned: z.boolean(),
+  telegram_messages: z.boolean(),
+  telegram_queue: z.boolean(),
 }) satisfies z.ZodType<Schemas["NotificationSettings"]>;
 
 /** The tasks section (ADR-0015). */

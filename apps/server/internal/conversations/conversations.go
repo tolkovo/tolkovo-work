@@ -319,7 +319,7 @@ func (s *Service) recordChange(
 		return err
 	}
 	if s.notifier != nil && next.AssigneeID != nil && !sameID(next.AssigneeID, cur.AssigneeID) && *next.AssigneeID != actorID {
-		return s.notifier.NeedsAttention(ctx, tx, row.WorkspaceID, row.ID, *next.AssigneeID)
+		return s.notifier.NeedsAttention(ctx, tx, row.WorkspaceID, row.ID, *next.AssigneeID, AttentionAssigned)
 	}
 	return nil
 }

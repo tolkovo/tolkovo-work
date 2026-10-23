@@ -790,7 +790,7 @@
       },
       "telegram": {
         "title": "Telegram",
-        "lead": "Messages about tasks: when a task is assigned to you and when a task without an assignee appears in your queue. A message has the number, the title and a link, never the description or customer data.",
+        "lead": "The workspace bot tells you about tasks and, if you answer customers, about conversations. A message has the number, the task title or the customer name and a link, no descriptions and no conversation text.",
         "noBot": "An admin has not added a bot for notifications yet.",
         "toSettings": "Add it in the task settings",
         "link": "Link Telegram",
@@ -798,7 +798,17 @@
         "open": "Open @{bot}",
         "waiting": "Waiting for you to press Start…",
         "linked": "Telegram {name} is linked through @{bot}.",
-        "unlink": "Unlink"
+        "unlink": "Unlink",
+        "chats": {
+          "title": "Conversations in Telegram",
+          "lead": "Only while the panel is closed: while it is open, a sound and a browser notification tell you.",
+          "assigned": "A conversation was given to me",
+          "messages": "A customer wrote in my conversation",
+          "messagesHint": "At most one message in 5 minutes per conversation.",
+          "queue": "A customer waits in the queue",
+          "queueHint": "A new conversation, one the bot handed over or the customer reopened. When the topic has members, only they are told.",
+          "saved": "Saved."
+        }
       }
     },
     "security": {

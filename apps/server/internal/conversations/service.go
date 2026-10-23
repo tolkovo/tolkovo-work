@@ -72,12 +72,27 @@ type Actor struct {
 	AssignOthers bool
 }
 
+// Attention is why a conversation needs its member.
+type Attention string
+
+// Reasons of NeedsAttention.
+const (
+	// AttentionAssigned: someone else or the router gave it to the member.
+	AttentionAssigned Attention = "assigned"
+	// AttentionMessage: the customer wrote in it.
+	AttentionMessage Attention = "message"
+)
+
 // Notifier hears about changes a member may need to act on, so it can
-// remind them later (docs/04 §5.5). It runs inside the transaction of the
-// change: it may write rows and queue jobs there, never call the network.
-// Inbound messages call it too once channels deliver them (T-02, W-01).
+// remind them later (docs/04 §5.5) or tell them in Telegram (docs/06 I-06).
+// It runs inside the transaction of the change: it may write rows and queue
+// jobs there, never call the network.
 type Notifier interface {
-	NeedsAttention(ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID) error
+	NeedsAttention(ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID, why Attention) error
+	// WaitsInQueue hears that a customer's conversation entered the queue:
+	// a new one, one the AI bot handed over, one the customer reopened.
+	// topicID is its topic, whose members alone take it when it has some.
+	WaitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, topicID *uuid.UUID) error
 }
 
 // Router distributes the queue (docs/02 §9). Both methods run inside the
@@ -157,6 +172,15 @@ func (s *Service) tx(ctx context.Context, workspaceID uuid.UUID, fn func(q *stor
 // answering are the roles that answer customers: only their members are
 // given conversations (ADR-0020: the programmer reads linked ones only).
 var answering = authz.RolesWith(authz.ConversationsReply)
+
+// waitsInQueue tells the notifier that a customer's conversation waits in
+// the queue.
+func (s *Service) waitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, topicID *uuid.UUID) error {
+	if s.notifier == nil {
+		return nil
+	}
+	return s.notifier.WaitsInQueue(ctx, tx, workspaceID, conversationID, topicID)
+}
 
 func newID() (uuid.UUID, error) {
 	id, err := uuid.NewV7()

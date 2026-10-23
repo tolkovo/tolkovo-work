@@ -421,8 +421,8 @@ export interface paths {
         /**
          * The current user's notification settings in this workspace
          * @description What the server does for the user: the email about customer messages left unread in
-         *     their conversations. Sounds and desktop notifications are settings of a browser and
-         *     are not stored here.
+         *     their conversations and the Telegram messages about conversations. Sounds and desktop
+         *     notifications are settings of a browser and are not stored here.
          */
         get: operations["getMyNotificationSettings"];
         put?: never;
@@ -3055,10 +3055,24 @@ export interface components {
             email_delay_minutes: components["schemas"]["EmailDelayMinutes"];
             /** @description Outgoing email is configured on this server; without it nothing is sent. */
             email_available: boolean;
+            /**
+             * @description Telegram messages about conversations go through the workspace's notifications bot to
+             *     a linked Telegram (`/me/telegram`), only while the panel is closed, with the
+             *     customer's name, the channel and a link, never the text. This one: a conversation
+             *     was given to the user. On by default; roles that do not answer customers get none.
+             */
+            telegram_assigned: boolean;
+            /** @description The customer wrote in a conversation of the user; one message per conversation in 5 minutes at most. On by default. */
+            telegram_messages: boolean;
+            /** @description A customer's conversation waits in the queue (of a topic of the user when it has members). On by default. */
+            telegram_queue: boolean;
         };
         UpdateNotificationSettingsRequest: {
             email_missed?: boolean;
             email_delay_minutes?: components["schemas"]["EmailDelayMinutes"];
+            telegram_assigned?: boolean;
+            telegram_messages?: boolean;
+            telegram_queue?: boolean;
         };
         ChangePasswordRequest: {
             current_password: string;

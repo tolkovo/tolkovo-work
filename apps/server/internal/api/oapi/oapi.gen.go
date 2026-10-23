@@ -2620,6 +2620,18 @@ type NotificationSettings struct {
 	// for `email_delay_minutes`. Goes only to a confirmed email (`User.email_verified`),
 	// without message texts. On by default.
 	EmailMissed bool `json:"email_missed"`
+
+	// TelegramAssigned Telegram messages about conversations go through the workspace's notifications bot to
+	// a linked Telegram (`/me/telegram`), only while the panel is closed, with the
+	// customer's name, the channel and a link, never the text. This one: a conversation
+	// was given to the user. On by default; roles that do not answer customers get none.
+	TelegramAssigned bool `json:"telegram_assigned"`
+
+	// TelegramMessages The customer wrote in a conversation of the user; one message per conversation in 5 minutes at most. On by default.
+	TelegramMessages bool `json:"telegram_messages"`
+
+	// TelegramQueue A customer's conversation waits in the queue (of a topic of the user when it has members). On by default.
+	TelegramQueue bool `json:"telegram_queue"`
 }
 
 // OpenGitHubIssue defines model for OpenGitHubIssue.
@@ -3254,6 +3266,9 @@ type UpdateNotificationSettingsRequest struct {
 	// EmailDelayMinutes How long customer messages may stay unread before the email goes out.
 	EmailDelayMinutes *EmailDelayMinutes `json:"email_delay_minutes,omitempty"`
 	EmailMissed       *bool              `json:"email_missed,omitempty"`
+	TelegramAssigned  *bool              `json:"telegram_assigned,omitempty"`
+	TelegramMessages  *bool              `json:"telegram_messages,omitempty"`
+	TelegramQueue     *bool              `json:"telegram_queue,omitempty"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.

@@ -1,5 +1,11 @@
 import type { EmailDelayMinutes, NotificationSettingsInput } from "@tolkovo/api-client";
-import { useCan, useNotificationSettings, useSession, useUpdateNotificationSettings } from "@tolkovo/api-client/react";
+import {
+  useCan,
+  useMyTelegram,
+  useNotificationSettings,
+  useSession,
+  useUpdateNotificationSettings,
+} from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { Link } from "@tanstack/react-router";
 import { Volume2 } from "lucide-react";
@@ -261,18 +267,79 @@ function EmailSettings() {
   );
 }
 
+/**
+ * «Диалоги в Telegram» (docs/06 I-06): which messages about conversations the linked Telegram
+ * gets while the panel is closed. For members who answer customers, once Telegram is linked.
+ */
+function TelegramChats() {
+  const { t } = useTranslation();
+  const me = useMyTelegram();
+  const query = useNotificationSettings();
+  const update = useUpdateNotificationSettings();
+  const [saved, setSaved] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!me.data?.linked || !query.data) return null;
+  const save = (body: NotificationSettingsInput) => {
+    setSaved(null);
+    setError(null);
+    update.mutate(body, {
+      onSuccess: () => setSaved(t("settings.notifications.telegram.chats.saved")),
+      onError: (e) => setError(describeApiError(t, e).message),
+    });
+  };
+  const s = query.data;
+  return (
+    <section aria-labelledby="notify-tg-chats-title" className="flex max-w-[640px] flex-col gap-3">
+      <h3 id="notify-tg-chats-title" className="m-0 text-sm font-semibold">
+        {t("settings.notifications.telegram.chats.title")}
+      </h3>
+      <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+        <p className="m-0 text-[13px] text-ink-2">{t("settings.notifications.telegram.chats.lead")}</p>
+        <Checkbox
+          id="notify-tg-assigned"
+          checked={s.telegram_assigned}
+          disabled={update.isPending}
+          onChange={(on) => save({ telegram_assigned: on })}
+          label={t("settings.notifications.telegram.chats.assigned")}
+        />
+        <Checkbox
+          id="notify-tg-messages"
+          checked={s.telegram_messages}
+          disabled={update.isPending}
+          onChange={(on) => save({ telegram_messages: on })}
+          label={t("settings.notifications.telegram.chats.messages")}
+          hint={t("settings.notifications.telegram.chats.messagesHint")}
+        />
+        <Checkbox
+          id="notify-tg-queue"
+          checked={s.telegram_queue}
+          disabled={update.isPending}
+          onChange={(on) => save({ telegram_queue: on })}
+          label={t("settings.notifications.telegram.chats.queue")}
+          hint={t("settings.notifications.telegram.chats.queueHint")}
+        />
+        <FormMessage tone="error" message={error} />
+        <FormMessage tone="success" message={saved} />
+      </div>
+    </section>
+  );
+}
+
 /** «Уведомления» of the personal settings (docs/07 §7, §8). */
 export function NotificationSettingsPage() {
   const { t } = useTranslation();
-  // Telegram carries messages about tasks: members who see the section (TK-02).
+  // Telegram carries messages about tasks: members who see the section (TK-02); and about
+  // conversations to those who answer customers (docs/06 I-06).
   const tasks = useCan("tasks.view");
+  const answers = useCan("conversations.reply");
   return (
     <section aria-labelledby="settings-notifications-title" className="flex flex-col gap-6">
       <h2 id="settings-notifications-title" className="m-0 text-base font-semibold">
         {t("settings.notifications.title")}
       </h2>
       <DeviceSettings />
-      {tasks && <TelegramLink />}
+      {(tasks || answers) && <TelegramLink />}
+      {answers && <TelegramChats />}
       <EmailSettings />
     </section>
   );
