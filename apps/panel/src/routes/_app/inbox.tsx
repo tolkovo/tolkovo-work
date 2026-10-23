@@ -1,4 +1,6 @@
-import { Outlet, createFileRoute, useParams } from "@tanstack/react-router";
+import { hasPermission } from "@tolkovo/api-client";
+import { sessionQueryOptions } from "@tolkovo/api-client/react";
+import { Outlet, createFileRoute, redirect, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { ConversationList } from "../../components/inbox/conversation-list";
@@ -6,6 +8,11 @@ import { validateInboxSearch } from "../../lib/inbox/tabs";
 
 export const Route = createFileRoute("/_app/inbox")({
   validateSearch: validateInboxSearch,
+  // The home screen of a role without the inbox (the programmer, ADR-0020) is the tasks section.
+  beforeLoad: async ({ context }) => {
+    const session = await context.queryClient.ensureQueryData(sessionQueryOptions(context.api));
+    if (session && !hasPermission(session, "conversations.view")) throw redirect({ to: "/tasks", replace: true });
+  },
   component: InboxLayout,
 });
 

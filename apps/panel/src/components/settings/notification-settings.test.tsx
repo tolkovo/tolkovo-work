@@ -1,10 +1,11 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { installNotifier } from "../../lib/notifications/instance";
 import { DEFAULT_NOTIFY_SETTINGS, readNotifySettings, useNotifySettings } from "../../lib/notifications/settings";
 import { fakeApi, json, ownerSession } from "../../test/fake-api";
+import { inboxOperator } from "../../test/inbox-fixtures";
 import { renderApp } from "../../test/render-app";
 
 class FakeNotification {
@@ -67,7 +68,7 @@ describe("notification settings", () => {
 
   it("saves the email settings on the server", async () => {
     const user = userEvent.setup();
-    let stored = { email_missed: true, email_delay_minutes: 15, email_available: true };
+    let stored = { email_missed: true, email_delay_minutes: 15, email_available: true, telegram_assigned: true, telegram_messages: true, telegram_queue: true };
     const api = fakeApi({
       routes: {
         "GET /me/notifications": () => json(200, stored),
@@ -88,10 +89,50 @@ describe("notification settings", () => {
     expect(patches).toEqual([{ email_delay_minutes: 5 }, { email_missed: false }]);
   });
 
+  it("lets an operator with Telegram choose the messages about conversations", async () => {
+    const user = userEvent.setup();
+    let stored = { email_missed: true, email_delay_minutes: 15, email_available: true, telegram_assigned: true, telegram_messages: true, telegram_queue: true };
+    const api = fakeApi({
+      session: { ...inboxOperator, permissions: [...inboxOperator.permissions, "tasks.view"] },
+      routes: {
+        "GET /me/notifications": () => json(200, stored),
+        "GET /me/telegram": () =>
+          json(200, { bot_username: "zerno_alerts_bot", linked: true, name: "Пётр", linked_at: "2026-10-23T09:00:00Z", pending: false }),
+        "PATCH /me/notifications": async (request) => {
+          stored = { ...stored, ...((await request.json()) as object) };
+          return json(200, stored);
+        },
+      },
+    });
+    renderApp("/settings/notifications", { api });
+    const chats = await screen.findByRole("region", { name: "Диалоги в Telegram" });
+    const queue = within(chats).getByRole("checkbox", { name: "Клиент ждёт в очереди" });
+    expect(queue).toBeChecked();
+    expect(within(chats).getByRole("checkbox", { name: "Клиент написал в мой диалог" })).toHaveAccessibleDescription(
+      "Не чаще одного сообщения в 5 минут на диалог.",
+    );
+    await user.click(queue);
+    await waitFor(() => expect(queue).not.toBeChecked());
+    const patches = api.calls.filter((c) => c.method === "PATCH" && c.path === "/me/notifications").map((c) => c.body);
+    expect(patches).toEqual([{ telegram_queue: false }]);
+  });
+
+  it("hides the messages about conversations without a linked Telegram", async () => {
+    const api = fakeApi({
+      session: inboxOperator,
+      routes: {
+        "GET /me/telegram": () => json(200, { bot_username: "zerno_alerts_bot", linked: false, name: null, linked_at: null, pending: false }),
+      },
+    });
+    renderApp("/settings/notifications", { api });
+    expect(await screen.findByRole("button", { name: "Привязать Telegram" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Диалоги в Telegram" })).not.toBeInTheDocument();
+  });
+
   it("says when the server cannot send email", async () => {
     const api = fakeApi({
       routes: {
-        "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: false }),
+        "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: false, telegram_assigned: true, telegram_messages: true, telegram_queue: true }),
       },
     });
     renderApp("/settings/notifications", { api });

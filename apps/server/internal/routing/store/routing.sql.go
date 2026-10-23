@@ -16,18 +16,21 @@ const anyAvailable = `-- name: AnyAvailable :one
 SELECT EXISTS (
     SELECT 1 FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    JOIN roles r ON r.id = m.role_id
     WHERE os.workspace_id = $1 AND m.is_active
-      AND os.status = 'online' AND os.seen_at > $2::timestamptz
+      AND r.key = ANY($2::text[])
+      AND os.status = 'online' AND os.seen_at > $3::timestamptz
 )
 `
 
 type AnyAvailableParams struct {
 	WorkspaceID uuid.UUID
+	Answering   []string
 	SeenAfter   time.Time
 }
 
 func (q *Queries) AnyAvailable(ctx context.Context, arg AnyAvailableParams) (bool, error) {
-	row := q.db.QueryRow(ctx, anyAvailable, arg.WorkspaceID, arg.SeenAfter)
+	row := q.db.QueryRow(ctx, anyAvailable, arg.WorkspaceID, arg.Answering, arg.SeenAfter)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -86,19 +89,27 @@ const isAvailable = `-- name: IsAvailable :one
 SELECT EXISTS (
     SELECT 1 FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    JOIN roles r ON r.id = m.role_id
     WHERE os.workspace_id = $1 AND os.user_id = $2 AND m.is_active
-      AND os.status = 'online' AND os.seen_at > $3::timestamptz
+      AND r.key = ANY($3::text[])
+      AND os.status = 'online' AND os.seen_at > $4::timestamptz
 )
 `
 
 type IsAvailableParams struct {
 	WorkspaceID uuid.UUID
 	UserID      uuid.UUID
+	Answering   []string
 	SeenAfter   time.Time
 }
 
 func (q *Queries) IsAvailable(ctx context.Context, arg IsAvailableParams) (bool, error) {
-	row := q.db.QueryRow(ctx, isAvailable, arg.WorkspaceID, arg.UserID, arg.SeenAfter)
+	row := q.db.QueryRow(ctx, isAvailable,
+		arg.WorkspaceID,
+		arg.UserID,
+		arg.Answering,
+		arg.SeenAfter,
+	)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -141,8 +152,10 @@ WITH locked AS MATERIALIZED (
     SELECT os.user_id, os.last_assigned_at
     FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    JOIN roles r ON r.id = m.role_id
     WHERE os.workspace_id = $1 AND m.is_active
-      AND os.status = 'online' AND os.seen_at > $2::timestamptz
+      AND r.key = ANY($2::text[])
+      AND os.status = 'online' AND os.seen_at > $3::timestamptz
     ORDER BY os.user_id
     FOR UPDATE OF os
 )
@@ -152,14 +165,17 @@ ORDER BY last_assigned_at ASC NULLS FIRST, user_id
 
 type LockAvailableParams struct {
 	WorkspaceID uuid.UUID
+	Answering   []string
 	SeenAfter   time.Time
 }
 
-// Members who take conversations now, whose turn came first. The row
+// Members who take conversations now, whose turn came first. answering
+// are the roles that answer customers (ADR-0020: not the programmer), as
+// in IsAvailable and AnyAvailable. The row
 // locks keep a parallel assignment from reading a stale turn order; they
 // are taken in user_id order, as MarkSeen does, so the two never deadlock.
 func (q *Queries) LockAvailable(ctx context.Context, arg LockAvailableParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lockAvailable, arg.WorkspaceID, arg.SeenAfter)
+	rows, err := q.db.Query(ctx, lockAvailable, arg.WorkspaceID, arg.Answering, arg.SeenAfter)
 	if err != nil {
 		return nil, err
 	}

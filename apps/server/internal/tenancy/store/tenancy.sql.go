@@ -81,6 +81,64 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 	return i, err
 }
 
+const deactivateMember = `-- name: DeactivateMember :execrows
+UPDATE memberships
+SET is_active = false, updated_at = now()
+WHERE workspace_id = $1 AND user_id = $2 AND is_active
+`
+
+type DeactivateMemberParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+func (q *Queries) DeactivateMember(ctx context.Context, arg DeactivateMemberParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deactivateMember, arg.WorkspaceID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getMember = `-- name: GetMember :one
+SELECT m.user_id, u.email, u.name, r.key AS role_key,
+       m.max_concurrent_chats, m.line_level, m.is_active
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = $1 AND m.user_id = $2
+`
+
+type GetMemberParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+type GetMemberRow struct {
+	UserID             uuid.UUID
+	Email              string
+	Name               string
+	RoleKey            string
+	MaxConcurrentChats int32
+	LineLevel          int16
+	IsActive           bool
+}
+
+func (q *Queries) GetMember(ctx context.Context, arg GetMemberParams) (GetMemberRow, error) {
+	row := q.db.QueryRow(ctx, getMember, arg.WorkspaceID, arg.UserID)
+	var i GetMemberRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.Name,
+		&i.RoleKey,
+		&i.MaxConcurrentChats,
+		&i.LineLevel,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const getMembership = `-- name: GetMembership :one
 SELECT u.id AS user_id, u.email, u.name AS user_name, u.locale AS user_locale,
        u.email_verified_at,
@@ -260,6 +318,55 @@ func (q *Queries) ListUserWorkspaces(ctx context.Context, userID uuid.UUID) ([]L
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockMember = `-- name: LockMember :one
+SELECT r.key AS role_key, m.is_active
+FROM memberships m
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = $1 AND m.user_id = $2
+FOR UPDATE OF m
+`
+
+type LockMemberParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+type LockMemberRow struct {
+	RoleKey  string
+	IsActive bool
+}
+
+// The member a role change or a removal acts on (ADR-0020), locked so two
+// admins cannot act on one member at once.
+func (q *Queries) LockMember(ctx context.Context, arg LockMemberParams) (LockMemberRow, error) {
+	row := q.db.QueryRow(ctx, lockMember, arg.WorkspaceID, arg.UserID)
+	var i LockMemberRow
+	err := row.Scan(&i.RoleKey, &i.IsActive)
+	return i, err
+}
+
+const setMemberRole = `-- name: SetMemberRole :execrows
+UPDATE memberships m
+SET role_id = r.id, updated_at = now()
+FROM roles r
+WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.is_active
+  AND r.key = $3 AND (r.workspace_id IS NULL OR r.workspace_id = $1)
+`
+
+type SetMemberRoleParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	RoleKey     string
+}
+
+func (q *Queries) SetMemberRole(ctx context.Context, arg SetMemberRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setMemberRole, arg.WorkspaceID, arg.UserID, arg.RoleKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateWorkspace = `-- name: UpdateWorkspace :one

@@ -63,3 +63,32 @@ JOIN users u ON u.id = m.user_id
 JOIN roles r ON r.id = m.role_id
 WHERE m.workspace_id = @workspace_id
 ORDER BY m.created_at, m.user_id;
+
+-- name: LockMember :one
+-- The member a role change or a removal acts on (ADR-0020), locked so two
+-- admins cannot act on one member at once.
+SELECT r.key AS role_key, m.is_active
+FROM memberships m
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id
+FOR UPDATE OF m;
+
+-- name: SetMemberRole :execrows
+UPDATE memberships m
+SET role_id = r.id, updated_at = now()
+FROM roles r
+WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active
+  AND r.key = @role_key AND (r.workspace_id IS NULL OR r.workspace_id = @workspace_id);
+
+-- name: DeactivateMember :execrows
+UPDATE memberships
+SET is_active = false, updated_at = now()
+WHERE workspace_id = @workspace_id AND user_id = @user_id AND is_active;
+
+-- name: GetMember :one
+SELECT m.user_id, u.email, u.name, r.key AS role_key,
+       m.max_concurrent_chats, m.line_level, m.is_active
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id;

@@ -29,6 +29,7 @@ type Task struct {
 	TopicID         *uuid.UUID
 	StatusChangedAt time.Time
 	BlockedReason   *string
+	ReviewFrom      *uuid.UUID
 }
 
 type TaskActivity struct {

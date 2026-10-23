@@ -29,6 +29,31 @@ func (q *Queries) BumpConversation(ctx context.Context, arg BumpConversationPara
 	return err
 }
 
+const canAnswer = `-- name: CanAnswer :one
+SELECT EXISTS (
+    SELECT 1 FROM memberships m
+    JOIN roles r ON r.id = m.role_id
+    WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.is_active
+      AND r.key = ANY($3::text[])
+)
+`
+
+type CanAnswerParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Answering   []string
+}
+
+// Assignees must be active members whose role answers customers
+// (answering, ADR-0020). memberships belongs to tenancy; this read-only
+// check sits here so it runs in the same transaction as the assignment.
+func (q *Queries) CanAnswer(ctx context.Context, arg CanAnswerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canAnswer, arg.WorkspaceID, arg.UserID, arg.Answering)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const countInbox = `-- name: CountInbox :one
 SELECT
     count(*) FILTER (WHERE c.assignee_id = $1 AND c.status IN ('assigned', 'pending'))::bigint AS mine,
@@ -259,28 +284,6 @@ func (q *Queries) HasQueued(ctx context.Context, arg HasQueuedParams) (bool, err
 	return exists, err
 }
 
-const isActiveMember = `-- name: IsActiveMember :one
-SELECT EXISTS (
-    SELECT 1 FROM memberships m
-    WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.is_active
-)
-`
-
-type IsActiveMemberParams struct {
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-}
-
-// Assignees must be active members. memberships belongs to tenancy; this
-// read-only check sits here so it runs in the same transaction as the
-// assignment.
-func (q *Queries) IsActiveMember(ctx context.Context, arg IsActiveMemberParams) (bool, error) {
-	row := q.db.QueryRow(ctx, isActiveMember, arg.WorkspaceID, arg.UserID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const listConversations = `-- name: ListConversations :many
 SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
@@ -474,6 +477,66 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 		&i.TopicAskedAt,
 	)
 	return i, err
+}
+
+const lockOpenOf = `-- name: LockOpenOf :many
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
+WHERE workspace_id = $1 AND assignee_id = $2 AND status IN ('assigned', 'pending')
+ORDER BY created_at, id
+FOR UPDATE
+`
+
+type LockOpenOfParams struct {
+	WorkspaceID uuid.UUID
+	UserID      *uuid.UUID
+}
+
+// The open conversations of a member whose role changes or who leaves the
+// team (ADR-0020), oldest first.
+func (q *Queries) LockOpenOf(ctx context.Context, arg LockOpenOfParams) ([]Conversation, error) {
+	rows, err := q.db.Query(ctx, lockOpenOf, arg.WorkspaceID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Conversation
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Number,
+			&i.ContactID,
+			&i.ChannelID,
+			&i.ExternalThreadID,
+			&i.Status,
+			&i.Priority,
+			&i.LineLevel,
+			&i.AssigneeID,
+			&i.Subject,
+			&i.FirstResponseAt,
+			&i.LastMessageAt,
+			&i.ResolvedAt,
+			&i.ClosedAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AwaitingFix,
+			&i.Rating,
+			&i.RatingComment,
+			&i.RatingResolvedBy,
+			&i.RatedAt,
+			&i.TopicID,
+			&i.TopicAskedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockQueue = `-- name: LockQueue :many

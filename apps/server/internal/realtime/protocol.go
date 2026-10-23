@@ -94,6 +94,7 @@ var routes = []route{
 	{prefix: "message.", channel: "conversations", perm: authz.ConversationsView},
 	{prefix: "contact.", channel: "contacts", perm: authz.ContactsView},
 	{prefix: "task.", channel: "tasks", perm: authz.TasksView},
+	{prefix: "member.", channel: "members", perm: authz.MembersView},
 }
 
 // channelFor returns the fan-out channel of an outbox topic.

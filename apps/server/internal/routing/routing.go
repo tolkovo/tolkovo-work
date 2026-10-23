@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/routing/store"
@@ -34,6 +35,10 @@ import (
 
 // ErrInvalid is a mode or a status outside the allowed values.
 var ErrInvalid = errors.New("routing: invalid input")
+
+// answering are the roles that answer customers: only their members are
+// available for conversations (ADR-0020: the programmer is not).
+var answering = authz.RolesWith(authz.ConversationsReply)
 
 // Mode is how a workspace distributes its queue.
 type Mode string
@@ -152,7 +157,7 @@ func (s *Service) SetStatus(ctx context.Context, workspaceID, userID uuid.UUID, 
 		if status != StatusOnline {
 			return nil
 		}
-		ok, err := q.IsAvailable(ctx, store.IsAvailableParams{WorkspaceID: workspaceID, UserID: userID, SeenAfter: s.seenAfter()})
+		ok, err := q.IsAvailable(ctx, store.IsAvailableParams{Answering: answering, WorkspaceID: workspaceID, UserID: userID, SeenAfter: s.seenAfter()})
 		if err != nil || !ok {
 			return err
 		}
@@ -250,7 +255,7 @@ func (s *Service) Available(ctx context.Context, tx pgx.Tx, workspaceID, userID 
 	if err != nil || Mode(mode) != ModeRoundRobin {
 		return true, err
 	}
-	return q.IsAvailable(ctx, store.IsAvailableParams{WorkspaceID: workspaceID, UserID: userID, SeenAfter: s.seenAfter()})
+	return q.IsAvailable(ctx, store.IsAvailableParams{Answering: answering, WorkspaceID: workspaceID, UserID: userID, SeenAfter: s.seenAfter()})
 }
 
 // AnyOnline reports whether someone in the workspace takes conversations
@@ -260,7 +265,7 @@ func (s *Service) AnyOnline(ctx context.Context, workspaceID uuid.UUID) (bool, e
 	var online bool
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		var err error
-		online, err = store.New(tx).AnyAvailable(ctx, store.AnyAvailableParams{WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
+		online, err = store.New(tx).AnyAvailable(ctx, store.AnyAvailableParams{Answering: answering, WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
 		return err
 	})
 	if err != nil {

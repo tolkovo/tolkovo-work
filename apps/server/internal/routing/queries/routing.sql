@@ -40,19 +40,25 @@ SET seen_at = EXCLUDED.seen_at;
 SELECT EXISTS (
     SELECT 1 FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    JOIN roles r ON r.id = m.role_id
     WHERE os.workspace_id = @workspace_id AND os.user_id = @user_id AND m.is_active
+      AND r.key = ANY(@answering::text[])
       AND os.status = 'online' AND os.seen_at > @seen_after::timestamptz
 );
 
 -- name: LockAvailable :many
--- Members who take conversations now, whose turn came first. The row
+-- Members who take conversations now, whose turn came first. answering
+-- are the roles that answer customers (ADR-0020: not the programmer), as
+-- in IsAvailable and AnyAvailable. The row
 -- locks keep a parallel assignment from reading a stale turn order; they
 -- are taken in user_id order, as MarkSeen does, so the two never deadlock.
 WITH locked AS MATERIALIZED (
     SELECT os.user_id, os.last_assigned_at
     FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    JOIN roles r ON r.id = m.role_id
     WHERE os.workspace_id = @workspace_id AND m.is_active
+      AND r.key = ANY(@answering::text[])
       AND os.status = 'online' AND os.seen_at > @seen_after::timestamptz
     ORDER BY os.user_id
     FOR UPDATE OF os
@@ -69,6 +75,8 @@ WHERE workspace_id = @workspace_id AND user_id = @user_id;
 SELECT EXISTS (
     SELECT 1 FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
+    JOIN roles r ON r.id = m.role_id
     WHERE os.workspace_id = @workspace_id AND m.is_active
+      AND r.key = ANY(@answering::text[])
       AND os.status = 'online' AND os.seen_at > @seen_after::timestamptz
 );

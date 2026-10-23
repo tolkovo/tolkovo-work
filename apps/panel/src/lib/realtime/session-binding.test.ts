@@ -83,6 +83,7 @@ describe("bindRealtime", () => {
       queryKeys.conversations,
       queryKeys.contacts,
       queryKeys.tasks,
+      queryKeys.members,
     ]);
     unbind();
   });

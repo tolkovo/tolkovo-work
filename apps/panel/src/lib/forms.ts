@@ -93,7 +93,7 @@ export const acceptExistingAccountSchema = z.object({
 
 export const inviteSchema = z.object({
   email,
-  role: z.enum(["operator", "admin"]),
+  role: z.enum(["operator", "programmer", "admin"]),
 }) satisfies z.ZodType<CreateInvitationRequest>;
 
 /** Contact fields (ContactInput); an empty email, phone or language clears it. */

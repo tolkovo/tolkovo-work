@@ -104,3 +104,45 @@ func topicMembers(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, 
 	}
 	return out, err
 }
+
+// HandOver gives the open conversations of userID to to, or releases them
+// to the queue when to is nil, as changes by actorID: a member whose role
+// changes or who leaves the team (ADR-0020). leaving also takes the member
+// out of the topics. It runs in the caller's tenant transaction tx; the
+// caller checked that to may answer customers.
+func (s *Service) HandOver(ctx context.Context, tx pgx.Tx, workspaceID, actorID, userID uuid.UUID, to *uuid.UUID, leaving bool) error {
+	q := store.New(tx)
+	if leaving {
+		if err := q.RemoveTopicMember(ctx, store.RemoveTopicMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
+			return wrap(err, "hand over")
+		}
+	}
+	rows, err := q.LockOpenOf(ctx, store.LockOpenOfParams{WorkspaceID: workspaceID, UserID: &userID})
+	if err != nil {
+		return wrap(err, "hand over")
+	}
+	for _, row := range rows {
+		cur := state{Status: Status(row.Status), AssigneeID: row.AssigneeID, ResolvedAt: row.ResolvedAt, ClosedAt: row.ClosedAt}
+		next, err := assign(cur, to, s.now())
+		if err != nil {
+			return err
+		}
+		n, err := q.UpdateConversationState(ctx, store.UpdateConversationStateParams{
+			WorkspaceID: workspaceID, ID: row.ID, Version: row.Version, Status: string(next.Status),
+			AssigneeID: next.AssigneeID, ResolvedAt: next.ResolvedAt, ClosedAt: next.ClosedAt,
+		})
+		if err != nil {
+			return wrap(err, "hand over")
+		}
+		if n == 0 {
+			return fmt.Errorf("hand over: %w", ErrConflict) // the row is locked: cannot happen
+		}
+		if err := s.recordChange(ctx, q, tx, row, actorID, cur, next); err != nil {
+			return wrap(err, "hand over")
+		}
+	}
+	if to == nil && len(rows) > 0 {
+		return s.queued(ctx, tx, workspaceID, &userID)
+	}
+	return nil
+}

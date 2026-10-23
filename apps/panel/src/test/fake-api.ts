@@ -9,6 +9,7 @@ export const ownerSession: Session = {
   permissions: [
     "channels.manage",
     "channels.view",
+    "conversations.view",
     "integrations.manage",
     "members.manage",
     "members.view",
@@ -22,8 +23,17 @@ export const operatorSession: Session = {
   ...ownerSession,
   user: { id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", locale: "ru", email_verified: true },
   role: "operator",
-  permissions: ["members.view"],
+  permissions: ["conversations.view", "members.view"],
   csrf_token: "csrf-operator",
+};
+
+/** Works in the tasks section and reads only the conversations linked to tasks (ADR-0020). */
+export const programmerSession: Session = {
+  ...ownerSession,
+  user: { id: "u-ivan", email: "ivan@zerno.test", name: "Иван Котов", locale: "ru", email_verified: true },
+  role: "programmer",
+  permissions: ["conversations.note", "conversations.view_linked", "members.view", "tasks.edit", "tasks.view"],
+  csrf_token: "csrf-programmer",
 };
 
 /** AI never set up, as a new workspace has it. */
@@ -110,7 +120,7 @@ export function fakeApi(
     "GET /invitations": () => json(200, { items: [], email_enabled: true }),
     "GET /conversations": () => json(200, { items: [], next_cursor: null }),
     "GET /conversations/counts": () => json(200, { mine: 0, mine_unread: 0, unassigned: 0, open: 0 }),
-    "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true }),
+    "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true, telegram_assigned: true, telegram_messages: true, telegram_queue: true }),
     "GET /me/presence": () => json(200, { status: "online" }),
     "GET /routing": () => json(200, { mode: "manual" }),
     "GET /ai/settings": () => json(200, aiSettingsOff),

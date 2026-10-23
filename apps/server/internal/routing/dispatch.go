@@ -74,7 +74,7 @@ func (s *Service) Dispatch(ctx context.Context, convs *conversations.Service, wo
 		if err != nil || Mode(mode) != ModeRoundRobin {
 			return err
 		}
-		users, err := q.LockAvailable(ctx, store.LockAvailableParams{WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
+		users, err := q.LockAvailable(ctx, store.LockAvailableParams{Answering: answering, WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
 		if err != nil || len(users) == 0 {
 			return err
 		}

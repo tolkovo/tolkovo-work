@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { I18nextProvider } from "react-i18next";
 import { describe, expect, it, vi } from "vitest";
 
-import { createI18n } from "../lib/i18n";
+import { createI18n } from "../test/i18n";
 import { createQueryClient } from "../lib/query-client";
 import { ErrorView } from "./error-view";
 

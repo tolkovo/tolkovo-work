@@ -262,8 +262,9 @@ func (e ConversationStatus) Valid() bool {
 
 // Defines values for CreateInvitationRequestRole.
 const (
-	CreateInvitationRequestRoleAdmin    CreateInvitationRequestRole = "admin"
-	CreateInvitationRequestRoleOperator CreateInvitationRequestRole = "operator"
+	CreateInvitationRequestRoleAdmin      CreateInvitationRequestRole = "admin"
+	CreateInvitationRequestRoleOperator   CreateInvitationRequestRole = "operator"
+	CreateInvitationRequestRoleProgrammer CreateInvitationRequestRole = "programmer"
 )
 
 // Valid indicates whether the value is a known member of the CreateInvitationRequestRole enum.
@@ -272,6 +273,8 @@ func (e CreateInvitationRequestRole) Valid() bool {
 	case CreateInvitationRequestRoleAdmin:
 		return true
 	case CreateInvitationRequestRoleOperator:
+		return true
+	case CreateInvitationRequestRoleProgrammer:
 		return true
 	default:
 		return false
@@ -796,9 +799,10 @@ func (e Presence) Valid() bool {
 
 // Defines values for Role.
 const (
-	RoleAdmin    Role = "admin"
-	RoleOperator Role = "operator"
-	RoleOwner    Role = "owner"
+	RoleAdmin      Role = "admin"
+	RoleOperator   Role = "operator"
+	RoleOwner      Role = "owner"
+	RoleProgrammer Role = "programmer"
 )
 
 // Valid indicates whether the value is a known member of the Role enum.
@@ -809,6 +813,8 @@ func (e Role) Valid() bool {
 	case RoleOperator:
 		return true
 	case RoleOwner:
+		return true
+	case RoleProgrammer:
 		return true
 	default:
 		return false
@@ -1112,6 +1118,27 @@ func (e TelegramLoginNext) Valid() bool {
 	case TelegramLoginNextDone:
 		return true
 	case TelegramLoginNextPassword:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateMemberRequestRole.
+const (
+	UpdateMemberRequestRoleAdmin      UpdateMemberRequestRole = "admin"
+	UpdateMemberRequestRoleOperator   UpdateMemberRequestRole = "operator"
+	UpdateMemberRequestRoleProgrammer UpdateMemberRequestRole = "programmer"
+)
+
+// Valid indicates whether the value is a known member of the UpdateMemberRequestRole enum.
+func (e UpdateMemberRequestRole) Valid() bool {
+	switch e {
+	case UpdateMemberRequestRoleAdmin:
+		return true
+	case UpdateMemberRequestRoleOperator:
+		return true
+	case UpdateMemberRequestRoleProgrammer:
 		return true
 	default:
 		return false
@@ -1792,6 +1819,15 @@ type CreateUploadRequest struct {
 	Size   int64   `json:"size"`
 }
 
+// DeactivateMemberRequest defines model for DeactivateMemberRequest.
+type DeactivateMemberRequest struct {
+	// ConversationsTo Who takes the member's open conversations; the queue when absent or `null`.
+	ConversationsTo *uuid.UUID `json:"conversations_to,omitempty"`
+
+	// TasksTo Who takes the member's open tasks; nobody when absent or `null`.
+	TasksTo *uuid.UUID `json:"tasks_to,omitempty"`
+}
+
 // DeviceSession One signed-in browser of the user. The `id` is a public random
 // identifier, not the session token.
 type DeviceSession struct {
@@ -2094,7 +2130,8 @@ type Invitation struct {
 	// InvitedByName Empty when the inviter's account is gone.
 	InvitedByName string `json:"invited_by_name"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role Role `json:"role"`
 }
 
@@ -2112,7 +2149,8 @@ type InvitationPreview struct {
 	Email         string    `json:"email"`
 	ExpiresAt     time.Time `json:"expires_at"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role          Role   `json:"role"`
 	WorkspaceName string `json:"workspace_name"`
 }
@@ -2349,7 +2387,8 @@ type Member struct {
 	// `offline`: the panel has not been open for about 90 seconds.
 	Presence Presence `json:"presence"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role   Role      `json:"role"`
 	UserId uuid.UUID `json:"user_id"`
 }
@@ -2581,6 +2620,18 @@ type NotificationSettings struct {
 	// for `email_delay_minutes`. Goes only to a confirmed email (`User.email_verified`),
 	// without message texts. On by default.
 	EmailMissed bool `json:"email_missed"`
+
+	// TelegramAssigned Telegram messages about conversations go through the workspace's notifications bot to
+	// a linked Telegram (`/me/telegram`), only while the panel is closed, with the
+	// customer's name, the channel and a link, never the text. This one: a conversation
+	// was given to the user. On by default; roles that do not answer customers get none.
+	TelegramAssigned bool `json:"telegram_assigned"`
+
+	// TelegramMessages The customer wrote in a conversation of the user; one message per conversation in 5 minutes at most. On by default.
+	TelegramMessages bool `json:"telegram_messages"`
+
+	// TelegramQueue A customer's conversation waits in the queue (of a topic of the user when it has members). On by default.
+	TelegramQueue bool `json:"telegram_queue"`
 }
 
 // OpenGitHubIssue defines model for OpenGitHubIssue.
@@ -2656,7 +2707,8 @@ type ResetPasswordRequest struct {
 	Token    string `json:"token"`
 }
 
-// Role System role in phase 1.
+// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+// conversations linked to tasks (ADR-0020).
 type Role string
 
 // RoutingSettings defines model for RoutingSettings.
@@ -2678,7 +2730,8 @@ type Session struct {
 	// Permissions Permissions of the role in this workspace, sorted.
 	Permissions []string `json:"permissions"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role      Role      `json:"role"`
 	User      User      `json:"user"`
 	Workspace Workspace `json:"workspace"`
@@ -3198,11 +3251,24 @@ type UpdateMeRequest struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// UpdateMemberRequest defines model for UpdateMemberRequest.
+type UpdateMemberRequest struct {
+	// ConversationsTo Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`.
+	ConversationsTo *uuid.UUID              `json:"conversations_to,omitempty"`
+	Role            UpdateMemberRequestRole `json:"role"`
+}
+
+// UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
+type UpdateMemberRequestRole string
+
 // UpdateNotificationSettingsRequest defines model for UpdateNotificationSettingsRequest.
 type UpdateNotificationSettingsRequest struct {
 	// EmailDelayMinutes How long customer messages may stay unread before the email goes out.
 	EmailDelayMinutes *EmailDelayMinutes `json:"email_delay_minutes,omitempty"`
 	EmailMissed       *bool              `json:"email_missed,omitempty"`
+	TelegramAssigned  *bool              `json:"telegram_assigned,omitempty"`
+	TelegramMessages  *bool              `json:"telegram_messages,omitempty"`
+	TelegramQueue     *bool              `json:"telegram_queue,omitempty"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
@@ -3453,7 +3519,8 @@ type WorkspaceSummary struct {
 	Id   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role Role   `json:"role"`
 	Slug string `json:"slug"`
 }
@@ -3897,6 +3964,12 @@ type ChangePasswordJSONRequestBody = ChangePasswordRequest
 // SetMyPresenceJSONRequestBody defines body for SetMyPresence for application/json ContentType.
 type SetMyPresenceJSONRequestBody = MyPresence
 
+// UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
+type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
+// DeactivateMemberJSONRequestBody defines body for DeactivateMember for application/json ContentType.
+type DeactivateMemberJSONRequestBody = DeactivateMemberRequest
+
 // SetRoutingJSONRequestBody defines body for SetRouting for application/json ContentType.
 type SetRoutingJSONRequestBody = RoutingSettings
 
@@ -4292,6 +4365,12 @@ type ServerInterface interface {
 	// ListMembers Members of the current workspace
 	// (GET /members)
 	ListMembers(w http.ResponseWriter, r *http.Request)
+	// UpdateMember Change the role of a member
+	// (PATCH /members/{id})
+	UpdateMember(w http.ResponseWriter, r *http.Request, id Id)
+	// DeactivateMember Remove a member from the team
+	// (POST /members/{id}/deactivate)
+	DeactivateMember(w http.ResponseWriter, r *http.Request, id Id)
 	// GetRouting How the workspace distributes its queue
 	// (GET /routing)
 	GetRouting(w http.ResponseWriter, r *http.Request)
@@ -5075,6 +5154,18 @@ func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) 
 // ListMembers Members of the current workspace
 // (GET /members)
 func (_ Unimplemented) ListMembers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMember Change the role of a member
+// (PATCH /members/{id})
+func (_ Unimplemented) UpdateMember(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeactivateMember Remove a member from the team
+// (POST /members/{id}/deactivate)
+func (_ Unimplemented) DeactivateMember(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7753,6 +7844,58 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateMember operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMember(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeactivateMember operation middleware
+func (siw *ServerInterfaceWrapper) DeactivateMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeactivateMember(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRouting operation middleware
 func (siw *ServerInterfaceWrapper) GetRouting(w http.ResponseWriter, r *http.Request) {
 
@@ -9192,6 +9335,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/members/{id}", wrapper.UpdateMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/members/{id}/deactivate", wrapper.DeactivateMember)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/routing", wrapper.GetRouting)

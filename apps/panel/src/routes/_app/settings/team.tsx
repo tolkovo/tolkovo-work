@@ -2,17 +2,24 @@ import type { Member } from "@tolkovo/api-client";
 import { useCan, useMembers, useSession } from "@tolkovo/api-client/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button, Skeleton } from "@tolkovo/ui";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { FormMessage } from "../../../components/form/fields";
 import { PresenceDot } from "../../../components/presence-dot";
 import { Invitations } from "../../../components/settings/invitations";
+import { MemberRole, RemoveMember } from "../../../components/settings/member-actions";
 import { describeApiError } from "../../../lib/api-errors";
+import { manageable } from "../../../lib/team";
 
 export const Route = createFileRoute("/_app/settings/team")({
   component: TeamPage,
 });
 
-/** Members of the workspace; with `members.manage`, inviting people too (A-03). */
+/**
+ * Members of the workspace; with `members.manage`, inviting people (A-03), changing roles and
+ * removing members from the team (ADR-0020) too.
+ */
 function TeamPage() {
   const { t } = useTranslation();
   const members = useMembers();
@@ -39,18 +46,28 @@ function TeamPage() {
           </Button>
         </div>
       ) : (
-        <MembersTable members={members.data} currentUserId={session?.user.id} />
+        <MembersTable members={members.data} currentUserId={session?.user.id} canManage={canManage} />
       )}
       {canManage ? <Invitations /> : null}
     </section>
   );
 }
 
-function MembersTable({ members, currentUserId }: { members: Member[]; currentUserId: string | undefined }) {
+function MembersTable({
+  members,
+  currentUserId,
+  canManage,
+}: {
+  members: Member[];
+  currentUserId: string | undefined;
+  canManage: boolean;
+}) {
   const { t } = useTranslation();
+  const [notice, setNotice] = useState<string | null>(null);
   return (
     <>
       <p className="m-0 text-[13px] text-ink-2">{t("settings.team.count", { count: members.length })}</p>
+      <FormMessage tone="success" message={notice} />
       <div className="overflow-x-auto rounded-xl border border-line bg-surface">
         <table className="w-full border-collapse text-left text-[13px]">
           <thead className="bg-sunk text-ink-2">
@@ -67,6 +84,11 @@ function MembersTable({ members, currentUserId }: { members: Member[]; currentUs
               <th scope="col" className="px-3 py-2 font-medium">
                 {t("settings.team.status")}
               </th>
+              {canManage ? (
+                <th scope="col" className="px-3 py-2 font-medium">
+                  <span className="sr-only">{t("settings.team.actions")}</span>
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -79,7 +101,13 @@ function MembersTable({ members, currentUserId }: { members: Member[]; currentUs
                   ) : null}
                 </td>
                 <td className="px-3 py-2 text-ink-2">{m.email}</td>
-                <td className="px-3 py-2 text-ink">{t(`roles.${m.role}`)}</td>
+                <td className="px-3 py-2 text-ink">
+                  {canManage && manageable(m, currentUserId) ? (
+                    <MemberRole member={m} members={members} onDone={setNotice} />
+                  ) : (
+                    t(`roles.${m.role}`)
+                  )}
+                </td>
                 <td className={m.active ? "px-3 py-2 text-ink" : "px-3 py-2 text-ink-3"}>
                   {m.active ? (
                     <span className="inline-flex items-center gap-1.5">
@@ -90,6 +118,11 @@ function MembersTable({ members, currentUserId }: { members: Member[]; currentUs
                     t("settings.team.inactive")
                   )}
                 </td>
+                {canManage ? (
+                  <td className="px-3 py-2 text-right">
+                    {manageable(m, currentUserId) ? <RemoveMember member={m} members={members} onDone={setNotice} /> : null}
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

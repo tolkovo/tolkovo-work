@@ -478,7 +478,7 @@
         "title": "Invite to the team",
         "email": "Email",
         "role": "Role",
-        "roleHint": "An operator answers conversations. An admin changes every setting except deleting the workspace.",
+        "roleHint": "An operator answers in conversations and checks tasks. A programmer works on tasks and reads only the conversations linked to them. An admin changes every setting except deleting the workspace.",
         "submit": "Invite",
         "pending": "Inviting…",
         "sent": "Invitation sent to {email}. The link works for 7 days.",
@@ -500,6 +500,28 @@
         "revokeLabel": "Revoke the invitation: {email}",
         "revoked": "Invitation for {email} revoked.",
         "resent": "Invitation for {email} sent again."
+      },
+      "actions": "Actions",
+      "roleOf": "Role: {name}",
+      "roleChanged": "{name} is now {role}.",
+      "remove": "Remove",
+      "removeLabel": "Remove from the team: {name}",
+      "removed": "{name} is no longer on the team.",
+      "removeDialog": {
+        "title": "Remove {name} from the team?",
+        "text": "Access to the workspace ends at once, personal access tokens are revoked and Telegram notifications stop. An invitation brings them back.",
+        "conversations": "Their open conversations",
+        "toQueue": "Back to the queue",
+        "tasks": "Their open tasks",
+        "toNobody": "Leave unassigned",
+        "submit": "Remove from the team",
+        "pending": "Removing…",
+        "cancel": "Cancel"
+      },
+      "roleDialog": {
+        "title": "Change the role: {name} — {role}?",
+        "text": "A programmer does not answer customers: their open conversations go to the colleague you choose or back to the queue. Their tasks stay with them.",
+        "submit": "Change the role"
       }
     },
     "routing": {
@@ -768,7 +790,7 @@
       },
       "telegram": {
         "title": "Telegram",
-        "lead": "Messages about tasks: when a task is assigned to you and when a task without an assignee appears in your queue. A message has the number, the title and a link, never the description or customer data.",
+        "lead": "The workspace bot tells you about tasks and, if you answer customers, about conversations. A message has the number, the task title or the customer name and a link, no descriptions and no conversation text.",
         "noBot": "An admin has not added a bot for notifications yet.",
         "toSettings": "Add it in the task settings",
         "link": "Link Telegram",
@@ -776,7 +798,17 @@
         "open": "Open @{bot}",
         "waiting": "Waiting for you to press Start…",
         "linked": "Telegram {name} is linked through @{bot}.",
-        "unlink": "Unlink"
+        "unlink": "Unlink",
+        "chats": {
+          "title": "Conversations in Telegram",
+          "lead": "Only while the panel is closed: while it is open, a sound and a browser notification tell you.",
+          "assigned": "A conversation was given to me",
+          "messages": "A customer wrote in my conversation",
+          "messagesHint": "At most one message in 5 minutes per conversation.",
+          "queue": "A customer waits in the queue",
+          "queueHint": "A new conversation, one the bot handed over or the customer reopened. When the topic has members, only they are told.",
+          "saved": "Saved."
+        }
       }
     },
     "security": {
@@ -862,7 +894,8 @@
   "roles": {
     "owner": "Owner",
     "admin": "Admin",
-    "operator": "Operator"
+    "operator": "Operator",
+    "programmer": "Programmer"
   },
   "workspace": {
     "switcher": {
@@ -962,7 +995,8 @@
     "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
     "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
     "topicExists": "A topic with this name exists.",
-    "tagExists": "A tag with this name exists."
+    "tagExists": "A tag with this name exists.",
+    "protectedMember": "Your own role and the owner's cannot be changed here."
   },
   "error": {
     "title": "Something went wrong",
@@ -1123,6 +1157,7 @@
       "replyPlaceholder": "Write a reply…",
       "notePlaceholder": "A note for colleagues — the customer will not see it",
       "keys": "Enter to send, Shift+Enter for a new line, Ctrl+Alt+N for a note",
+      "keysNote": "Enter to send, Shift+Enter for a new line",
       "counter": "{count} / {max}",
       "send": "Send",
       "saveNote": "Save note",
@@ -1644,7 +1679,8 @@
       "filter": "Blocked only",
       "done": "{number} is blocked",
       "undone": "{number} is unblocked"
-    }
+    },
+    "backToTask": "Back to the task"
   },
   "notifications": {
     "alert": {

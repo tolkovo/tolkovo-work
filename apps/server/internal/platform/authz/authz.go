@@ -3,8 +3,8 @@
 // permissions. Handlers call Require with the permission they need, and the
 // workspace always comes from the authenticated Principal, never from input.
 //
-// Phase 1 has only the system roles owner, admin and operator with a static
-// matrix in code. Custom roles stored in role_permissions and scopes (lines,
+// Phase 1 has only the system roles owner, admin, operator and programmer
+// (ADR-0020) with a static matrix in code. Custom roles stored in role_permissions and scopes (lines,
 // teams, channels) arrive with docs/06 phase 3 and v1.0.
 package authz
 
@@ -27,6 +27,9 @@ const (
 	RoleOwner    = "owner"
 	RoleAdmin    = "admin"
 	RoleOperator = "operator"
+	// RoleProgrammer works in the tasks section and reads the conversations
+	// linked to tasks (ADR-0020).
+	RoleProgrammer = "programmer"
 )
 
 // Permission is a "resource.action" key.
@@ -40,12 +43,15 @@ const (
 	WorkspaceManage Permission = "workspace.manage" // name, locale, time zone and other settings
 	WorkspaceDelete Permission = "workspace.delete" // delete or transfer the workspace
 
-	ConversationsView   Permission = "conversations.view"   // see conversations, their messages and files
-	ConversationsCreate Permission = "conversations.create" // start a conversation from the panel or API
-	ConversationsReply  Permission = "conversations.reply"  // reply and change the status of own conversations
-	ConversationsNote   Permission = "conversations.note"   // leave internal notes in any visible conversation
-	ConversationsTake   Permission = "conversations.take"   // take an unassigned conversation, release own
-	ConversationsAssign Permission = "conversations.assign" // assign to anyone, take or release anyone's
+	ConversationsView Permission = "conversations.view" // see conversations, their messages and files
+	// ConversationsViewLinked narrows view and notes to the conversations
+	// linked to a task (ADR-0020): the programmer's way in, without the inbox.
+	ConversationsViewLinked Permission = "conversations.view_linked"
+	ConversationsCreate     Permission = "conversations.create" // start a conversation from the panel or API
+	ConversationsReply      Permission = "conversations.reply"  // reply and change the status of own conversations
+	ConversationsNote       Permission = "conversations.note"   // leave internal notes in any visible conversation
+	ConversationsTake       Permission = "conversations.take"   // take an unassigned conversation, release own
+	ConversationsAssign     Permission = "conversations.assign" // assign to anyone, take or release anyone's
 	// ConversationsManage widens reply and status changes to conversations
 	// assigned to someone else or nobody (scope ✅ instead of 👤 in docs/04 §4.3).
 	ConversationsManage Permission = "conversations.manage"
@@ -94,6 +100,13 @@ var rolePermissions = map[string][]Permission{
 		ContactsView, ContactsEdit, IssuesCreate,
 		TasksView, TasksEdit,
 	},
+	// No contacts.view: the conversation shows the customer's name, never
+	// their phone or email.
+	RoleProgrammer: {
+		MembersView,
+		ConversationsViewLinked, ConversationsNote,
+		TasksView, TasksEdit,
+	},
 }
 
 // Scopes of personal access tokens (ADR-0016) and the permissions each
@@ -129,6 +142,18 @@ func ScopePermissions(scopes []string) ([]Permission, bool) {
 // Allowed reports whether role has permission p. Unknown roles have none.
 func Allowed(role string, p Permission) bool {
 	return slices.Contains(rolePermissions[role], p)
+}
+
+// RolesWith returns the system roles that hold p, sorted.
+func RolesWith(p Permission) []string {
+	var out []string
+	for role, perms := range rolePermissions {
+		if slices.Contains(perms, p) {
+			out = append(out, role)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // Permissions returns the sorted permissions of role, for GET /me.

@@ -198,6 +198,9 @@ func (s *Service) ApplyBotTurn(ctx context.Context, tx pgx.Tx, workspaceID, conv
 	if err := s.addStateEvents(ctx, tx, row, uuid.Nil, cur, next); err != nil {
 		return false, err
 	}
+	if err := s.waitsInQueue(ctx, tx, workspaceID, conversationID, row.TopicID); err != nil {
+		return false, err
+	}
 	ev := Event{Type: EventBotHandoff, From: cur.Status, To: next.Status, Reason: t.Reason}
 	return true, addEvent(ctx, q, tx, row, uuid.Nil, ev, now)
 }

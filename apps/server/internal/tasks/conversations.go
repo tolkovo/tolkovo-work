@@ -136,6 +136,21 @@ func (s *Service) unlink(ctx context.Context, tx pgx.Tx, q *store.Queries, row s
 	return conversationChanged(ctx, tx, row.WorkspaceID, conversationID)
 }
 
+// IsLinked reports whether a task, open or closed, is linked to the
+// conversation: the programmer sees only such conversations (ADR-0020).
+func (s *Service) IsLinked(ctx context.Context, workspaceID, conversationID uuid.UUID) (bool, error) {
+	var ok bool
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		var err error
+		ok, err = store.New(tx).IsLinked(ctx, store.IsLinkedParams{WorkspaceID: workspaceID, ConversationID: conversationID})
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("is linked: %w", err)
+	}
+	return ok, nil
+}
+
 // HasOpenTask reports whether an open task keeps the conversation waiting
 // for the fix; it is the module's conversations.FixWaiter.
 func (s *Service) HasOpenTask(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID) (bool, error) {

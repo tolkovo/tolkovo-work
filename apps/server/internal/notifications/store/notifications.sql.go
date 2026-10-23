@@ -33,7 +33,7 @@ func (q *Queries) GetMissedMark(ctx context.Context, arg GetMissedMarkParams) (t
 }
 
 const getPrefs = `-- name: GetPrefs :one
-SELECT email_missed, email_delay_minutes
+SELECT email_missed, email_delay_minutes, tg_assigned, tg_messages, tg_queue
 FROM notification_prefs
 WHERE workspace_id = $1 AND user_id = $2
 `
@@ -46,12 +46,21 @@ type GetPrefsParams struct {
 type GetPrefsRow struct {
 	EmailMissed       bool
 	EmailDelayMinutes int16
+	TgAssigned        bool
+	TgMessages        bool
+	TgQueue           bool
 }
 
 func (q *Queries) GetPrefs(ctx context.Context, arg GetPrefsParams) (GetPrefsRow, error) {
 	row := q.db.QueryRow(ctx, getPrefs, arg.WorkspaceID, arg.UserID)
 	var i GetPrefsRow
-	err := row.Scan(&i.EmailMissed, &i.EmailDelayMinutes)
+	err := row.Scan(
+		&i.EmailMissed,
+		&i.EmailDelayMinutes,
+		&i.TgAssigned,
+		&i.TgMessages,
+		&i.TgQueue,
+	)
 	return i, err
 }
 
@@ -83,18 +92,24 @@ func (q *Queries) SetMissedMark(ctx context.Context, arg SetMissedMarkParams) er
 }
 
 const upsertPrefs = `-- name: UpsertPrefs :one
-INSERT INTO notification_prefs (workspace_id, user_id, email_missed, email_delay_minutes, updated_at)
+INSERT INTO notification_prefs (workspace_id, user_id, email_missed, email_delay_minutes, tg_assigned, tg_messages, tg_queue, updated_at)
 VALUES (
     $1, $2,
     COALESCE($3::boolean, true),
     COALESCE($4::smallint, 15),
-    $5
+    COALESCE($5::boolean, true),
+    COALESCE($6::boolean, true),
+    COALESCE($7::boolean, true),
+    $8
 )
 ON CONFLICT (workspace_id, user_id) DO UPDATE
 SET email_missed = COALESCE($3::boolean, notification_prefs.email_missed),
     email_delay_minutes = COALESCE($4::smallint, notification_prefs.email_delay_minutes),
+    tg_assigned = COALESCE($5::boolean, notification_prefs.tg_assigned),
+    tg_messages = COALESCE($6::boolean, notification_prefs.tg_messages),
+    tg_queue = COALESCE($7::boolean, notification_prefs.tg_queue),
     updated_at = EXCLUDED.updated_at
-RETURNING email_missed, email_delay_minutes
+RETURNING email_missed, email_delay_minutes, tg_assigned, tg_messages, tg_queue
 `
 
 type UpsertPrefsParams struct {
@@ -102,12 +117,18 @@ type UpsertPrefsParams struct {
 	UserID            uuid.UUID
 	EmailMissed       pgtype.Bool
 	EmailDelayMinutes pgtype.Int2
+	TgAssigned        pgtype.Bool
+	TgMessages        pgtype.Bool
+	TgQueue           pgtype.Bool
 	UpdatedAt         time.Time
 }
 
 type UpsertPrefsRow struct {
 	EmailMissed       bool
 	EmailDelayMinutes int16
+	TgAssigned        bool
+	TgMessages        bool
+	TgQueue           bool
 }
 
 // Fields left NULL keep their stored value, or the default of a new row.
@@ -117,9 +138,18 @@ func (q *Queries) UpsertPrefs(ctx context.Context, arg UpsertPrefsParams) (Upser
 		arg.UserID,
 		arg.EmailMissed,
 		arg.EmailDelayMinutes,
+		arg.TgAssigned,
+		arg.TgMessages,
+		arg.TgQueue,
 		arg.UpdatedAt,
 	)
 	var i UpsertPrefsRow
-	err := row.Scan(&i.EmailMissed, &i.EmailDelayMinutes)
+	err := row.Scan(
+		&i.EmailMissed,
+		&i.EmailDelayMinutes,
+		&i.TgAssigned,
+		&i.TgMessages,
+		&i.TgQueue,
+	)
 	return i, err
 }

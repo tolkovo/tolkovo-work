@@ -11,7 +11,7 @@ import type { components } from "./schema.gen";
 type Schemas = components["schemas"];
 
 export const localeSchema = z.enum(["ru", "en"]) satisfies z.ZodType<Schemas["Locale"]>;
-export const roleSchema = z.enum(["owner", "admin", "operator"]) satisfies z.ZodType<Schemas["Role"]>;
+export const roleSchema = z.enum(["owner", "admin", "operator", "programmer"]) satisfies z.ZodType<Schemas["Role"]>;
 
 export const problemSchema = z.object({
   type: z.string(),
@@ -63,17 +63,17 @@ export const workspaceListSchema = z.object({
 
 export const presenceSchema = z.enum(["online", "away", "offline"]) satisfies z.ZodType<Schemas["Presence"]>;
 
+export const memberSchema = z.object({
+  user_id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: roleSchema,
+  active: z.boolean(),
+  presence: presenceSchema,
+}) satisfies z.ZodType<Schemas["Member"]>;
+
 export const memberListSchema = z.object({
-  items: z.array(
-    z.object({
-      user_id: z.string(),
-      email: z.string(),
-      name: z.string(),
-      role: roleSchema,
-      active: z.boolean(),
-      presence: presenceSchema,
-    }) satisfies z.ZodType<Schemas["Member"]>,
-  ),
+  items: z.array(memberSchema),
 }) satisfies z.ZodType<Schemas["MemberList"]>;
 
 export const myPresenceSchema = z.object({
@@ -525,6 +525,9 @@ export const notificationSettingsSchema = z.object({
   email_missed: z.boolean(),
   email_delay_minutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
   email_available: z.boolean(),
+  telegram_assigned: z.boolean(),
+  telegram_messages: z.boolean(),
+  telegram_queue: z.boolean(),
 }) satisfies z.ZodType<Schemas["NotificationSettings"]>;
 
 /** The tasks section (ADR-0015). */

@@ -35,7 +35,9 @@ func (s *server) UpdateMyNotificationSettings(w http.ResponseWriter, r *http.Req
 		s.writeError(w, r, err)
 		return
 	}
-	in := notifications.PrefsPatch{EmailMissed: req.EmailMissed}
+	in := notifications.PrefsPatch{
+		EmailMissed: req.EmailMissed, TgAssigned: req.TelegramAssigned, TgMessages: req.TelegramMessages, TgQueue: req.TelegramQueue,
+	}
 	if req.EmailDelayMinutes != nil {
 		d := int(*req.EmailDelayMinutes)
 		in.EmailDelay = &d
@@ -51,6 +53,7 @@ func (s *server) UpdateMyNotificationSettings(w http.ResponseWriter, r *http.Req
 func (s *server) notificationSettings(p notifications.Prefs) oapi.NotificationSettings {
 	return oapi.NotificationSettings{
 		EmailMissed: p.EmailMissed, EmailDelayMinutes: oapi.EmailDelayMinutes(p.EmailDelay),
-		EmailAvailable: s.notifications.EmailEnabled(),
+		EmailAvailable:   s.notifications.EmailEnabled(),
+		TelegramAssigned: p.TgAssigned, TelegramMessages: p.TgMessages, TelegramQueue: p.TgQueue,
 	}
 }

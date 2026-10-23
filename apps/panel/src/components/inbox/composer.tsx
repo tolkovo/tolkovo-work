@@ -129,20 +129,23 @@ export function Composer({ conversation: c, onShowLatest }: ComposerProps) {
       )}
     >
       <div className="mb-1.5 flex items-center gap-3">
-        <div role="group" aria-label={t("inbox.composer.mode")} className="flex gap-0.5 rounded-md bg-sunk p-0.5">
-          {(["reply", "note"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={mode === m}
-              title={m === "note" ? "Ctrl+Alt+N" : undefined}
-              onClick={() => setMode(m)}
-              className="rounded-[5px] px-2.5 py-1 text-[12.5px] text-ink-2 aria-pressed:bg-surface aria-pressed:font-medium aria-pressed:text-ink aria-pressed:shadow-sm"
-            >
-              {t(`inbox.composer.${m}`)}
-            </button>
-          ))}
-        </div>
+        {/* A role that never replies (the programmer, ADR-0020) has notes only: nothing to switch. */}
+        {replies && (
+          <div role="group" aria-label={t("inbox.composer.mode")} className="flex gap-0.5 rounded-md bg-sunk p-0.5">
+            {(["reply", "note"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                title={m === "note" ? "Ctrl+Alt+N" : undefined}
+                onClick={() => setMode(m)}
+                className="rounded-[5px] px-2.5 py-1 text-[12.5px] text-ink-2 aria-pressed:bg-surface aria-pressed:font-medium aria-pressed:text-ink aria-pressed:shadow-sm"
+              >
+                {t(`inbox.composer.${m}`)}
+              </button>
+            ))}
+          </div>
+        )}
         {note && (
           <span className="flex items-center gap-1 text-xs font-medium text-lamp-ink">
             <Lock aria-hidden="true" className="size-3.5" />
@@ -209,7 +212,7 @@ export function Composer({ conversation: c, onShowLatest }: ComposerProps) {
           )}
           <div className="mt-2 flex items-center gap-3">
             <p id={hintId} className="m-0 mr-auto text-xs text-ink-3 max-nav:hidden">
-              {t("inbox.composer.keys")}
+              {t(replies ? "inbox.composer.keys" : "inbox.composer.keysNote")}
             </p>
             {length >= MAX_BODY * COUNTER_FROM && (
               <span className={cn("font-mono text-xs tabular-nums", tooLong ? "text-danger" : "text-ink-3")}>

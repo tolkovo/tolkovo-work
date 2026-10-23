@@ -350,8 +350,19 @@ func addTelegramWorkers(workers *river.Workers, cfg config.Config, pool *db.DB, 
 	svc := notifications.New(pool, nil)
 	svc.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Log: log})
 	tenants := tenancy.New(pool)
+	router := routing.New(pool, nil)
 	return notifications.AddTelegramWorkers(workers, notifications.TelegramWorkerOptions{
 		Service: svc, Tasks: tasks.New(pool, tasks.Options{Log: log}), PanelURL: cfg.PanelBaseURL(),
+		Conversations: conversations.New(pool, nil),
+		// An open panel tells its member itself: Telegram only while it is closed.
+		Panels: func(ctx context.Context, workspaceID uuid.UUID) (map[uuid.UUID]bool, error) {
+			presences, err := router.Presences(ctx, workspaceID)
+			open := make(map[uuid.UUID]bool, len(presences))
+			for id, p := range presences {
+				open[id] = p != routing.PresenceOffline
+			}
+			return open, err
+		},
 		Locale: func(ctx context.Context, workspaceID, userID uuid.UUID) (string, error) {
 			m, err := tenants.Membership(ctx, workspaceID, userID)
 			return m.User.Locale, err
@@ -455,6 +466,9 @@ func apiDeps(
 		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Channels: chans, Jobs: inserter, Log: log,
 	})
 	tasksSvc.SetNotifier(notifs)
+	// A member whose role changes or who leaves hands over their
+	// conversations, tasks and Telegram link in the same transaction (ADR-0020).
+	tenants.AddMemberHook(api.MemberHandOver(convs, tasksSvc, notifs))
 	// A conversation waits for the fix on issues and tasks (ADR-0015).
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
 	convs.AddFixWaiter(conversations.FixSourceTasks, tasksSvc.HasOpenTask)
@@ -517,7 +531,11 @@ func conversationsService(
 	if cfg.MailEnabled() {
 		mailJobs = inserter
 	}
-	convs.SetNotifier(notifications.New(pool, mailJobs))
+	// Received messages and new conversations are told in Telegram too
+	// (docs/06 I-06): the jobs are queued here and sent by the worker.
+	notifs := notifications.New(pool, mailJobs)
+	notifs.SetTelegram(notifications.TelegramOptions{Jobs: inserter, Log: log})
+	convs.SetNotifier(notifs)
 	router := routing.New(pool, inserter)
 	convs.SetRouter(router)
 	return convs, router, nil

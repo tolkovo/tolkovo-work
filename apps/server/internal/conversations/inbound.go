@@ -211,7 +211,7 @@ func (s *Service) storeCustomerMessage(
 	}
 	// The assignee may be away from the panel (docs/04 §5.5).
 	if s.notifier != nil && conv.AssigneeID != nil {
-		if err := s.notifier.NeedsAttention(ctx, tx, conv.WorkspaceID, conv.ID, *conv.AssigneeID); err != nil {
+		if err := s.notifier.NeedsAttention(ctx, tx, conv.WorkspaceID, conv.ID, *conv.AssigneeID, AttentionMessage); err != nil {
 			return uuid.Nil, err
 		}
 	}
@@ -296,6 +296,9 @@ func (s *Service) openThread(
 	if status == StatusBot {
 		return conv, nil
 	}
+	if err := s.waitsInQueue(ctx, tx, workspaceID, id, conv.TopicID); err != nil {
+		return store.Conversation{}, err
+	}
 	return conv, s.queued(ctx, tx, workspaceID, nil)
 }
 
@@ -349,6 +352,11 @@ func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv 
 	}
 	if err := addEventMessage(ctx, q, tx, conv, uuid.Nil, cur, next, now); err != nil {
 		return conv, err
+	}
+	if next.Status == StatusQueued {
+		if err := s.waitsInQueue(ctx, tx, conv.WorkspaceID, conv.ID, conv.TopicID); err != nil {
+			return conv, err
+		}
 	}
 	conv.Status, conv.AssigneeID, conv.ResolvedAt, conv.ClosedAt = string(next.Status), next.AssigneeID, next.ResolvedAt, next.ClosedAt
 	conv.Version++

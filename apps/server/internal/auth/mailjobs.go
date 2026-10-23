@@ -357,8 +357,8 @@ func renderMail(locale, kind, to string, data mailData) (mail.Message, error) {
 
 func roleName(locale, role string) string {
 	names := map[string]map[string]string{
-		"ru": {tenancy.RoleAdmin: "администратор", tenancy.RoleOperator: "оператор"},
-		"en": {tenancy.RoleAdmin: "admin", tenancy.RoleOperator: "operator"},
+		"ru": {tenancy.RoleAdmin: "администратор", tenancy.RoleOperator: "оператор", tenancy.RoleProgrammer: "программист"},
+		"en": {tenancy.RoleAdmin: "admin", tenancy.RoleOperator: "operator", tenancy.RoleProgrammer: "programmer"},
 	}
 	if locale != "en" {
 		locale = "ru"

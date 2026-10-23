@@ -367,13 +367,26 @@ function ConversationLink({ taskId, conversationId }: { taskId: string; conversa
   const { t } = useTranslation();
   const c = useConversation(conversationId);
   const unlink = useUnlinkTaskConversation();
+  const inbox = useCan("conversations.view");
   return (
     <li className="flex min-w-0 items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[13px]">
       <MessagesSquare aria-hidden="true" className="size-4 shrink-0 text-ink-3" />
       {c.data ? (
-        <Link to="/inbox/$conversationId" params={{ conversationId }} search={{ tab: "all" }} className="mr-auto min-w-0 truncate text-ink">
-          {t("inbox.number", { number: c.data.number })} · {c.data.contact.name}
-        </Link>
+        inbox ? (
+          <Link to="/inbox/$conversationId" params={{ conversationId }} search={{ tab: "all" }} className="mr-auto min-w-0 truncate text-ink">
+            {t("inbox.number", { number: c.data.number })} · {c.data.contact.name}
+          </Link>
+        ) : (
+          // Without the inbox (the programmer, ADR-0020) it opens here, next to the task.
+          <Link
+            to="/tasks/$taskId/conversations/$conversationId"
+            params={{ taskId, conversationId }}
+            search={(prev) => prev}
+            className="mr-auto min-w-0 truncate text-ink"
+          >
+            {t("inbox.number", { number: c.data.number })} · {c.data.contact.name}
+          </Link>
+        )
       ) : (
         <span className="mr-auto text-ink-3">{c.isError ? t("tasks.conversationHidden") : t("app.loading")}</span>
       )}

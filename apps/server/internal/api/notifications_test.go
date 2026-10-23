@@ -12,7 +12,9 @@ func TestNotificationSettings_GetAndPatch(t *testing.T) {
 	c, _ := e.register("marina@example.test", "zerno")
 
 	got := decode[oapi.NotificationSettings](t, c.do(http.MethodGet, "/api/v1/me/notifications", nil))
-	if got != (oapi.NotificationSettings{EmailMissed: true, EmailDelayMinutes: 15, EmailAvailable: true}) {
+	if got != (oapi.NotificationSettings{
+		EmailMissed: true, EmailDelayMinutes: 15, EmailAvailable: true, TelegramAssigned: true, TelegramMessages: true, TelegramQueue: true,
+	}) {
 		t.Fatalf("defaults: %+v", got)
 	}
 	rec := c.do(http.MethodPatch, "/api/v1/me/notifications", map[string]any{"email_delay_minutes": 5})

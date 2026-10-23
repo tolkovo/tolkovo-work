@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
+import { answersCustomers } from "../../lib/team";
 import { FormMessage, SelectField, TextField } from "../form/fields";
 import { TAG_DOT } from "../inbox/palette";
 
@@ -222,7 +223,7 @@ function TopicForm({ topic, onDone }: { topic?: Topic; onDone: () => void }) {
         <legend className="mb-1 p-0 text-[13px] font-medium">{t("settings.topics.members")}</legend>
         <p className="m-0 mb-1 text-[12.5px] text-ink-2">{t("settings.topics.membersHint")}</p>
         {members
-          ?.filter((m) => m.active)
+          ?.filter((m) => m.active && answersCustomers(m.role))
           .map((m) => (
             <label key={m.user_id} className="flex items-center gap-2 text-[13px]">
               <input

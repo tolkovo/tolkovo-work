@@ -14,32 +14,33 @@ import (
 // both "allowed" and "denied". A new permission must be added here.
 func TestAllowed_Matrix(t *testing.T) {
 	want := map[Permission]map[string]bool{
-		MembersView:     {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		MembersManage:   {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		WorkspaceManage: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		WorkspaceDelete: {RoleOwner: true, RoleAdmin: false, RoleOperator: false},
+		MembersView:     {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: true},
+		MembersManage:   {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		WorkspaceManage: {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		WorkspaceDelete: {RoleOwner: true, RoleAdmin: false, RoleOperator: false, RoleProgrammer: false},
 
-		ConversationsView:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		ConversationsCreate: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		ConversationsReply:  {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		ConversationsNote:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		ConversationsTake:   {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		ConversationsAssign: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		ConversationsManage: {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		ConversationsTag:    {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		TagsManage:          {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		ContactsView:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		ChannelsView:        {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		ChannelsManage:      {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		ContactsEdit:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		IntegrationsManage:  {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		RoutingManage:       {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		IssuesCreate:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		AIManage:            {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		KnowledgeManage:     {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
-		TasksView:           {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		TasksEdit:           {RoleOwner: true, RoleAdmin: true, RoleOperator: true},
-		TasksManage:         {RoleOwner: true, RoleAdmin: true, RoleOperator: false},
+		ConversationsView:       {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		ConversationsViewLinked: {RoleOwner: false, RoleAdmin: false, RoleOperator: false, RoleProgrammer: true},
+		ConversationsCreate:     {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		ConversationsReply:      {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		ConversationsNote:       {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: true},
+		ConversationsTake:       {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		ConversationsAssign:     {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		ConversationsManage:     {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		ConversationsTag:        {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		TagsManage:              {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		ContactsView:            {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		ChannelsView:            {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		ChannelsManage:          {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		ContactsEdit:            {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		IntegrationsManage:      {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		RoutingManage:           {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		IssuesCreate:            {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: false},
+		AIManage:                {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		KnowledgeManage:         {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
+		TasksView:               {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: true},
+		TasksEdit:               {RoleOwner: true, RoleAdmin: true, RoleOperator: true, RoleProgrammer: true},
+		TasksManage:             {RoleOwner: true, RoleAdmin: true, RoleOperator: false, RoleProgrammer: false},
 	}
 	for role, perms := range rolePermissions {
 		for _, p := range perms {
@@ -49,7 +50,7 @@ func TestAllowed_Matrix(t *testing.T) {
 		}
 	}
 	for p, roles := range want {
-		for _, role := range []string{RoleOwner, RoleAdmin, RoleOperator} {
+		for _, role := range []string{RoleOwner, RoleAdmin, RoleOperator, RoleProgrammer} {
 			if got := Allowed(role, p); got != roles[role] {
 				t.Errorf("Allowed(%s, %s) = %v, want %v", role, p, got, roles[role])
 			}

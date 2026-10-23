@@ -34,9 +34,10 @@ var (
 // System role keys available in phase 1. They are the keys of the RBAC
 // matrix in platform/authz.
 const (
-	RoleOwner    = authz.RoleOwner
-	RoleAdmin    = authz.RoleAdmin
-	RoleOperator = authz.RoleOperator
+	RoleOwner      = authz.RoleOwner
+	RoleAdmin      = authz.RoleAdmin
+	RoleOperator   = authz.RoleOperator
+	RoleProgrammer = authz.RoleProgrammer
 )
 
 const pgUniqueViolation = "23505"
@@ -75,7 +76,8 @@ type CreateWorkspaceInput struct {
 
 // Service is the module facade.
 type Service struct {
-	db *db.DB
+	db    *db.DB
+	hooks []MemberHook
 }
 
 // New returns the tenancy service.

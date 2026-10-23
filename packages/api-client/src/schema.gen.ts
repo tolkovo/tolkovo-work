@@ -421,8 +421,8 @@ export interface paths {
         /**
          * The current user's notification settings in this workspace
          * @description What the server does for the user: the email about customer messages left unread in
-         *     their conversations. Sounds and desktop notifications are settings of a browser and
-         *     are not stored here.
+         *     their conversations and the Telegram messages about conversations. Sounds and desktop
+         *     notifications are settings of a browser and are not stored here.
          */
         get: operations["getMyNotificationSettings"];
         put?: never;
@@ -624,6 +624,58 @@ export interface paths {
         get: operations["listMembers"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/members/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the role of a member
+         * @description The member works with the new rights from their next request; an open panel learns it
+         *     from `member.changed`. The owner's role, one's own and the role `owner` cannot be
+         *     changed or given: ownership is handed over separately. When the new role cannot
+         *     answer customers, the member's open conversations go to `conversations_to`, or to
+         *     the queue when it is absent or `null` (ADR-0020). Requires `members.manage`.
+         */
+        patch: operations["updateMember"];
+        trace?: never;
+    };
+    "/members/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a member from the team
+         * @description The member loses access at their next request, their personal access tokens are
+         *     revoked, their Telegram link is removed and they leave the queues of tasks and the
+         *     topics. Their open conversations go to `conversations_to` (or the queue), their open
+         *     tasks to `tasks_to` (or nobody); the feeds record it. An invitation brings the person
+         *     back. The owner and oneself cannot be removed (ADR-0020). Requires `members.manage`.
+         */
+        post: operations["deactivateMember"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2951,10 +3003,11 @@ export interface components {
         /** @enum {string} */
         Locale: "ru" | "en";
         /**
-         * @description System role in phase 1.
+         * @description System role in phase 1. `programmer` works in the tasks section and reads only the
+         *     conversations linked to tasks (ADR-0020).
          * @enum {string}
          */
-        Role: "owner" | "admin" | "operator";
+        Role: "owner" | "admin" | "operator" | "programmer";
         RegistrationState: {
             /** @description `POST /auth/register` would be accepted now. */
             open: boolean;
@@ -3002,10 +3055,24 @@ export interface components {
             email_delay_minutes: components["schemas"]["EmailDelayMinutes"];
             /** @description Outgoing email is configured on this server; without it nothing is sent. */
             email_available: boolean;
+            /**
+             * @description Telegram messages about conversations go through the workspace's notifications bot to
+             *     a linked Telegram (`/me/telegram`), only while the panel is closed, with the
+             *     customer's name, the channel and a link, never the text. This one: a conversation
+             *     was given to the user. On by default; roles that do not answer customers get none.
+             */
+            telegram_assigned: boolean;
+            /** @description The customer wrote in a conversation of the user; one message per conversation in 5 minutes at most. On by default. */
+            telegram_messages: boolean;
+            /** @description A customer's conversation waits in the queue (of a topic of the user when it has members). On by default. */
+            telegram_queue: boolean;
         };
         UpdateNotificationSettingsRequest: {
             email_missed?: boolean;
             email_delay_minutes?: components["schemas"]["EmailDelayMinutes"];
+            telegram_assigned?: boolean;
+            telegram_messages?: boolean;
+            telegram_queue?: boolean;
         };
         ChangePasswordRequest: {
             current_password: string;
@@ -3104,7 +3171,7 @@ export interface components {
         CreateInvitationRequest: {
             email: string;
             /** @enum {string} */
-            role: "admin" | "operator";
+            role: "admin" | "operator" | "programmer";
         };
         Invitation: {
             id: string;
@@ -3138,6 +3205,18 @@ export interface components {
             role: components["schemas"]["Role"];
             active: boolean;
             presence: components["schemas"]["Presence"];
+        };
+        UpdateMemberRequest: {
+            /** @enum {string} */
+            role: "admin" | "operator" | "programmer";
+            /** @description Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`. */
+            conversations_to?: string | null;
+        };
+        DeactivateMemberRequest: {
+            /** @description Who takes the member's open conversations; the queue when absent or `null`. */
+            conversations_to?: string | null;
+            /** @description Who takes the member's open tasks; nobody when absent or `null`. */
+            tasks_to?: string | null;
         };
         /**
          * @description `online` accepts conversations, `away` does not; both with the panel open.
@@ -5928,6 +6007,64 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    updateMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description The member now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deactivateMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeactivateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getRouting: {

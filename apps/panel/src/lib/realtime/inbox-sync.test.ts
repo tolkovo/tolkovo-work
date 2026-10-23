@@ -164,6 +164,24 @@ describe("createInboxSync", () => {
     sync.stop();
   });
 
+  it("refetches the team on a member change, and the own permissions when it is about the member", async () => {
+    const { queryClient, sync } = setup({});
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    sync.onEvent(event("member.changed", { user_id: "u2" }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([queryKeys.members]);
+    invalidate.mockClear();
+    sync.onEvent(event("member.changed", { user_id: ownerSession.user.id }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([
+      queryKeys.members,
+      queryKeys.session,
+      queryKeys.conversations,
+      queryKeys.tasks,
+    ]);
+    sync.stop();
+  });
+
   it("tells the member about a task someone else gave them, not about their own", async () => {
     vi.setSystemTime(new Date("2026-10-04T12:00:30Z"));
     const me = ownerSession.user.id;

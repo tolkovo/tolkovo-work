@@ -69,15 +69,15 @@ func (s *server) writeTaskError(w http.ResponseWriter, r *http.Request, err erro
 }
 
 // conversationForTasks checks perm and that the caller sees the
-// conversation. A personal access token, which has no conversation scope,
-// is refused here.
+// conversation (seesConversation). A personal access token, which has no
+// conversation scope, is refused here.
 func (s *server) conversationForTasks(w http.ResponseWriter, r *http.Request, id uuid.UUID, perm authz.Permission) (authz.Principal, bool) {
 	p, ok := s.requirePrincipal(w, r, perm)
 	if !ok {
 		return p, false
 	}
-	if !p.Can(authz.ConversationsView) {
-		s.writeError(w, r, authz.ErrForbidden)
+	if err := s.seesConversation(r.Context(), p, id); err != nil {
+		s.writeError(w, r, err)
 		return p, false
 	}
 	if _, err := s.conversations.Conversation(r.Context(), p.WorkspaceID, p.UserID, id); err != nil {

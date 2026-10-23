@@ -593,8 +593,8 @@ paths:
       summary: The current user's notification settings in this workspace
       description: |
         What the server does for the user: the email about customer messages left unread in
-        their conversations. Sounds and desktop notifications are settings of a browser and
-        are not stored here.
+        their conversations and the Telegram messages about conversations. Sounds and desktop
+        notifications are settings of a browser and are not stored here.
       responses:
         '200':
           description: The settings; defaults until the user changes them.
@@ -825,6 +825,67 @@ paths:
               schema: { $ref: '#/components/schemas/MemberList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /members/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [workspace]
+      operationId: updateMember
+      summary: Change the role of a member
+      description: |
+        The member works with the new rights from their next request; an open panel learns it
+        from `member.changed`. The owner's role, one's own and the role `owner` cannot be
+        changed or given: ownership is handed over separately. When the new role cannot
+        answer customers, the member's open conversations go to `conversations_to`, or to
+        the queue when it is absent or `null` (ADR-0020). Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMemberRequest' }
+      responses:
+        '200':
+          description: The member now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /members/{id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [workspace]
+      operationId: deactivateMember
+      summary: Remove a member from the team
+      description: |
+        The member loses access at their next request, their personal access tokens are
+        revoked, their Telegram link is removed and they leave the queues of tasks and the
+        topics. Their open conversations go to `conversations_to` (or the queue), their open
+        tasks to `tasks_to` (or nobody); the feeds record it. An invitation brings the person
+        back. The owner and oneself cannot be removed (ADR-0020). Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeactivateMemberRequest' }
+      responses:
+        '204':
+          description: Removed.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /routing:
     get:
@@ -4625,8 +4686,10 @@ components:
 
     Role:
       type: string
-      description: System role in phase 1.
-      enum: [owner, admin, operator]
+      description: |
+        System role in phase 1. `programmer` works in the tasks section and reads only the
+        conversations linked to tasks (ADR-0020).
+      enum: [owner, admin, operator, programmer]
 
     RegistrationState:
       type: object
@@ -4694,7 +4757,7 @@ components:
 
     NotificationSettings:
       type: object
-      required: [email_missed, email_delay_minutes, email_available]
+      required: [email_missed, email_delay_minutes, email_available, telegram_assigned, telegram_messages, telegram_queue]
       properties:
         email_missed:
           type: boolean
@@ -4706,6 +4769,19 @@ components:
         email_available:
           type: boolean
           description: Outgoing email is configured on this server; without it nothing is sent.
+        telegram_assigned:
+          type: boolean
+          description: |
+            Telegram messages about conversations go through the workspace's notifications bot to
+            a linked Telegram (`/me/telegram`), only while the panel is closed, with the
+            customer's name, the channel and a link, never the text. This one: a conversation
+            was given to the user. On by default; roles that do not answer customers get none.
+        telegram_messages:
+          type: boolean
+          description: The customer wrote in a conversation of the user; one message per conversation in 5 minutes at most. On by default.
+        telegram_queue:
+          type: boolean
+          description: A customer's conversation waits in the queue (of a topic of the user when it has members). On by default.
 
     UpdateNotificationSettingsRequest:
       type: object
@@ -4713,6 +4789,9 @@ components:
       properties:
         email_missed: { type: boolean }
         email_delay_minutes: { $ref: '#/components/schemas/EmailDelayMinutes' }
+        telegram_assigned: { type: boolean }
+        telegram_messages: { type: boolean }
+        telegram_queue: { type: boolean }
 
     ChangePasswordRequest:
       type: object
@@ -4878,7 +4957,7 @@ components:
         email: { type: string, maxLength: 254 }
         role:
           type: string
-          enum: [admin, operator]
+          enum: [admin, operator, programmer]
 
     Invitation:
       type: object
@@ -4932,6 +5011,38 @@ components:
         role: { $ref: '#/components/schemas/Role' }
         active: { type: boolean }
         presence: { $ref: '#/components/schemas/Presence' }
+
+    UpdateMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, operator, programmer]
+        conversations_to:
+          type: string
+          nullable: true
+          description: Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    DeactivateMemberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        conversations_to:
+          type: string
+          nullable: true
+          description: Who takes the member's open conversations; the queue when absent or `null`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        tasks_to:
+          type: string
+          nullable: true
+          description: Who takes the member's open tasks; nobody when absent or `null`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
 
     Presence:
       type: string

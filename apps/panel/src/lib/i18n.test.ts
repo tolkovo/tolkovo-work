@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createI18n } from "./i18n";
+import { createI18n } from "../test/i18n";
+import { loadI18n } from "./i18n";
 
 describe("createI18n", () => {
   it("formats ICU plurals with the Russian forms one / few / many", () => {
@@ -26,5 +27,14 @@ describe("createI18n", () => {
   it("sets the document language", () => {
     createI18n("en");
     expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("loads only the dictionary in use, another one on a switch", async () => {
+    const i18n = await loadI18n("en");
+    expect(i18n.t("app.loading")).toBe("Loading…");
+    expect(i18n.hasResourceBundle("ru", "translation")).toBe(false);
+    await i18n.changeLanguage("ru");
+    expect(i18n.t("app.loading")).toBe("Загрузка…");
+    expect(document.documentElement.lang).toBe("ru");
   });
 });

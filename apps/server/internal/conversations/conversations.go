@@ -247,12 +247,12 @@ func (s *Service) Assign(
 			}
 		}
 		if assignee != nil {
-			ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: workspaceID, UserID: *assignee})
+			ok, err := q.CanAnswer(ctx, store.CanAnswerParams{WorkspaceID: workspaceID, UserID: *assignee, Answering: answering})
 			if err != nil {
 				return state{}, err
 			}
 			if !ok {
-				return state{}, fmt.Errorf("%w: assignee is not an active member of the workspace", ErrInvalid)
+				return state{}, fmt.Errorf("%w: assignee is not an active member who answers customers", ErrInvalid)
 			}
 		}
 		return assign(cur, assignee, s.now())
@@ -319,7 +319,7 @@ func (s *Service) recordChange(
 		return err
 	}
 	if s.notifier != nil && next.AssigneeID != nil && !sameID(next.AssigneeID, cur.AssigneeID) && *next.AssigneeID != actorID {
-		return s.notifier.NeedsAttention(ctx, tx, row.WorkspaceID, row.ID, *next.AssigneeID)
+		return s.notifier.NeedsAttention(ctx, tx, row.WorkspaceID, row.ID, *next.AssigneeID, AttentionAssigned)
 	}
 	return nil
 }
@@ -339,7 +339,7 @@ func (s *Service) queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 // to its former assignee: an active member whom the router finds available
 // (with automatic distribution, accepting and with the panel open).
 func (s *Service) canReturnTo(ctx context.Context, q *store.Queries, tx pgx.Tx, workspaceID, userID uuid.UUID) (bool, error) {
-	ok, err := q.IsActiveMember(ctx, store.IsActiveMemberParams{WorkspaceID: workspaceID, UserID: userID})
+	ok, err := q.CanAnswer(ctx, store.CanAnswerParams{WorkspaceID: workspaceID, UserID: userID, Answering: answering})
 	if err != nil || !ok || s.router == nil {
 		return ok, err
 	}

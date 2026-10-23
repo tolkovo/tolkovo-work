@@ -69,8 +69,9 @@ describe("team", () => {
     const table = await screen.findByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.map((r) => within(r).getAllByRole("cell").map((c) => c.textContent))).toEqual([
-      ["Анна Смирнова(вы)", "anna@zerno.test", "Владелец", "Онлайн"],
-      ["Пётр Иванов", "petr@zerno.test", "Оператор", "Отключён"],
+      // The owner manages the team; neither herself nor someone already removed has actions.
+      ["Анна Смирнова(вы)", "anna@zerno.test", "Владелец", "Онлайн", ""],
+      ["Пётр Иванов", "petr@zerno.test", "Оператор", "Отключён", ""],
     ]);
     expect(screen.getByText("2 участника")).toBeInTheDocument();
   });

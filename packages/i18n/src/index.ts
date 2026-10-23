@@ -1,5 +1,4 @@
-import en from "./en.json";
-import ru from "./ru.json";
+import type ru from "./ru.json";
 
 /** Interface languages, in the order they are offered to people. */
 export const languages = ["ru", "en"] as const;
@@ -16,11 +15,14 @@ export const languageNames: Record<Language, string> = {
 /** Message tree. Russian is the reference dictionary; English must have the same keys. */
 export type Messages = typeof ru;
 
-/** i18next resources: one `translation` namespace per language. */
-export const resources = {
-  ru: { translation: ru },
-  en: { translation: en satisfies Messages },
-} as const;
+/**
+ * One language's dictionary. Each is a chunk of its own, so the panel loads only the language in
+ * use; `@tolkovo/i18n/resources` holds both at once for tests.
+ */
+export async function loadMessages(language: Language): Promise<Messages> {
+  const dictionary = language === "en" ? await import("./en.json") : await import("./ru.json");
+  return dictionary.default;
+}
 
 export function isLanguage(value: unknown): value is Language {
   return typeof value === "string" && (languages as readonly string[]).includes(value);

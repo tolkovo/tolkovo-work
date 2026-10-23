@@ -26,6 +26,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/notifications/store"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
@@ -50,13 +51,26 @@ type Prefs struct {
 	// unread customer messages for EmailDelay minutes.
 	EmailMissed bool
 	EmailDelay  int
+	// Telegram messages about conversations while the panel is closed
+	// (docs/06 I-06): one given to the member, the customer wrote in one of
+	// theirs, a customer's one waits in the queue.
+	TgAssigned bool
+	TgMessages bool
+	TgQueue    bool
 }
 
 // PrefsPatch changes the fields that are set.
 type PrefsPatch struct {
 	EmailMissed *bool
 	EmailDelay  *int
+	TgAssigned  *bool
+	TgMessages  *bool
+	TgQueue     *bool
 }
+
+// defaultPrefs are the settings of a member who never changed them
+// (migrations 00009 and 00043).
+var defaultPrefs = Prefs{EmailMissed: DefaultEmailMissed, EmailDelay: DefaultEmailDelay, TgAssigned: true, TgMessages: true, TgQueue: true}
 
 // Service is the module facade.
 type Service struct {
@@ -106,10 +120,14 @@ func (s *Service) UpdatePrefs(ctx context.Context, workspaceID, userID uuid.UUID
 		}
 		params.EmailDelayMinutes = pgtype.Int2{Int16: int16(*in.EmailDelay), Valid: true} //nolint:gosec // G115: one of EmailDelays
 	}
+	params.TgAssigned, params.TgMessages, params.TgQueue = boolOf(in.TgAssigned), boolOf(in.TgMessages), boolOf(in.TgQueue)
 	var p Prefs
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		row, err := store.New(tx).UpsertPrefs(ctx, params)
-		p = Prefs{EmailMissed: row.EmailMissed, EmailDelay: int(row.EmailDelayMinutes)}
+		p = Prefs{
+			EmailMissed: row.EmailMissed, EmailDelay: int(row.EmailDelayMinutes),
+			TgAssigned: row.TgAssigned, TgMessages: row.TgMessages, TgQueue: row.TgQueue,
+		}
 		return err
 	})
 	if err != nil {
@@ -121,20 +139,36 @@ func (s *Service) UpdatePrefs(ctx context.Context, workspaceID, userID uuid.UUID
 func prefsIn(ctx context.Context, q *store.Queries, workspaceID, userID uuid.UUID) (Prefs, error) {
 	row, err := q.GetPrefs(ctx, store.GetPrefsParams{WorkspaceID: workspaceID, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Prefs{EmailMissed: DefaultEmailMissed, EmailDelay: DefaultEmailDelay}, nil
+		return defaultPrefs, nil
 	}
 	if err != nil {
 		return Prefs{}, err
 	}
-	return Prefs{EmailMissed: row.EmailMissed, EmailDelay: int(row.EmailDelayMinutes)}, nil
+	return Prefs{
+		EmailMissed: row.EmailMissed, EmailDelay: int(row.EmailDelayMinutes),
+		TgAssigned: row.TgAssigned, TgMessages: row.TgMessages, TgQueue: row.TgQueue,
+	}, nil
+}
+
+func boolOf(v *bool) pgtype.Bool {
+	if v == nil {
+		return pgtype.Bool{}
+	}
+	return pgtype.Bool{Bool: *v, Valid: true}
 }
 
 // NeedsAttention queues the email about the conversation for the member,
-// due after their delay. It implements conversations.Notifier: tx is the
-// tenant transaction of the change. A job already waiting for the same
-// member and conversation absorbs the new one, so a busy conversation
-// gives one email, at the earliest deadline.
-func (s *Service) NeedsAttention(ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID) error {
+// due after their delay, and the Telegram message about it (chats.go). It
+// implements conversations.Notifier: tx is the tenant transaction of the
+// change. A job already waiting for the same member and conversation
+// absorbs the new one, so a busy conversation gives one email, at the
+// earliest deadline.
+func (s *Service) NeedsAttention(
+	ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID, why conversations.Attention,
+) error {
+	if err := s.chatNotice(ctx, tx, workspaceID, conversationID, &userID, nil, chatAbout(why)); err != nil {
+		return err
+	}
 	if s.jobs == nil {
 		return nil
 	}

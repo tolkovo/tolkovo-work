@@ -71,6 +71,14 @@ ORDER BY c.priority DESC, c.created_at, c.id
 LIMIT @lim
 FOR UPDATE OF c SKIP LOCKED;
 
+-- name: LockOpenOf :many
+-- The open conversations of a member whose role changes or who leaves the
+-- team (ADR-0020), oldest first.
+SELECT * FROM conversations
+WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND status IN ('assigned', 'pending')
+ORDER BY created_at, id
+FOR UPDATE;
+
 -- name: HasQueued :one
 -- Whether the queue still holds something someone of available may take,
 -- locked rows included.
@@ -181,13 +189,15 @@ SET last_message_at = @at,
     updated_at = now()
 WHERE workspace_id = @workspace_id AND id = @id;
 
--- name: IsActiveMember :one
--- Assignees must be active members. memberships belongs to tenancy; this
--- read-only check sits here so it runs in the same transaction as the
--- assignment.
+-- name: CanAnswer :one
+-- Assignees must be active members whose role answers customers
+-- (answering, ADR-0020). memberships belongs to tenancy; this read-only
+-- check sits here so it runs in the same transaction as the assignment.
 SELECT EXISTS (
     SELECT 1 FROM memberships m
+    JOIN roles r ON r.id = m.role_id
     WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active
+      AND r.key = ANY(@answering::text[])
 );
 
 -- name: BumpConversation :exec

@@ -87,9 +87,9 @@ func TestTasks_Lifecycle(t *testing.T) {
 		t.Fatalf("comment: %d %s", rec.Code, rec.Body)
 	}
 	// Checked on the dev server, then waiting for production: the task stays
-	// open and with its assignee until it is done.
+	// open until it is done, and goes to its author for checking (ADR-0020).
 	review := decode[oapi.Task](t, op.do(http.MethodPut, base, taskUpdate(taken, func(b map[string]any) { b["status"] = "review" })))
-	if review.Status != oapi.TaskStatusReview || review.ClosedAt != nil || review.AssigneeId == nil || *review.AssigneeId != in.so.User.Id {
+	if review.Status != oapi.TaskStatusReview || review.ClosedAt != nil || review.AssigneeId == nil || *review.AssigneeId != opID {
 		t.Fatalf("review: %+v", review)
 	}
 	verified := decode[oapi.Task](t, op.do(http.MethodPut, base, taskUpdate(review, func(b map[string]any) { b["status"] = "verified" })))
@@ -110,10 +110,11 @@ func TestTasks_Lifecycle(t *testing.T) {
 	for _, a := range feed {
 		kinds = append(kinds, string(a.Kind))
 	}
-	if got := strings.Join(kinds, ","); got != "created,priority,assignee,status,comment,status,status,status" {
+	// Review gave the task back to its author: an assignee line before the status.
+	if got := strings.Join(kinds, ","); got != "created,priority,assignee,status,comment,assignee,status,status,status" {
 		t.Fatalf("feed: %s", got)
 	}
-	if st := feed[6]; st.From == nil || *st.From != "review" || st.To == nil || *st.To != "verified" {
+	if st := feed[7]; st.From == nil || *st.From != "review" || st.To == nil || *st.To != "verified" {
 		t.Fatalf("verified line: %+v", st)
 	}
 	if st := feed[3]; st.From == nil || *st.From != "open" || st.To == nil || *st.To != "in_progress" {
@@ -146,7 +147,7 @@ func TestTasks_Lifecycle(t *testing.T) {
 		"":                               "[2 1]",
 		"?state=open":                    "[2]",
 		"?state=closed":                  "[1]",
-		"?assignee=me":                   "[2]",
+		"?assignee=me":                   "[2 1]", // #1 came back to its author for review
 		"?assignee=none":                 "[]",
 		"?queue=" + dev.Id.String():      "[1]",
 		"?queue=none":                    "[2]",
@@ -156,7 +157,7 @@ func TestTasks_Lifecycle(t *testing.T) {
 		"?limit=1":                       "[2]",
 		"?limit=1&cursor=2":              "[1]",
 		"?status=done":                   "[1]",
-		"?assignee=" + opID.String():     "[2]",
+		"?assignee=" + opID.String():     "[2 1]",
 		"?state=open&assignee=none&q=xx": "[]",
 	} {
 		if got := fmt.Sprint(list(query)); got != want {

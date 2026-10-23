@@ -24,7 +24,7 @@ SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id FOR UPDATE;
 UPDATE tasks
 SET queue_id = sqlc.narg(queue_id), topic_id = sqlc.narg(topic_id), title = @title, body = @body, status = @status, priority = @priority,
     assignee_id = sqlc.narg(assignee_id), closed_at = sqlc.narg(closed_at), updated_at = @updated_at,
-    blocked_reason = sqlc.narg(blocked_reason),
+    blocked_reason = sqlc.narg(blocked_reason), review_from = sqlc.narg(review_from),
     status_changed_at = CASE WHEN status = @status THEN status_changed_at ELSE @updated_at END,
     version = version + 1
 WHERE workspace_id = @workspace_id AND id = @id
@@ -355,3 +355,36 @@ DELETE FROM task_column_rules WHERE workspace_id = @workspace_id;
 -- name: InsertColumnRule :exec
 INSERT INTO task_column_rules (workspace_id, queue_id, status, wip_limit, age_days)
 VALUES (@workspace_id, sqlc.narg(queue_id), @status, sqlc.narg(wip_limit), sqlc.narg(age_days));
+
+-- name: LockOpenTasksOf :many
+-- The open tasks of a member who leaves the team (ADR-0020).
+SELECT * FROM tasks
+WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND closed_at IS NULL
+ORDER BY number
+FOR UPDATE;
+
+-- name: SetTaskAssignee :one
+UPDATE tasks
+SET assignee_id = sqlc.narg(assignee_id), updated_at = @updated_at, version = version + 1
+WHERE workspace_id = @workspace_id AND id = @id
+RETURNING *;
+
+-- name: RemoveQueueMember :exec
+-- A member who left the team is told about no queue.
+DELETE FROM task_queue_members WHERE workspace_id = @workspace_id AND user_id = @user_id;
+
+-- name: IsLinked :one
+-- Whether a task, open or closed, is linked to the conversation: the
+-- programmer sees such conversations only (ADR-0020).
+SELECT EXISTS (
+    SELECT 1 FROM task_conversations
+    WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id
+);
+
+-- name: EditorRole :one
+-- The role of an active member, to tell whether they may take a task back
+-- for checking (ADR-0020). memberships belongs to tenancy; this read-only
+-- check runs in the transaction of the change.
+SELECT r.key FROM memberships m
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active;
