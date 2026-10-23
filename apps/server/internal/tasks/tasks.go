@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/outbox"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tasks/store"
 )
@@ -418,7 +419,10 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if cur.Version != in.Version {
 			return ErrConflict
 		}
-		assignee := in.AssigneeID
+		assignee, reviewFrom, err := s.handBack(ctx, q, cur, in)
+		if err != nil {
+			return err
+		}
 		if in.Status == StatusInProgress && cur.Status != StatusInProgress && assignee == nil {
 			assignee = &actorID
 		}
@@ -439,7 +443,8 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		}
 		row, err := q.UpdateTask(ctx, store.UpdateTaskParams{
 			QueueID: in.QueueID, TopicID: in.TopicID, Title: title, Body: body, Status: in.Status, Priority: in.Priority,
-			AssigneeID: assignee, ClosedAt: closedAt, UpdatedAt: now, BlockedReason: blocked, WorkspaceID: workspaceID, ID: taskID,
+			AssigneeID: assignee, ClosedAt: closedAt, UpdatedAt: now, BlockedReason: blocked, ReviewFrom: reviewFrom,
+			WorkspaceID: workspaceID, ID: taskID,
 		})
 		if err != nil {
 			return err
@@ -475,6 +480,50 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		return Task{}, dbError(err, "update task")
 	}
 	return out, nil
+}
+
+// handBack applies the return for checking (ADR-0020) when the update
+// keeps the assignee: a task put in review goes to its author, and back in
+// progress to whoever worked on it before. Either one must still be able to
+// edit tasks; otherwise the assignee stays. It returns the assignee and
+// review_from to store.
+func (s *Service) handBack(ctx context.Context, q *store.Queries, cur store.Task, in Update) (*uuid.UUID, *uuid.UUID, error) {
+	assignee, from := in.AssigneeID, cur.ReviewFrom
+	if !sameID(in.AssigneeID, cur.AssigneeID) {
+		return assignee, from, nil // the caller chose who has it
+	}
+	switch {
+	case closed(in.Status):
+		from = nil
+	case in.Status == StatusReview && cur.Status != StatusReview && cur.CreatedBy != nil && !sameID(cur.CreatedBy, cur.AssigneeID):
+		ok, err := s.mayEdit(ctx, q, cur.WorkspaceID, *cur.CreatedBy)
+		if err != nil || !ok {
+			return assignee, from, err
+		}
+		return cur.CreatedBy, cur.AssigneeID, nil
+	case in.Status == StatusInProgress && (cur.Status == StatusReview || cur.Status == StatusVerified) && from != nil:
+		ok, err := s.mayEdit(ctx, q, cur.WorkspaceID, *from)
+		if err != nil {
+			return nil, nil, err
+		}
+		if ok {
+			assignee = from
+		}
+		from = nil
+	}
+	return assignee, from, nil
+}
+
+// mayEdit reports whether userID is an active member whose role edits tasks.
+func (s *Service) mayEdit(ctx context.Context, q *store.Queries, workspaceID, userID uuid.UUID) (bool, error) {
+	role, err := q.EditorRole(ctx, store.EditorRoleParams{WorkspaceID: workspaceID, UserID: userID})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return authz.Allowed(role, authz.TasksEdit), nil
 }
 
 // recordChanges writes the activity of an update, tells the linked

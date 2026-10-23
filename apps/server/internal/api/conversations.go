@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -95,7 +96,7 @@ func (s *server) CreateConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) GetConversation(w http.ResponseWriter, r *http.Request, id oapi.Id) {
-	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	p, ok := s.requireConversation(w, r, id)
 	if !ok {
 		return
 	}
@@ -166,7 +167,7 @@ func (s *server) SetConversationTags(w http.ResponseWriter, r *http.Request, id 
 }
 
 func (s *server) MarkConversationRead(w http.ResponseWriter, r *http.Request, id oapi.Id) {
-	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	p, ok := s.requireConversation(w, r, id)
 	if !ok {
 		return
 	}
@@ -224,7 +225,7 @@ func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) ListMessages(w http.ResponseWriter, r *http.Request, id oapi.Id, params oapi.ListMessagesParams) {
-	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	p, ok := s.requireConversation(w, r, id)
 	if !ok {
 		return
 	}
@@ -262,6 +263,10 @@ func (s *server) PostMessage(w http.ResponseWriter, r *http.Request, id oapi.Id,
 	}
 	if !p.Can(need) {
 		s.writeError(w, r, authz.ErrForbidden)
+		return
+	}
+	if err := s.seesConversation(r.Context(), p, id); err != nil {
+		s.writeError(w, r, err)
 		return
 	}
 	m, created, err := s.conversations.PostMessage(r.Context(), p.WorkspaceID, actorOf(p), id, conversations.MessageInput{
@@ -302,6 +307,10 @@ func (s *server) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, 
 		s.writeError(w, r, authz.ErrForbidden)
 		return
 	}
+	if err := s.seesConversation(r.Context(), p, id); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	var req oapi.CreateUploadRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		s.writeError(w, r, err)
@@ -328,9 +337,19 @@ func (s *server) CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, 
 }
 
 func (s *server) GetAttachmentDownloadLink(w http.ResponseWriter, r *http.Request, id oapi.Id) {
-	p, ok := s.requirePrincipal(w, r, authz.ConversationsView)
+	p, ok := s.requirePrincipal(w, r, "")
 	if !ok {
 		return
+	}
+	if !p.Can(authz.ConversationsView) {
+		conv, err := s.conversations.AttachmentConversation(r.Context(), p.WorkspaceID, id)
+		if err == nil {
+			err = s.seesConversation(r.Context(), p, conv)
+		}
+		if err != nil {
+			s.writeError(w, r, err)
+			return
+		}
 	}
 	req, err := s.conversations.DownloadLink(r.Context(), p.WorkspaceID, id)
 	if err != nil {
@@ -628,4 +647,38 @@ func contactBody(c conversations.Contact) oapi.Contact {
 		Id: c.ID, Name: c.Name, NamePlaceholder: c.NamePlaceholder, Email: c.Email, Phone: c.Phone, Locale: c.Locale,
 		Identity: oapi.ContactIdentity(c.Identity), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
+}
+
+// seesConversation checks that the caller sees the conversation: any of the
+// workspace with conversations.view, one linked to a task with
+// conversations.view_linked (ADR-0020). Another one is 404 to the latter,
+// as a missing conversation is.
+func (s *server) seesConversation(ctx context.Context, p authz.Principal, id uuid.UUID) error {
+	if p.Can(authz.ConversationsView) {
+		return nil
+	}
+	if !p.Can(authz.ConversationsViewLinked) {
+		return authz.ErrForbidden
+	}
+	linked, err := s.tasks.IsLinked(ctx, p.WorkspaceID, id)
+	switch {
+	case err != nil:
+		return err
+	case !linked:
+		return conversations.ErrNotFound
+	}
+	return nil
+}
+
+// requireConversation authenticates the caller and checks seesConversation.
+func (s *server) requireConversation(w http.ResponseWriter, r *http.Request, id uuid.UUID) (authz.Principal, bool) {
+	p, ok := s.requirePrincipal(w, r, "")
+	if !ok {
+		return p, false
+	}
+	if err := s.seesConversation(r.Context(), p, id); err != nil {
+		s.writeError(w, r, err)
+		return p, false
+	}
+	return p, true
 }

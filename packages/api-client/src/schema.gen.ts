@@ -3003,10 +3003,11 @@ export interface components {
         /** @enum {string} */
         Locale: "ru" | "en";
         /**
-         * @description System role in phase 1.
+         * @description System role in phase 1. `programmer` works in the tasks section and reads only the
+         *     conversations linked to tasks (ADR-0020).
          * @enum {string}
          */
-        Role: "owner" | "admin" | "operator";
+        Role: "owner" | "admin" | "operator" | "programmer";
         RegistrationState: {
             /** @description `POST /auth/register` would be accepted now. */
             open: boolean;
@@ -3156,7 +3157,7 @@ export interface components {
         CreateInvitationRequest: {
             email: string;
             /** @enum {string} */
-            role: "admin" | "operator";
+            role: "admin" | "operator" | "programmer";
         };
         Invitation: {
             id: string;
@@ -3193,7 +3194,7 @@ export interface components {
         };
         UpdateMemberRequest: {
             /** @enum {string} */
-            role: "admin" | "operator";
+            role: "admin" | "operator" | "programmer";
             /** @description Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`. */
             conversations_to?: string | null;
         };

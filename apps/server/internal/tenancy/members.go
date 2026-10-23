@@ -25,7 +25,7 @@ var ErrProtectedMember = errors.New("tenancy: this member cannot be changed")
 
 // AssignableRoles are the roles a member may be given. Ownership is never
 // given this way.
-var AssignableRoles = []string{RoleAdmin, RoleOperator}
+var AssignableRoles = []string{RoleAdmin, RoleOperator, RoleProgrammer}
 
 // MemberChange is a role change or a removal, as hooks see it.
 type MemberChange struct {

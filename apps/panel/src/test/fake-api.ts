@@ -9,6 +9,7 @@ export const ownerSession: Session = {
   permissions: [
     "channels.manage",
     "channels.view",
+    "conversations.view",
     "integrations.manage",
     "members.manage",
     "members.view",
@@ -22,8 +23,17 @@ export const operatorSession: Session = {
   ...ownerSession,
   user: { id: "u-petr", email: "petr@zerno.test", name: "Пётр Иванов", locale: "ru", email_verified: true },
   role: "operator",
-  permissions: ["members.view"],
+  permissions: ["conversations.view", "members.view"],
   csrf_token: "csrf-operator",
+};
+
+/** Works in the tasks section and reads only the conversations linked to tasks (ADR-0020). */
+export const programmerSession: Session = {
+  ...ownerSession,
+  user: { id: "u-ivan", email: "ivan@zerno.test", name: "Иван Котов", locale: "ru", email_verified: true },
+  role: "programmer",
+  permissions: ["conversations.note", "conversations.view_linked", "members.view", "tasks.edit", "tasks.view"],
+  csrf_token: "csrf-programmer",
 };
 
 /** AI never set up, as a new workspace has it. */

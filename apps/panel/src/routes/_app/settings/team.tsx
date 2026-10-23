@@ -103,7 +103,7 @@ function MembersTable({
                 <td className="px-3 py-2 text-ink-2">{m.email}</td>
                 <td className="px-3 py-2 text-ink">
                   {canManage && manageable(m, currentUserId) ? (
-                    <MemberRole member={m} onDone={setNotice} />
+                    <MemberRole member={m} members={members} onDone={setNotice} />
                   ) : (
                     t(`roles.${m.role}`)
                   )}

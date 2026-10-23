@@ -6,6 +6,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { isConflict, useAbilities, type ConversationChange } from "../../lib/inbox/actions";
+import { answersCustomers } from "../../lib/team";
 import { Menu, type MenuItem } from "../menu";
 
 /**
@@ -33,7 +34,7 @@ export function ConversationActions({
   const assign = (userId: string | null) => () =>
     change.mutate((api) => assignConversation(api, c.id, userId, c.version));
 
-  const targets = (members ?? []).filter((m) => m.active && m.user_id !== c.assignee_id);
+  const targets = (members ?? []).filter((m) => m.active && answersCustomers(m.role) && m.user_id !== c.assignee_id);
   const more: MenuItem[] = [
     ...(can.wait ? [{ label: t("inbox.actions.wait"), onSelect: status("pending") }] : []),
     ...(can.resume ? [{ label: t("inbox.actions.resume"), onSelect: status("assigned") }] : []),

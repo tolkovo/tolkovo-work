@@ -29,6 +29,31 @@ func (q *Queries) BumpConversation(ctx context.Context, arg BumpConversationPara
 	return err
 }
 
+const canAnswer = `-- name: CanAnswer :one
+SELECT EXISTS (
+    SELECT 1 FROM memberships m
+    JOIN roles r ON r.id = m.role_id
+    WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.is_active
+      AND r.key = ANY($3::text[])
+)
+`
+
+type CanAnswerParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Answering   []string
+}
+
+// Assignees must be active members whose role answers customers
+// (answering, ADR-0020). memberships belongs to tenancy; this read-only
+// check sits here so it runs in the same transaction as the assignment.
+func (q *Queries) CanAnswer(ctx context.Context, arg CanAnswerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canAnswer, arg.WorkspaceID, arg.UserID, arg.Answering)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const countInbox = `-- name: CountInbox :one
 SELECT
     count(*) FILTER (WHERE c.assignee_id = $1 AND c.status IN ('assigned', 'pending'))::bigint AS mine,
@@ -254,28 +279,6 @@ type HasQueuedParams struct {
 // locked rows included.
 func (q *Queries) HasQueued(ctx context.Context, arg HasQueuedParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasQueued, arg.WorkspaceID, arg.Available)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
-const isActiveMember = `-- name: IsActiveMember :one
-SELECT EXISTS (
-    SELECT 1 FROM memberships m
-    WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.is_active
-)
-`
-
-type IsActiveMemberParams struct {
-	WorkspaceID uuid.UUID
-	UserID      uuid.UUID
-}
-
-// Assignees must be active members. memberships belongs to tenancy; this
-// read-only check sits here so it runs in the same transaction as the
-// assignment.
-func (q *Queries) IsActiveMember(ctx context.Context, arg IsActiveMemberParams) (bool, error) {
-	row := q.db.QueryRow(ctx, isActiveMember, arg.WorkspaceID, arg.UserID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

@@ -262,8 +262,9 @@ func (e ConversationStatus) Valid() bool {
 
 // Defines values for CreateInvitationRequestRole.
 const (
-	CreateInvitationRequestRoleAdmin    CreateInvitationRequestRole = "admin"
-	CreateInvitationRequestRoleOperator CreateInvitationRequestRole = "operator"
+	CreateInvitationRequestRoleAdmin      CreateInvitationRequestRole = "admin"
+	CreateInvitationRequestRoleOperator   CreateInvitationRequestRole = "operator"
+	CreateInvitationRequestRoleProgrammer CreateInvitationRequestRole = "programmer"
 )
 
 // Valid indicates whether the value is a known member of the CreateInvitationRequestRole enum.
@@ -272,6 +273,8 @@ func (e CreateInvitationRequestRole) Valid() bool {
 	case CreateInvitationRequestRoleAdmin:
 		return true
 	case CreateInvitationRequestRoleOperator:
+		return true
+	case CreateInvitationRequestRoleProgrammer:
 		return true
 	default:
 		return false
@@ -796,9 +799,10 @@ func (e Presence) Valid() bool {
 
 // Defines values for Role.
 const (
-	RoleAdmin    Role = "admin"
-	RoleOperator Role = "operator"
-	RoleOwner    Role = "owner"
+	RoleAdmin      Role = "admin"
+	RoleOperator   Role = "operator"
+	RoleOwner      Role = "owner"
+	RoleProgrammer Role = "programmer"
 )
 
 // Valid indicates whether the value is a known member of the Role enum.
@@ -809,6 +813,8 @@ func (e Role) Valid() bool {
 	case RoleOperator:
 		return true
 	case RoleOwner:
+		return true
+	case RoleProgrammer:
 		return true
 	default:
 		return false
@@ -1120,8 +1126,9 @@ func (e TelegramLoginNext) Valid() bool {
 
 // Defines values for UpdateMemberRequestRole.
 const (
-	UpdateMemberRequestRoleAdmin    UpdateMemberRequestRole = "admin"
-	UpdateMemberRequestRoleOperator UpdateMemberRequestRole = "operator"
+	UpdateMemberRequestRoleAdmin      UpdateMemberRequestRole = "admin"
+	UpdateMemberRequestRoleOperator   UpdateMemberRequestRole = "operator"
+	UpdateMemberRequestRoleProgrammer UpdateMemberRequestRole = "programmer"
 )
 
 // Valid indicates whether the value is a known member of the UpdateMemberRequestRole enum.
@@ -1130,6 +1137,8 @@ func (e UpdateMemberRequestRole) Valid() bool {
 	case UpdateMemberRequestRoleAdmin:
 		return true
 	case UpdateMemberRequestRoleOperator:
+		return true
+	case UpdateMemberRequestRoleProgrammer:
 		return true
 	default:
 		return false
@@ -2121,7 +2130,8 @@ type Invitation struct {
 	// InvitedByName Empty when the inviter's account is gone.
 	InvitedByName string `json:"invited_by_name"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role Role `json:"role"`
 }
 
@@ -2139,7 +2149,8 @@ type InvitationPreview struct {
 	Email         string    `json:"email"`
 	ExpiresAt     time.Time `json:"expires_at"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role          Role   `json:"role"`
 	WorkspaceName string `json:"workspace_name"`
 }
@@ -2376,7 +2387,8 @@ type Member struct {
 	// `offline`: the panel has not been open for about 90 seconds.
 	Presence Presence `json:"presence"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role   Role      `json:"role"`
 	UserId uuid.UUID `json:"user_id"`
 }
@@ -2683,7 +2695,8 @@ type ResetPasswordRequest struct {
 	Token    string `json:"token"`
 }
 
-// Role System role in phase 1.
+// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+// conversations linked to tasks (ADR-0020).
 type Role string
 
 // RoutingSettings defines model for RoutingSettings.
@@ -2705,7 +2718,8 @@ type Session struct {
 	// Permissions Permissions of the role in this workspace, sorted.
 	Permissions []string `json:"permissions"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role      Role      `json:"role"`
 	User      User      `json:"user"`
 	Workspace Workspace `json:"workspace"`
@@ -3490,7 +3504,8 @@ type WorkspaceSummary struct {
 	Id   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 
-	// Role System role in phase 1.
+	// Role System role in phase 1. `programmer` works in the tasks section and reads only the
+	// conversations linked to tasks (ADR-0020).
 	Role Role   `json:"role"`
 	Slug string `json:"slug"`
 }

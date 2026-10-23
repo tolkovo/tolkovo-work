@@ -15,7 +15,8 @@ export type NavItem = {
  * everyone: personal settings belong to every role, workspace sections are filtered inside.
  */
 export const navItems: readonly NavItem[] = [
-  { to: "/inbox", label: "nav.inbox", icon: Inbox },
+  // The programmer has no inbox: they read conversations linked to tasks (ADR-0020).
+  { to: "/inbox", label: "nav.inbox", icon: Inbox, permission: "conversations.view" },
   // The tasks section (ADR-0015); hidden while an admin has it turned off.
   { to: "/tasks", label: "nav.tasks", icon: ListTodo, permission: "tasks.view" },
   { to: "/monitor", label: "nav.monitor", icon: Activity },

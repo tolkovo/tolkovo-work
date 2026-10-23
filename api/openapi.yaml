@@ -4686,8 +4686,10 @@ components:
 
     Role:
       type: string
-      description: System role in phase 1.
-      enum: [owner, admin, operator]
+      description: |
+        System role in phase 1. `programmer` works in the tasks section and reads only the
+        conversations linked to tasks (ADR-0020).
+      enum: [owner, admin, operator, programmer]
 
     RegistrationState:
       type: object
@@ -4939,7 +4941,7 @@ components:
         email: { type: string, maxLength: 254 }
         role:
           type: string
-          enum: [admin, operator]
+          enum: [admin, operator, programmer]
 
     Invitation:
       type: object
@@ -5001,7 +5003,7 @@ components:
       properties:
         role:
           type: string
-          enum: [admin, operator]
+          enum: [admin, operator, programmer]
         conversations_to:
           type: string
           nullable: true

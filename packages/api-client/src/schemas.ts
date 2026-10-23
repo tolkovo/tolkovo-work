@@ -11,7 +11,7 @@ import type { components } from "./schema.gen";
 type Schemas = components["schemas"];
 
 export const localeSchema = z.enum(["ru", "en"]) satisfies z.ZodType<Schemas["Locale"]>;
-export const roleSchema = z.enum(["owner", "admin", "operator"]) satisfies z.ZodType<Schemas["Role"]>;
+export const roleSchema = z.enum(["owner", "admin", "operator", "programmer"]) satisfies z.ZodType<Schemas["Role"]>;
 
 export const problemSchema = z.object({
   type: z.string(),

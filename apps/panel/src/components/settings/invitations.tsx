@@ -121,6 +121,7 @@ function InviteForm({ onSent, onStart }: { onSent: (sent: InvitationSent) => voi
             />
             <SelectField id="invite-role" name="role" label={t("settings.team.invite.role")} defaultValue="operator">
               <option value="operator">{t("roles.operator")}</option>
+              <option value="programmer">{t("roles.programmer")}</option>
               <option value="admin">{t("roles.admin")}</option>
             </SelectField>
           </div>

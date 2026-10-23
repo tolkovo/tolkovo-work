@@ -134,6 +134,21 @@ func (s *Service) DownloadLink(ctx context.Context, workspaceID, id uuid.UUID) (
 	return req, nil
 }
 
+// AttachmentConversation returns the conversation of an attachment, so
+// the api can check that the caller sees it before DownloadLink.
+func (s *Service) AttachmentConversation(ctx context.Context, workspaceID, id uuid.UUID) (uuid.UUID, error) {
+	var row store.Attachment
+	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
+		var err error
+		row, err = q.GetAttachment(ctx, store.GetAttachmentParams{WorkspaceID: workspaceID, ID: id})
+		return err
+	})
+	if err != nil {
+		return uuid.Nil, wrap(err, "get attachment")
+	}
+	return row.ConversationID, nil
+}
+
 // checkUploads verifies that every listed attachment is an unsent upload of
 // the conversation and that its file is in storage with the declared size.
 // It runs before the message transaction; LinkAttachments re-checks the

@@ -38,6 +38,34 @@ describe("team members", () => {
     expect(call?.headers.get("X-CSRF-Token")).toBe("csrf-owner");
   });
 
+  it("asks who takes the conversations of an operator made a programmer", async () => {
+    const user = userEvent.setup();
+    let items = team;
+    const api = fakeApi({
+      routes: {
+        "GET /members": () => json(200, { items }),
+        "PATCH /members/u-petr": () => {
+          items = items.map((m) => (m.user_id === "u-petr" ? { ...m, role: "programmer" } : m));
+          return json(200, items[2]);
+        },
+      },
+    });
+    renderApp("/settings/team", { api });
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Роль: Пётр Иванов" }), "programmer");
+    const dialog = screen.getByRole("dialog", { name: "Сменить роль: Пётр Иванов — Программист?" });
+    expect(api.calls.some((c) => c.method === "PATCH")).toBe(false);
+    // Tasks stay with them: only the conversations are asked about.
+    expect(within(dialog).queryByLabelText("Его открытые задачи")).not.toBeInTheDocument();
+    await user.selectOptions(within(dialog).getByLabelText("Его открытые диалоги"), "u-olga");
+    await user.click(within(dialog).getByRole("button", { name: "Сменить роль" }));
+
+    expect(await screen.findByText("Пётр Иванов теперь — Программист.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const call = api.calls.find((c) => c.method === "PATCH" && c.path === "/members/u-petr");
+    expect(call?.body).toEqual({ role: "programmer", conversations_to: "u-olga" });
+  });
+
   it("removes a member and hands their work to the chosen colleagues", async () => {
     const user = userEvent.setup();
     let items = team;

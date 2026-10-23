@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations/store"
+	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
 )
@@ -152,6 +153,10 @@ func (s *Service) tx(ctx context.Context, workspaceID uuid.UUID, fn func(q *stor
 		return fn(store.New(tx), tx)
 	})
 }
+
+// answering are the roles that answer customers: only their members are
+// given conversations (ADR-0020: the programmer reads linked ones only).
+var answering = authz.RolesWith(authz.ConversationsReply)
 
 func newID() (uuid.UUID, error) {
 	id, err := uuid.NewV7()

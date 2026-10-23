@@ -478,7 +478,7 @@
         "title": "Invite to the team",
         "email": "Email",
         "role": "Role",
-        "roleHint": "An operator answers conversations. An admin changes every setting except deleting the workspace.",
+        "roleHint": "An operator answers in conversations and checks tasks. A programmer works on tasks and reads only the conversations linked to them. An admin changes every setting except deleting the workspace.",
         "submit": "Invite",
         "pending": "Inviting…",
         "sent": "Invitation sent to {email}. The link works for 7 days.",
@@ -517,6 +517,11 @@
         "submit": "Remove from the team",
         "pending": "Removing…",
         "cancel": "Cancel"
+      },
+      "roleDialog": {
+        "title": "Change the role: {name} — {role}?",
+        "text": "A programmer does not answer customers: their open conversations go to the colleague you choose or back to the queue. Their tasks stay with them.",
+        "submit": "Change the role"
       }
     },
     "routing": {
@@ -879,7 +884,8 @@
   "roles": {
     "owner": "Owner",
     "admin": "Admin",
-    "operator": "Operator"
+    "operator": "Operator",
+    "programmer": "Programmer"
   },
   "workspace": {
     "switcher": {
@@ -1141,6 +1147,7 @@
       "replyPlaceholder": "Write a reply…",
       "notePlaceholder": "A note for colleagues — the customer will not see it",
       "keys": "Enter to send, Shift+Enter for a new line, Ctrl+Alt+N for a note",
+      "keysNote": "Enter to send, Shift+Enter for a new line",
       "counter": "{count} / {max}",
       "send": "Send",
       "saveNote": "Save note",
@@ -1662,7 +1669,8 @@
       "filter": "Blocked only",
       "done": "{number} is blocked",
       "undone": "{number} is unblocked"
-    }
+    },
+    "backToTask": "Back to the task"
   },
   "notifications": {
     "alert": {

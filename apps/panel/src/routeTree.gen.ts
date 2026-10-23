@@ -46,6 +46,7 @@ import { Route as AppSettingsTopicsRouteImport } from "./routes/_app/settings/to
 import { Route as AppTasksIndexRouteImport } from "./routes/_app/tasks/index"
 import { Route as AppTasksTaskIdRouteImport } from "./routes/_app/tasks/$taskId"
 import { Route as AppTasksNewRouteImport } from "./routes/_app/tasks/new"
+import { Route as AppTasksTaskIdConversationsConversationIdRouteImport } from "./routes/_app/tasks/$taskId_.conversations.$conversationId"
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -230,6 +231,12 @@ const AppTasksNewRoute = AppTasksNewRouteImport.update({
   path: "/new",
   getParentRoute: () => AppTasksRoute,
 } as any)
+const AppTasksTaskIdConversationsConversationIdRoute =
+  AppTasksTaskIdConversationsConversationIdRouteImport.update({
+    id: "/$taskId_/conversations/$conversationId",
+    path: "/$taskId/conversations/$conversationId",
+    getParentRoute: () => AppTasksRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
@@ -266,6 +273,7 @@ export interface FileRoutesByFullPath {
   "/inbox/": typeof AppInboxIndexRoute
   "/settings/": typeof AppSettingsIndexRoute
   "/tasks/": typeof AppTasksIndexRoute
+  "/tasks/$taskId/conversations/$conversationId": typeof AppTasksTaskIdConversationsConversationIdRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
@@ -299,6 +307,7 @@ export interface FileRoutesByTo {
   "/inbox": typeof AppInboxIndexRoute
   "/settings": typeof AppSettingsIndexRoute
   "/tasks": typeof AppTasksIndexRoute
+  "/tasks/$taskId/conversations/$conversationId": typeof AppTasksTaskIdConversationsConversationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -339,6 +348,7 @@ export interface FileRoutesById {
   "/_app/inbox/": typeof AppInboxIndexRoute
   "/_app/settings/": typeof AppSettingsIndexRoute
   "/_app/tasks/": typeof AppTasksIndexRoute
+  "/_app/tasks/$taskId_/conversations/$conversationId": typeof AppTasksTaskIdConversationsConversationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -377,6 +387,7 @@ export interface FileRouteTypes {
     | "/inbox/"
     | "/settings/"
     | "/tasks/"
+    | "/tasks/$taskId/conversations/$conversationId"
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | "/inbox"
     | "/settings"
     | "/tasks"
+    | "/tasks/$taskId/conversations/$conversationId"
   id:
     | "__root__"
     | "/"
@@ -449,6 +461,7 @@ export interface FileRouteTypes {
     | "/_app/inbox/"
     | "/_app/settings/"
     | "/_app/tasks/"
+    | "/_app/tasks/$taskId_/conversations/$conversationId"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -719,6 +732,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AppTasksNewRouteImport
       parentRoute: typeof AppTasksRoute
     }
+    "/_app/tasks/$taskId_/conversations/$conversationId": {
+      id: "/_app/tasks/$taskId_/conversations/$conversationId"
+      path: "/$taskId/conversations/$conversationId"
+      fullPath: "/tasks/$taskId/conversations/$conversationId"
+      preLoaderRoute: typeof AppTasksTaskIdConversationsConversationIdRouteImport
+      parentRoute: typeof AppTasksRoute
+    }
   }
 }
 
@@ -780,12 +800,15 @@ interface AppTasksRouteChildren {
   AppTasksTaskIdRoute: typeof AppTasksTaskIdRoute
   AppTasksNewRoute: typeof AppTasksNewRoute
   AppTasksIndexRoute: typeof AppTasksIndexRoute
+  AppTasksTaskIdConversationsConversationIdRoute: typeof AppTasksTaskIdConversationsConversationIdRoute
 }
 
 const AppTasksRouteChildren: AppTasksRouteChildren = {
   AppTasksTaskIdRoute: AppTasksTaskIdRoute,
   AppTasksNewRoute: AppTasksNewRoute,
   AppTasksIndexRoute: AppTasksIndexRoute,
+  AppTasksTaskIdConversationsConversationIdRoute:
+    AppTasksTaskIdConversationsConversationIdRoute,
 }
 
 const AppTasksRouteWithChildren = AppTasksRoute._addFileChildren(

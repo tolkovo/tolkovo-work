@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
+import { answersCustomers } from "../../lib/team";
 import { FormMessage } from "../form/fields";
 import { PresenceDot } from "../presence-dot";
 
@@ -15,7 +16,7 @@ function OnlineNow() {
   const { t } = useTranslation();
   const { data: members } = useMembers();
   if (!members) return null;
-  const online = members.filter((m) => m.active && m.presence === "online");
+  const online = members.filter((m) => m.active && answersCustomers(m.role) && m.presence === "online");
   return (
     <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-2">
       {online.length === 0

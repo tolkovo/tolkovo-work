@@ -27,7 +27,7 @@ var ErrInvitationNotFound = errors.New("tenancy: invitation not found")
 
 // InvitableRoles are the roles an invitation may grant. Ownership is never
 // handed out by email.
-var InvitableRoles = []string{RoleAdmin, RoleOperator}
+var InvitableRoles = []string{RoleAdmin, RoleOperator, RoleProgrammer}
 
 // Invitation is an open invitation as the team page lists it.
 type Invitation struct {

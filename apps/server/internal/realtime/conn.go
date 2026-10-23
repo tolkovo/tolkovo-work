@@ -236,11 +236,14 @@ func (c *conn) allowMessage() bool {
 const signalTimeout = 2 * time.Second
 
 // typing relays the operator's typing. Roles that can neither reply nor
-// leave notes have nothing to type: their signals are ignored, as the
-// role may change while the connection is open.
+// leave notes have nothing to type, and a role that sees only some
+// conversations (conversations.view_linked, ADR-0020) is not told which
+// ones here: their signals are ignored, as the role may change while the
+// connection is open.
 func (c *conn) typing(ctx context.Context, conversationID uuid.UUID, start, reply bool) {
 	role := c.currentRole()
-	if !authz.Allowed(role, authz.ConversationsReply) && !authz.Allowed(role, authz.ConversationsNote) {
+	if !authz.Allowed(role, authz.ConversationsView) ||
+		(!authz.Allowed(role, authz.ConversationsReply) && !authz.Allowed(role, authz.ConversationsNote)) {
 		return
 	}
 	sctx, cancel := context.WithTimeout(ctx, signalTimeout)

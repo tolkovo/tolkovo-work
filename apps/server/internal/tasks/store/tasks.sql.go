@@ -125,7 +125,7 @@ WITH ranked AS (
            WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $12::uuid))
       AND ($13::text = '' OR t.title ILIKE '%' || $13::text || '%' OR t.number::text = $13::text)
 )
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, r.column_count
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, r.column_count
 FROM ranked r
 JOIN tasks t ON t.workspace_id = $1 AND t.id = r.id
 WHERE r.pos <= $2::bigint
@@ -199,6 +199,7 @@ func (q *Queries) BoardTasks(ctx context.Context, arg BoardTasksParams) ([]Board
 			&i.Task.TopicID,
 			&i.Task.StatusChangedAt,
 			&i.Task.BlockedReason,
+			&i.Task.ReviewFrom,
 			&i.ColumnCount,
 		); err != nil {
 			return nil, err
@@ -264,7 +265,7 @@ func (q *Queries) ConversationCounts(ctx context.Context, arg ConversationCounts
 
 const conversationTasks = `-- name: ConversationTasks :many
 
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2
 ORDER BY l.created_at, t.id
@@ -304,6 +305,7 @@ func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksPa
 			&i.TopicID,
 			&i.StatusChangedAt,
 			&i.BlockedReason,
+			&i.ReviewFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -496,7 +498,7 @@ func (q *Queries) DetachTaskFile(ctx context.Context, arg DetachTaskFileParams) 
 }
 
 const doneTask = `-- name: DoneTask :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2 AND t.status = 'done'
 ORDER BY t.closed_at DESC, t.id DESC
@@ -537,6 +539,7 @@ func (q *Queries) DoneTask(ctx context.Context, arg DoneTaskParams) ([]Task, err
 			&i.TopicID,
 			&i.StatusChangedAt,
 			&i.BlockedReason,
+			&i.ReviewFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -546,6 +549,27 @@ func (q *Queries) DoneTask(ctx context.Context, arg DoneTaskParams) ([]Task, err
 		return nil, err
 	}
 	return items, nil
+}
+
+const editorRole = `-- name: EditorRole :one
+SELECT r.key FROM memberships m
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = $1 AND m.user_id = $2 AND m.is_active
+`
+
+type EditorRoleParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+// The role of an active member, to tell whether they may take a task back
+// for checking (ADR-0020). memberships belongs to tenancy; this read-only
+// check runs in the transaction of the change.
+func (q *Queries) EditorRole(ctx context.Context, arg EditorRoleParams) (string, error) {
+	row := q.db.QueryRow(ctx, editorRole, arg.WorkspaceID, arg.UserID)
+	var key string
+	err := row.Scan(&key)
+	return key, err
 }
 
 const getQueue = `-- name: GetQueue :one
@@ -588,7 +612,7 @@ func (q *Queries) GetSettings(ctx context.Context, workspaceID uuid.UUID) (TaskS
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason FROM tasks WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from FROM tasks WHERE workspace_id = $1 AND id = $2
 `
 
 type GetTaskParams struct {
@@ -617,6 +641,7 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) 
 		&i.TopicID,
 		&i.StatusChangedAt,
 		&i.BlockedReason,
+		&i.ReviewFrom,
 	)
 	return i, err
 }
@@ -650,7 +675,7 @@ func (q *Queries) GetTaskFile(ctx context.Context, arg GetTaskFileParams) (TaskF
 }
 
 const getTaskForUpdate = `-- name: GetTaskForUpdate :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
 `
 
 type GetTaskForUpdateParams struct {
@@ -679,6 +704,7 @@ func (q *Queries) GetTaskForUpdate(ctx context.Context, arg GetTaskForUpdatePara
 		&i.TopicID,
 		&i.StatusChangedAt,
 		&i.BlockedReason,
+		&i.ReviewFrom,
 	)
 	return i, err
 }
@@ -791,7 +817,7 @@ func (q *Queries) InsertQueue(ctx context.Context, arg InsertQueueParams) (TaskQ
 const insertTask = `-- name: InsertTask :one
 INSERT INTO tasks (id, workspace_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, status_changed_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9, $10, $11, $11, $11)
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from
 `
 
 type InsertTaskParams struct {
@@ -841,6 +867,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 		&i.TopicID,
 		&i.StatusChangedAt,
 		&i.BlockedReason,
+		&i.ReviewFrom,
 	)
 	return i, err
 }
@@ -926,6 +953,27 @@ func (q *Queries) InsertTaskTag(ctx context.Context, arg InsertTaskTagParams) (T
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const isLinked = `-- name: IsLinked :one
+SELECT EXISTS (
+    SELECT 1 FROM task_conversations
+    WHERE workspace_id = $1 AND conversation_id = $2
+)
+`
+
+type IsLinkedParams struct {
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+}
+
+// Whether a task, open or closed, is linked to the conversation: the
+// programmer sees such conversations only (ADR-0020).
+func (q *Queries) IsLinked(ctx context.Context, arg IsLinkedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isLinked, arg.WorkspaceID, arg.ConversationID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const linkConversation = `-- name: LinkConversation :execrows
@@ -1116,7 +1164,7 @@ func (q *Queries) ListTaskTags(ctx context.Context, workspaceID uuid.UUID) ([]Ta
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
 WHERE t.workspace_id = $1
   AND ($2::bigint = 0 OR t.number < $2::bigint)
   AND (NOT $3::boolean OR t.closed_at IS NULL)
@@ -1202,6 +1250,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.TopicID,
 			&i.StatusChangedAt,
 			&i.BlockedReason,
+			&i.ReviewFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -1214,7 +1263,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 }
 
 const listTasksFlow = `-- name: ListTasksFlow :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
 WHERE t.workspace_id = $1 AND t.status = $2
   AND ($3::timestamptz IS NULL OR t.closed_at IS NULL OR t.status_changed_at >= $3::timestamptz)
   AND ($4::bigint = 0 OR CASE WHEN $5::boolean
@@ -1309,6 +1358,7 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 			&i.TopicID,
 			&i.StatusChangedAt,
 			&i.BlockedReason,
+			&i.ReviewFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -1321,7 +1371,7 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 }
 
 const lockOpenTasksOf = `-- name: LockOpenTasksOf :many
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason FROM tasks
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from FROM tasks
 WHERE workspace_id = $1 AND assignee_id = $2 AND closed_at IS NULL
 ORDER BY number
 FOR UPDATE
@@ -1360,6 +1410,7 @@ func (q *Queries) LockOpenTasksOf(ctx context.Context, arg LockOpenTasksOfParams
 			&i.TopicID,
 			&i.StatusChangedAt,
 			&i.BlockedReason,
+			&i.ReviewFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -1578,7 +1629,7 @@ const setTaskAssignee = `-- name: SetTaskAssignee :one
 UPDATE tasks
 SET assignee_id = $1, updated_at = $2, version = version + 1
 WHERE workspace_id = $3 AND id = $4
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from
 `
 
 type SetTaskAssigneeParams struct {
@@ -1614,6 +1665,7 @@ func (q *Queries) SetTaskAssignee(ctx context.Context, arg SetTaskAssigneeParams
 		&i.TopicID,
 		&i.StatusChangedAt,
 		&i.BlockedReason,
+		&i.ReviewFrom,
 	)
 	return i, err
 }
@@ -1792,11 +1844,11 @@ const updateTask = `-- name: UpdateTask :one
 UPDATE tasks
 SET queue_id = $1, topic_id = $2, title = $3, body = $4, status = $5, priority = $6,
     assignee_id = $7, closed_at = $8, updated_at = $9,
-    blocked_reason = $10,
+    blocked_reason = $10, review_from = $11,
     status_changed_at = CASE WHEN status = $5 THEN status_changed_at ELSE $9 END,
     version = version + 1
-WHERE workspace_id = $11 AND id = $12
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason
+WHERE workspace_id = $12 AND id = $13
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from
 `
 
 type UpdateTaskParams struct {
@@ -1810,6 +1862,7 @@ type UpdateTaskParams struct {
 	ClosedAt      *time.Time
 	UpdatedAt     time.Time
 	BlockedReason *string
+	ReviewFrom    *uuid.UUID
 	WorkspaceID   uuid.UUID
 	ID            uuid.UUID
 }
@@ -1828,6 +1881,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		arg.ClosedAt,
 		arg.UpdatedAt,
 		arg.BlockedReason,
+		arg.ReviewFrom,
 		arg.WorkspaceID,
 		arg.ID,
 	)
@@ -1850,6 +1904,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.TopicID,
 		&i.StatusChangedAt,
 		&i.BlockedReason,
+		&i.ReviewFrom,
 	)
 	return i, err
 }
