@@ -455,6 +455,9 @@ func apiDeps(
 		Sealer: sealer, Bots: telegram.NewBotAPI(cfg.Telegram.BotAPIURL, nil), Channels: chans, Jobs: inserter, Log: log,
 	})
 	tasksSvc.SetNotifier(notifs)
+	// A member whose role changes or who leaves hands over their
+	// conversations, tasks and Telegram link in the same transaction (ADR-0020).
+	tenants.AddMemberHook(api.MemberHandOver(convs, tasksSvc, notifs))
 	// A conversation waits for the fix on issues and tasks (ADR-0015).
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
 	convs.AddFixWaiter(conversations.FixSourceTasks, tasksSvc.HasOpenTask)

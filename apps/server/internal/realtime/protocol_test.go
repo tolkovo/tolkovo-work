@@ -33,6 +33,7 @@ var samplePayloads = map[string]string{
 	"contact.created":             `{"contact_id":"%k"}`,
 	"contact.updated":             `{"contact_id":"%k"}`,
 	"task.changed":                `{"task_id":"%t","assignee_id":"%u","actor_id":"%u","assigned":true}`,
+	"member.changed":              `{"user_id":"%u"}`,
 }
 
 func samplePayload(topic string) []byte {
@@ -232,7 +233,7 @@ func TestRoutes_FollowPermissions(t *testing.T) {
 	if _, ok := channelFor("test.thing.created"); ok {
 		t.Error("topics without a route must stay on the server")
 	}
-	if got := topicPatterns(authz.RoleOperator); !slices.Equal(got, []string{"conversation.%", "message.%", "contact.%", "task.%"}) {
+	if got := topicPatterns(authz.RoleOperator); !slices.Equal(got, []string{"conversation.%", "message.%", "contact.%", "task.%", "member.%"}) {
 		t.Errorf("operator patterns: %v", got)
 	}
 	if got := topicPatterns("nobody"); len(got) != 0 {

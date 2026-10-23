@@ -826,6 +826,67 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /members/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [workspace]
+      operationId: updateMember
+      summary: Change the role of a member
+      description: |
+        The member works with the new rights from their next request; an open panel learns it
+        from `member.changed`. The owner's role, one's own and the role `owner` cannot be
+        changed or given: ownership is handed over separately. When the new role cannot
+        answer customers, the member's open conversations go to `conversations_to`, or to
+        the queue when it is absent or `null` (ADR-0020). Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMemberRequest' }
+      responses:
+        '200':
+          description: The member now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /members/{id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [workspace]
+      operationId: deactivateMember
+      summary: Remove a member from the team
+      description: |
+        The member loses access at their next request, their personal access tokens are
+        revoked, their Telegram link is removed and they leave the queues of tasks and the
+        topics. Their open conversations go to `conversations_to` (or the queue), their open
+        tasks to `tasks_to` (or nobody); the feeds record it. An invitation brings the person
+        back. The owner and oneself cannot be removed (ADR-0020). Requires `members.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeactivateMemberRequest' }
+      responses:
+        '204':
+          description: Removed.
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /routing:
     get:
       tags: [workspace]
@@ -4932,6 +4993,38 @@ components:
         role: { $ref: '#/components/schemas/Role' }
         active: { type: boolean }
         presence: { $ref: '#/components/schemas/Presence' }
+
+    UpdateMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, operator]
+        conversations_to:
+          type: string
+          nullable: true
+          description: Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    DeactivateMemberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        conversations_to:
+          type: string
+          nullable: true
+          description: Who takes the member's open conversations; the queue when absent or `null`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        tasks_to:
+          type: string
+          nullable: true
+          description: Who takes the member's open tasks; nobody when absent or `null`.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
 
     Presence:
       type: string

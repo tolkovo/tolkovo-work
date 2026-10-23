@@ -88,7 +88,9 @@ func TestSessionIndex_ExpiresWithLastSession(t *testing.T) {
 	ctx := context.Background()
 	uid := uuid.New()
 	_, _, _ = s.create(ctx, uid, uuid.New(), "")
-	if ttl := s.rdb.PTTL(ctx, s.indexKey(uid)).Val(); ttl <= 23*time.Hour || ttl > 24*time.Hour {
+	// The deadline is absolute (PEXPIREAT) from this clock and PTTL counts on
+	// the Redis clock, which may lag a few milliseconds (Redis in a VM).
+	if ttl := s.rdb.PTTL(ctx, s.indexKey(uid)).Val(); ttl <= 23*time.Hour || ttl > 24*time.Hour+time.Second {
 		t.Fatalf("index TTL %s, want ~24h", ttl)
 	}
 	clk.add(2 * time.Hour)

@@ -71,6 +71,14 @@ ORDER BY c.priority DESC, c.created_at, c.id
 LIMIT @lim
 FOR UPDATE OF c SKIP LOCKED;
 
+-- name: LockOpenOf :many
+-- The open conversations of a member whose role changes or who leaves the
+-- team (ADR-0020), oldest first.
+SELECT * FROM conversations
+WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND status IN ('assigned', 'pending')
+ORDER BY created_at, id
+FOR UPDATE;
+
 -- name: HasQueued :one
 -- Whether the queue still holds something someone of available may take,
 -- locked rows included.

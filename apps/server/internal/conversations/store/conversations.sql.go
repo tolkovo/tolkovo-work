@@ -476,6 +476,66 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 	return i, err
 }
 
+const lockOpenOf = `-- name: LockOpenOf :many
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
+WHERE workspace_id = $1 AND assignee_id = $2 AND status IN ('assigned', 'pending')
+ORDER BY created_at, id
+FOR UPDATE
+`
+
+type LockOpenOfParams struct {
+	WorkspaceID uuid.UUID
+	UserID      *uuid.UUID
+}
+
+// The open conversations of a member whose role changes or who leaves the
+// team (ADR-0020), oldest first.
+func (q *Queries) LockOpenOf(ctx context.Context, arg LockOpenOfParams) ([]Conversation, error) {
+	rows, err := q.db.Query(ctx, lockOpenOf, arg.WorkspaceID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Conversation
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Number,
+			&i.ContactID,
+			&i.ChannelID,
+			&i.ExternalThreadID,
+			&i.Status,
+			&i.Priority,
+			&i.LineLevel,
+			&i.AssigneeID,
+			&i.Subject,
+			&i.FirstResponseAt,
+			&i.LastMessageAt,
+			&i.ResolvedAt,
+			&i.ClosedAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AwaitingFix,
+			&i.Rating,
+			&i.RatingComment,
+			&i.RatingResolvedBy,
+			&i.RatedAt,
+			&i.TopicID,
+			&i.TopicAskedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockQueue = `-- name: LockQueue :many
 SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations c
 WHERE c.workspace_id = $1 AND c.status = 'queued'

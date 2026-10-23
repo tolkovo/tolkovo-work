@@ -71,3 +71,7 @@ WHERE workspace_id = @workspace_id AND id = @id;
 -- The language of the words a channel puts around the topics
 -- (workspaces belongs to tenancy; read only).
 SELECT locale FROM workspaces WHERE id = @workspace_id;
+
+-- name: RemoveTopicMember :exec
+-- A member who left the team takes no conversations of any topic.
+DELETE FROM topic_members WHERE workspace_id = @workspace_id AND user_id = @user_id;

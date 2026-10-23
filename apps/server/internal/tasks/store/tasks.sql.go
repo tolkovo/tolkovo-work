@@ -1320,6 +1320,57 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 	return items, nil
 }
 
+const lockOpenTasksOf = `-- name: LockOpenTasksOf :many
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason FROM tasks
+WHERE workspace_id = $1 AND assignee_id = $2 AND closed_at IS NULL
+ORDER BY number
+FOR UPDATE
+`
+
+type LockOpenTasksOfParams struct {
+	WorkspaceID uuid.UUID
+	UserID      *uuid.UUID
+}
+
+// The open tasks of a member who leaves the team (ADR-0020).
+func (q *Queries) LockOpenTasksOf(ctx context.Context, arg LockOpenTasksOfParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, lockOpenTasksOf, arg.WorkspaceID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Number,
+			&i.QueueID,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Priority,
+			&i.AssigneeID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+			&i.Version,
+			&i.TopicID,
+			&i.StatusChangedAt,
+			&i.BlockedReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const looseTaskFiles = `-- name: LooseTaskFiles :many
 SELECT id, workspace_id, task_id, activity_id, storage_key, file_name, content_type, size, uploaded_by, created_at, attached_at FROM task_files
 WHERE workspace_id = $1 AND id = ANY($2::uuid[]) AND uploaded_by = $3
@@ -1450,6 +1501,21 @@ func (q *Queries) QueueMemberIDs(ctx context.Context, arg QueueMemberIDsParams) 
 	return items, nil
 }
 
+const removeQueueMember = `-- name: RemoveQueueMember :exec
+DELETE FROM task_queue_members WHERE workspace_id = $1 AND user_id = $2
+`
+
+type RemoveQueueMemberParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+// A member who left the team is told about no queue.
+func (q *Queries) RemoveQueueMember(ctx context.Context, arg RemoveQueueMemberParams) error {
+	_, err := q.db.Exec(ctx, removeQueueMember, arg.WorkspaceID, arg.UserID)
+	return err
+}
+
 const removeTaskTags = `-- name: RemoveTaskTags :many
 DELETE FROM task_tag_links
 WHERE workspace_id = $1 AND task_id = $2
@@ -1504,6 +1570,50 @@ func (q *Queries) RenameQueue(ctx context.Context, arg RenameQueueParams) (TaskQ
 		&i.WorkspaceID,
 		&i.Name,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const setTaskAssignee = `-- name: SetTaskAssignee :one
+UPDATE tasks
+SET assignee_id = $1, updated_at = $2, version = version + 1
+WHERE workspace_id = $3 AND id = $4
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason
+`
+
+type SetTaskAssigneeParams struct {
+	AssigneeID  *uuid.UUID
+	UpdatedAt   time.Time
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) SetTaskAssignee(ctx context.Context, arg SetTaskAssigneeParams) (Task, error) {
+	row := q.db.QueryRow(ctx, setTaskAssignee,
+		arg.AssigneeID,
+		arg.UpdatedAt,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Number,
+		&i.QueueID,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+		&i.Version,
+		&i.TopicID,
+		&i.StatusChangedAt,
+		&i.BlockedReason,
 	)
 	return i, err
 }

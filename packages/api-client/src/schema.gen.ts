@@ -630,6 +630,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/members/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the role of a member
+         * @description The member works with the new rights from their next request; an open panel learns it
+         *     from `member.changed`. The owner's role, one's own and the role `owner` cannot be
+         *     changed or given: ownership is handed over separately. When the new role cannot
+         *     answer customers, the member's open conversations go to `conversations_to`, or to
+         *     the queue when it is absent or `null` (ADR-0020). Requires `members.manage`.
+         */
+        patch: operations["updateMember"];
+        trace?: never;
+    };
+    "/members/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a member from the team
+         * @description The member loses access at their next request, their personal access tokens are
+         *     revoked, their Telegram link is removed and they leave the queues of tasks and the
+         *     topics. Their open conversations go to `conversations_to` (or the queue), their open
+         *     tasks to `tasks_to` (or nobody); the feeds record it. An invitation brings the person
+         *     back. The owner and oneself cannot be removed (ADR-0020). Requires `members.manage`.
+         */
+        post: operations["deactivateMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/routing": {
         parameters: {
             query?: never;
@@ -3138,6 +3190,18 @@ export interface components {
             role: components["schemas"]["Role"];
             active: boolean;
             presence: components["schemas"]["Presence"];
+        };
+        UpdateMemberRequest: {
+            /** @enum {string} */
+            role: "admin" | "operator";
+            /** @description Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`. */
+            conversations_to?: string | null;
+        };
+        DeactivateMemberRequest: {
+            /** @description Who takes the member's open conversations; the queue when absent or `null`. */
+            conversations_to?: string | null;
+            /** @description Who takes the member's open tasks; nobody when absent or `null`. */
+            tasks_to?: string | null;
         };
         /**
          * @description `online` accepts conversations, `away` does not; both with the panel open.
@@ -5928,6 +5992,64 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    updateMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description The member now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deactivateMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeactivateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getRouting: {

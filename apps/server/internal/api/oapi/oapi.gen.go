@@ -1118,6 +1118,24 @@ func (e TelegramLoginNext) Valid() bool {
 	}
 }
 
+// Defines values for UpdateMemberRequestRole.
+const (
+	UpdateMemberRequestRoleAdmin    UpdateMemberRequestRole = "admin"
+	UpdateMemberRequestRoleOperator UpdateMemberRequestRole = "operator"
+)
+
+// Valid indicates whether the value is a known member of the UpdateMemberRequestRole enum.
+func (e UpdateMemberRequestRole) Valid() bool {
+	switch e {
+	case UpdateMemberRequestRoleAdmin:
+		return true
+	case UpdateMemberRequestRoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WidgetContactRequestForm.
 const (
 	WidgetContactRequestFormOffline WidgetContactRequestForm = "offline"
@@ -1790,6 +1808,15 @@ type CreateUploadRequest struct {
 	// Sha256 Hex SHA-256 of the file; the storage then rejects any other content.
 	Sha256 *string `json:"sha256,omitempty"`
 	Size   int64   `json:"size"`
+}
+
+// DeactivateMemberRequest defines model for DeactivateMemberRequest.
+type DeactivateMemberRequest struct {
+	// ConversationsTo Who takes the member's open conversations; the queue when absent or `null`.
+	ConversationsTo *uuid.UUID `json:"conversations_to,omitempty"`
+
+	// TasksTo Who takes the member's open tasks; nobody when absent or `null`.
+	TasksTo *uuid.UUID `json:"tasks_to,omitempty"`
 }
 
 // DeviceSession One signed-in browser of the user. The `id` is a public random
@@ -3198,6 +3225,16 @@ type UpdateMeRequest struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// UpdateMemberRequest defines model for UpdateMemberRequest.
+type UpdateMemberRequest struct {
+	// ConversationsTo Who takes the member's open conversations when the new role cannot answer customers; the queue when absent or `null`.
+	ConversationsTo *uuid.UUID              `json:"conversations_to,omitempty"`
+	Role            UpdateMemberRequestRole `json:"role"`
+}
+
+// UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
+type UpdateMemberRequestRole string
+
 // UpdateNotificationSettingsRequest defines model for UpdateNotificationSettingsRequest.
 type UpdateNotificationSettingsRequest struct {
 	// EmailDelayMinutes How long customer messages may stay unread before the email goes out.
@@ -3897,6 +3934,12 @@ type ChangePasswordJSONRequestBody = ChangePasswordRequest
 // SetMyPresenceJSONRequestBody defines body for SetMyPresence for application/json ContentType.
 type SetMyPresenceJSONRequestBody = MyPresence
 
+// UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
+type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
+// DeactivateMemberJSONRequestBody defines body for DeactivateMember for application/json ContentType.
+type DeactivateMemberJSONRequestBody = DeactivateMemberRequest
+
 // SetRoutingJSONRequestBody defines body for SetRouting for application/json ContentType.
 type SetRoutingJSONRequestBody = RoutingSettings
 
@@ -4292,6 +4335,12 @@ type ServerInterface interface {
 	// ListMembers Members of the current workspace
 	// (GET /members)
 	ListMembers(w http.ResponseWriter, r *http.Request)
+	// UpdateMember Change the role of a member
+	// (PATCH /members/{id})
+	UpdateMember(w http.ResponseWriter, r *http.Request, id Id)
+	// DeactivateMember Remove a member from the team
+	// (POST /members/{id}/deactivate)
+	DeactivateMember(w http.ResponseWriter, r *http.Request, id Id)
 	// GetRouting How the workspace distributes its queue
 	// (GET /routing)
 	GetRouting(w http.ResponseWriter, r *http.Request)
@@ -5075,6 +5124,18 @@ func (_ Unimplemented) ListMyWorkspaces(w http.ResponseWriter, r *http.Request) 
 // ListMembers Members of the current workspace
 // (GET /members)
 func (_ Unimplemented) ListMembers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMember Change the role of a member
+// (PATCH /members/{id})
+func (_ Unimplemented) UpdateMember(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeactivateMember Remove a member from the team
+// (POST /members/{id}/deactivate)
+func (_ Unimplemented) DeactivateMember(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7753,6 +7814,58 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateMember operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMember(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeactivateMember operation middleware
+func (siw *ServerInterfaceWrapper) DeactivateMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeactivateMember(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRouting operation middleware
 func (siw *ServerInterfaceWrapper) GetRouting(w http.ResponseWriter, r *http.Request) {
 
@@ -9192,6 +9305,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/members", wrapper.ListMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/members/{id}", wrapper.UpdateMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/members/{id}/deactivate", wrapper.DeactivateMember)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/routing", wrapper.GetRouting)

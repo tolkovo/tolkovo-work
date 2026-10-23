@@ -25,6 +25,7 @@ import {
   invitationPreviewSchema,
   invitationSentSchema,
   memberListSchema,
+  memberSchema,
   myPresenceSchema,
   routingSettingsSchema,
   aiBotSchema,
@@ -57,6 +58,8 @@ export type Locale = Schemas["Locale"];
 export type LoginRequest = Schemas["LoginRequest"];
 export type RegisterRequest = Schemas["RegisterRequest"];
 export type UpdateWorkspaceRequest = Schemas["UpdateWorkspaceRequest"];
+export type UpdateMemberRequest = Schemas["UpdateMemberRequest"];
+export type DeactivateMemberRequest = Schemas["DeactivateMemberRequest"];
 export type UpdateMeRequest = Schemas["UpdateMeRequest"];
 export type ChangePasswordRequest = Schemas["ChangePasswordRequest"];
 export type DeviceSession = Schemas["DeviceSession"];
@@ -181,6 +184,16 @@ export async function fetchMyWorkspaces(client: ApiClient): Promise<WorkspaceSum
 
 export async function fetchMembers(client: ApiClient): Promise<Member[]> {
   return parseAnswer(memberListSchema, await unwrap(client.GET("/members"))).items;
+}
+
+/** PATCH /members/{id}: a new role; open conversations go to `conversations_to` when it cannot answer customers (ADR-0020). */
+export async function updateMember(client: ApiClient, id: string, body: UpdateMemberRequest): Promise<Member> {
+  return parseAnswer(memberSchema, await unwrap(client.PATCH("/members/{id}", { params: { path: { id } }, body })));
+}
+
+/** POST /members/{id}/deactivate: removes the member from the team and hands over their work (ADR-0020). */
+export async function deactivateMember(client: ApiClient, id: string, body: DeactivateMemberRequest): Promise<void> {
+  await unwrap(client.POST("/members/{id}/deactivate", { params: { path: { id } }, body }));
 }
 
 export async function updateWorkspace(client: ApiClient, body: UpdateWorkspaceRequest): Promise<Workspace> {

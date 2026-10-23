@@ -215,6 +215,11 @@ func TestRBAC_MatrixOverHTTP(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/v1/members", nil,
 			map[string]int{"owner": 200, "admin": 200, "operator": 200}},
+		// The team (ADR-0020): an unknown member is 404 to those who may manage it.
+		{http.MethodPatch, "/api/v1/members/" + uuid.Nil.String(), map[string]any{"role": "operator"},
+			map[string]int{"owner": 404, "admin": 404, "operator": 403}},
+		{http.MethodPost, "/api/v1/members/" + uuid.Nil.String() + "/deactivate", map[string]any{},
+			map[string]int{"owner": 404, "admin": 404, "operator": 403}},
 		{http.MethodPatch, "/api/v1/workspace", map[string]any{"timezone": "Europe/Berlin"},
 			map[string]int{"owner": 200, "admin": 200, "operator": 403}},
 		// Tasks (ADR-0015): every member works on them, queues and settings are the admins'.

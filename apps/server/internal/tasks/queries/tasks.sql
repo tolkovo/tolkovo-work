@@ -355,3 +355,20 @@ DELETE FROM task_column_rules WHERE workspace_id = @workspace_id;
 -- name: InsertColumnRule :exec
 INSERT INTO task_column_rules (workspace_id, queue_id, status, wip_limit, age_days)
 VALUES (@workspace_id, sqlc.narg(queue_id), @status, sqlc.narg(wip_limit), sqlc.narg(age_days));
+
+-- name: LockOpenTasksOf :many
+-- The open tasks of a member who leaves the team (ADR-0020).
+SELECT * FROM tasks
+WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND closed_at IS NULL
+ORDER BY number
+FOR UPDATE;
+
+-- name: SetTaskAssignee :one
+UPDATE tasks
+SET assignee_id = sqlc.narg(assignee_id), updated_at = @updated_at, version = version + 1
+WHERE workspace_id = @workspace_id AND id = @id
+RETURNING *;
+
+-- name: RemoveQueueMember :exec
+-- A member who left the team is told about no queue.
+DELETE FROM task_queue_members WHERE workspace_id = @workspace_id AND user_id = @user_id;

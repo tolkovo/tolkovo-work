@@ -217,6 +217,21 @@ func (q *Queries) MarkTopicAsked(ctx context.Context, arg MarkTopicAskedParams) 
 	return err
 }
 
+const removeTopicMember = `-- name: RemoveTopicMember :exec
+DELETE FROM topic_members WHERE workspace_id = $1 AND user_id = $2
+`
+
+type RemoveTopicMemberParams struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+}
+
+// A member who left the team takes no conversations of any topic.
+func (q *Queries) RemoveTopicMember(ctx context.Context, arg RemoveTopicMemberParams) error {
+	_, err := q.db.Exec(ctx, removeTopicMember, arg.WorkspaceID, arg.UserID)
+	return err
+}
+
 const setConversationTopic = `-- name: SetConversationTopic :exec
 UPDATE conversations
 SET topic_id = $1, priority = $2, version = version + 1, updated_at = now()

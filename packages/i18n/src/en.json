@@ -500,6 +500,23 @@
         "revokeLabel": "Revoke the invitation: {email}",
         "revoked": "Invitation for {email} revoked.",
         "resent": "Invitation for {email} sent again."
+      },
+      "actions": "Actions",
+      "roleOf": "Role: {name}",
+      "roleChanged": "{name} is now {role}.",
+      "remove": "Remove",
+      "removeLabel": "Remove from the team: {name}",
+      "removed": "{name} is no longer on the team.",
+      "removeDialog": {
+        "title": "Remove {name} from the team?",
+        "text": "Access to the workspace ends at once, personal access tokens are revoked and Telegram notifications stop. An invitation brings them back.",
+        "conversations": "Their open conversations",
+        "toQueue": "Back to the queue",
+        "tasks": "Their open tasks",
+        "toNobody": "Leave unassigned",
+        "submit": "Remove from the team",
+        "pending": "Removing…",
+        "cancel": "Cancel"
       }
     },
     "routing": {
@@ -962,7 +979,8 @@
     "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
     "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
     "topicExists": "A topic with this name exists.",
-    "tagExists": "A tag with this name exists."
+    "tagExists": "A tag with this name exists.",
+    "protectedMember": "Your own role and the owner's cannot be changed here."
   },
   "error": {
     "title": "Something went wrong",

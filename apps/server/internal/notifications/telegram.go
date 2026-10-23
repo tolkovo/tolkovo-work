@@ -415,6 +415,15 @@ func (s *Service) Unlink(ctx context.Context, workspaceID, userID uuid.UUID) err
 	return nil
 }
 
+// MemberLeft forgets the Telegram chat of a member who left the team, in
+// the caller's transaction tx (ADR-0020).
+func (s *Service) MemberLeft(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) error {
+	if err := store.New(tx).DeleteTelegramLink(ctx, store.DeleteTelegramLinkParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
+		return fmt.Errorf("unlink telegram: %w", err)
+	}
+	return nil
+}
+
 // TaskNotify queues a Telegram message about a task to each member who
 // linked their Telegram; it implements tasks.Notifier inside the change's
 // transaction.

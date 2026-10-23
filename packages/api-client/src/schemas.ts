@@ -63,17 +63,17 @@ export const workspaceListSchema = z.object({
 
 export const presenceSchema = z.enum(["online", "away", "offline"]) satisfies z.ZodType<Schemas["Presence"]>;
 
+export const memberSchema = z.object({
+  user_id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: roleSchema,
+  active: z.boolean(),
+  presence: presenceSchema,
+}) satisfies z.ZodType<Schemas["Member"]>;
+
 export const memberListSchema = z.object({
-  items: z.array(
-    z.object({
-      user_id: z.string(),
-      email: z.string(),
-      name: z.string(),
-      role: roleSchema,
-      active: z.boolean(),
-      presence: presenceSchema,
-    }) satisfies z.ZodType<Schemas["Member"]>,
-  ),
+  items: z.array(memberSchema),
 }) satisfies z.ZodType<Schemas["MemberList"]>;
 
 export const myPresenceSchema = z.object({

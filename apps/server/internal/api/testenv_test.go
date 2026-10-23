@@ -238,6 +238,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	// Messages about tasks go through the fake Bot API as well (TK-02).
 	notifs.SetTelegram(notifications.TelegramOptions{Sealer: sealer, Bots: bots, Channels: chans, Jobs: inserter, Log: quiet})
 	taskSvc.SetNotifier(notifs)
+	ten.AddMemberHook(MemberHandOver(convs, taskSvc, notifs))
 	convs.AddFixWaiter(conversations.FixSourceIssues, integ.HasOpenIssue)
 	convs.AddFixWaiter(conversations.FixSourceTasks, taskSvc.HasOpenTask)
 	widgetOpts := widget.Options{Channels: chans, Inbox: convs, Presence: router, Redis: rc, Files: files, KeyPrefix: prefix, Log: quiet}

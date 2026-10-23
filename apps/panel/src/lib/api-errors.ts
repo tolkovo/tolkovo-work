@@ -54,6 +54,8 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.invalidToken") };
     case "email_disabled":
       return { message: t("errors.emailDisabled") };
+    case "protected_member":
+      return { message: t("errors.protectedMember") };
     case "already_member":
       return { message: t("errors.alreadyMember"), ...(field ? { field } : {}) };
     case "email_verified":

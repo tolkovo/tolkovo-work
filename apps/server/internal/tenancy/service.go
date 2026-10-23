@@ -75,7 +75,8 @@ type CreateWorkspaceInput struct {
 
 // Service is the module facade.
 type Service struct {
-	db *db.DB
+	db    *db.DB
+	hooks []MemberHook
 }
 
 // New returns the tenancy service.

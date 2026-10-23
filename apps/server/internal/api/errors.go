@@ -98,6 +98,11 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, authz.ErrForbidden):
 		writeProblem(w, r, Problem{Status: http.StatusForbidden, Code: "forbidden", Title: "Forbidden"})
+	case errors.Is(err, tenancy.ErrProtectedMember):
+		writeProblem(w, r, Problem{
+			Status: http.StatusForbidden, Code: "protected_member", Title: "Forbidden",
+			Detail: "the owner and you yourself cannot be changed or removed here",
+		})
 	case errors.Is(err, auth.ErrNoWorkspace):
 		writeProblem(w, r, Problem{
 			Status: http.StatusForbidden, Code: "no_workspace", Title: "Forbidden",

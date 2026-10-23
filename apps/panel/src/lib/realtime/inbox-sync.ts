@@ -154,6 +154,15 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
             () => undefined, // deleted or unreachable meanwhile: nothing to tell
           );
         }
+      } else if (event.type === "member.changed") {
+        // A role changed or someone left the team (ADR-0020): the team, and for the member
+        // themselves their permissions, then everything those permissions show.
+        roots.set("members", queryKeys.members);
+        if (str(event.data.user_id) === meId()) {
+          roots.set("session", queryKeys.session);
+          roots.set("conversations", queryKeys.conversations);
+          roots.set("tasks", queryKeys.tasks);
+        }
       } else if (event.type.startsWith("conversation.") || event.type.startsWith("message.")) {
         // A future event of these families without the ids above: stay correct, refetch.
         roots.set("conversations", queryKeys.conversations);
@@ -167,6 +176,7 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
       roots.set("conversations", queryKeys.conversations);
       roots.set("contacts", queryKeys.contacts);
       roots.set("tasks", queryKeys.tasks);
+      roots.set("members", queryKeys.members);
       schedule();
     },
     stop() {

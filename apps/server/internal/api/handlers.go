@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/ai"
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
@@ -183,15 +187,61 @@ func (s *server) ListMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]oapi.Member, 0, len(members))
 	for _, m := range members {
-		presence := oapi.PresenceOffline
-		if v, ok := presences[m.UserID]; ok && m.Active {
-			presence = oapi.Presence(v)
-		}
-		items = append(items, oapi.Member{
-			UserId: m.UserID, Email: m.Email, Name: m.Name, Role: oapi.Role(m.Role), Active: m.Active, Presence: presence,
-		})
+		items = append(items, memberBody(m, presences))
 	}
 	writeJSON(w, http.StatusOK, oapi.MemberList{Items: items})
+}
+
+func memberBody(m tenancy.Member, presences map[uuid.UUID]routing.Presence) oapi.Member {
+	presence := oapi.PresenceOffline
+	if v, ok := presences[m.UserID]; ok && m.Active {
+		presence = oapi.Presence(v)
+	}
+	return oapi.Member{UserId: m.UserID, Email: m.Email, Name: m.Name, Role: oapi.Role(m.Role), Active: m.Active, Presence: presence}
+}
+
+// UpdateMember implements PATCH /members/{id}.
+func (s *server) UpdateMember(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, err := authz.Require(r.Context(), authz.MembersManage)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req oapi.UpdateMemberRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	m, err := s.tenancy.ChangeRole(r.Context(), p.WorkspaceID, p.UserID, id, string(req.Role), req.ConversationsTo)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	presences, err := s.routing.Presences(r.Context(), p.WorkspaceID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, memberBody(m, presences))
+}
+
+// DeactivateMember implements POST /members/{id}/deactivate.
+func (s *server) DeactivateMember(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, err := authz.Require(r.Context(), authz.MembersManage)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req oapi.DeactivateMemberRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.tenancy.Deactivate(r.Context(), p.WorkspaceID, p.UserID, id, req.ConversationsTo, req.TasksTo); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // UpdateWorkspace implements PATCH /workspace.
@@ -251,4 +301,24 @@ func deref[T any](p *T) T {
 		return zero
 	}
 	return *p
+}
+
+// MemberHandOver is the tenancy hook that hands over what a member keeps
+// when their role changes or they leave the team, in the transaction of
+// the change (ADR-0020): conversations, then tasks and the Telegram link.
+func MemberHandOver(convs *conversations.Service, tks *tasks.Service, notifs *notifications.Service) tenancy.MemberHook {
+	return func(ctx context.Context, tx pgx.Tx, ch tenancy.MemberChange) error {
+		if ch.HandsOverConversations() {
+			if err := convs.HandOver(ctx, tx, ch.WorkspaceID, ch.ActorID, ch.UserID, ch.ConversationsTo, ch.Leaving); err != nil {
+				return err
+			}
+		}
+		if !ch.Leaving {
+			return nil
+		}
+		if err := tks.HandOver(ctx, tx, ch.WorkspaceID, ch.ActorID, ch.UserID, ch.TasksTo); err != nil {
+			return err
+		}
+		return notifs.MemberLeft(ctx, tx, ch.WorkspaceID, ch.UserID)
+	}
 }

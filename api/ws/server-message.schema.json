@@ -23,7 +23,8 @@
     { "$ref": "#/$defs/messageDelivery" },
     { "$ref": "#/$defs/contactCreated" },
     { "$ref": "#/$defs/contactUpdated" },
-    { "$ref": "#/$defs/taskChanged" }
+    { "$ref": "#/$defs/taskChanged" },
+    { "$ref": "#/$defs/memberChanged" }
   ],
   "$defs": {
     "messageType": {
@@ -48,7 +49,8 @@
         "message.delivery",
         "contact.created",
         "contact.updated",
-        "task.changed"
+        "task.changed",
+        "member.changed"
       ]
     },
     "closeCode": {
@@ -287,6 +289,20 @@
           "required": ["conversation_id"],
           "properties": {
             "conversation_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      }
+    },
+    "memberChanged": {
+      "description": "A member's role changed or they left the team (ADR-0020). Members with members.view receive it; clients fetch the team over REST, and the member themselves GET /me for their permissions.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "member.changed" },
+        "data": {
+          "type": "object",
+          "required": ["user_id"],
+          "properties": {
+            "user_id": { "$ref": "#/$defs/uuid" }
           }
         }
       }
