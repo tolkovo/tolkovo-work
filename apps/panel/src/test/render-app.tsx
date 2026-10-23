@@ -4,7 +4,7 @@ import type { Language } from "@tolkovo/i18n";
 
 import { App } from "../app";
 import { createPanelApiClient } from "../lib/api";
-import { createI18n } from "../lib/i18n";
+import { createI18n } from "./i18n";
 import { createQueryClient } from "../lib/query-client";
 import { createAppRouter } from "../router";
 import { fakeApi } from "./fake-api";

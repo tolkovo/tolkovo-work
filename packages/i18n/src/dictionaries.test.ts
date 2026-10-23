@@ -1,7 +1,8 @@
 import { IntlMessageFormat } from "intl-messageformat";
 import { describe, expect, it } from "vitest";
 
-import { flattenKeys, languages, resources } from "./index";
+import { flattenKeys, languages } from "./index";
+import { resources } from "./resources";
 
 function leaves(tree: Record<string, unknown>): [string, unknown][] {
   return flattenKeys(tree).map((key) => [

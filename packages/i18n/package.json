@@ -7,6 +7,7 @@
   "description": "UI dictionaries (ru, en) shared by the panel; keys must match in both languages.",
   "exports": {
     ".": "./src/index.ts",
+    "./resources": "./src/resources.ts",
     "./ru.json": "./src/ru.json",
     "./en.json": "./src/en.json"
   },
