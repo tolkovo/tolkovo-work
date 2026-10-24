@@ -130,6 +130,7 @@ export function fakeApi(
     "GET /tags": () => json(200, { items: [] }),
     "GET /task-tags": () => json(200, { items: [] }),
     "GET /topics": () => json(200, { items: [] }),
+    "GET /lines": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
     // Like the server: absent fields stay, the answer is the session with the changed user.
     "PATCH /me": async (request) => {

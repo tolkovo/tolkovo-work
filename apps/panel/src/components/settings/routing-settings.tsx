@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { describeApiError } from "../../lib/api-errors";
 import { answersCustomers } from "../../lib/team";
 import { FormMessage } from "../form/fields";
+import { LineSettings } from "./line-settings";
 import { PresenceDot } from "../presence-dot";
 
 const MODES: readonly RoutingMode[] = ["manual", "round_robin", "least_loaded"];
@@ -236,6 +237,7 @@ export function RoutingSettingsPage() {
           <FormMessage tone="success" message={saved} />
         </div>
       )}
+      <LineSettings />
     </section>
   );
 }

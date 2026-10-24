@@ -43,6 +43,9 @@ type Conversation struct {
 	TagIDs      []uuid.UUID // in the order they were added
 	// TopicID is what the question is about (docs/02 §7.3); nil: none yet.
 	TopicID *uuid.UUID
+	// LineID is the line the conversation is on (ADR-0021); nil: the first
+	// line. LineLevel is its level.
+	LineID *uuid.UUID
 	// LastReadMessageID and UnreadCount are the viewer's: read marks are per
 	// operator. UnreadCount counts customer messages after the mark, up to
 	// MaxUnreadCount.
@@ -95,8 +98,12 @@ type ListFilter struct {
 	// topic when TopicID is nil.
 	ByTopic bool
 	TopicID *uuid.UUID
-	Cursor  string
-	Limit   int
+	// ByLine restricts the list to LineID, or to the first line when LineID
+	// is nil.
+	ByLine bool
+	LineID *uuid.UUID
+	Cursor string
+	Limit  int
 }
 
 // CreateConversation starts a conversation with an existing contact. It
@@ -184,7 +191,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		rows, err = q.ListConversations(ctx, store.ListConversationsParams{
 			UserID: f.ViewerID, WorkspaceID: workspaceID, Statuses: statuses,
 			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID, ContactID: f.ContactID,
-			ByTopic: f.ByTopic, TopicID: f.TopicID, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
+			ByTopic: f.ByTopic, TopicID: f.TopicID, ByLine: f.ByLine, LineID: f.LineID, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
 		})
 		return err
 	})
@@ -450,5 +457,6 @@ func conversationFrom(c store.Conversation, contactName string) Conversation {
 		AssigneeID: c.AssigneeID, Subject: c.Subject, FirstResponseAt: c.FirstResponseAt,
 		LastMessageAt: c.LastMessageAt, ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix,
 		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Rating: ratingFrom(c), TopicID: c.TopicID,
+		LineID: c.LineID,
 	}
 }

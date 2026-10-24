@@ -84,6 +84,16 @@ type Conversation struct {
 	RatedAt          *time.Time
 	TopicID          *uuid.UUID
 	TopicAskedAt     *time.Time
+	LineID           *uuid.UUID
+}
+
+type Line struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Name        string
+	Level       int16
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Message struct {

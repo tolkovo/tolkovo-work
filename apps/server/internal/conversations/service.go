@@ -92,7 +92,7 @@ type Notifier interface {
 	// WaitsInQueue hears that a customer's conversation entered the queue:
 	// a new one, one the AI bot handed over, one the customer reopened.
 	// topicID is its topic, whose members alone take it when it has some.
-	WaitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, topicID *uuid.UUID) error
+	WaitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, lineID, topicID *uuid.UUID) error
 }
 
 // Router distributes the queue (docs/02 §9). Its methods run inside the
@@ -178,11 +178,11 @@ var answering = authz.RolesWith(authz.ConversationsReply)
 
 // waitsInQueue tells the notifier that a customer's conversation waits in
 // the queue.
-func (s *Service) waitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, topicID *uuid.UUID) error {
+func (s *Service) waitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, lineID, topicID *uuid.UUID) error {
 	if s.notifier == nil {
 		return nil
 	}
-	return s.notifier.WaitsInQueue(ctx, tx, workspaceID, conversationID, topicID)
+	return s.notifier.WaitsInQueue(ctx, tx, workspaceID, conversationID, lineID, topicID)
 }
 
 func newID() (uuid.UUID, error) {

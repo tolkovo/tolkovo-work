@@ -17,6 +17,7 @@ import { IssueEventText, IssueForm, useIssueMenuItems, type IssueMode } from "./
 import { ConversationTaskForm, TaskEventText, useTaskMenuItems, type TaskMode } from "./tasks";
 import { PresenceLine, useMemberNames } from "./presence";
 import { ConversationTags } from "./tags";
+import { LineEventText } from "./lines";
 import { TopicEventText } from "./topics";
 
 type ConversationViewProps = {
@@ -496,6 +497,7 @@ function EventText({ event: e, actorId }: { event: MessageEvent; actorId: string
   if (e.type.startsWith("issue_")) return <IssueEventText event={e} by={by} />;
   if (e.type.startsWith("task_")) return <TaskEventText event={e} by={by} />;
   if (e.type === "topic_changed") return <TopicEventText event={e} by={by} />;
+  if (e.type === "line_changed") return <LineEventText event={e} by={by} />;
   if (e.type === "bot_handoff") {
     return <>{t("inbox.event.botHandoff", { reason: t(`inbox.event.botReason.${e.reason ?? "unknown"}`) })}</>;
   }

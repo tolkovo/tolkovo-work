@@ -64,8 +64,9 @@ WHERE workspace_id = @workspace_id AND user_id = @user_id AND chat_id = @chat_id
 -- Who hears about conversations in Telegram (docs/06 I-06): active members
 -- among user_ids (all when empty) whose role answers customers (answering),
 -- who linked their Telegram and did not turn off the kind (want: assigned,
--- messages or queue), of the topic when it has members. memberships,
--- roles, topic_members and notification_prefs are read here, as
+-- messages or queue), of the line, or of the topic when it has members.
+-- memberships, roles, line_members, topic_members and notification_prefs
+-- are read here, as
 -- LinkedChats reads telegram_links of members.
 SELECT l.user_id, l.chat_id::bigint AS chat_id
 FROM telegram_links l
@@ -75,8 +76,12 @@ LEFT JOIN notification_prefs p ON p.workspace_id = l.workspace_id AND p.user_id 
 WHERE l.workspace_id = @workspace_id AND l.chat_id IS NOT NULL AND m.is_active
   AND r.key = ANY(@answering::text[])
   AND (cardinality(@user_ids::uuid[]) = 0 OR l.user_id = ANY(@user_ids::uuid[]))
-  -- A topic with members goes to them alone (docs/02 §7.3).
-  AND (sqlc.narg(topic_id)::uuid IS NULL
+  -- A line goes to its members alone (ADR-0021); on the first line a
+  -- topic with members goes to them alone (docs/02 §7.3).
+  AND (sqlc.narg(line_id)::uuid IS NULL
+       OR EXISTS (SELECT 1 FROM line_members lm WHERE lm.workspace_id = l.workspace_id AND lm.line_id = sqlc.narg(line_id)::uuid
+                  AND lm.user_id = l.user_id))
+  AND (sqlc.narg(line_id)::uuid IS NOT NULL OR sqlc.narg(topic_id)::uuid IS NULL
        OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = l.workspace_id AND tm.topic_id = sqlc.narg(topic_id)::uuid)
        OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = l.workspace_id AND tm.topic_id = sqlc.narg(topic_id)::uuid
                   AND tm.user_id = l.user_id))

@@ -2125,6 +2125,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations/{id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the conversation to another line
+         * @description Up to a line of a higher level with a `reason`, or across and down, where the reason is
+         *     optional (ADR-0021). The conversation leaves its assignee and waits in the queue of the
+         *     line, whose members get it from automatic distribution. The feed gets a line and the
+         *     reason a note after it. Requires `conversations.take` for your own conversation,
+         *     `conversations.assign` for any; only `queued`, `assigned` and `pending` ones move.
+         */
+        post: operations["escalateConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations/{id}/issues": {
         parameters: {
             query?: never;
@@ -2486,6 +2512,59 @@ export interface paths {
          * @description Requires `routing.manage`. Its conversations and tasks are left without a topic.
          */
         delete: operations["deleteTopic"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The lines of support, by level
+         * @description Requires `conversations.view`. At most 30, so there are no pages. A conversation without
+         *     a line is on the first line; `POST /conversations/{id}/escalate` moves it (ADR-0021).
+         */
+        get: operations["listLines"];
+        put?: never;
+        /**
+         * Add a line
+         * @description Requires `routing.manage` (owner, admin). Names are unique without regard to case
+         *     (`409 line_exists`).
+         */
+        post: operations["createLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a line
+         * @description Requires `routing.manage`. Its conversations take the new level; changed members apply
+         *     to the queue at once.
+         */
+        put: operations["updateLine"];
+        post?: never;
+        /**
+         * Delete a line
+         * @description Requires `routing.manage`. Its conversations go back to the first line.
+         */
+        delete: operations["deleteLine"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3470,6 +3549,8 @@ export interface components {
             tag_ids: string[];
             /** @description What the question is about (`GET /topics`); `null` until the customer or an operator picks one. */
             topic_id: string | null;
+            /** @description The line the conversation is on (`GET /lines`); `null` is the first line. `line_level` is its level. */
+            line_id: string | null;
             /** @description The caller's read mark; `null` when they have not read the conversation. */
             last_read_message_id: string | null;
             /** @description Customer messages after the caller's read mark, counted up to 100. */
@@ -3635,10 +3716,13 @@ export interface components {
              *     `topic_changed`: the topic was set, changed or removed (`topic_id`,
              *     `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
              *     current status. `bot_handoff`: the AI bot handed the conversation to people
-             *     (`bot → queued`) for `reason` (ADR-0018).
+             *     (`bot → queued`) for `reason` (ADR-0018). `line_changed`: an operator moved the
+             *     conversation to another line (`line_id`, `previous_line_id`; `null` is the first line)
+             *     and it left its assignee for the line's queue; the reason, when given, is the note
+             *     after it (ADR-0021).
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed" | "bot_handoff";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed" | "bot_handoff" | "line_changed";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
@@ -3648,6 +3732,8 @@ export interface components {
             topic_id?: string | null;
             previous_topic_id?: string | null;
             by_customer?: boolean;
+            line_id?: string | null;
+            previous_line_id?: string | null;
             /**
              * @description Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
              *     the topic is left to people; the bot did not know the answer or was not sure; the
@@ -4194,6 +4280,30 @@ export interface components {
         };
         TopicOrder: {
             ids: string[];
+        };
+        Line: {
+            id: string;
+            name: string;
+            level: number;
+            /** @description Who gets its conversations from automatic distribution, by user id. */
+            member_ids: string[];
+        };
+        LineList: {
+            items: components["schemas"]["Line"][];
+        };
+        LineInput: {
+            name: string;
+            level: number;
+            /** @description Active members of the workspace. */
+            member_ids: string[];
+        };
+        EscalateRequest: {
+            /** @description A line of the workspace; `null` is the first line. */
+            line_id: string | null;
+            /** @description Why; required up to a higher level, may be empty otherwise. It becomes a note. */
+            reason: string;
+            /** @description The conversation's `version` you read; a mismatch answers `409 version_conflict`. */
+            version?: number;
         };
         SetTopicRequest: {
             /** @description A topic of the workspace; `null` removes the topic. */
@@ -4977,6 +5087,15 @@ export interface components {
         };
         /** @description `topic_exists`: a topic with this name exists. */
         TopicExists: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `line_exists`: a line with this name exists. */
+        LineExists: {
             headers: {
                 [name: string]: unknown;
             };
@@ -8259,6 +8378,8 @@ export interface operations {
                 assignee?: string;
                 /** @description `none` (without a topic) or a topic id. */
                 topic?: string;
+                /** @description `first` (the first line, without a line) or a line id. */
+                line?: string;
                 /**
                  * @description Only this contact's conversations: the history in the customer card. An unknown id
                  *     gives an empty page.
@@ -8593,6 +8714,37 @@ export interface operations {
         };
         responses: {
             /** @description The conversation with its new topic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    escalateConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EscalateRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation on its new line. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9076,6 +9228,110 @@ export interface operations {
         };
     };
     deleteTopic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listLines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Line"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["LineExists"];
+        };
+    };
+    updateLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineInput"];
+            };
+        };
+        responses: {
+            /** @description The changed line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Line"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["LineExists"];
+        };
+    };
+    deleteLine: {
         parameters: {
             query?: never;
             header?: never;

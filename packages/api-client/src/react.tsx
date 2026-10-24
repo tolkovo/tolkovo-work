@@ -43,6 +43,10 @@ import {
   fetchMembers,
   fetchMyPresence,
   fetchRouting,
+  fetchLines,
+  createLine,
+  updateLine,
+  deleteLine,
   fetchRoutingMembers,
   fetchAISettings,
   fetchAIBot,
@@ -110,6 +114,7 @@ import {
   type NotificationSettingsInput,
   type OperatorStatus,
   type RoutingSettings,
+  type LineInput,
   type AISettingsUpdate,
   type AIBot,
   type ContactInput,
@@ -746,6 +751,27 @@ export function useTopicMutations() {
     }),
     remove: useMutation({ mutationFn: (id: string) => deleteTopic(client, id), onSettled }),
     reorder: useMutation({ mutationFn: (ids: string[]) => reorderTopics(client, ids), onSettled }),
+  };
+}
+
+/** The lines of support (ADR-0021). */
+export function useLines() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.lines, queryFn: () => fetchLines(client), staleTime: 5 * 60_000 });
+}
+
+/** Creates, changes or deletes lines; the list is read again after each. */
+export function useLineMutations() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const onSettled = () => queryClient.invalidateQueries({ queryKey: queryKeys.lines });
+  return {
+    create: useMutation({ mutationFn: (body: LineInput) => createLine(client, body), onSettled }),
+    update: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: LineInput }) => updateLine(client, id, body),
+      onSettled,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => deleteLine(client, id), onSettled }),
   };
 }
 

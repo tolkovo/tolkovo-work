@@ -692,6 +692,7 @@ const (
 	MessageEventTypeIssueCreated  MessageEventType = "issue_created"
 	MessageEventTypeIssueLinked   MessageEventType = "issue_linked"
 	MessageEventTypeIssueReopened MessageEventType = "issue_reopened"
+	MessageEventTypeLineChanged   MessageEventType = "line_changed"
 	MessageEventTypeStatusChanged MessageEventType = "status_changed"
 	MessageEventTypeTaskClosed    MessageEventType = "task_closed"
 	MessageEventTypeTaskCreated   MessageEventType = "task_created"
@@ -715,6 +716,8 @@ func (e MessageEventType) Valid() bool {
 	case MessageEventTypeIssueLinked:
 		return true
 	case MessageEventTypeIssueReopened:
+		return true
+	case MessageEventTypeLineChanged:
 		return true
 	case MessageEventTypeStatusChanged:
 		return true
@@ -1722,7 +1725,10 @@ type Conversation struct {
 
 	// LastReadMessageId The caller's read mark; `null` when they have not read the conversation.
 	LastReadMessageId *uuid.UUID `json:"last_read_message_id"`
-	LineLevel         int        `json:"line_level"`
+
+	// LineId The line the conversation is on (`GET /lines`); `null` is the first line. `line_level` is its level.
+	LineId    *uuid.UUID `json:"line_id"`
+	LineLevel int        `json:"line_level"`
 
 	// Number Human-readable number inside the workspace.
 	Number int64 `json:"number"`
@@ -1912,6 +1918,18 @@ type DeviceSessionList struct {
 
 // EmailDelayMinutes How long customer messages may stay unread before the email goes out.
 type EmailDelayMinutes int
+
+// EscalateRequest defines model for EscalateRequest.
+type EscalateRequest struct {
+	// LineId A line of the workspace; `null` is the first line.
+	LineId *uuid.UUID `json:"line_id"`
+
+	// Reason Why; required up to a higher level, may be empty otherwise. It becomes a note.
+	Reason string `json:"reason"`
+
+	// Version The conversation's `version` you read; a mismatch answers `409 version_conflict`.
+	Version *int `json:"version,omitempty"`
+}
 
 // ForgotPasswordRequest defines model for ForgotPasswordRequest.
 type ForgotPasswordRequest struct {
@@ -2413,6 +2431,30 @@ type KBSearchResult struct {
 	Items []KBHit `json:"items"`
 }
 
+// Line defines model for Line.
+type Line struct {
+	Id    uuid.UUID `json:"id"`
+	Level int       `json:"level"`
+
+	// MemberIds Who gets its conversations from automatic distribution, by user id.
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+}
+
+// LineInput defines model for LineInput.
+type LineInput struct {
+	Level int `json:"level"`
+
+	// MemberIds Active members of the workspace.
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+}
+
+// LineList defines model for LineList.
+type LineList struct {
+	Items []Line `json:"items"`
+}
+
 // LinkIssueRequest defines model for LinkIssueRequest.
 type LinkIssueRequest struct {
 	// Number The issue number in the workspace's repository.
@@ -2538,7 +2580,9 @@ type MessageEvent struct {
 	// From State of a conversation.
 	From               ConversationStatus `json:"from"`
 	Issue              *MessageEventIssue `json:"issue,omitempty"`
+	LineId             *uuid.UUID         `json:"line_id,omitempty"`
 	PreviousAssigneeId *uuid.UUID         `json:"previous_assignee_id"`
+	PreviousLineId     *uuid.UUID         `json:"previous_line_id,omitempty"`
 	PreviousTopicId    *uuid.UUID         `json:"previous_topic_id,omitempty"`
 
 	// Reason Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
@@ -2566,7 +2610,10 @@ type MessageEvent struct {
 	// `topic_changed`: the topic was set, changed or removed (`topic_id`,
 	// `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
 	// current status. `bot_handoff`: the AI bot handed the conversation to people
-	// (`bot → queued`) for `reason` (ADR-0018).
+	// (`bot → queued`) for `reason` (ADR-0018). `line_changed`: an operator moved the
+	// conversation to another line (`line_id`, `previous_line_id`; `null` is the first line)
+	// and it left its assignee for the line's queue; the reason, when given, is the note
+	// after it (ADR-0021).
 	Type MessageEventType `json:"type"`
 }
 
@@ -2590,7 +2637,10 @@ type MessageEventReason string
 // `topic_changed`: the topic was set, changed or removed (`topic_id`,
 // `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
 // current status. `bot_handoff`: the AI bot handed the conversation to people
-// (`bot → queued`) for `reason` (ADR-0018).
+// (`bot → queued`) for `reason` (ADR-0018). `line_changed`: an operator moved the
+// conversation to another line (`line_id`, `previous_line_id`; `null` is the first line)
+// and it left its assignee for the line's queue; the reason, when given, is the note
+// after it (ADR-0021).
 type MessageEventType string
 
 // MessageEventIssue defines model for MessageEventIssue.
@@ -3757,6 +3807,9 @@ type IssueConflict = Problem
 // IssueRefused RFC 9457 problem details.
 type IssueRefused = Problem
 
+// LineExists RFC 9457 problem details.
+type LineExists = Problem
+
 // LoginStep RFC 9457 problem details.
 type LoginStep = Problem
 
@@ -3824,6 +3877,9 @@ type ListConversationsParams struct {
 
 	// Topic `none` (without a topic) or a topic id.
 	Topic *string `form:"topic,omitempty" json:"topic,omitempty"`
+
+	// Line `first` (the first line, without a line) or a line id.
+	Line *string `form:"line,omitempty" json:"line,omitempty"`
 
 	// ContactId Only this contact's conversations: the history in the customer card. An unknown id
 	// gives an empty page.
@@ -4070,6 +4126,9 @@ type AssignConversationJSONRequestBody = AssignRequest
 // CreateAttachmentUploadJSONRequestBody defines body for CreateAttachmentUpload for application/json ContentType.
 type CreateAttachmentUploadJSONRequestBody = CreateUploadRequest
 
+// EscalateConversationJSONRequestBody defines body for EscalateConversation for application/json ContentType.
+type EscalateConversationJSONRequestBody = EscalateRequest
+
 // CreateConversationIssueJSONRequestBody defines body for CreateConversationIssue for application/json ContentType.
 type CreateConversationIssueJSONRequestBody = CreateIssueRequest
 
@@ -4123,6 +4182,12 @@ type SetKBGuideJSONRequestBody = KBGuideInput
 
 // ImportKBJSONRequestBody defines body for ImportKB for application/json ContentType.
 type ImportKBJSONRequestBody = KBImport
+
+// CreateLineJSONRequestBody defines body for CreateLine for application/json ContentType.
+type CreateLineJSONRequestBody = LineInput
+
+// UpdateLineJSONRequestBody defines body for UpdateLine for application/json ContentType.
+type UpdateLineJSONRequestBody = LineInput
 
 // McpJSONRequestBody defines body for Mcp for application/json ContentType.
 type McpJSONRequestBody = McpMessage
@@ -4363,6 +4428,9 @@ type ServerInterface interface {
 	// CreateAttachmentUpload Register a file and get a signed upload request
 	// (POST /conversations/{id}/attachments)
 	CreateAttachmentUpload(w http.ResponseWriter, r *http.Request, id Id)
+	// EscalateConversation Move the conversation to another line
+	// (POST /conversations/{id}/escalate)
+	EscalateConversation(w http.ResponseWriter, r *http.Request, id Id)
 	// ListConversationIssues GitHub issues of the conversation
 	// (GET /conversations/{id}/issues)
 	ListConversationIssues(w http.ResponseWriter, r *http.Request, id Id)
@@ -4483,6 +4551,18 @@ type ServerInterface interface {
 	// SearchKB What the bot would find for a question
 	// (GET /kb/search)
 	SearchKB(w http.ResponseWriter, r *http.Request, params SearchKBParams)
+	// ListLines The lines of support, by level
+	// (GET /lines)
+	ListLines(w http.ResponseWriter, r *http.Request)
+	// CreateLine Add a line
+	// (POST /lines)
+	CreateLine(w http.ResponseWriter, r *http.Request)
+	// DeleteLine Delete a line
+	// (DELETE /lines/{id})
+	DeleteLine(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateLine Change a line
+	// (PUT /lines/{id})
+	UpdateLine(w http.ResponseWriter, r *http.Request, id Id)
 	// Mcp The MCP server of the tasks section
 	// (POST /mcp)
 	Mcp(w http.ResponseWriter, r *http.Request)
@@ -4981,6 +5061,12 @@ func (_ Unimplemented) CreateAttachmentUpload(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// EscalateConversation Move the conversation to another line
+// (POST /conversations/{id}/escalate)
+func (_ Unimplemented) EscalateConversation(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListConversationIssues GitHub issues of the conversation
 // (GET /conversations/{id}/issues)
 func (_ Unimplemented) ListConversationIssues(w http.ResponseWriter, r *http.Request, id Id) {
@@ -5218,6 +5304,30 @@ func (_ Unimplemented) ImportKB(w http.ResponseWriter, r *http.Request) {
 // SearchKB What the bot would find for a question
 // (GET /kb/search)
 func (_ Unimplemented) SearchKB(w http.ResponseWriter, r *http.Request, params SearchKBParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListLines The lines of support, by level
+// (GET /lines)
+func (_ Unimplemented) ListLines(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateLine Add a line
+// (POST /lines)
+func (_ Unimplemented) CreateLine(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteLine Delete a line
+// (DELETE /lines/{id})
+func (_ Unimplemented) DeleteLine(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateLine Change a line
+// (PUT /lines/{id})
+func (_ Unimplemented) UpdateLine(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6487,6 +6597,19 @@ func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "line" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "line", r.URL.Query(), &params.Line, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "line"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "line", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "contact_id" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "contact_id", r.URL.Query(), &params.ContactId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
@@ -6634,6 +6757,32 @@ func (siw *ServerInterfaceWrapper) CreateAttachmentUpload(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAttachmentUpload(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EscalateConversation operation middleware
+func (siw *ServerInterfaceWrapper) EscalateConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EscalateConversation(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7725,6 +7874,86 @@ func (siw *ServerInterfaceWrapper) SearchKB(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SearchKB(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListLines operation middleware
+func (siw *ServerInterfaceWrapper) ListLines(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLines(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateLine operation middleware
+func (siw *ServerInterfaceWrapper) CreateLine(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateLine(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteLine operation middleware
+func (siw *ServerInterfaceWrapper) DeleteLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteLine(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateLine operation middleware
+func (siw *ServerInterfaceWrapper) UpdateLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateLine(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9889,6 +10118,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/conversations/{id}/topic", wrapper.SetConversationTopic)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/conversations/{id}/escalate", wrapper.EscalateConversation)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/conversations/{id}/issues", wrapper.ListConversationIssues)
 	})
 	r.Group(func(r chi.Router) {
@@ -9941,6 +10173,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/topics/{id}", wrapper.UpdateTopic)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/lines", wrapper.ListLines)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/lines", wrapper.CreateLine)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/lines/{id}", wrapper.DeleteLine)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/lines/{id}", wrapper.UpdateLine)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/contacts", wrapper.ListContacts)

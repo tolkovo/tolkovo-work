@@ -542,6 +542,30 @@
       "asEveryone": "As for everyone",
       "load": "{open} of {max}"
     },
+    "lines": {
+      "title": "Lines",
+      "lead": "New conversations and those from the AI bot land on the first line. An operator passes a conversation to a higher line with a reason, and only that line's members get it. A specialist can return it lower.",
+      "add": "Add a line",
+      "empty": "No lines yet: every conversation is on the first line.",
+      "name": "Name",
+      "nameHint": "For example, «Billing» or «Experts».",
+      "nameRequired": "Name the line.",
+      "level": "Level",
+      "levelHint": "Passing to a higher level takes a reason.",
+      "levels": {
+        "1": "L1 — first line",
+        "2": "L2 — specialists",
+        "3": "L3 — experts"
+      },
+      "members": "Members",
+      "membersHint": "They get the line's conversations from automatic distribution and hear about its queue.",
+      "nobody": "No members: the line's conversations are taken by hand",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete the line? Its conversations go back to the first line.",
+      "deleteSubmit": "Delete",
+      "save": "Save"
+    },
     "topics": {
       "title": "Topics",
       "lead": "The customer picks a topic before writing: the Telegram bot shows a button per topic, the widget shows them above the message field. The inbox shows the topic and filters by it. A topic sets the priority, who gets its conversations from automatic distribution and the queue of tasks.",
@@ -1015,6 +1039,7 @@
     "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
     "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
     "topicExists": "A topic with this name exists.",
+    "lineExists": "A line with this name exists.",
     "tagExists": "A tag with this name exists.",
     "protectedMember": "Your own role and the owner's cannot be changed here."
   },
@@ -1232,6 +1257,21 @@
       "all": "All topics",
       "without": "No topic"
     },
+    "line": {
+      "level": "L{level}",
+      "first": "First line",
+      "named": "L{level} «{name}»",
+      "deleted": "Deleted line",
+      "move": "Pass to a line",
+      "to": "To",
+      "reason": "Reason — the specialist will see it",
+      "comment": "Comment",
+      "hint": "The conversation leaves yours for the line's queue; the text becomes a note.",
+      "reasonRequired": "Write the reason: the specialist sees it first.",
+      "submit": "Pass",
+      "filter": "Lines",
+      "all": "All lines"
+    },
     "event": {
       "taken": "Taken by {name}",
       "assigned": "Assigned to {name}",
@@ -1277,7 +1317,10 @@
         "limit": "the bot replied as often as it may",
         "task_created": "a task for IT was created",
         "task_incomplete": "not enough details for a task"
-      }
+      },
+      "lineUp": "Passed to line {line}",
+      "lineDown": "Returned to line {line}",
+      "lineFirst": "Returned to the first line"
     },
     "card": {
       "label": "Customer card",

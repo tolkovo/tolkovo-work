@@ -67,15 +67,15 @@ func wantOf(about string) string {
 
 // WaitsInQueue queues a Telegram message to each member who may take the
 // conversation; it implements conversations.Notifier.
-func (s *Service) WaitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, topicID *uuid.UUID) error {
-	return s.chatNotice(ctx, tx, workspaceID, conversationID, nil, topicID, ChatQueue)
+func (s *Service) WaitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, lineID, topicID *uuid.UUID) error {
+	return s.chatNotice(ctx, tx, workspaceID, conversationID, nil, lineID, topicID, ChatQueue)
 }
 
 // chatNotice queues one job per member who hears about it: userID alone,
-// or everyone of the topic for the queue. The job checks the rest when it
-// runs: the conversation moved on, the panel opened.
+// or everyone of the line or the topic for the queue. The job checks the
+// rest when it runs: the conversation moved on, the panel opened.
 func (s *Service) chatNotice(
-	ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, userID, topicID *uuid.UUID, about string,
+	ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, userID, lineID, topicID *uuid.UUID, about string,
 ) error {
 	if s.tg.Jobs == nil {
 		return nil
@@ -90,12 +90,9 @@ func (s *Service) chatNotice(
 	if userID != nil {
 		users = append(users, *userID)
 	}
-	topic := pgtype.UUID{}
-	if topicID != nil {
-		topic = pgtype.UUID{Bytes: *topicID, Valid: true}
-	}
 	watchers, err := q.ChatWatchers(ctx, store.ChatWatchersParams{
-		WorkspaceID: workspaceID, Answering: answering, UserIds: users, Want: wantOf(about), TopicID: topic,
+		WorkspaceID: workspaceID, Answering: answering, UserIds: users, Want: wantOf(about),
+		LineID: pgUUID(lineID), TopicID: pgUUID(topicID),
 	})
 	if err != nil {
 		return fmt.Errorf("chat watchers: %w", err)
@@ -285,4 +282,11 @@ func chatMessage(locale, about string, c conversations.Conversation, channel, pa
 		text += "\n" + panel + "/inbox/" + c.ID.String()
 	}
 	return text
+}
+
+func pgUUID(id *uuid.UUID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *id, Valid: true}
 }

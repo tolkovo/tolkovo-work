@@ -54,8 +54,9 @@ func (s *Service) Loads(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, u
 
 // AssignQueued gives up to limit conversations from the head of the queue
 // to the members of pool: each goes to whom the pool picks among those who
-// may take it. A conversation whose topic has members goes to one of them
-// only (docs/02 §7.3). It runs in the router's tenant transaction tx
+// may take it. A conversation of a line goes to one of its members only
+// (ADR-0021); on the first line one whose topic has members goes to one of
+// them only (docs/02 §7.3). It runs in the router's tenant transaction tx
 // (docs/02 §9.3) and records each assignment as a change by the system:
 // events, the system line and the reminder. Conversations another
 // transaction holds, or nobody in the pool may take, are left for the next
@@ -74,10 +75,18 @@ func (s *Service) AssignQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.
 	if err != nil {
 		return nil, wrap(err, "lock queue")
 	}
+	lines, err := lineMembers(ctx, q, workspaceID, rows)
+	if err != nil {
+		return nil, wrap(err, "lock queue")
+	}
 	out := make([]Assignment, 0, len(rows))
 	for _, row := range rows {
 		may := func(uuid.UUID) bool { return true }
-		if row.TopicID != nil && len(members[*row.TopicID]) > 0 {
+		switch {
+		case row.LineID != nil:
+			only := lines[*row.LineID]
+			may = func(u uuid.UUID) bool { return slices.Contains(only, u) }
+		case row.TopicID != nil && len(members[*row.TopicID]) > 0:
 			only := members[*row.TopicID]
 			may = func(u uuid.UUID) bool { return slices.Contains(only, u) }
 		}
@@ -130,12 +139,15 @@ func topicMembers(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, 
 // HandOver gives the open conversations of userID to to, or releases them
 // to the queue when to is nil, as changes by actorID: a member whose role
 // changes or who leaves the team (ADR-0020). leaving also takes the member
-// out of the topics. It runs in the caller's tenant transaction tx; the
+// out of the topics and the lines. It runs in the caller's tenant transaction tx; the
 // caller checked that to may answer customers.
 func (s *Service) HandOver(ctx context.Context, tx pgx.Tx, workspaceID, actorID, userID uuid.UUID, to *uuid.UUID, leaving bool) error {
 	q := store.New(tx)
 	if leaving {
 		if err := q.RemoveTopicMember(ctx, store.RemoveTopicMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
+			return wrap(err, "hand over")
+		}
+		if err := q.RemoveLineMember(ctx, store.RemoveLineMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
 			return wrap(err, "hand over")
 		}
 	}

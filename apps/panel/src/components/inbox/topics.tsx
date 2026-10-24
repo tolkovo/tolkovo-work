@@ -6,7 +6,7 @@ import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAbilities, type ConversationChange } from "../../lib/inbox/actions";
-import type { InboxTab } from "../../lib/inbox/tabs";
+import { inboxSearch, type InboxScope, type InboxTab } from "../../lib/inbox/tabs";
 import { TAG_DOT } from "./palette";
 
 /**
@@ -84,7 +84,8 @@ export function TopicEventText({ event: e, by }: { event: MessageEvent; by: stri
  * Chips over the list: all, each topic, without a topic. The choice lives in `?topic=`, so a
  * link keeps it and the tabs keep it too.
  */
-export function TopicFilter({ tab, topic }: { tab: InboxTab; topic: string | undefined }) {
+export function TopicFilter({ tab, scope }: { tab: InboxTab; scope: InboxScope }) {
+  const topic = scope.topic;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: topics } = useTopics();
@@ -94,7 +95,7 @@ export function TopicFilter({ tab, topic }: { tab: InboxTab; topic: string | und
       key={key}
       type="button"
       aria-pressed={topic === value}
-      onClick={() => void navigate({ to: "/inbox", search: value === undefined ? { tab } : { tab, topic: value } })}
+      onClick={() => void navigate({ to: "/inbox", search: inboxSearch(tab, { ...scope, topic: value }) })}
       className={cn(
         "inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-line bg-transparent px-2 text-xs whitespace-nowrap text-ink-2",
         "hover:bg-hover hover:text-ink aria-pressed:border-ink aria-pressed:bg-sel aria-pressed:text-ink",

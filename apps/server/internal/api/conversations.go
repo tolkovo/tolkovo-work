@@ -49,6 +49,10 @@ func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, param
 		s.writeError(w, r, err)
 		return
 	}
+	if f.ByLine, f.LineID, err = lineFilter(deref(params.Line)); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	page, err := s.conversations.Conversations(r.Context(), p.WorkspaceID, f)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -516,7 +520,7 @@ func conversationBody(c conversations.Conversation) oapi.Conversation {
 		Contact: oapi.ContactRef{Id: c.ContactID, Name: c.ContactName}, AssigneeId: c.AssigneeID, ChannelId: c.ChannelID,
 		Subject: c.Subject, FirstResponseAt: c.FirstResponseAt, LastMessageAt: c.LastMessageAt,
 		ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix, Version: c.Version,
-		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs), TopicId: c.TopicID,
+		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, LastMessage: previewBody(c.LastMessage), TagIds: nonNil(c.TagIDs), TopicId: c.TopicID, LineId: c.LineID,
 		LastReadMessageId: c.LastReadMessageID, UnreadCount: c.UnreadCount, Rating: ratingBody(c.Rating),
 	}
 }
@@ -620,6 +624,9 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 	}
 	if e.Type == conversations.EventTopicChanged {
 		out.TopicId, out.PreviousTopicId, out.ByCustomer = e.TopicID, e.PreviousTopicID, &e.ByCustomer
+	}
+	if e.Type == conversations.EventLineChanged {
+		out.LineId, out.PreviousLineId = e.LineID, e.PreviousLineID
 	}
 	if e.Reason != "" {
 		r := oapi.MessageEventReason(e.Reason)

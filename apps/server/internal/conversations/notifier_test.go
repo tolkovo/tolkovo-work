@@ -20,7 +20,8 @@ type recordingNotifier struct {
 	mu     sync.Mutex
 	calls  []uuid.UUID // user ids
 	whys   []conversations.Attention
-	queued []uuid.UUID // conversation ids
+	queued []uuid.UUID  // conversation ids
+	lines  []*uuid.UUID // the line of each, nil for the first
 	err    error
 }
 
@@ -35,13 +36,14 @@ func (n *recordingNotifier) NeedsAttention(_ context.Context, tx pgx.Tx, _, _, u
 	return n.err
 }
 
-func (n *recordingNotifier) WaitsInQueue(_ context.Context, tx pgx.Tx, _, conversationID uuid.UUID, _ *uuid.UUID) error {
+func (n *recordingNotifier) WaitsInQueue(_ context.Context, tx pgx.Tx, _, conversationID uuid.UUID, lineID, _ *uuid.UUID) error {
 	if tx == nil {
 		return errors.New("no transaction")
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.queued = append(n.queued, conversationID)
+	n.lines = append(n.lines, lineID)
 	return n.err
 }
 

@@ -2700,6 +2700,10 @@ paths:
           in: query
           description: '`none` (without a topic) or a topic id.'
           schema: { type: string, maxLength: 36 }
+        - name: line
+          in: query
+          description: '`first` (the first line, without a line) or a line id.'
+          schema: { type: string, maxLength: 36 }
         - name: contact_id
           in: query
           description: |
@@ -2993,6 +2997,39 @@ paths:
       responses:
         '200':
           description: The conversation with its new topic.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /conversations/{id}/escalate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [conversations]
+      operationId: escalateConversation
+      summary: Move the conversation to another line
+      description: |
+        Up to a line of a higher level with a `reason`, or across and down, where the reason is
+        optional (ADR-0021). The conversation leaves its assignee and waits in the queue of the
+        line, whose members get it from automatic distribution. The feed gets a line and the
+        reason a note after it. Requires `conversations.take` for your own conversation,
+        `conversations.assign` for any; only `queued`, `assigned` and `pending` ones move.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EscalateRequest' }
+      responses:
+        '200':
+          description: The conversation on its new line.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Conversation' }
@@ -3440,6 +3477,92 @@ paths:
       operationId: deleteTopic
       summary: Delete a topic
       description: Requires `routing.manage`. Its conversations and tasks are left without a topic.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /lines:
+    get:
+      tags: [conversations]
+      operationId: listLines
+      summary: The lines of support, by level
+      description: |
+        Requires `conversations.view`. At most 30, so there are no pages. A conversation without
+        a line is on the first line; `POST /conversations/{id}/escalate` moves it (ADR-0021).
+      responses:
+        '200':
+          description: The lines.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LineList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [conversations]
+      operationId: createLine
+      summary: Add a line
+      description: |
+        Requires `routing.manage` (owner, admin). Names are unique without regard to case
+        (`409 line_exists`).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LineInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Line' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/LineExists' }
+
+  /lines/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [conversations]
+      operationId: updateLine
+      summary: Change a line
+      description: |
+        Requires `routing.manage`. Its conversations take the new level; changed members apply
+        to the queue at once.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LineInput' }
+      responses:
+        '200':
+          description: The changed line.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Line' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/LineExists' }
+    delete:
+      tags: [conversations]
+      operationId: deleteLine
+      summary: Delete a line
+      description: Requires `routing.manage`. Its conversations go back to the first line.
       security:
         - sessionCookie: []
           csrfHeader: []
@@ -4559,6 +4682,11 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    LineExists:
+      description: '`line_exists`: a line with this name exists.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: |
         `invalid_transition` (the state machine forbids it), `version_conflict` (the
@@ -5382,7 +5510,7 @@ components:
       type: object
       required: [id, number, status, priority, line_level, contact, assignee_id, channel_id, subject,
                  first_response_at, last_message_at, resolved_at, closed_at, awaiting_fix, version, created_at,
-                 updated_at, last_message, tag_ids, topic_id, last_read_message_id, unread_count, rating]
+                 updated_at, last_message, tag_ids, topic_id, line_id, last_read_message_id, unread_count, rating]
       properties:
         id:
           type: string
@@ -5439,6 +5567,11 @@ components:
         topic_id:
           type: [string, 'null']
           description: What the question is about (`GET /topics`); `null` until the customer or an operator picks one.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        line_id:
+          type: [string, 'null']
+          description: The line the conversation is on (`GET /lines`); `null` is the first line. `line_level` is its level.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         last_read_message_id:
@@ -5656,7 +5789,7 @@ components:
       properties:
         type:
           type: string
-          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed, bot_handoff]
+          enum: [status_changed, assigned, issue_created, issue_linked, issue_closed, issue_reopened, task_created, task_linked, task_unlinked, task_closed, task_reopened, topic_changed, bot_handoff, line_changed]
           description: |
             `assigned` covers taking, transferring and releasing. `issue_created` and
             `issue_linked`: a GitHub issue was created from the conversation or it was linked to
@@ -5670,7 +5803,10 @@ components:
             `topic_changed`: the topic was set, changed or removed (`topic_id`,
             `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
             current status. `bot_handoff`: the AI bot handed the conversation to people
-            (`bot → queued`) for `reason` (ADR-0018).
+            (`bot → queued`) for `reason` (ADR-0018). `line_changed`: an operator moved the
+            conversation to another line (`line_id`, `previous_line_id`; `null` is the first line)
+            and it left its assignee for the line's queue; the reason, when given, is the note
+            after it (ADR-0021).
         from: { $ref: '#/components/schemas/ConversationStatus' }
         to: { $ref: '#/components/schemas/ConversationStatus' }
         assignee_id:
@@ -5692,6 +5828,14 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         by_customer: { type: boolean }
+        line_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        previous_line_id:
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
         reason:
           type: string
           enum: [customer_asked, topic, unknown, rules, checks_failed, ai_unavailable, limit, task_created, task_incomplete]
@@ -6652,6 +6796,68 @@ components:
             type: string
             x-go-type: uuid.UUID
             x-go-type-import: { path: github.com/google/uuid }
+
+    Line:
+      type: object
+      required: [id, name, level, member_ids]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string, maxLength: 60 }
+        level: { type: integer, minimum: 1, maximum: 3 }
+        member_ids:
+          type: array
+          maxItems: 1000
+          description: Who gets its conversations from automatic distribution, by user id.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    LineList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/Line' }
+
+    LineInput:
+      type: object
+      additionalProperties: false
+      required: [name, level, member_ids]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        level: { type: integer, minimum: 1, maximum: 3 }
+        member_ids:
+          type: array
+          maxItems: 1000
+          description: Active members of the workspace.
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    EscalateRequest:
+      type: object
+      additionalProperties: false
+      required: [line_id, reason]
+      properties:
+        line_id:
+          type: [string, 'null']
+          description: A line of the workspace; `null` is the first line.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        reason:
+          type: string
+          maxLength: 1000
+          description: Why; required up to a higher level, may be empty otherwise. It becomes a note.
+        version:
+          type: integer
+          description: The conversation's `version` you read; a mismatch answers `409 version_conflict`.
 
     SetTopicRequest:
       type: object

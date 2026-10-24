@@ -222,6 +222,7 @@ export const conversationSchema = z.object({
   last_message: conversationPreviewSchema.nullable(),
   tag_ids: z.array(z.string()),
   topic_id: z.string().nullable(),
+  line_id: z.string().nullable(),
   last_read_message_id: z.string().nullable(),
   unread_count: z.number(),
   rating: conversationRatingSchema.nullable(),
@@ -274,6 +275,7 @@ export const messageEventSchema = z.object({
     "task_reopened",
     "topic_changed",
     "bot_handoff",
+    "line_changed",
   ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
@@ -294,6 +296,8 @@ export const messageEventSchema = z.object({
   topic_id: z.string().nullable().optional(),
   previous_topic_id: z.string().nullable().optional(),
   by_customer: z.boolean().optional(),
+  line_id: z.string().nullable().optional(),
+  previous_line_id: z.string().nullable().optional(),
   reason: z
     .enum(["customer_asked", "topic", "unknown", "rules", "checks_failed", "ai_unavailable", "limit", "task_created", "task_incomplete"])
     .optional(),
@@ -369,6 +373,15 @@ export const topicSchema = z.object({
 }) satisfies z.ZodType<Schemas["Topic"]>;
 
 export const topicListSchema = z.object({ items: z.array(topicSchema) }) satisfies z.ZodType<Schemas["TopicList"]>;
+
+export const lineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  level: z.number().int(),
+  member_ids: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["Line"]>;
+
+export const lineListSchema = z.object({ items: z.array(lineSchema) }) satisfies z.ZodType<Schemas["LineList"]>;
 
 export const appLimitsSchema = z.object({
   max_file_mb: z.number(),

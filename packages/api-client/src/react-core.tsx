@@ -78,5 +78,6 @@ export const queryKeys = {
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
   topics: ["topics"] as const,
+  lines: ["lines"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
 };

@@ -59,14 +59,19 @@ FOR UPDATE;
 -- The head of the queue for the router (docs/02 §9.2): higher priority
 -- first, then the oldest. Rows another transaction holds are skipped, so
 -- an operator taking one by hand never waits for the router. Only
--- conversations someone of available may take: a topic with members goes
--- to them alone, so one nobody online may take does not block the rest.
+-- conversations someone of available may take: a line goes to its members
+-- alone (ADR-0021), and on the first line a topic with members goes to
+-- them alone, so one nobody online may take does not block the rest.
 SELECT * FROM conversations c
 WHERE c.workspace_id = @workspace_id AND c.status = 'queued'
-  AND (c.topic_id IS NULL
-       OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
-       OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
-                    AND tm.user_id = ANY(@available::uuid[])))
+  AND CASE WHEN c.line_id IS NOT NULL THEN
+        EXISTS (SELECT 1 FROM line_members lm WHERE lm.workspace_id = c.workspace_id AND lm.line_id = c.line_id
+                  AND lm.user_id = ANY(@available::uuid[]))
+      ELSE (c.topic_id IS NULL
+            OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+            OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                         AND tm.user_id = ANY(@available::uuid[])))
+      END
 ORDER BY c.priority DESC, c.created_at, c.id
 LIMIT @lim
 FOR UPDATE OF c SKIP LOCKED;
@@ -93,16 +98,21 @@ GROUP BY assignee_id;
 SELECT EXISTS (
     SELECT 1 FROM conversations c
     WHERE c.workspace_id = @workspace_id AND c.status = 'queued'
-      AND (c.topic_id IS NULL
-           OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
-           OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
-                        AND tm.user_id = ANY(@available::uuid[])))
+      AND CASE WHEN c.line_id IS NOT NULL THEN
+            EXISTS (SELECT 1 FROM line_members lm WHERE lm.workspace_id = c.workspace_id AND lm.line_id = c.line_id
+                      AND lm.user_id = ANY(@available::uuid[]))
+          ELSE (c.topic_id IS NULL
+                OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+                OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                             AND tm.user_id = ANY(@available::uuid[])))
+          END
 );
 
 -- name: ListConversations :many
 -- Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 -- row of the previous page. by_assignee with a NULL assignee_id lists the
--- unassigned ones, by_topic with a NULL topic_id those without a topic.
+-- unassigned ones, by_topic with a NULL topic_id those without a topic,
+-- by_line with a NULL line_id those on the first line.
 -- contact_id narrows it to one customer's history (served by
 -- conversations_contact_idx: a contact has few conversations to sort).
 SELECT sqlc.embed(c), ct.name AS contact_name,
@@ -149,6 +159,9 @@ WHERE c.workspace_id = @workspace_id
   AND (NOT @by_topic::boolean
        OR (sqlc.narg(topic_id)::uuid IS NULL AND c.topic_id IS NULL)
        OR c.topic_id = sqlc.narg(topic_id)::uuid)
+  AND (NOT @by_line::boolean
+       OR (sqlc.narg(line_id)::uuid IS NULL AND c.line_id IS NULL)
+       OR c.line_id = sqlc.narg(line_id)::uuid)
   AND (sqlc.narg(before_at)::timestamptz IS NULL
        OR (c.last_message_at, c.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC

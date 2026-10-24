@@ -135,6 +135,8 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "tag_exists", Title: "Conflict"})
 	case errors.Is(err, conversations.ErrTopicExists):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "topic_exists", Title: "Conflict"})
+	case errors.Is(err, conversations.ErrLineExists):
+		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "line_exists", Title: "Conflict"})
 	case errors.Is(err, conversations.ErrNotFailed):
 		writeProblem(w, r, Problem{
 			Status: http.StatusConflict, Code: "not_failed", Title: "Conflict",
