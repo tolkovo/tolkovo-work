@@ -10,9 +10,10 @@ export type NavItem = {
 
 /**
  * Panel sections in rail order (docs/07 §3). Items the user has no right to are left out,
- * not shown disabled (docs/04 §2.2). Monitor, analytics and the knowledge base get their
- * permissions with their features; until then every member sees them. Settings is for
- * everyone: personal settings belong to every role, workspace sections are filtered inside.
+ * not shown disabled (docs/04 §2.2). Monitor and analytics get their permissions with their
+ * features; until then every member sees them. The knowledge base opens «Настройки → База знаний»
+ * for those who keep it. Settings is for everyone: personal settings belong to every role,
+ * workspace sections are filtered inside.
  */
 export const navItems: readonly NavItem[] = [
   // The programmer has no inbox: they read conversations linked to tasks (ADR-0020).
@@ -21,6 +22,6 @@ export const navItems: readonly NavItem[] = [
   { to: "/tasks", label: "nav.tasks", icon: ListTodo, permission: "tasks.view" },
   { to: "/monitor", label: "nav.monitor", icon: Activity },
   { to: "/analytics", label: "nav.analytics", icon: ChartColumn },
-  { to: "/kb", label: "nav.kb", icon: BookOpen },
+  { to: "/kb", label: "nav.kb", icon: BookOpen, permission: "knowledge.manage" },
   { to: "/settings", label: "nav.settings", icon: Settings },
 ];

@@ -1,12 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { BookOpen } from "lucide-react";
-
-import { SectionPage } from "../../components/section-page";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_app/kb")({
-  component: KnowledgeBasePage,
+  beforeLoad: () => {
+    // The knowledge base lives in «Настройки → База знаний» (ADR-0018); the rail leads there.
+    throw redirect({ to: "/settings/knowledge", replace: true });
+  },
 });
-
-function KnowledgeBasePage() {
-  return <SectionPage section="kb" icon={BookOpen} actionTo="/settings" />;
-}

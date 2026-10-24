@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "./empty-state";
 
-type Section = "monitor" | "analytics" | "kb";
+type Section = "monitor" | "analytics";
 
 type SectionPageProps = {
   section: Section;
