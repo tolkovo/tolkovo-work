@@ -23,7 +23,9 @@ func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, param
 		s.writeError(w, r, err)
 		return
 	}
-	f := conversations.ListFilter{ViewerID: p.UserID, ContactID: params.ContactId, Cursor: deref(params.Cursor)}
+	f := conversations.ListFilter{
+		ViewerID: p.UserID, ContactID: params.ContactId, Cursor: deref(params.Cursor), Limited: byLevel(p),
+	}
 	if f.Limit, err = pageLimit(params.Limit); err != nil {
 		s.writeError(w, r, err)
 		return
@@ -70,7 +72,7 @@ func (s *server) GetInboxCounts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	n, err := s.conversations.InboxCounts(r.Context(), p.WorkspaceID, p.UserID)
+	n, err := s.conversations.InboxCounts(r.Context(), p.WorkspaceID, p.UserID, byLevel(p))
 	if err != nil {
 		s.writeError(w, r, err)
 		return

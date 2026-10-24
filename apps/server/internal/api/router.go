@@ -128,8 +128,9 @@ func NewRouter(d Deps) http.Handler {
 		oapi.HandlerWithOptions(srv, oapi.ChiServerOptions{
 			BaseURL:    "/api/v1",
 			BaseRouter: r,
-			// Runs after routing, so authenticate sees the route pattern.
-			Middlewares:      []oapi.MiddlewareFunc{srv.authenticate},
+			// Runs after routing, so authenticate sees the route pattern. The
+			// last one runs first: authenticate, then lineScope.
+			Middlewares:      []oapi.MiddlewareFunc{srv.lineScope, srv.authenticate},
 			ErrorHandlerFunc: srv.paramError,
 		})
 	})

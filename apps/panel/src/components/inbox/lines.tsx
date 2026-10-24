@@ -1,5 +1,5 @@
 import { escalateConversation, type Conversation, type Line, type MessageEvent } from "@tolkovo/api-client";
-import { useLines } from "@tolkovo/api-client/react";
+import { useCan, useLines } from "@tolkovo/api-client/react";
 import { Button, Select, cn } from "@tolkovo/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
@@ -108,6 +108,9 @@ function EscalateForm({
 }) {
   const { t } = useTranslation();
   const id = useId();
+  const navigate = useNavigate();
+  // Owners and admins see every line; anyone else may lose sight of it (ADR-0021).
+  const seesAll = useCan("conversations.manage");
   const targets = lines.filter((l) => l.id !== c.line_id);
   const [target, setTarget] = useState(targets.find((l) => l.level > c.line_level)?.id ?? targets[0]?.id ?? "");
   const [reason, setReason] = useState("");
@@ -124,7 +127,11 @@ function EscalateForm({
     }
     setError(null);
     change.mutate((api) => escalateConversation(api, c.id, target || null, reason.trim(), c.version), {
-      onSuccess: onDone,
+      onSuccess: () => {
+        onDone();
+        // It left their work for the line's queue: back to the list.
+        if (!seesAll) void navigate({ to: "/inbox", search: (prev) => prev });
+      },
       onError: (err) => setError(describeApiError(t, err).message),
     });
   };

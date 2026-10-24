@@ -3,7 +3,9 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
@@ -99,6 +101,40 @@ func (s *server) EscalateConversation(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	writeJSON(w, http.StatusOK, conversationBody(c))
+}
+
+// byLevel: the caller sees conversations by the level of their lines
+// (ADR-0021). Owners and admins (conversations.manage) see every line.
+func byLevel(p authz.Principal) bool { return !p.Can(authz.ConversationsManage) }
+
+// lineScope keeps a member limited by level away from the conversations of
+// lines above it, on every operation under /conversations/{id}: such a
+// conversation is 404 to them, as a missing one. It runs after
+// authenticate, which sets the principal.
+func (s *server) lineScope(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pattern := chi.RouteContext(r.Context()).RoutePattern()
+		p, ok := authz.PrincipalFrom(r.Context())
+		if !ok || !strings.HasPrefix(pattern, "/api/v1/conversations/{id}") || !p.Can(authz.ConversationsView) || !byLevel(p) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil {
+			next.ServeHTTP(w, r) // the handler answers the bad id
+			return
+		}
+		sees, err := s.conversations.Sees(r.Context(), p.WorkspaceID, p.UserID, id)
+		if err != nil {
+			s.writeError(w, r, err)
+			return
+		}
+		if !sees {
+			s.writeError(w, r, conversations.ErrNotFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // lineFilter reads the line parameter of a list: "" any, "first" the first

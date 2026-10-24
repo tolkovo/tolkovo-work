@@ -280,6 +280,22 @@ func (s *Service) Escalate(
 	return out, nil
 }
 
+// Sees reports whether userID, limited by the level of their lines, sees
+// the conversation: its line is not above their level, or it is theirs. A
+// missing conversation is not seen.
+func (s *Service) Sees(ctx context.Context, workspaceID, userID, conversationID uuid.UUID) (bool, error) {
+	var ok bool
+	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
+		var err error
+		ok, err = q.SeesConversation(ctx, store.SeesConversationParams{WorkspaceID: workspaceID, ID: conversationID, UserID: userID})
+		return err
+	})
+	if err != nil {
+		return false, wrap(err, "sees conversation")
+	}
+	return ok, nil
+}
+
 func setLineMembers(ctx context.Context, q *store.Queries, row store.Line, ids []uuid.UUID) (Line, error) {
 	if len(ids) > 0 {
 		n, err := q.AddLineMembers(ctx, store.AddLineMembersParams{LineID: row.ID, WorkspaceID: row.WorkspaceID, UserIds: ids})

@@ -102,8 +102,11 @@ type ListFilter struct {
 	// is nil.
 	ByLine bool
 	LineID *uuid.UUID
-	Cursor string
-	Limit  int
+	// Limited shows only what ViewerID sees by the level of their lines
+	// (ADR-0021): owners and admins see every line.
+	Limited bool
+	Cursor  string
+	Limit   int
 }
 
 // CreateConversation starts a conversation with an existing contact. It
@@ -191,7 +194,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		rows, err = q.ListConversations(ctx, store.ListConversationsParams{
 			UserID: f.ViewerID, WorkspaceID: workspaceID, Statuses: statuses,
 			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID, ContactID: f.ContactID,
-			ByTopic: f.ByTopic, TopicID: f.TopicID, ByLine: f.ByLine, LineID: f.LineID, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
+			ByTopic: f.ByTopic, TopicID: f.TopicID, ByLine: f.ByLine, LineID: f.LineID, Limited: f.Limited, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
 		})
 		return err
 	})
@@ -210,11 +213,12 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		}), nil
 }
 
-// InboxCounts counts the conversations of the inbox tabs for userID.
-func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID) (InboxCounts, error) {
+// InboxCounts counts the conversations of the inbox tabs for userID;
+// limited counts only those they see by the level of their lines.
+func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID, limited bool) (InboxCounts, error) {
 	var out InboxCounts
 	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
-		row, err := q.CountInbox(ctx, store.CountInboxParams{WorkspaceID: workspaceID, UserID: &userID})
+		row, err := q.CountInbox(ctx, store.CountInboxParams{WorkspaceID: workspaceID, UserID: &userID, Limited: limited})
 		out = InboxCounts{Mine: row.Mine, MineUnread: row.MineUnread, Unassigned: row.Unassigned, Open: row.Open}
 		return err
 	})

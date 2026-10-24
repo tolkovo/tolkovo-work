@@ -84,6 +84,19 @@ WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND status IN ('as
 ORDER BY created_at, id
 FOR UPDATE;
 
+-- name: SeesConversation :one
+-- Whether a viewer limited by level sees the conversation: its line is not
+-- above their level (the highest of their lines, 1), or it is theirs
+-- (ADR-0021). A missing conversation is not seen.
+SELECT EXISTS (
+    SELECT 1 FROM conversations c
+    WHERE c.workspace_id = @workspace_id AND c.id = @id
+      AND (c.assignee_id = @user_id::uuid
+           OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                               JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                               WHERE lm.workspace_id = @workspace_id AND lm.user_id = @user_id::uuid))
+);
+
 -- name: CountOpenOf :many
 -- The load of each of user_ids: their conversations in work, assigned or
 -- pending (ADR-0021). Served by conversations_assignee_idx.
@@ -162,6 +175,12 @@ WHERE c.workspace_id = @workspace_id
   AND (NOT @by_line::boolean
        OR (sqlc.narg(line_id)::uuid IS NULL AND c.line_id IS NULL)
        OR c.line_id = sqlc.narg(line_id)::uuid)
+  -- limited: the viewer sees lines up to their level and their own
+  -- conversations (ADR-0021); the level is the highest of their lines, 1.
+  AND (NOT @limited::boolean OR c.assignee_id = @user_id
+       OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                                 JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                                 WHERE lm.workspace_id = @workspace_id AND lm.user_id = @user_id))
   AND (sqlc.narg(before_at)::timestamptz IS NULL
        OR (c.last_message_at, c.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC
@@ -187,7 +206,12 @@ SELECT
     count(*) FILTER (WHERE c.assignee_id IS NULL AND c.status = 'queued')::bigint AS unassigned,
     count(*) FILTER (WHERE c.status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
 FROM conversations c
-WHERE c.workspace_id = @workspace_id AND c.status IN ('new', 'bot', 'queued', 'assigned', 'pending');
+WHERE c.workspace_id = @workspace_id AND c.status IN ('new', 'bot', 'queued', 'assigned', 'pending')
+  -- As ListConversations with limited.
+  AND (NOT @limited::boolean OR c.assignee_id = @user_id
+       OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                                 JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                                 WHERE lm.workspace_id = @workspace_id AND lm.user_id = @user_id));
 
 -- name: UpdateConversationState :execrows
 -- Applies a transition computed in Go. The version guard makes a lost

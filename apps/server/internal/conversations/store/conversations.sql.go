@@ -70,11 +70,17 @@ SELECT
     count(*) FILTER (WHERE c.status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
 FROM conversations c
 WHERE c.workspace_id = $2 AND c.status IN ('new', 'bot', 'queued', 'assigned', 'pending')
+  -- As ListConversations with limited.
+  AND (NOT $3::boolean OR c.assignee_id = $1
+       OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                                 JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                                 WHERE lm.workspace_id = $2 AND lm.user_id = $1))
 `
 
 type CountInboxParams struct {
 	UserID      *uuid.UUID
 	WorkspaceID uuid.UUID
+	Limited     bool
 }
 
 type CountInboxRow struct {
@@ -90,7 +96,7 @@ type CountInboxRow struct {
 // mine_unread: the caller's conversations with a customer message after
 // their read mark (the "(3)" in the tab title, docs/04 §5.5).
 func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountInboxRow, error) {
-	row := q.db.QueryRow(ctx, countInbox, arg.UserID, arg.WorkspaceID)
+	row := q.db.QueryRow(ctx, countInbox, arg.UserID, arg.WorkspaceID, arg.Limited)
 	var i CountInboxRow
 	err := row.Scan(
 		&i.Mine,
@@ -377,10 +383,16 @@ WHERE c.workspace_id = $2
   AND (NOT $9::boolean
        OR ($10::uuid IS NULL AND c.line_id IS NULL)
        OR c.line_id = $10::uuid)
-  AND ($11::timestamptz IS NULL
-       OR (c.last_message_at, c.id) < ($11::timestamptz, $12::uuid))
+  -- limited: the viewer sees lines up to their level and their own
+  -- conversations (ADR-0021); the level is the highest of their lines, 1.
+  AND (NOT $11::boolean OR c.assignee_id = $1
+       OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                                 JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                                 WHERE lm.workspace_id = $2 AND lm.user_id = $1))
+  AND ($12::timestamptz IS NULL
+       OR (c.last_message_at, c.id) < ($12::timestamptz, $13::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC
-LIMIT $13
+LIMIT $14
 `
 
 type ListConversationsParams struct {
@@ -394,6 +406,7 @@ type ListConversationsParams struct {
 	TopicID     *uuid.UUID
 	ByLine      bool
 	LineID      *uuid.UUID
+	Limited     bool
 	BeforeAt    *time.Time
 	BeforeID    *uuid.UUID
 	Lim         int32
@@ -430,6 +443,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 		arg.TopicID,
 		arg.ByLine,
 		arg.LineID,
+		arg.Limited,
 		arg.BeforeAt,
 		arg.BeforeID,
 		arg.Lim,
@@ -683,6 +697,33 @@ func (q *Queries) NextConversationNumber(ctx context.Context, workspaceID uuid.U
 	var last_number int64
 	err := row.Scan(&last_number)
 	return last_number, err
+}
+
+const seesConversation = `-- name: SeesConversation :one
+SELECT EXISTS (
+    SELECT 1 FROM conversations c
+    WHERE c.workspace_id = $1 AND c.id = $2
+      AND (c.assignee_id = $3::uuid
+           OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                               JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                               WHERE lm.workspace_id = $1 AND lm.user_id = $3::uuid))
+)
+`
+
+type SeesConversationParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	UserID      uuid.UUID
+}
+
+// Whether a viewer limited by level sees the conversation: its line is not
+// above their level (the highest of their lines, 1), or it is theirs
+// (ADR-0021). A missing conversation is not seen.
+func (q *Queries) SeesConversation(ctx context.Context, arg SeesConversationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, seesConversation, arg.WorkspaceID, arg.ID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const setAwaitingFix = `-- name: SetAwaitingFix :exec

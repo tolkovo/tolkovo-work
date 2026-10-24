@@ -69,8 +69,8 @@ function Capacity({ settings, onSave, saving }: { settings: RoutingSettings; onS
           <caption className="mb-1 text-left text-[13px] font-medium text-ink">{t("settings.routing.members")}</caption>
           <colgroup>
             <col />
-            <col className="w-24" />
-            <col className="w-40" />
+            <col className="w-24 max-nav:w-16" />
+            <col className="w-40 max-nav:w-28" />
           </colgroup>
           <thead>
             <tr className="text-left text-[12px] text-ink-2">
@@ -98,7 +98,7 @@ function Capacity({ settings, onSave, saving }: { settings: RoutingSettings; onS
                       <span className="truncate">{m?.name ?? l.user_id}</span>
                     </span>
                   </th>
-                  <td className={cn("py-1.5 tabular-nums", full ? "font-medium text-ink" : "text-ink-2")}>
+                  <td className={cn("py-1.5 pr-2 tabular-nums whitespace-nowrap", full ? "font-medium text-ink" : "text-ink-2")}>
                     {max === null ? l.open : t("settings.routing.load", { open: l.open, max })}
                   </td>
                   <td className="py-1.5">
