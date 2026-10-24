@@ -906,9 +906,9 @@ paths:
       operationId: setRouting
       summary: Change how the workspace distributes its queue
       description: |
-        With `round_robin` the server assigns queued conversations at once and then each
-        new one, in turn, to the members who are `online` with the panel open. Requires
-        `routing.manage` (owner, admin).
+        With `round_robin` or `least_loaded` the server assigns queued conversations at once
+        and then each new one to the members who are `online` with the panel open and have
+        room under `max_chats`. Requires `routing.manage` (owner, admin).
       security:
         - sessionCookie: []
           csrfHeader: []
@@ -926,6 +926,45 @@ paths:
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /routing/members:
+    get:
+      tags: [workspace]
+      operationId: listRoutingMembers
+      summary: Capacity and load of the members who answer customers
+      description: Requires `members.view` (owner, admin, operator).
+      responses:
+        '200':
+          description: Active members whose role answers customers.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutingMemberList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /routing/members/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [workspace]
+      operationId: setRoutingMember
+      summary: Set a member's own capacity
+      description: |
+        `null` follows the workspace's `max_chats`. Requires `routing.manage` (owner, admin).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetRoutingMemberRequest' }
+      responses:
+        '204': { description: Saved. }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /invitations:
     get:
@@ -5113,14 +5152,53 @@ components:
     RoutingSettings:
       type: object
       additionalProperties: false
-      required: [mode]
+      required: [mode, max_chats]
       properties:
         mode:
           type: string
           description: |
             `manual`: operators take conversations from the queue. `round_robin`: the server
-            assigns them in turn to members who are `online`.
-          enum: [manual, round_robin]
+            assigns them in turn to members who are `online`. `least_loaded`: to the one of
+            them with the smallest share of their capacity in use.
+          enum: [manual, round_robin, least_loaded]
+        max_chats:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 50
+          description: Conversations in work (assigned or pending) the server gives one member; `null` is no limit. Taking one by hand is never limited.
+
+    RoutingMember:
+      type: object
+      required: [user_id, max_chats, open]
+      properties:
+        user_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        max_chats:
+          type: [integer, 'null']
+          description: The member's own limit; `null` follows the workspace's.
+        open:
+          type: integer
+          description: Conversations the member has in work now.
+
+    RoutingMemberList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RoutingMember' }
+
+    SetRoutingMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [max_chats]
+      properties:
+        max_chats:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 50
 
     AIProvider:
       type: string

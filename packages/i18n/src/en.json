@@ -523,12 +523,24 @@
         "manual": "Manually",
         "manualHint": "Conversations wait in the queue; operators take them with «Take».",
         "round_robin": "In turn",
-        "round_robinHint": "Each new conversation goes at once to the next operator who is «Online» with the panel open. Those already waiting are distributed as soon as you switch this on."
+        "round_robinHint": "Each new conversation goes at once to the next operator who is «Online» with the panel open. Those already waiting are distributed as soon as you switch this on.",
+        "least_loaded": "To the least loaded",
+        "least_loadedHint": "Each new conversation goes to the «Online» operator with the panel open who uses the smallest part of their limit; equals in turn. Useful when operators have different limits."
       },
-      "rules": "With nobody online, a conversation waits in the queue and goes to the first one back. A conversation given back to the queue does not return to the same operator while others are available. A resolved conversation the customer writes to again goes back to its operator if they are online, otherwise to the next one.",
+      "rules": "With nobody online or everyone at their limit, a conversation waits in the queue and goes to the first one back or with room. A conversation given back to the queue does not return to the same operator while others are available. A resolved conversation the customer writes to again goes back to its operator if they are online, otherwise to the next one.",
       "onlineNow": "{count, plural, one {# person takes conversations now:} other {# people take conversations now:}}",
       "nobodyOnline": "Nobody takes conversations now: new ones will wait in the queue.",
-      "saved": "Saved."
+      "saved": "Saved.",
+      "maxChats": "Conversations per operator",
+      "maxChatsHint": "How many conversations in work (assigned or waiting for the customer) one operator gets. Over the limit a conversation waits in the queue and goes to the first one with room. «Take» and «Transfer» are not limited.",
+      "noLimit": "No limit",
+      "members": "Own limit of an operator",
+      "member": "Operator",
+      "inWork": "In work",
+      "ownLimit": "Limit",
+      "ownLimitOf": "Limit for {name}",
+      "asEveryone": "As for everyone",
+      "load": "{open} of {max}"
     },
     "topics": {
       "title": "Topics",

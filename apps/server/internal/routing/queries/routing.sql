@@ -1,11 +1,38 @@
 -- name: GetMode :one
 SELECT COALESCE((SELECT mode FROM routing_settings WHERE workspace_id = @workspace_id), 'manual')::text;
 
--- name: SetMode :exec
-INSERT INTO routing_settings (workspace_id, mode, updated_at)
-VALUES (@workspace_id, @mode, @updated_at)
+-- name: GetSettings :one
+-- The defaults while the workspace has no row: manual, no limit.
+SELECT COALESCE(s.mode, 'manual')::text AS mode, s.max_chats
+FROM (SELECT @workspace_id::uuid AS workspace_id) w
+LEFT JOIN routing_settings s ON s.workspace_id = w.workspace_id;
+
+-- name: SetSettings :exec
+INSERT INTO routing_settings (workspace_id, mode, max_chats, updated_at)
+VALUES (@workspace_id, @mode, sqlc.narg(max_chats), @updated_at)
 ON CONFLICT (workspace_id) DO UPDATE
-SET mode = EXCLUDED.mode, updated_at = EXCLUDED.updated_at;
+SET mode = EXCLUDED.mode, max_chats = EXCLUDED.max_chats, updated_at = EXCLUDED.updated_at;
+
+-- name: ListLimits :many
+-- The members who answer customers, with their own limit (NULL: the
+-- workspace's).
+SELECT m.user_id, os.max_chats
+FROM memberships m
+JOIN roles r ON r.id = m.role_id
+LEFT JOIN operator_states os ON os.workspace_id = m.workspace_id AND os.user_id = m.user_id
+WHERE m.workspace_id = @workspace_id AND m.is_active AND r.key = ANY(@answering::text[])
+ORDER BY m.user_id;
+
+-- name: SetLimit :execrows
+-- Only for an active member who answers customers.
+INSERT INTO operator_states (workspace_id, user_id, max_chats, updated_at)
+SELECT m.workspace_id, m.user_id, sqlc.narg(max_chats)::smallint, @updated_at::timestamptz
+FROM memberships m
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active
+  AND r.key = ANY(@answering::text[])
+ON CONFLICT (workspace_id, user_id) DO UPDATE
+SET max_chats = EXCLUDED.max_chats, updated_at = EXCLUDED.updated_at;
 
 -- name: GetStates :many
 -- States of the given members; members without a row have the defaults.
@@ -53,7 +80,7 @@ SELECT EXISTS (
 -- locks keep a parallel assignment from reading a stale turn order; they
 -- are taken in user_id order, as MarkSeen does, so the two never deadlock.
 WITH locked AS MATERIALIZED (
-    SELECT os.user_id, os.last_assigned_at
+    SELECT os.user_id, os.last_assigned_at, os.max_chats
     FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
     JOIN roles r ON r.id = m.role_id
@@ -63,7 +90,7 @@ WITH locked AS MATERIALIZED (
     ORDER BY os.user_id
     FOR UPDATE OF os
 )
-SELECT user_id FROM locked
+SELECT user_id, max_chats FROM locked
 ORDER BY last_assigned_at ASC NULLS FIRST, user_id;
 
 -- name: SetLastAssigned :exec
@@ -79,4 +106,9 @@ SELECT EXISTS (
     WHERE os.workspace_id = @workspace_id AND m.is_active
       AND r.key = ANY(@answering::text[])
       AND os.status = 'online' AND os.seen_at > @seen_after::timestamptz
+);
+
+-- name: AnyOwnLimit :one
+SELECT EXISTS (
+    SELECT 1 FROM operator_states WHERE workspace_id = @workspace_id AND max_chats IS NOT NULL
 );

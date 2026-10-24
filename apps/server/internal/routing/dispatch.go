@@ -53,8 +53,8 @@ func (s *Service) dispatchAt(ctx context.Context, tx pgx.Tx, workspaceID uuid.UU
 // ErrBusy means another run distributes the workspace's queue right now.
 var ErrBusy = errors.New("routing: another dispatch is running")
 
-// Dispatch gives the head of the queue to the available members in turn
-// (docs/02 §9.3). One run per workspace at a time (an advisory lock); a
+// Dispatch gives the head of the queue to the available members with room,
+// in turn or to the least loaded (docs/02 §9.3, ADR-0021). One run per workspace at a time (an advisory lock); a
 // second one gets ErrBusy and is retried after the first, so whatever the
 // first could not see yet is not left waiting.
 func (s *Service) Dispatch(ctx context.Context, convs *conversations.Service, workspaceID uuid.UUID) (int, error) {
@@ -70,15 +70,31 @@ func (s *Service) Dispatch(ctx context.Context, convs *conversations.Service, wo
 			return ErrBusy
 		}
 		q := store.New(tx)
-		mode, err := q.GetMode(ctx, workspaceID)
-		if err != nil || Mode(mode) != ModeRoundRobin {
+		set, err := q.GetSettings(ctx, workspaceID)
+		if err != nil || !auto(set.Mode) {
 			return err
 		}
-		users, err := q.LockAvailable(ctx, store.LockAvailableParams{Answering: answering, WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
-		if err != nil || len(users) == 0 {
+		avail, err := q.LockAvailable(ctx, store.LockAvailableParams{Answering: answering, WorkspaceID: workspaceID, SeenAfter: s.seenAfter()})
+		if err != nil || len(avail) == 0 {
 			return err
 		}
-		got, err := convs.AssignQueued(ctx, tx, workspaceID, users, DispatchBatch)
+		p := &pool{
+			turn: make([]uuid.UUID, len(avail)), limit: make(map[uuid.UUID]int, len(avail)),
+			least: Mode(set.Mode) == ModeLeastLoaded,
+		}
+		for i, a := range avail {
+			p.turn[i] = a.UserID
+			switch {
+			case a.MaxChats.Valid:
+				p.limit[a.UserID] = int(a.MaxChats.Int16)
+			case set.MaxChats.Valid:
+				p.limit[a.UserID] = int(set.MaxChats.Int16)
+			}
+		}
+		if p.load, err = convs.Loads(ctx, tx, workspaceID, p.turn); err != nil {
+			return err
+		}
+		got, err := convs.AssignQueued(ctx, tx, workspaceID, p, DispatchBatch)
 		if err != nil {
 			return err
 		}
@@ -96,8 +112,13 @@ func (s *Service) Dispatch(ctx context.Context, convs *conversations.Service, wo
 		if assigned == DispatchBatch {
 			return s.dispatchLater(ctx, tx, workspaceID)
 		}
-		// What is still queued was held by another transaction.
-		left, err := convs.HasQueued(ctx, tx, workspaceID, users)
+		// What is still queued for those with room was held by another
+		// transaction; those without room come back when one frees (Freed).
+		room := p.Users()
+		if len(room) == 0 {
+			return nil
+		}
+		left, err := convs.HasQueued(ctx, tx, workspaceID, room)
 		if err != nil || !left {
 			return err
 		}

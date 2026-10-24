@@ -3,6 +3,7 @@ package routing_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"slices"
@@ -87,10 +88,12 @@ func (f *fixture) operator(name string) uuid.UUID {
 	return id
 }
 
-func (f *fixture) roundRobin() {
+func (f *fixture) roundRobin() { f.t.Helper(); f.settings(routing.ModeRoundRobin, nil) }
+
+func (f *fixture) settings(mode routing.Mode, maxChats *int) {
 	f.t.Helper()
-	if _, err := f.router.SetMode(f.ctx, f.ws, routing.ModeRoundRobin); err != nil {
-		f.t.Fatalf("set mode: %v", err)
+	if _, err := f.router.SetSettings(f.ctx, f.ws, routing.Settings{Mode: mode, MaxChats: maxChats}); err != nil {
+		f.t.Fatalf("set settings: %v", err)
 	}
 }
 
@@ -363,8 +366,13 @@ func TestPresence(t *testing.T) {
 	if _, err := f.router.SetStatus(f.ctx, f.ws, a, "busy"); err == nil {
 		t.Fatal("unknown status accepted")
 	}
-	if _, err := f.router.SetMode(f.ctx, f.ws, "random"); err == nil {
+	if _, err := f.router.SetSettings(f.ctx, f.ws, routing.Settings{Mode: "random"}); err == nil {
 		t.Fatal("unknown mode accepted")
+	}
+	for _, n := range []int{0, 51} {
+		if _, err := f.router.SetSettings(f.ctx, f.ws, routing.Settings{Mode: routing.ModeRoundRobin, MaxChats: &n}); err == nil {
+			t.Fatalf("limit %d accepted", n)
+		}
 	}
 }
 
@@ -423,9 +431,7 @@ func TestReopenWhileAway(t *testing.T) {
 	}
 
 	// Manual distribution keeps the old rule: the member gets it back.
-	if _, err := f.router.SetMode(f.ctx, f.ws, routing.ModeManual); err != nil {
-		t.Fatalf("manual: %v", err)
-	}
+	f.settings(routing.ModeManual, nil)
 	if _, err := f.convs.Transition(f.ctx, f.ws, conversations.Actor{UserID: b}, res.ConversationID, conversations.StatusResolved, nil); err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -498,5 +504,127 @@ func TestDispatch_ComesBackForLocked(t *testing.T) {
 	var left int
 	if err := conn.QueryRow(f.ctx, "SELECT count(*) FROM river.river_job WHERE kind = 'routing.dispatch'").Scan(&left); err != nil || left != 0 {
 		t.Fatalf("an empty queue queued %d runs (%v)", left, err)
+	}
+}
+
+func ptr(n int) *int { return &n }
+
+// Nobody gets more than their capacity; the rest waits and goes out as
+// soon as a conversation leaves someone's work.
+func TestDispatch_Capacity(t *testing.T) {
+	f := setup(t)
+	a, b := f.operator("anna"), f.operator("boris")
+	f.settings(routing.ModeRoundRobin, ptr(2))
+	if err := f.router.SetLimit(f.ctx, f.ws, b, ptr(1)); err != nil {
+		t.Fatalf("own limit: %v", err)
+	}
+	f.seen(a, b)
+	ids := []uuid.UUID{f.conversation(0), f.conversation(0), f.conversation(0), f.conversation(0)}
+	if n := f.dispatch(); n != 3 {
+		t.Fatalf("assigned %d, want 3: two to anna, one to boris", n)
+	}
+	count := map[uuid.UUID]int{}
+	for _, id := range ids[:3] {
+		count[f.assigneeOf(id)]++
+	}
+	if count[a] != 2 || count[b] != 1 {
+		t.Fatalf("loads %v", count)
+	}
+	if c := f.get(ids[3]); c.Status != conversations.StatusQueued {
+		t.Fatalf("fourth: %s", c.Status)
+	}
+	// Full members are no reason to come back in 2 s.
+	f.forgetJobs()
+	f.dispatch()
+	if n := f.dispatchJobs(); n != 0 {
+		t.Fatalf("a full team queued %d runs", n)
+	}
+
+	limits, err := f.router.Limits(f.ctx, f.ws, f.convs.Loads)
+	if err != nil {
+		t.Fatalf("limits: %v", err)
+	}
+	byUser := map[uuid.UUID]routing.Limit{}
+	for _, l := range limits {
+		byUser[l.UserID] = l
+	}
+	if l := byUser[b]; l.MaxChats == nil || *l.MaxChats != 1 || l.Open != 1 {
+		t.Fatalf("boris: %+v", l)
+	}
+	if l := byUser[a]; l.MaxChats != nil || l.Open != 2 {
+		t.Fatalf("anna: %+v", l)
+	}
+	if _, ok := byUser[f.owner]; !ok {
+		t.Fatal("the owner answers customers too")
+	}
+
+	// Boris resolves his: room again, and the waiting one goes to him.
+	var his uuid.UUID
+	for _, id := range ids[:3] {
+		if f.assigneeOf(id) == b {
+			his = id
+		}
+	}
+	if _, err := f.convs.Transition(f.ctx, f.ws, conversations.Actor{UserID: b}, his, conversations.StatusResolved, nil); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if f.dispatchJobs() == 0 {
+		t.Fatal("a freed place queued no dispatch")
+	}
+	f.dispatch()
+	if got := f.assigneeOf(ids[3]); got != b {
+		t.Fatalf("waiting one went to %v, want boris", got)
+	}
+
+	// Without limits a resolved conversation frees nothing anyone waits for.
+	f.settings(routing.ModeRoundRobin, nil)
+	if err := f.router.SetLimit(f.ctx, f.ws, b, nil); err != nil {
+		t.Fatalf("drop own limit: %v", err)
+	}
+	f.forgetJobs()
+	if _, err := f.convs.Transition(f.ctx, f.ws, conversations.Actor{UserID: b}, ids[3], conversations.StatusResolved, nil); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if n := f.dispatchJobs(); n != 0 {
+		t.Fatalf("resolving without limits queued %d runs", n)
+	}
+
+	if err := f.router.SetLimit(f.ctx, f.ws, uuid.Must(uuid.NewV7()), ptr(1)); !errors.Is(err, routing.ErrNotFound) {
+		t.Fatalf("a stranger's limit: %v", err)
+	}
+}
+
+// least_loaded gives each conversation to whoever has the smallest share of
+// their capacity in use; equals in turn.
+func TestDispatch_LeastLoaded(t *testing.T) {
+	f := setup(t)
+	a, b := f.operator("anna"), f.operator("boris")
+	f.settings(routing.ModeRoundRobin, nil)
+	if err := f.router.SetLimit(f.ctx, f.ws, a, ptr(4)); err != nil {
+		t.Fatalf("own limit: %v", err)
+	}
+	if err := f.router.SetLimit(f.ctx, f.ws, b, ptr(2)); err != nil {
+		t.Fatalf("own limit: %v", err)
+	}
+	// Anna already has two by hand: half full; boris is empty.
+	for range 2 {
+		id := f.conversation(0)
+		if _, err := f.convs.Assign(f.ctx, f.ws, conversations.Actor{UserID: f.owner, AnyConversation: true, AssignOthers: true}, id, &a, nil); err != nil {
+			t.Fatalf("assign: %v", err)
+		}
+	}
+	f.settings(routing.ModeLeastLoaded, nil)
+	f.seen(a, b)
+	first := f.conversation(0)
+	f.dispatch()
+	if got := f.assigneeOf(first); got != b {
+		t.Fatalf("first went to %v, want boris (0/2 against 2/4)", got)
+	}
+	// Now both are half full: the next goes to whoever is first in turn,
+	// that is anna, who got nothing from the router yet.
+	second := f.conversation(0)
+	f.dispatch()
+	if got := f.assigneeOf(second); got != a {
+		t.Fatalf("second went to %v, want anna", got)
 	}
 }

@@ -95,7 +95,7 @@ type Notifier interface {
 	WaitsInQueue(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, topicID *uuid.UUID) error
 }
 
-// Router distributes the queue (docs/02 §9). Both methods run inside the
+// Router distributes the queue (docs/02 §9). Its methods run inside the
 // transaction of the change: they may write rows and queue jobs there,
 // never call the network.
 type Router interface {
@@ -105,6 +105,9 @@ type Router interface {
 	// Available reports whether a conversation the customer reopens may go
 	// back to userID rather than to the queue.
 	Available(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) (bool, error)
+	// Freed hears that a conversation left the work of userID, so they may
+	// have room for another (ADR-0021).
+	Freed(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) error
 }
 
 // Service is the module facade.

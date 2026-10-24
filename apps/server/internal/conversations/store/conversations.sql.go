@@ -101,6 +101,45 @@ func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountIn
 	return i, err
 }
 
+const countOpenOf = `-- name: CountOpenOf :many
+SELECT assignee_id::uuid AS user_id, count(*)::integer AS open
+FROM conversations
+WHERE workspace_id = $1 AND assignee_id = ANY($2::uuid[]) AND status IN ('assigned', 'pending')
+GROUP BY assignee_id
+`
+
+type CountOpenOfParams struct {
+	WorkspaceID uuid.UUID
+	UserIds     []uuid.UUID
+}
+
+type CountOpenOfRow struct {
+	UserID uuid.UUID
+	Open   int32
+}
+
+// The load of each of user_ids: their conversations in work, assigned or
+// pending (ADR-0021). Served by conversations_assignee_idx.
+func (q *Queries) CountOpenOf(ctx context.Context, arg CountOpenOfParams) ([]CountOpenOfRow, error) {
+	rows, err := q.db.Query(ctx, countOpenOf, arg.WorkspaceID, arg.UserIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountOpenOfRow
+	for rows.Next() {
+		var i CountOpenOfRow
+		if err := rows.Scan(&i.UserID, &i.Open); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, status, priority, subject)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

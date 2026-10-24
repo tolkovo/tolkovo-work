@@ -863,13 +863,16 @@ func (e Role) Valid() bool {
 
 // Defines values for RoutingSettingsMode.
 const (
-	Manual     RoutingSettingsMode = "manual"
-	RoundRobin RoutingSettingsMode = "round_robin"
+	LeastLoaded RoutingSettingsMode = "least_loaded"
+	Manual      RoutingSettingsMode = "manual"
+	RoundRobin  RoutingSettingsMode = "round_robin"
 )
 
 // Valid indicates whether the value is a known member of the RoutingSettingsMode enum.
 func (e RoutingSettingsMode) Valid() bool {
 	switch e {
+	case LeastLoaded:
+		return true
 	case Manual:
 		return true
 	case RoundRobin:
@@ -2768,15 +2771,35 @@ type ResetPasswordRequest struct {
 // conversations linked to tasks (ADR-0020).
 type Role string
 
+// RoutingMember defines model for RoutingMember.
+type RoutingMember struct {
+	// MaxChats The member's own limit; `null` follows the workspace's.
+	MaxChats *int `json:"max_chats"`
+
+	// Open Conversations the member has in work now.
+	Open   int       `json:"open"`
+	UserId uuid.UUID `json:"user_id"`
+}
+
+// RoutingMemberList defines model for RoutingMemberList.
+type RoutingMemberList struct {
+	Items []RoutingMember `json:"items"`
+}
+
 // RoutingSettings defines model for RoutingSettings.
 type RoutingSettings struct {
+	// MaxChats Conversations in work (assigned or pending) the server gives one member; `null` is no limit. Taking one by hand is never limited.
+	MaxChats *int `json:"max_chats"`
+
 	// Mode `manual`: operators take conversations from the queue. `round_robin`: the server
-	// assigns them in turn to members who are `online`.
+	// assigns them in turn to members who are `online`. `least_loaded`: to the one of
+	// them with the smallest share of their capacity in use.
 	Mode RoutingSettingsMode `json:"mode"`
 }
 
 // RoutingSettingsMode `manual`: operators take conversations from the queue. `round_robin`: the server
-// assigns them in turn to members who are `online`.
+// assigns them in turn to members who are `online`. `least_loaded`: to the one of
+// them with the smallest share of their capacity in use.
 type RoutingSettingsMode string
 
 // Session defines model for Session.
@@ -2792,6 +2815,11 @@ type Session struct {
 	Role      Role      `json:"role"`
 	User      User      `json:"user"`
 	Workspace Workspace `json:"workspace"`
+}
+
+// SetRoutingMemberRequest defines model for SetRoutingMemberRequest.
+type SetRoutingMemberRequest struct {
+	MaxChats *int `json:"max_chats"`
 }
 
 // SetTagsRequest defines model for SetTagsRequest.
@@ -4123,6 +4151,9 @@ type DeactivateMemberJSONRequestBody = DeactivateMemberRequest
 // SetRoutingJSONRequestBody defines body for SetRouting for application/json ContentType.
 type SetRoutingJSONRequestBody = RoutingSettings
 
+// SetRoutingMemberJSONRequestBody defines body for SetRoutingMember for application/json ContentType.
+type SetRoutingMemberJSONRequestBody = SetRoutingMemberRequest
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
@@ -4527,6 +4558,12 @@ type ServerInterface interface {
 	// SetRouting Change how the workspace distributes its queue
 	// (PUT /routing)
 	SetRouting(w http.ResponseWriter, r *http.Request)
+	// ListRoutingMembers Capacity and load of the members who answer customers
+	// (GET /routing/members)
+	ListRoutingMembers(w http.ResponseWriter, r *http.Request)
+	// SetRoutingMember Set a member's own capacity
+	// (PUT /routing/members/{id})
+	SetRoutingMember(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTags Every tag of the workspace, by name
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -5331,6 +5368,18 @@ func (_ Unimplemented) GetRouting(w http.ResponseWriter, r *http.Request) {
 // SetRouting Change how the workspace distributes its queue
 // (PUT /routing)
 func (_ Unimplemented) SetRouting(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListRoutingMembers Capacity and load of the members who answer customers
+// (GET /routing/members)
+func (_ Unimplemented) ListRoutingMembers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetRoutingMember Set a member's own capacity
+// (PUT /routing/members/{id})
+func (_ Unimplemented) SetRoutingMember(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -8083,6 +8132,46 @@ func (siw *ServerInterfaceWrapper) SetRouting(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListRoutingMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListRoutingMembers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoutingMembers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetRoutingMember operation middleware
+func (siw *ServerInterfaceWrapper) SetRoutingMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetRoutingMember(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -9591,6 +9680,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/routing", wrapper.SetRouting)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/routing/members", wrapper.ListRoutingMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/routing/members/{id}", wrapper.SetRoutingMember)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/invitations", wrapper.ListInvitations)

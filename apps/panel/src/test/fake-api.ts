@@ -122,7 +122,8 @@ export function fakeApi(
     "GET /conversations/counts": () => json(200, { mine: 0, mine_unread: 0, unassigned: 0, open: 0 }),
     "GET /me/notifications": () => json(200, { email_missed: true, email_delay_minutes: 15, email_available: true, telegram_assigned: true, telegram_messages: true, telegram_queue: true }),
     "GET /me/presence": () => json(200, { status: "online" }),
-    "GET /routing": () => json(200, { mode: "manual" }),
+    "GET /routing": () => json(200, { mode: "manual", max_chats: null }),
+    "GET /routing/members": () => json(200, { items: [{ user_id: "u-anna", max_chats: null, open: 1 }] }),
     "GET /ai/settings": () => json(200, aiSettingsOff),
     "GET /ai/bot": () =>
       json(200, { channel_ids: [], topics_off: [], min_confidence: 75, handoff_message: "", name: "", tone: "friendly", address: "formal", rules: "" }),

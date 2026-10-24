@@ -27,6 +27,7 @@ import {
   memberListSchema,
   memberSchema,
   myPresenceSchema,
+  routingMemberListSchema,
   routingSettingsSchema,
   aiBotSchema,
   aiCheckSchema,
@@ -86,6 +87,7 @@ export type MyPresence = Schemas["MyPresence"];
 export type OperatorStatus = MyPresence["status"];
 export type RoutingSettings = Schemas["RoutingSettings"];
 export type RoutingMode = RoutingSettings["mode"];
+export type RoutingMember = Schemas["RoutingMember"];
 export type AIProvider = Schemas["AIProvider"];
 export type AISettings = Schemas["AISettings"];
 export type AISettingsUpdate = Schemas["AISettingsUpdate"];
@@ -495,8 +497,18 @@ export async function fetchRouting(client: ApiClient): Promise<RoutingSettings> 
   return parseAnswer(routingSettingsSchema, await unwrap(client.GET("/routing")));
 }
 
-export async function setRouting(client: ApiClient, mode: RoutingMode): Promise<RoutingSettings> {
-  return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: { mode } })));
+export async function setRouting(client: ApiClient, settings: RoutingSettings): Promise<RoutingSettings> {
+  return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: settings })));
+}
+
+/** Capacity and load of each member who answers customers (ADR-0021). */
+export async function fetchRoutingMembers(client: ApiClient): Promise<RoutingMember[]> {
+  return parseAnswer(routingMemberListSchema, await unwrap(client.GET("/routing/members"))).items;
+}
+
+/** A member's own capacity; `null` follows the workspace's. */
+export async function setRoutingMember(client: ApiClient, userId: string, maxChats: number | null): Promise<void> {
+  await unwrap(client.PUT("/routing/members/{id}", { params: { path: { id: userId } }, body: { max_chats: maxChats } }));
 }
 
 /** The workspace's AI: provider, model, key hint, prices, budget and the month's spending (AI-01). */

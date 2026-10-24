@@ -696,11 +696,53 @@ export interface paths {
         get: operations["getRouting"];
         /**
          * Change how the workspace distributes its queue
-         * @description With `round_robin` the server assigns queued conversations at once and then each
-         *     new one, in turn, to the members who are `online` with the panel open. Requires
-         *     `routing.manage` (owner, admin).
+         * @description With `round_robin` or `least_loaded` the server assigns queued conversations at once
+         *     and then each new one to the members who are `online` with the panel open and have
+         *     room under `max_chats`. Requires `routing.manage` (owner, admin).
          */
         put: operations["setRouting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routing/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Capacity and load of the members who answer customers
+         * @description Requires `members.view` (owner, admin, operator).
+         */
+        get: operations["listRoutingMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routing/members/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a member's own capacity
+         * @description `null` follows the workspace's `max_chats`. Requires `routing.manage` (owner, admin).
+         */
+        put: operations["setRoutingMember"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3259,10 +3301,26 @@ export interface components {
         RoutingSettings: {
             /**
              * @description `manual`: operators take conversations from the queue. `round_robin`: the server
-             *     assigns them in turn to members who are `online`.
+             *     assigns them in turn to members who are `online`. `least_loaded`: to the one of
+             *     them with the smallest share of their capacity in use.
              * @enum {string}
              */
-            mode: "manual" | "round_robin";
+            mode: "manual" | "round_robin" | "least_loaded";
+            /** @description Conversations in work (assigned or pending) the server gives one member; `null` is no limit. Taking one by hand is never limited. */
+            max_chats: number | null;
+        };
+        RoutingMember: {
+            user_id: string;
+            /** @description The member's own limit; `null` follows the workspace's. */
+            max_chats: number | null;
+            /** @description Conversations the member has in work now. */
+            open: number;
+        };
+        RoutingMemberList: {
+            items: components["schemas"]["RoutingMember"][];
+        };
+        SetRoutingMemberRequest: {
+            max_chats: number | null;
         };
         /**
          * @description `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
@@ -6227,6 +6285,56 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listRoutingMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active members whose role answers customers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingMemberList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setRoutingMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRoutingMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listInvitations: {

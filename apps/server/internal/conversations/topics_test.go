@@ -140,13 +140,30 @@ func TestSetTopic(t *testing.T) {
 	}
 }
 
+// turnPool gives conversations in turn, without limits, as round_robin
+// does: whoever gets one goes to the end.
+type turnPool []uuid.UUID
+
+func (p *turnPool) Users() []uuid.UUID { return *p }
+
+func (p *turnPool) Pick(may func(uuid.UUID) bool) (uuid.UUID, bool) {
+	i := slices.IndexFunc(*p, may)
+	if i < 0 {
+		return uuid.Nil, false
+	}
+	u := (*p)[i]
+	*p = append(slices.Delete(slices.Clone(*p), i, i+1), u)
+	return u, true
+}
+
 // dispatch runs the router's assignment in one tenant transaction.
 func (f *fixture) dispatch(ws uuid.UUID, assignees ...uuid.UUID) []conversations.Assignment {
 	f.t.Helper()
 	var out []conversations.Assignment
 	err := f.app.InTenantTx(f.ctx, ws, func(tx pgx.Tx) error {
 		var err error
-		out, err = f.svc.AssignQueued(context.Background(), tx, ws, assignees, 50)
+		pool := turnPool(assignees)
+		out, err = f.svc.AssignQueued(context.Background(), tx, ws, &pool, 50)
 		return err
 	})
 	if err != nil {

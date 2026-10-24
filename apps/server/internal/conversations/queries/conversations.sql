@@ -79,6 +79,14 @@ WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND status IN ('as
 ORDER BY created_at, id
 FOR UPDATE;
 
+-- name: CountOpenOf :many
+-- The load of each of user_ids: their conversations in work, assigned or
+-- pending (ADR-0021). Served by conversations_assignee_idx.
+SELECT assignee_id::uuid AS user_id, count(*)::integer AS open
+FROM conversations
+WHERE workspace_id = @workspace_id AND assignee_id = ANY(@user_ids::uuid[]) AND status IN ('assigned', 'pending')
+GROUP BY assignee_id;
+
 -- name: HasQueued :one
 -- Whether the queue still holds something someone of available may take,
 -- locked rows included.

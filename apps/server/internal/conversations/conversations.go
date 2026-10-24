@@ -335,6 +335,25 @@ func (s *Service) queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 	return nil
 }
 
+// freed tells the router that the former assignee has room for one more
+// conversation (ADR-0021): it left their work, resolved, closed or handed
+// to someone else. Entering the queue is told by queued already.
+func (s *Service) freed(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, cur, next state) error {
+	if s.router == nil || cur.AssigneeID == nil || !inWork(cur.Status) || next.Status == StatusQueued {
+		return nil
+	}
+	if inWork(next.Status) && sameID(next.AssigneeID, cur.AssigneeID) {
+		return nil
+	}
+	if err := s.router.Freed(ctx, tx, workspaceID, *cur.AssigneeID); err != nil {
+		return fmt.Errorf("router: %w", err)
+	}
+	return nil
+}
+
+// inWork: the statuses that count against an operator's capacity.
+func inWork(st Status) bool { return st == StatusAssigned || st == StatusPending }
+
 // canReturnTo reports whether a conversation the customer reopens goes back
 // to its former assignee: an active member whom the router finds available
 // (with automatic distribution, accepting and with the panel open).
@@ -376,6 +395,9 @@ func (s *Service) addStateEvents(ctx context.Context, tx pgx.Tx, row store.Conve
 				return err
 			}
 		}
+	}
+	if err := s.freed(ctx, tx, workspaceID, cur, next); err != nil {
+		return err
 	}
 	if !sameID(next.AssigneeID, cur.AssigneeID) {
 		return outbox.Add(ctx, tx, workspaceID, "conversation.assigned", map[string]any{

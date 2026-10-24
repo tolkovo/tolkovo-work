@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { fakeApi, json, members, operatorSession, ownerSession, problem } from "../../test/fake-api";
 import { renderApp } from "../../test/render-app";
@@ -21,7 +21,7 @@ describe("routing settings", () => {
 
     await user.click(screen.getByRole("radio", { name: "По очереди" }));
     expect(await screen.findByText("Сохранено.")).toBeInTheDocument();
-    expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ mode: "round_robin" });
+    expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ mode: "round_robin", max_chats: null });
     expect(screen.getByRole("radio", { name: "По очереди" })).toBeChecked();
     // Anna is online in the fixtures; Pётр is deactivated.
     const now = screen.getByText(/Сейчас принимает диалоги 1 человек/);
@@ -32,12 +32,36 @@ describe("routing settings", () => {
     const api = fakeApi({
       session: admin,
       routes: {
-        "GET /routing": () => json(200, { mode: "round_robin" }),
+        "GET /routing": () => json(200, { mode: "round_robin", max_chats: null }),
         "GET /members": () => json(200, { items: members.map((m) => ({ ...m, presence: "away" })) }),
       },
     });
     renderApp("/settings/routing", { api });
     expect(await screen.findByText(/Сейчас никто не принимает диалоги/)).toBeInTheDocument();
+  });
+
+  it("sets the limit for everyone and for one operator, with the load", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      session: admin,
+      routes: {
+        "GET /routing": () => json(200, { mode: "least_loaded", max_chats: null }),
+        "PUT /routing": async (r) => json(200, await r.json()),
+        "PUT /routing/members/u-anna": () => new Response(null, { status: 204 }),
+      },
+    });
+    renderApp("/settings/routing", { api });
+    expect(await screen.findByRole("radio", { name: "Наименее загруженному" })).toBeChecked();
+    const limit = await screen.findByLabelText("Лимит диалогов на оператора");
+    expect(limit).toHaveAccessibleDescription(/«Взять» и «Передать» лимит не проверяют/);
+    await user.selectOptions(limit, "3");
+    expect(await screen.findByText("Сохранено.")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.method === "PUT" && c.path === "/routing")?.body).toEqual({ mode: "least_loaded", max_chats: 3 });
+    // Anna has one in work out of the workspace's three.
+    const row = screen.getByRole("row", { name: /Анна Смирнова/ });
+    expect(within(row).getByText("1 из 3")).toBeInTheDocument();
+    await user.selectOptions(within(row).getByRole("combobox", { name: "Лимит для Анна Смирнова" }), "2");
+    await vi.waitFor(() => expect(api.calls.find((c) => c.path === "/routing/members/u-anna")?.body).toEqual({ max_chats: 2 }));
   });
 
   it("explains a refusal", async () => {

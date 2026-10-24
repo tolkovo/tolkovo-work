@@ -31,6 +31,7 @@ export const queryKeys = {
   myNotifications: ["me", "notifications"] as const,
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
+  routingMembers: ["routing", "members"] as const,
   aiSettings: ["ai", "settings"] as const,
   aiBot: ["ai", "bot"] as const,
   kbArticles: ["kb", "articles"] as const,

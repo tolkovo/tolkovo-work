@@ -15,12 +15,12 @@ func (s *server) GetRouting(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	mode, err := s.routing.Mode(r.Context(), p.WorkspaceID)
+	set, err := s.routing.Settings(r.Context(), p.WorkspaceID)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, oapi.RoutingSettings{Mode: oapi.RoutingSettingsMode(mode)})
+	writeJSON(w, http.StatusOK, routingBody(set))
 }
 
 // SetRouting implements PUT /routing.
@@ -31,16 +31,58 @@ func (s *server) SetRouting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req oapi.RoutingSettings
-	if err := decodeJSON(w, r, &req); err != nil {
+	if err := decodeRequired(w, r, &req, "mode", "max_chats"); err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	mode, err := s.routing.SetMode(r.Context(), p.WorkspaceID, routing.Mode(req.Mode))
+	set, err := s.routing.SetSettings(r.Context(), p.WorkspaceID, routing.Settings{Mode: routing.Mode(req.Mode), MaxChats: req.MaxChats})
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, oapi.RoutingSettings{Mode: oapi.RoutingSettingsMode(mode)})
+	writeJSON(w, http.StatusOK, routingBody(set))
+}
+
+func routingBody(set routing.Settings) oapi.RoutingSettings {
+	return oapi.RoutingSettings{Mode: oapi.RoutingSettingsMode(set.Mode), MaxChats: set.MaxChats}
+}
+
+// ListRoutingMembers implements GET /routing/members.
+func (s *server) ListRoutingMembers(w http.ResponseWriter, r *http.Request) {
+	p, err := authz.Require(r.Context(), authz.MembersView)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	limits, err := s.routing.Limits(r.Context(), p.WorkspaceID, s.conversations.Loads)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	items := make([]oapi.RoutingMember, len(limits))
+	for i, l := range limits {
+		items[i] = oapi.RoutingMember{UserId: l.UserID, MaxChats: l.MaxChats, Open: l.Open}
+	}
+	writeJSON(w, http.StatusOK, oapi.RoutingMemberList{Items: items})
+}
+
+// SetRoutingMember implements PUT /routing/members/{id}.
+func (s *server) SetRoutingMember(w http.ResponseWriter, r *http.Request, id oapi.Id) {
+	p, err := authz.Require(r.Context(), authz.RoutingManage)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req oapi.SetRoutingMemberRequest
+	if err := decodeRequired(w, r, &req, "max_chats"); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.routing.SetLimit(r.Context(), p.WorkspaceID, id, req.MaxChats); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetMyPresence implements GET /me/presence.

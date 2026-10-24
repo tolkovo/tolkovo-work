@@ -81,8 +81,19 @@ export const myPresenceSchema = z.object({
 }) satisfies z.ZodType<Schemas["MyPresence"]>;
 
 export const routingSettingsSchema = z.object({
-  mode: z.enum(["manual", "round_robin"]),
+  mode: z.enum(["manual", "round_robin", "least_loaded"]),
+  max_chats: z.number().int().nullable(),
 }) satisfies z.ZodType<Schemas["RoutingSettings"]>;
+
+export const routingMemberListSchema = z.object({
+  items: z.array(
+    z.object({
+      user_id: z.string(),
+      max_chats: z.number().int().nullable(),
+      open: z.number().int(),
+    }),
+  ),
+}) satisfies z.ZodType<Schemas["RoutingMemberList"]>;
 
 const aiProviderSchema = z.enum(["anthropic", "openai", "deepseek", "openai_compatible"]) satisfies z.ZodType<Schemas["AIProvider"]>;
 const aiPricesSchema = z.object({
