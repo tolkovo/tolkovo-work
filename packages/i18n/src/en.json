@@ -60,14 +60,6 @@
         "action": "Open inbox"
       }
     },
-    "kb": {
-      "title": "Knowledge base",
-      "empty": {
-        "title": "No articles yet",
-        "text": "The AI answers customers from knowledge base articles. Start with the most common questions: delivery, payment, returns.",
-        "action": "Set up AI"
-      }
-    },
     "settings": {
       "title": "Settings"
     }
@@ -653,7 +645,23 @@
         "handoffHint": "The customer reads it when the bot hands over without words of its own. Up to {max} characters; empty uses the default phrase.",
         "handoffPlaceholder": "I'm passing your question to our support team. The reply will come here, in this chat.",
         "save": "Save bot settings",
-        "saved": "Bot settings saved."
+        "saved": "Bot settings saved.",
+        "name": "Bot name",
+        "nameHint": "What the bot introduces itself by. Empty — “AI assistant”. The bot always says it is an AI.",
+        "tone": "Tone",
+        "tones": {
+          "friendly": "Friendly",
+          "neutral": "Neutral",
+          "formal": "Formal"
+        },
+        "address": "Form of address",
+        "addresses": {
+          "formal": "Formal (Russian «вы»)",
+          "informal": "Informal (Russian «ты»)"
+        },
+        "rules": "Your rules",
+        "rulesHint": "What else the bot should or should not do, up to {max} characters. The rules never override the main ones: the bot says only what the knowledge base has and always calls a person when the customer asks.",
+        "rulesPlaceholder": "For example: do not promise discounts; end replies with a link to the help center."
       }
     },
     "knowledge": {

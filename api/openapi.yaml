@@ -5174,7 +5174,7 @@ components:
     AIBot:
       type: object
       additionalProperties: false
-      required: [channel_ids, topics_off, min_confidence, handoff_message]
+      required: [channel_ids, topics_off, min_confidence, handoff_message, name, tone, address, rules]
       properties:
         channel_ids:
           type: array
@@ -5203,6 +5203,23 @@ components:
           type: string
           maxLength: 500
           description: What the customer reads on a handoff without the bot's own words; empty is the built-in phrase.
+        name:
+          type: string
+          maxLength: 40
+          description: What the bot introduces itself by; empty — simply the company's AI assistant.
+        tone:
+          type: string
+          enum: [friendly, neutral, formal]
+        address:
+          type: string
+          enum: [formal, informal]
+          description: 'How the bot addresses customers in languages that distinguish it: Russian «вы» (`formal`) or «ты».'
+        rules:
+          type: string
+          maxLength: 2000
+          description: |
+            The company's own instructions to the bot. They never override its rules: facts only from
+            the knowledge base, never pretending to be a person, a person whenever the customer asks.
 
     AICheck:
       type: object
@@ -7358,7 +7375,7 @@ components:
     WidgetConversation:
       type: object
       description: The visitor's newest conversation as they see it.
-      required: [id, status, rating, topic_id]
+      required: [id, status, rating, topic_id, with_bot]
       properties:
         id:
           type: string
@@ -7373,6 +7390,9 @@ components:
           type: string
           enum: [open, resolved]
           description: '`resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.'
+        with_bot:
+          type: boolean
+          description: The AI bot answers the conversation; the widget offers to call a person.
         rating:
           oneOf:
             - $ref: '#/components/schemas/ConversationRating'

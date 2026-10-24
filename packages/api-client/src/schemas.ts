@@ -112,6 +112,10 @@ export const aiBotSchema = z.object({
   topics_off: z.array(z.string()),
   min_confidence: z.number(),
   handoff_message: z.string(),
+  name: z.string(),
+  tone: z.enum(["friendly", "neutral", "formal"]),
+  address: z.enum(["formal", "informal"]),
+  rules: z.string(),
 }) satisfies z.ZodType<Schemas["AIBot"]>;
 
 export const aiCheckSchema = z.object({

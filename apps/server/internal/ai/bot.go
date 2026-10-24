@@ -38,6 +38,10 @@ const (
 	MaxCollectTurns = 4
 	// MaxHandoffMessage bounds BotSettings.HandoffMessage.
 	MaxHandoffMessage = 500
+	// MaxBotName bounds BotSettings.Name.
+	MaxBotName = 40
+	// MaxBotRules bounds BotSettings.Rules.
+	MaxBotRules = 2000
 	// MaxBotChannels bounds BotSettings.ChannelIDs.
 	MaxBotChannels = 100
 	// DefaultMinConfidence is how sure the model must be of an answer from
@@ -55,8 +59,20 @@ const (
 	botAttempts = 3
 )
 
-// BotSettings are the settings of the bot (AI-04; the name, tone and
-// rules join in AI-05).
+// Tones of the bot.
+const (
+	ToneFriendly = "friendly"
+	ToneNeutral  = "neutral"
+	ToneFormal   = "formal"
+)
+
+// Forms of address in languages that have them: Russian «вы» and «ты».
+const (
+	AddressFormal   = "formal"
+	AddressInformal = "informal"
+)
+
+// BotSettings are the settings of the bot (AI-04, AI-05).
 type BotSettings struct {
 	// ChannelIDs: the bot answers new conversations of these channels.
 	ChannelIDs []uuid.UUID
@@ -68,6 +84,15 @@ type BotSettings struct {
 	// HandoffMessage is what the customer reads when the bot hands over
 	// without words of its own; empty: the built-in phrase.
 	HandoffMessage string
+	// Name is what the bot introduces itself by; empty: "the AI assistant".
+	Name string
+	// Tone is ToneFriendly, ToneNeutral or ToneFormal.
+	Tone string
+	// Address is AddressFormal or AddressInformal.
+	Address string
+	// Rules are the company's own instructions to the bot; they never
+	// override the prompt's rules on honesty and handoff.
+	Rules string
 }
 
 // BotSettings returns the settings of the bot.
@@ -87,12 +112,26 @@ func (s *Service) BotSettings(ctx context.Context, workspaceID uuid.UUID) (BotSe
 // SetBotSettings saves the settings of the bot. A channel or a topic that
 // is not the workspace's is ErrInvalid.
 func (s *Service) SetBotSettings(ctx context.Context, workspaceID uuid.UUID, in BotSettings) (BotSettings, error) {
-	in.HandoffMessage = strings.TrimSpace(in.HandoffMessage)
+	in.HandoffMessage, in.Name, in.Rules = strings.TrimSpace(in.HandoffMessage), oneLine(in.Name), strings.TrimSpace(in.Rules)
+	if in.Tone == "" {
+		in.Tone = ToneFriendly
+	}
+	if in.Address == "" {
+		in.Address = AddressFormal
+	}
 	switch {
 	case in.MinConfidence < 0 || in.MinConfidence > 100:
 		return BotSettings{}, fmt.Errorf("%w: the confidence is 0 to 100", ErrInvalid)
 	case utf8.RuneCountInString(in.HandoffMessage) > MaxHandoffMessage || !validText(in.HandoffMessage):
 		return BotSettings{}, fmt.Errorf("%w: the handoff message is at most %d characters", ErrInvalid, MaxHandoffMessage)
+	case utf8.RuneCountInString(in.Name) > MaxBotName || !validText(in.Name):
+		return BotSettings{}, fmt.Errorf("%w: the name is at most %d characters", ErrInvalid, MaxBotName)
+	case utf8.RuneCountInString(in.Rules) > MaxBotRules || !validText(in.Rules):
+		return BotSettings{}, fmt.Errorf("%w: the rules are at most %d characters", ErrInvalid, MaxBotRules)
+	case in.Tone != ToneFriendly && in.Tone != ToneNeutral && in.Tone != ToneFormal:
+		return BotSettings{}, fmt.Errorf("%w: unknown tone %q", ErrInvalid, in.Tone)
+	case in.Address != AddressFormal && in.Address != AddressInformal:
+		return BotSettings{}, fmt.Errorf("%w: unknown form of address %q", ErrInvalid, in.Address)
 	case len(in.ChannelIDs) > MaxBotChannels || len(in.TopicsOff) > conversations.MaxTopics:
 		return BotSettings{}, fmt.Errorf("%w: too many channels or topics", ErrInvalid)
 	}
@@ -101,7 +140,8 @@ func (s *Service) SetBotSettings(ctx context.Context, workspaceID uuid.UUID, in 
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := q.SetBotOptions(ctx, store.SetBotOptionsParams{
-			WorkspaceID: workspaceID, MinConfidence: int16(in.MinConfidence), HandoffMessage: in.HandoffMessage, Now: s.now(), //nolint:gosec // G115: checked to be 0..100
+			WorkspaceID: workspaceID, MinConfidence: int16(in.MinConfidence), HandoffMessage: in.HandoffMessage, //nolint:gosec // G115: checked to be 0..100
+			BotName: in.Name, Tone: in.Tone, Address: in.Address, Rules: in.Rules, Now: s.now(),
 		}); err != nil {
 			return err
 		}
@@ -143,6 +183,7 @@ func botSettings(ctx context.Context, q *store.Queries, workspaceID uuid.UUID) (
 	}
 	return BotSettings{
 		ChannelIDs: row.ChannelIds, TopicsOff: row.TopicsOff, MinConfidence: int(row.MinConfidence), HandoffMessage: row.HandoffMessage,
+		Name: row.BotName, Tone: row.Tone, Address: row.Address, Rules: row.Rules,
 	}, nil
 }
 

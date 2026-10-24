@@ -272,7 +272,11 @@ func (s *Service) sendTo(
 		if err := json.Unmarshal(raw, &sec); err != nil {
 			return "", fmt.Errorf("decode bot secret: %w", err)
 		}
-		return s.sendPieces(ctx, workspaceID, ch, out, s.limits.bot, func(ctx context.Context, _ int, p piece) (int64, error) {
+		last := len(pieces(out)) - 1
+		return s.sendPieces(ctx, workspaceID, ch, out, s.limits.bot, func(ctx context.Context, i int, p piece) (int64, error) {
+			if p.file == nil && i == last && out.OfferPerson {
+				return s.opts.Bots.SendButtons(ctx, sec.Token, chatID, p.text, personButton(out.Locale))
+			}
 			if p.file == nil {
 				return s.opts.Bots.SendMessage(ctx, sec.Token, chatID, p.text)
 			}

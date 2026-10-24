@@ -198,6 +198,10 @@ describe("AI settings", () => {
     await screen.findByRole("heading", { level: 3, name: "ИИ-бот отвечает клиентам" });
     await user.click(await screen.findByRole("checkbox", { name: "Бот поддержки" }));
     await user.click(screen.getByRole("checkbox", { name: "Оплата" }));
+    await user.type(screen.getByLabelText("Имя бота"), "Ася");
+    await user.click(screen.getByRole("radio", { name: "Официальный" }));
+    await user.click(screen.getByRole("radio", { name: "На «ты»" }));
+    await user.type(screen.getByLabelText("Свои правила"), "Не обещай скидок.");
     const confidence = screen.getByLabelText("Уверенность бота, %");
     await user.clear(confidence);
     await user.type(confidence, "150");
@@ -212,6 +216,10 @@ describe("AI settings", () => {
       topics_off: ["t1"],
       min_confidence: 80,
       handoff_message: "",
+      name: "Ася",
+      tone: "formal",
+      address: "informal",
+      rules: "Не обещай скидок.",
     });
   });
 

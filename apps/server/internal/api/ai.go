@@ -212,12 +212,13 @@ func (s *server) SetAIBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req oapi.AIBot
-	if err := decodeRequired(w, r, &req, "channel_ids", "topics_off", "min_confidence", "handoff_message"); err != nil {
+	if err := decodeRequired(w, r, &req, "channel_ids", "topics_off", "min_confidence", "handoff_message", "name", "tone", "address", "rules"); err != nil {
 		s.writeError(w, r, err)
 		return
 	}
 	got, err := s.ai.SetBotSettings(r.Context(), p.WorkspaceID, ai.BotSettings{
 		ChannelIDs: req.ChannelIds, TopicsOff: req.TopicsOff, MinConfidence: req.MinConfidence, HandoffMessage: req.HandoffMessage,
+		Name: req.Name, Tone: string(req.Tone), Address: string(req.Address), Rules: req.Rules,
 	})
 	if err != nil {
 		s.writeError(w, r, err)
@@ -227,5 +228,8 @@ func (s *server) SetAIBot(w http.ResponseWriter, r *http.Request) {
 }
 
 func aiBotBody(b ai.BotSettings) oapi.AIBot {
-	return oapi.AIBot{ChannelIds: b.ChannelIDs, TopicsOff: b.TopicsOff, MinConfidence: b.MinConfidence, HandoffMessage: b.HandoffMessage}
+	return oapi.AIBot{
+		ChannelIds: b.ChannelIDs, TopicsOff: b.TopicsOff, MinConfidence: b.MinConfidence, HandoffMessage: b.HandoffMessage,
+		Name: b.Name, Tone: oapi.AIBotTone(b.Tone), Address: oapi.AIBotAddress(b.Address), Rules: b.Rules,
+	}
 }

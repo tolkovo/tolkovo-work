@@ -218,6 +218,7 @@ function Window({ c, s, view }: { c: Controller; s: State; view: View }) {
       ) : (
         <>
           {s.topics.length > 0 && !s.conversation?.topicId ? <Topics c={c} s={s} view={view} /> : null}
+          {s.conversation?.withBot && !s.conversation.resolved ? <CallPerson key={s.conversation.id} c={c} view={view} /> : null}
           <Composer c={c} view={view} draft={draft} disabled={!canAttach} />
         </>
       )}
@@ -244,6 +245,29 @@ function Topics({ c, s, view }: { c: Controller; s: State; view: View }) {
           {topic.name}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * While the AI bot answers, the visitor can call a person (AI-05): the button sends its words as their
+ * message, and the bot hands the conversation over.
+ */
+function CallPerson({ c, view }: { c: Controller; view: View }) {
+  const [asked, setAsked] = useState(false);
+  if (asked) return null;
+  return (
+    <div class="tk-topics">
+      <button
+        type="button"
+        class="tk-topic"
+        onClick={() => {
+          setAsked(true);
+          void c.send(view.t("callPerson")).catch(() => undefined);
+        }}
+      >
+        {view.t("callPerson")}
+      </button>
     </div>
   );
 }

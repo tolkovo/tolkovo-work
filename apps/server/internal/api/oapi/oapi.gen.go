@@ -14,6 +14,45 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AIBotAddress.
+const (
+	AIBotAddressFormal   AIBotAddress = "formal"
+	AIBotAddressInformal AIBotAddress = "informal"
+)
+
+// Valid indicates whether the value is a known member of the AIBotAddress enum.
+func (e AIBotAddress) Valid() bool {
+	switch e {
+	case AIBotAddressFormal:
+		return true
+	case AIBotAddressInformal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIBotTone.
+const (
+	AIBotToneFormal   AIBotTone = "formal"
+	AIBotToneFriendly AIBotTone = "friendly"
+	AIBotToneNeutral  AIBotTone = "neutral"
+)
+
+// Valid indicates whether the value is a known member of the AIBotTone enum.
+func (e AIBotTone) Valid() bool {
+	switch e {
+	case AIBotToneFormal:
+		return true
+	case AIBotToneFriendly:
+		return true
+	case AIBotToneNeutral:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AIProvider.
 const (
 	Anthropic        AIProvider = "anthropic"
@@ -1261,6 +1300,9 @@ func (e ListTasksParamsSort) Valid() bool {
 
 // AIBot defines model for AIBot.
 type AIBot struct {
+	// Address How the bot addresses customers in languages that distinguish it: Russian «вы» (`formal`) or «ты».
+	Address AIBotAddress `json:"address"`
+
 	// ChannelIds The channels whose new conversations the bot answers.
 	ChannelIds []uuid.UUID `json:"channel_ids"`
 
@@ -1271,9 +1313,23 @@ type AIBot struct {
 	// below it the bot hands over. 75 by default.
 	MinConfidence int `json:"min_confidence"`
 
+	// Name What the bot introduces itself by; empty — simply the company's AI assistant.
+	Name string `json:"name"`
+
+	// Rules The company's own instructions to the bot. They never override its rules: facts only from
+	// the knowledge base, never pretending to be a person, a person whenever the customer asks.
+	Rules string    `json:"rules"`
+	Tone  AIBotTone `json:"tone"`
+
 	// TopicsOff Topics left to people; every other topic answers with the bot.
 	TopicsOff []uuid.UUID `json:"topics_off"`
 }
+
+// AIBotAddress How the bot addresses customers in languages that distinguish it: Russian «вы» (`formal`) or «ты».
+type AIBotAddress string
+
+// AIBotTone defines model for AIBot.Tone.
+type AIBotTone string
 
 // AICheck defines model for AICheck.
 type AICheck struct {
@@ -3355,6 +3411,9 @@ type WidgetConversation struct {
 
 	// TopicId The topic picked; `null` — none yet.
 	TopicId *uuid.UUID `json:"topic_id"`
+
+	// WithBot The AI bot answers the conversation; the widget offers to call a person.
+	WithBot bool `json:"with_bot"`
 }
 
 // WidgetConversationStatus `resolved` — resolved or closed: the widget asks for a rating; a new message reopens it.

@@ -83,7 +83,7 @@ func TestWidget_Rating(t *testing.T) {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body)
 	}
 	convID := decode[oapi.WidgetMessage](t, rec).ConversationId
-	if c := v.messages("").Conversation; c == nil || c.Id != convID || c.Status != oapi.WidgetConversationStatusOpen || c.Rating != nil {
+	if c := v.messages("").Conversation; c == nil || c.Id != convID || c.Status != oapi.WidgetConversationStatusOpen || c.Rating != nil || c.WithBot {
 		t.Fatalf("open conversation: %+v", c)
 	}
 	wantProblem(t, rate(v, convID, map[string]any{"score": 5}), http.StatusConflict, "conversation_open")

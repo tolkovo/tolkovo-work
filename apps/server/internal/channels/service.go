@@ -151,6 +151,8 @@ type BotClient interface {
 	SendButtons(ctx context.Context, token string, chatID int64, text string, rows [][]telegram.Button) (int64, error)
 	AnswerCallback(ctx context.Context, token, callbackID, text string) error
 	EditText(ctx context.Context, token string, chatID, messageID int64, text string) error
+	// The "call a person" button under the AI bot's replies (AI-05).
+	DropButtons(ctx context.Context, token string, chatID, messageID int64) error
 }
 
 // UserLogin signs personal accounts in and out (telegram.UserAuth).

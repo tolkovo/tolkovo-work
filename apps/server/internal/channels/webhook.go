@@ -39,7 +39,7 @@ func (s *Service) BotWebhook(ctx context.Context, workspaceID, channelID uuid.UU
 		return nil
 	}
 	if u.Callback != nil {
-		s.chooseTopic(ctx, workspaceID, channelID, sec.Token, *u.Callback)
+		s.callback(ctx, workspaceID, channelID, sec.Token, *u.Callback)
 		return nil
 	}
 	if u.Message == nil {

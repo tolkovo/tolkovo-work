@@ -151,6 +151,14 @@ func (b *BotAPI) AnswerCallback(ctx context.Context, token, callbackID, text str
 	return b.call(ctx, token, "answerCallbackQuery", params, nil)
 }
 
+// DropButtons removes the buttons under a message the bot sent and keeps
+// its text.
+func (b *BotAPI) DropButtons(ctx context.Context, token string, chatID, messageID int64) error {
+	return b.call(ctx, token, "editMessageReplyMarkup", map[string]any{
+		"chat_id": chatID, "message_id": messageID, "reply_markup": map[string]any{"inline_keyboard": [][]any{}},
+	}, nil)
+}
+
 // EditText replaces the text of a message the bot sent and drops its
 // buttons.
 func (b *BotAPI) EditText(ctx context.Context, token string, chatID, messageID int64, text string) error {

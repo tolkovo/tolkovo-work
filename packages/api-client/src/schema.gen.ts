@@ -3311,6 +3311,20 @@ export interface components {
             min_confidence: number;
             /** @description What the customer reads on a handoff without the bot's own words; empty is the built-in phrase. */
             handoff_message: string;
+            /** @description What the bot introduces itself by; empty — simply the company's AI assistant. */
+            name: string;
+            /** @enum {string} */
+            tone: "friendly" | "neutral" | "formal";
+            /**
+             * @description How the bot addresses customers in languages that distinguish it: Russian «вы» (`formal`) or «ты».
+             * @enum {string}
+             */
+            address: "formal" | "informal";
+            /**
+             * @description The company's own instructions to the bot. They never override its rules: facts only from
+             *     the knowledge base, never pretending to be a person, a person whenever the customer asks.
+             */
+            rules: string;
         };
         AICheck: {
             /** @description The model that answered */
@@ -4664,6 +4678,8 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "resolved";
+            /** @description The AI bot answers the conversation; the widget offers to call a person. */
+            with_bot: boolean;
             rating: components["schemas"]["ConversationRating"] | null;
         };
         WidgetTopicRequest: {

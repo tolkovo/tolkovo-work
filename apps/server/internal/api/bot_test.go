@@ -28,11 +28,14 @@ func TestAIBotAPI(t *testing.T) {
 	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/ai/bot", map[string]any{"channel_ids": []string{ch.String()}}), http.StatusBadRequest, "invalid_request")
 	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/ai/bot", map[string]any{
 		"channel_ids": []string{uuid.NewString()}, "topics_off": []string{}, "min_confidence": 75, "handoff_message": "",
+		"name": "", "tone": "friendly", "address": "formal", "rules": "",
 	}), http.StatusBadRequest, "invalid_request")
 	got := decode[oapi.AIBot](t, in.owner.do(http.MethodPut, "/api/v1/ai/bot", map[string]any{
 		"channel_ids": []string{ch.String()}, "topics_off": []string{}, "min_confidence": 80, "handoff_message": "Зову коллегу.",
+		"name": "Ася", "tone": "neutral", "address": "informal", "rules": "Не обещай скидок.",
 	}))
-	if len(got.ChannelIds) != 1 || got.MinConfidence != 80 || got.HandoffMessage != "Зову коллегу." {
+	if len(got.ChannelIds) != 1 || got.MinConfidence != 80 || got.HandoffMessage != "Зову коллегу." ||
+		got.Name != "Ася" || got.Tone != oapi.AIBotToneNeutral || got.Address != oapi.AIBotAddressInformal || got.Rules != "Не обещай скидок." {
 		t.Fatalf("saved %+v", got)
 	}
 
