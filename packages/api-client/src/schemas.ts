@@ -594,6 +594,44 @@ export const taskBoardSchema = z.object({
   ),
 }) satisfies z.ZodType<Schemas["TaskBoard"]>;
 
+export const taskFlowSchema = z.object({
+  since: z.string(),
+  until: z.string(),
+  cycle: z.array(
+    z.object({
+      task_id: z.string(),
+      number: z.number(),
+      title: z.string(),
+      done_at: z.string(),
+      days: z.number(),
+    }) satisfies z.ZodType<Schemas["TaskFlowCycle"]>,
+  ),
+  cycle_p50: z.number().nullable(),
+  cycle_p85: z.number().nullable(),
+  throughput: z.array(z.object({ week: z.string(), done: z.number() }) satisfies z.ZodType<Schemas["TaskFlowWeek"]>),
+  cfd: z.array(
+    z.object({
+      day: z.string(),
+      open: z.number(),
+      in_progress: z.number(),
+      review: z.number(),
+      verified: z.number(),
+      done: z.number(),
+    }) satisfies z.ZodType<Schemas["TaskFlowDay"]>,
+  ),
+  aging: z.array(
+    z.object({
+      task_id: z.string(),
+      number: z.number(),
+      title: z.string(),
+      status: taskStatusSchema,
+      days: z.number(),
+      blocked: z.boolean(),
+    }) satisfies z.ZodType<Schemas["TaskFlowAging"]>,
+  ),
+  truncated: z.boolean(),
+}) satisfies z.ZodType<Schemas["TaskFlow"]>;
+
 export const taskBoardSettingsSchema = z.object({
   rules: z.array(
     z.object({

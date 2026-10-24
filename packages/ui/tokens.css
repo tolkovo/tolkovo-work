@@ -57,6 +57,13 @@
   --tag-blue: #2f6fd0;
   --tag-green: #3d8a2f;
 
+  /* charts: categorical slots in fixed order, validated for colour blindness on --surface (dataviz) */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+
   --shadow-color: 205deg 35% 12%;
   --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.14), 0 2px 6px hsl(var(--shadow-color) / 0.08);
 
@@ -98,6 +105,11 @@
     --note-line: #6b5a22;
     --tag-blue: #7aa7f0;
     --tag-green: #7cc96b;
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
     --shadow-color: 0deg 0% 0%;
     --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.5), 0 2px 6px hsl(var(--shadow-color) / 0.4);
     color-scheme: dark;
@@ -133,6 +145,11 @@
   --note-line: #6b5a22;
   --tag-blue: #7aa7f0;
   --tag-green: #7cc96b;
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
   --shadow-color: 0deg 0% 0%;
   --shadow: 0 10px 30px hsl(var(--shadow-color) / 0.5), 0 2px 6px hsl(var(--shadow-color) / 0.4);
   color-scheme: dark;

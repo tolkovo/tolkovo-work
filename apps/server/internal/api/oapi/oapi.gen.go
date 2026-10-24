@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for AIBotAddress.
@@ -3078,6 +3079,78 @@ type TaskFilesAdd struct {
 	FileIds []uuid.UUID `json:"file_ids"`
 }
 
+// TaskFlow defines model for TaskFlow.
+type TaskFlow struct {
+	// Aging Open tasks standing longest in their column, the oldest first.
+	Aging []TaskFlowAging `json:"aging"`
+
+	// Cfd Every day of the period, the tasks in each status at its end.
+	Cfd []TaskFlowDay `json:"cfd"`
+
+	// Cycle Tasks done in the period that were in progress, in the order they were done.
+	Cycle []TaskFlowCycle `json:"cycle"`
+
+	// CycleP50 Half of the tasks took at most this many days; `null` without tasks.
+	CycleP50 *float64 `json:"cycle_p50"`
+
+	// CycleP85 85% of the tasks took at most this many days; `null` without tasks.
+	CycleP85 *float64 `json:"cycle_p85"`
+
+	// Since The first day of the period.
+	Since openapi_types.Date `json:"since"`
+
+	// Throughput Every week of the period from its Monday, the first one possibly partial.
+	Throughput []TaskFlowWeek `json:"throughput"`
+
+	// Truncated The workspace has more tasks than the metrics read; they cover the latest.
+	Truncated bool `json:"truncated"`
+
+	// Until The last day of the period
+	Until openapi_types.Date `json:"until"`
+}
+
+// TaskFlowAging defines model for TaskFlowAging.
+type TaskFlowAging struct {
+	Blocked bool `json:"blocked"`
+
+	// Days In the current status
+	Days   float64 `json:"days"`
+	Number int64   `json:"number"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status TaskStatus `json:"status"`
+	TaskId uuid.UUID  `json:"task_id"`
+	Title  string     `json:"title"`
+}
+
+// TaskFlowCycle defines model for TaskFlowCycle.
+type TaskFlowCycle struct {
+	// Days From the first move to in progress to done
+	Days   float64   `json:"days"`
+	DoneAt time.Time `json:"done_at"`
+	Number int64     `json:"number"`
+	TaskId uuid.UUID `json:"task_id"`
+	Title  string    `json:"title"`
+}
+
+// TaskFlowDay defines model for TaskFlowDay.
+type TaskFlowDay struct {
+	Day        openapi_types.Date `json:"day"`
+	Done       int                `json:"done"`
+	InProgress int                `json:"in_progress"`
+	Open       int                `json:"open"`
+	Review     int                `json:"review"`
+	Verified   int                `json:"verified"`
+}
+
+// TaskFlowWeek defines model for TaskFlowWeek.
+type TaskFlowWeek struct {
+	Done int                `json:"done"`
+	Week openapi_types.Date `json:"week"`
+}
+
 // TaskLinkRequest defines model for TaskLinkRequest.
 type TaskLinkRequest struct {
 	ConversationId uuid.UUID `json:"conversation_id"`
@@ -3860,6 +3933,24 @@ type GetTaskBoardParams struct {
 	Canceled *bool `form:"canceled,omitempty" json:"canceled,omitempty"`
 }
 
+// GetTaskFlowParams defines parameters for GetTaskFlow.
+type GetTaskFlowParams struct {
+	// Days How many days back the period reaches, 7–90; 30 when absent.
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
+
+	// Assignee `me`, `none` or a member id.
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// Queue `none` or a queue id.
+	Queue *string `form:"queue,omitempty" json:"queue,omitempty"`
+
+	// Topic `none` or a topic id.
+	Topic *string `form:"topic,omitempty" json:"topic,omitempty"`
+
+	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
+	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
+}
+
 // ListWidgetMessagesParams defines parameters for ListWidgetMessages.
 type ListWidgetMessagesParams struct {
 	// Since `cursor` of the previous answer.
@@ -4502,6 +4593,9 @@ type ServerInterface interface {
 	// GetTaskBoard The board of tasks, a column by status (ADR-0019)
 	// (GET /tasks/board)
 	GetTaskBoard(w http.ResponseWriter, r *http.Request, params GetTaskBoardParams)
+	// GetTaskFlow Metrics of the flow of tasks (ADR-0019, K3)
+	// (GET /tasks/flow)
+	GetTaskFlow(w http.ResponseWriter, r *http.Request, params GetTaskFlowParams)
 	// GetTaskSummary The caller's open tasks, for the menu
 	// (GET /tasks/summary)
 	GetTaskSummary(w http.ResponseWriter, r *http.Request)
@@ -5369,6 +5463,12 @@ func (_ Unimplemented) CreateTask(w http.ResponseWriter, r *http.Request) {
 // GetTaskBoard The board of tasks, a column by status (ADR-0019)
 // (GET /tasks/board)
 func (_ Unimplemented) GetTaskBoard(w http.ResponseWriter, r *http.Request, params GetTaskBoardParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTaskFlow Metrics of the flow of tasks (ADR-0019, K3)
+// (GET /tasks/flow)
+func (_ Unimplemented) GetTaskFlow(w http.ResponseWriter, r *http.Request, params GetTaskFlowParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -8623,6 +8723,91 @@ func (siw *ServerInterfaceWrapper) GetTaskBoard(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetTaskFlow operation middleware
+func (siw *ServerInterfaceWrapper) GetTaskFlow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTaskFlowParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "queue" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "queue", r.URL.Query(), &params.Queue, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "queue"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "queue", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "topic" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "topic", r.URL.Query(), &params.Topic, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "topic"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "topic", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTaskFlow(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTaskSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
 
@@ -9682,6 +9867,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tasks/board", wrapper.GetTaskBoard)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/flow", wrapper.GetTaskFlow)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/task-board-settings", wrapper.GetTaskBoardSettings)

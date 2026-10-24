@@ -325,3 +325,66 @@ func TestTasks_BoardRules(t *testing.T) {
 		t.Fatalf("rules after the queue went: %+v", got.Rules)
 	}
 }
+
+// The flow metrics (ADR-0019, K3): the cycle time of a task done, the week
+// it counts in, the statuses at the end of each day and the oldest open
+// tasks, under the filters of the board.
+func TestTasks_Flow(t *testing.T) {
+	in := setupInbox(t)
+	e, op := in.e, in.op
+	create := func(title string) oapi.Task {
+		t.Helper()
+		rec := op.do(http.MethodPost, "/api/v1/tasks", map[string]any{"title": title, "priority": "normal"})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create %s: %d %s", title, rec.Code, rec.Body)
+		}
+		return decode[oapi.Task](t, rec)
+	}
+	move := func(task oapi.Task, status string) oapi.Task {
+		t.Helper()
+		rec := op.do(http.MethodPut, "/api/v1/tasks/"+task.Id.String(), taskUpdate(task, func(m map[string]any) { m["status"] = status }))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("move to %s: %d %s", status, rec.Code, rec.Body)
+		}
+		return decode[oapi.Task](t, rec)
+	}
+	flow := func(query string) oapi.TaskFlow {
+		t.Helper()
+		rec := op.do(http.MethodGet, "/api/v1/tasks/flow"+query, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("flow %q: %d %s", query, rec.Code, rec.Body)
+		}
+		return decode[oapi.TaskFlow](t, rec)
+	}
+
+	fixed := move(create("Вылет при открытии журнала"), "in_progress")
+	// It went to work three days ago.
+	e.ownerExec(`UPDATE task_activity SET created_at = now() - interval '3 days' WHERE task_id = $1 AND kind = 'status'`, fixed.Id)
+	move(fixed, "done")
+	waiting := create("Отчёт по сменам")
+	e.ownerExec(`UPDATE tasks SET status_changed_at = now() - interval '5 days' WHERE id = $1`, waiting.Id)
+
+	f := flow("")
+	if len(f.Cfd) != 30 || len(f.Cycle) != 1 || f.Cycle[0].Number != fixed.Number || f.Cycle[0].Days < 2.9 || f.Cycle[0].Days > 3.1 ||
+		f.CycleP50 == nil || *f.CycleP50 != f.Cycle[0].Days || f.Truncated {
+		t.Fatalf("flow: %d days, cycle %+v, p50 %v", len(f.Cfd), f.Cycle, f.CycleP50)
+	}
+	last := f.Cfd[len(f.Cfd)-1]
+	if last.Done != 1 || last.Open != 1 || last.InProgress != 0 {
+		t.Fatalf("today: %+v", last)
+	}
+	var done int
+	for _, w := range f.Throughput {
+		done += w.Done
+	}
+	if done != 1 {
+		t.Fatalf("throughput: %+v", f.Throughput)
+	}
+	if len(f.Aging) != 1 || f.Aging[0].Number != waiting.Number || f.Aging[0].Days < 4.9 || f.Aging[0].Status != oapi.TaskStatusOpen {
+		t.Fatalf("aging: %+v", f.Aging)
+	}
+	if f := flow("?days=7&assignee=none"); len(f.Cfd) != 7 || len(f.Aging) != 1 {
+		t.Fatalf("filtered: %d days, aging %+v", len(f.Cfd), f.Aging)
+	}
+	wantProblem(t, op.do(http.MethodGet, "/api/v1/tasks/flow?days=5", nil), http.StatusBadRequest, "invalid_request")
+}

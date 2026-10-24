@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/api/oapi"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
@@ -217,6 +218,50 @@ func (s *server) GetTaskBoard(w http.ResponseWriter, r *http.Request, params oap
 			col.NextCursor = &cur
 		}
 		out.Columns = append(out.Columns, col)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// GetTaskFlow implements GET /tasks/flow.
+func (s *server) GetTaskFlow(w http.ResponseWriter, r *http.Request, params oapi.GetTaskFlowParams) {
+	p, ok := s.requirePrincipal(w, r, authz.TasksView)
+	if !ok {
+		return
+	}
+	sc, err := parseTaskScope(p.UserID, deref(params.Assignee), deref(params.Queue), deref(params.Topic))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	f, err := s.tasks.Flow(r.Context(), p.WorkspaceID, tasks.FlowFilter{
+		AssigneeID: sc.assigneeID, Unassigned: sc.unassigned, QueueID: sc.queueID, NoQueue: sc.noQueue,
+		TopicID: sc.topicID, NoTopic: sc.noTopic, TagID: params.Tag, Days: deref(params.Days),
+	})
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	out := oapi.TaskFlow{
+		Since: openapi_types.Date{Time: f.Since}, Until: openapi_types.Date{Time: f.Until},
+		CycleP50: f.CycleP50, CycleP85: f.CycleP85, Truncated: f.Truncated,
+		Cycle: make([]oapi.TaskFlowCycle, 0, len(f.Cycle)), Aging: make([]oapi.TaskFlowAging, 0, len(f.Aging)),
+		Throughput: make([]oapi.TaskFlowWeek, 0, len(f.Throughput)), Cfd: make([]oapi.TaskFlowDay, 0, len(f.CFD)),
+	}
+	for _, c := range f.Cycle {
+		out.Cycle = append(out.Cycle, oapi.TaskFlowCycle{TaskId: c.TaskID, Number: c.Number, Title: c.Title, DoneAt: c.DoneAt, Days: c.Days})
+	}
+	for _, w := range f.Throughput {
+		out.Throughput = append(out.Throughput, oapi.TaskFlowWeek{Done: w.Done, Week: openapi_types.Date{Time: w.Week}})
+	}
+	for _, d := range f.CFD {
+		out.Cfd = append(out.Cfd, oapi.TaskFlowDay{
+			Day: openapi_types.Date{Time: d.Day}, Done: d.Done, InProgress: d.InProgress, Open: d.Open, Review: d.Review, Verified: d.Verified,
+		})
+	}
+	for _, a := range f.Aging {
+		out.Aging = append(out.Aging, oapi.TaskFlowAging{
+			TaskId: a.TaskID, Number: a.Number, Title: a.Title, Status: oapi.TaskStatus(a.Status), Days: a.Days, Blocked: a.Blocked,
+		})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

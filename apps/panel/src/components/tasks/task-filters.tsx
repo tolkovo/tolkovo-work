@@ -1,7 +1,7 @@
 import { useTaskQueues, useTaskTags, useTopics } from "@tolkovo/api-client/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Select, cn } from "@tolkovo/ui";
-import { LayoutList, Lock, Search, SquareKanban } from "lucide-react";
+import { ChartLine, LayoutList, Lock, Search, SquareKanban } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,9 +10,19 @@ import type { TaskLayout, TasksSearch } from "../../lib/tasks/tasks";
 
 /**
  * The filters the list and the board share: search, queue, topic and tag, kept in the URL.
- * The list stacks them, the board puts them in a row.
+ * The list stacks them, the board puts them in a row; the flow metrics take only queue, topic and tag.
  */
-export function TaskFilters({ search, className, compact = false }: { search: TasksSearch; className?: string; compact?: boolean }) {
+export function TaskFilters({
+  search,
+  className,
+  compact = false,
+  facetsOnly = false,
+}: {
+  search: TasksSearch;
+  className?: string;
+  compact?: boolean;
+  facetsOnly?: boolean;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: queues } = useTaskQueues();
@@ -34,7 +44,7 @@ export function TaskFilters({ search, className, compact = false }: { search: Ta
 
   return (
     <div className={className}>
-      <div className="relative min-w-0">
+      <div className={cn("relative min-w-0", facetsOnly && "hidden")}>
         <label htmlFor={searchId} className="sr-only">
           {t("tasks.search")}
         </label>
@@ -96,7 +106,7 @@ export function TaskFilters({ search, className, compact = false }: { search: Ta
           </Select>
         </div>
       )}
-      <div className="min-w-0">
+      <div className={cn("min-w-0", facetsOnly && "hidden")}>
         <button
           type="button"
           aria-pressed={search.blocked === true}
@@ -115,12 +125,13 @@ export function TaskFilters({ search, className, compact = false }: { search: Ta
   );
 }
 
-/** "List | Board": the choice goes to the URL and is remembered for the next visit. */
+/** "List | Board | Flow": the choice goes to the URL and is remembered for the next visit. */
 export function LayoutSwitch({ search, layout }: { search: TasksSearch; layout: TaskLayout }) {
   const { t } = useTranslation();
   const options = [
     { id: "list", Icon: LayoutList },
     { id: "board", Icon: SquareKanban },
+    { id: "flow", Icon: ChartLine },
   ] as const;
   return (
     <nav aria-label={t("tasks.layout.label")} className="inline-flex shrink-0 rounded-lg border border-line bg-sunk p-0.5">

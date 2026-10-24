@@ -2550,6 +2550,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks/flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Metrics of the flow of tasks (ADR-0019, K3)
+         * @description Requires `tasks.view`. Built from the history of statuses over the last `days` days, in
+         *     the workspace's time zone: the cycle time of every task done (from the first move to
+         *     `in_progress` to `done`) with its 50th and 85th percentiles, the tasks done each week,
+         *     the tasks in each status at the end of each day (canceled ones left out; `done` counts the
+         *     tasks done since the period began), and the open tasks standing longest in their column.
+         *     The filters are those of `GET /tasks/board`.
+         */
+        get: operations["getTaskFlow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/task-board-settings": {
         parameters: {
             query?: never;
@@ -3704,6 +3729,78 @@ export interface components {
         TaskPage: {
             items: components["schemas"]["Task"][];
             next_cursor: string | null;
+        };
+        TaskFlow: {
+            /**
+             * Format: date
+             * @description The first day of the period.
+             */
+            since: string;
+            /**
+             * Format: date
+             * @description The last day of the period
+             */
+            until: string;
+            /** @description Tasks done in the period that were in progress, in the order they were done. */
+            cycle: components["schemas"]["TaskFlowCycle"][];
+            /**
+             * Format: double
+             * @description Half of the tasks took at most this many days; `null` without tasks.
+             */
+            cycle_p50: number | null;
+            /**
+             * Format: double
+             * @description 85% of the tasks took at most this many days; `null` without tasks.
+             */
+            cycle_p85: number | null;
+            /** @description Every week of the period from its Monday, the first one possibly partial. */
+            throughput: components["schemas"]["TaskFlowWeek"][];
+            /** @description Every day of the period, the tasks in each status at its end. */
+            cfd: components["schemas"]["TaskFlowDay"][];
+            /** @description Open tasks standing longest in their column, the oldest first. */
+            aging: components["schemas"]["TaskFlowAging"][];
+            /** @description The workspace has more tasks than the metrics read; they cover the latest. */
+            truncated: boolean;
+        };
+        TaskFlowWeek: {
+            /** Format: date */
+            week: string;
+            done: number;
+        };
+        TaskFlowDay: {
+            /** Format: date */
+            day: string;
+            open: number;
+            in_progress: number;
+            review: number;
+            verified: number;
+            done: number;
+        };
+        TaskFlowCycle: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            title: string;
+            /** Format: date-time */
+            done_at: string;
+            /**
+             * Format: double
+             * @description From the first move to in progress to done
+             */
+            days: number;
+        };
+        TaskFlowAging: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            title: string;
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Format: double
+             * @description In the current status
+             */
+            days: number;
+            blocked: boolean;
         };
         TaskBoard: {
             /** @description Every status in the order of the path; `canceled` only when asked. */
@@ -9117,6 +9214,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskBoard"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTaskFlow: {
+        parameters: {
+            query?: {
+                /** @description How many days back the period reaches, 7–90; 30 when absent. */
+                days?: number;
+                /** @description `me`, `none` or a member id. */
+                assignee?: string;
+                /** @description `none` or a queue id. */
+                queue?: string;
+                /** @description `none` or a topic id. */
+                topic?: string;
+                /** @description A tag of tasks (`GET /task-tags`); only the tasks with it. */
+                tag?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The metrics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskFlow"];
                 };
             };
             400: components["responses"]["Invalid"];

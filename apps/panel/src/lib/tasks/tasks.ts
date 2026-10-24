@@ -8,8 +8,8 @@ export type TaskView = (typeof TASK_VIEWS)[number];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "verified", "done", "canceled"];
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["urgent", "high", "normal", "low"];
 
-/** The section as a list with the open task beside it, or as the board (ADR-0019). */
-export const TASK_LAYOUTS = ["list", "board"] as const;
+/** The section as a list with the open task beside it, as the board, or its flow metrics (ADR-0019). */
+export const TASK_LAYOUTS = ["list", "board", "flow"] as const;
 export type TaskLayout = (typeof TASK_LAYOUTS)[number];
 
 /** Swimlanes of the board (ADR-0019, K2): cards grouped by who, which queue or how urgent. */
@@ -29,7 +29,13 @@ export type TasksSearch = {
   /** A tag id of tasks. */
   tag?: string;
   q?: string;
+  /** Days back the flow metrics reach. */
+  days?: FlowDays;
 };
+
+/** Periods of the flow metrics (ADR-0019, K3). */
+export const FLOW_DAYS = [30, 90] as const;
+export type FlowDays = (typeof FLOW_DAYS)[number];
 
 /** Keeps only known values from the URL: a hand-edited link never breaks the page. */
 export function validateTasksSearch(search: Record<string, unknown>): TasksSearch {
@@ -42,6 +48,8 @@ export function validateTasksSearch(search: Record<string, unknown>): TasksSearc
   if (typeof search.topic === "string" && /^(none|[0-9a-f-]{36})$/.test(search.topic)) out.topic = search.topic;
   if (typeof search.tag === "string" && /^[0-9a-f-]{36}$/.test(search.tag)) out.tag = search.tag;
   if (typeof search.q === "string" && search.q.trim() !== "") out.q = search.q.slice(0, 100);
+  const days = Number(search.days);
+  if ((FLOW_DAYS as readonly number[]).includes(days)) out.days = days as FlowDays;
   return out;
 }
 

@@ -3648,6 +3648,55 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /tasks/flow:
+    get:
+      tags: [tasks]
+      operationId: getTaskFlow
+      security:
+        - sessionCookie: []
+        - accessToken: []
+      summary: Metrics of the flow of tasks (ADR-0019, K3)
+      description: |
+        Requires `tasks.view`. Built from the history of statuses over the last `days` days, in
+        the workspace's time zone: the cycle time of every task done (from the first move to
+        `in_progress` to `done`) with its 50th and 85th percentiles, the tasks done each week,
+        the tasks in each status at the end of each day (canceled ones left out; `done` counts the
+        tasks done since the period began), and the open tasks standing longest in their column.
+        The filters are those of `GET /tasks/board`.
+      parameters:
+        - name: days
+          in: query
+          description: How many days back the period reaches, 7–90; 30 when absent.
+          schema: { type: integer, minimum: 7, maximum: 90 }
+        - name: assignee
+          in: query
+          description: '`me`, `none` or a member id.'
+          schema: { type: string, maxLength: 36 }
+        - name: queue
+          in: query
+          description: '`none` or a queue id.'
+          schema: { type: string, maxLength: 36 }
+        - name: topic
+          in: query
+          description: '`none` or a topic id.'
+          schema: { type: string, maxLength: 36 }
+        - name: tag
+          in: query
+          description: A tag of tasks (`GET /task-tags`); only the tasks with it.
+          schema:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+      responses:
+        '200':
+          description: The metrics.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskFlow' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /task-board-settings:
     get:
       tags: [tasks]
@@ -5800,6 +5849,86 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Task' }
         next_cursor: { type: [string, 'null'] }
+
+    TaskFlow:
+      type: object
+      required: [since, until, cycle, cycle_p50, cycle_p85, throughput, cfd, aging, truncated]
+      properties:
+        since: { type: string, format: date, description: The first day of the period. }
+        until: { type: string, format: date, description: The last day of the period, today. }
+        cycle:
+          type: array
+          description: Tasks done in the period that were in progress, in the order they were done.
+          items: { $ref: '#/components/schemas/TaskFlowCycle' }
+        cycle_p50:
+          type: [number, 'null']
+          format: double
+          description: Half of the tasks took at most this many days; `null` without tasks.
+        cycle_p85:
+          type: [number, 'null']
+          format: double
+          description: 85% of the tasks took at most this many days; `null` without tasks.
+        throughput:
+          type: array
+          description: Every week of the period from its Monday, the first one possibly partial.
+          items: { $ref: '#/components/schemas/TaskFlowWeek' }
+        cfd:
+          type: array
+          description: Every day of the period, the tasks in each status at its end.
+          items: { $ref: '#/components/schemas/TaskFlowDay' }
+        aging:
+          type: array
+          maxItems: 20
+          description: Open tasks standing longest in their column, the oldest first.
+          items: { $ref: '#/components/schemas/TaskFlowAging' }
+        truncated:
+          type: boolean
+          description: The workspace has more tasks than the metrics read; they cover the latest.
+
+    TaskFlowWeek:
+      type: object
+      required: [week, done]
+      properties:
+        week: { type: string, format: date }
+        done: { type: integer }
+
+    TaskFlowDay:
+      type: object
+      required: [day, open, in_progress, review, verified, done]
+      properties:
+        day: { type: string, format: date }
+        open: { type: integer }
+        in_progress: { type: integer }
+        review: { type: integer }
+        verified: { type: integer }
+        done: { type: integer }
+
+    TaskFlowCycle:
+      type: object
+      required: [task_id, number, title, done_at, days]
+      properties:
+        task_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        title: { type: string }
+        done_at: { type: string, format: date-time }
+        days: { type: number, format: double, description: From the first move to in progress to done, in days. }
+
+    TaskFlowAging:
+      type: object
+      required: [task_id, number, title, status, days, blocked]
+      properties:
+        task_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        number: { type: integer, format: int64 }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        days: { type: number, format: double, description: In the current status, in days. }
+        blocked: { type: boolean }
 
     TaskBoard:
       type: object

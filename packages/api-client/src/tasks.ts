@@ -6,6 +6,7 @@ import {
   taskActivitySchema,
   taskBoardSchema,
   taskBoardSettingsSchema,
+  taskFlowSchema,
   taskDraftSchema,
   taskPageSchema,
   taskQueueListSchema,
@@ -34,6 +35,7 @@ export type TaskPage = Schemas["TaskPage"];
 export type TaskBoard = Schemas["TaskBoard"];
 export type TaskBoardColumn = Schemas["TaskBoardColumn"];
 export type TaskBoardSettings = Schemas["TaskBoardSettings"];
+export type TaskFlow = Schemas["TaskFlow"];
 export type TaskColumnRule = Schemas["TaskColumnRule"];
 export type TaskCreate = Schemas["TaskCreate"];
 export type TaskUpdate = Schemas["TaskUpdate"];
@@ -80,6 +82,13 @@ export async function fetchTaskBoard(client: ApiClient, filter: TaskBoardFilter)
 }
 
 /** Soft limits and age thresholds of the board's open columns, the workspace's and the queues'. */
+/** Filter of the flow metrics (ADR-0019, K3): the board's people, queue, topic and tag, and the days back. */
+export type TaskFlowFilter = Pick<TaskFilter, "assignee" | "queue" | "topic" | "tag"> & { days?: number };
+
+export async function fetchTaskFlow(client: ApiClient, filter: TaskFlowFilter): Promise<TaskFlow> {
+  return parseAnswer(taskFlowSchema, await unwrap(client.GET("/tasks/flow", { params: { query: filter } })));
+}
+
 export async function fetchTaskBoardSettings(client: ApiClient): Promise<TaskBoardSettings> {
   return parseAnswer(taskBoardSettingsSchema, await unwrap(client.GET("/task-board-settings")));
 }

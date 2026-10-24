@@ -1,12 +1,15 @@
 import { Outlet, createFileRoute, useMatchRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { TaskBoard } from "../../components/tasks/task-board";
 import { TaskList } from "../../components/tasks/task-list";
 import { readStoredTasksLayout } from "../../lib/preferences";
 import { validateTasksSearch } from "../../lib/tasks/tasks";
+
+// The flow metrics load with their tab: most visits never open them.
+const TaskFlowView = lazy(() => import("../../components/tasks/task-flow"));
 
 export const Route = createFileRoute("/_app/tasks")({
   validateSearch: validateTasksSearch,
@@ -25,6 +28,14 @@ function TasksLayout() {
   const open = Boolean(taskId) || Boolean(matchRoute({ to: "/tasks/new" }));
   const layout = search.layout ?? readStoredTasksLayout();
   if (layout === "board") return <BoardLayout open={open} taskId={taskId} />;
+  if (layout === "flow")
+    return (
+      <div className="flex h-full min-h-0 min-w-0">
+        <Suspense fallback={null}>
+          <TaskFlowView search={search} />
+        </Suspense>
+      </div>
+    );
   return (
     <div className="grid h-full grid-cols-[360px_minmax(0,1fr)] max-nav:grid-cols-[minmax(0,1fr)]">
       <TaskList search={search} selectedId={taskId} className={open ? "max-nav:hidden" : undefined} />

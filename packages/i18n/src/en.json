@@ -1587,7 +1587,8 @@
     "layout": {
       "label": "Section view",
       "list": "List",
-      "board": "Board"
+      "board": "Board",
+      "flow": "Flow"
     },
     "board": {
       "label": "Task board",
@@ -1688,7 +1689,40 @@
       "done": "{number} is blocked",
       "undone": "{number} is unblocked"
     },
-    "backToTask": "Back to the task"
+    "backToTask": "Back to the task",
+    "flow": {
+      "label": "Flow of tasks",
+      "period": "Period",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "daysShort": "{count, plural, one {# d} other {# d}}",
+      "truncated": "There are more tasks than the metrics read: they cover the latest 5,000.",
+      "empty": {
+        "title": "No tasks in the period",
+        "text": "The metrics appear once tasks move across the board. Try another period or other filters."
+      },
+      "cycle": {
+        "title": "Cycle time",
+        "lead": "From In progress to Done, tasks: {count}. Half took at most {p50}, 85% at most {p85}",
+        "none": "No task went from In progress to Done in the period."
+      },
+      "throughput": {
+        "title": "Done by week",
+        "lead": "{count, plural, one {# task done in the period.} other {# tasks done in the period.}}",
+        "week": "Week of {week}: {count, plural, one {# task} other {# tasks}}"
+      },
+      "cfd": {
+        "title": "Tasks by status",
+        "lead": "How many tasks were in each status at the end of each day. A growing band is where tasks pile up."
+      },
+      "aging": {
+        "title": "Longest in their column",
+        "lead": "Open tasks standing longest in their status.",
+        "none": "No open tasks.",
+        "task": "Task",
+        "status": "Column",
+        "days": "In the column"
+      }
+    }
   },
   "notifications": {
     "alert": {
