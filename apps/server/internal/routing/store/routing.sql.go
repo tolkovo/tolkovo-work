@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const anyAvailable = `-- name: AnyAvailable :one
@@ -36,6 +37,19 @@ func (q *Queries) AnyAvailable(ctx context.Context, arg AnyAvailableParams) (boo
 	return exists, err
 }
 
+const anyOwnLimit = `-- name: AnyOwnLimit :one
+SELECT EXISTS (
+    SELECT 1 FROM operator_states WHERE workspace_id = $1 AND max_chats IS NOT NULL
+)
+`
+
+func (q *Queries) AnyOwnLimit(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, anyOwnLimit, workspaceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getMode = `-- name: GetMode :one
 SELECT COALESCE((SELECT mode FROM routing_settings WHERE workspace_id = $1), 'manual')::text
 `
@@ -45,6 +59,25 @@ func (q *Queries) GetMode(ctx context.Context, workspaceID uuid.UUID) (string, e
 	var column_1 string
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const getSettings = `-- name: GetSettings :one
+SELECT COALESCE(s.mode, 'manual')::text AS mode, s.max_chats
+FROM (SELECT $1::uuid AS workspace_id) w
+LEFT JOIN routing_settings s ON s.workspace_id = w.workspace_id
+`
+
+type GetSettingsRow struct {
+	Mode     string
+	MaxChats pgtype.Int2
+}
+
+// The defaults while the workspace has no row: manual, no limit.
+func (q *Queries) GetSettings(ctx context.Context, workspaceID uuid.UUID) (GetSettingsRow, error) {
+	row := q.db.QueryRow(ctx, getSettings, workspaceID)
+	var i GetSettingsRow
+	err := row.Scan(&i.Mode, &i.MaxChats)
+	return i, err
 }
 
 const getStates = `-- name: GetStates :many
@@ -115,6 +148,47 @@ func (q *Queries) IsAvailable(ctx context.Context, arg IsAvailableParams) (bool,
 	return exists, err
 }
 
+const listLimits = `-- name: ListLimits :many
+SELECT m.user_id, os.max_chats
+FROM memberships m
+JOIN roles r ON r.id = m.role_id
+LEFT JOIN operator_states os ON os.workspace_id = m.workspace_id AND os.user_id = m.user_id
+WHERE m.workspace_id = $1 AND m.is_active AND r.key = ANY($2::text[])
+ORDER BY m.user_id
+`
+
+type ListLimitsParams struct {
+	WorkspaceID uuid.UUID
+	Answering   []string
+}
+
+type ListLimitsRow struct {
+	UserID   uuid.UUID
+	MaxChats pgtype.Int2
+}
+
+// The members who answer customers, with their own limit (NULL: the
+// workspace's).
+func (q *Queries) ListLimits(ctx context.Context, arg ListLimitsParams) ([]ListLimitsRow, error) {
+	rows, err := q.db.Query(ctx, listLimits, arg.WorkspaceID, arg.Answering)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLimitsRow
+	for rows.Next() {
+		var i ListLimitsRow
+		if err := rows.Scan(&i.UserID, &i.MaxChats); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStates = `-- name: ListStates :many
 SELECT user_id, status, seen_at
 FROM operator_states
@@ -149,7 +223,7 @@ func (q *Queries) ListStates(ctx context.Context, workspaceID uuid.UUID) ([]List
 
 const lockAvailable = `-- name: LockAvailable :many
 WITH locked AS MATERIALIZED (
-    SELECT os.user_id, os.last_assigned_at
+    SELECT os.user_id, os.last_assigned_at, os.max_chats
     FROM operator_states os
     JOIN memberships m ON m.workspace_id = os.workspace_id AND m.user_id = os.user_id
     JOIN roles r ON r.id = m.role_id
@@ -159,7 +233,7 @@ WITH locked AS MATERIALIZED (
     ORDER BY os.user_id
     FOR UPDATE OF os
 )
-SELECT user_id FROM locked
+SELECT user_id, max_chats FROM locked
 ORDER BY last_assigned_at ASC NULLS FIRST, user_id
 `
 
@@ -169,24 +243,29 @@ type LockAvailableParams struct {
 	SeenAfter   time.Time
 }
 
+type LockAvailableRow struct {
+	UserID   uuid.UUID
+	MaxChats pgtype.Int2
+}
+
 // Members who take conversations now, whose turn came first. answering
 // are the roles that answer customers (ADR-0020: not the programmer), as
 // in IsAvailable and AnyAvailable. The row
 // locks keep a parallel assignment from reading a stale turn order; they
 // are taken in user_id order, as MarkSeen does, so the two never deadlock.
-func (q *Queries) LockAvailable(ctx context.Context, arg LockAvailableParams) ([]uuid.UUID, error) {
+func (q *Queries) LockAvailable(ctx context.Context, arg LockAvailableParams) ([]LockAvailableRow, error) {
 	rows, err := q.db.Query(ctx, lockAvailable, arg.WorkspaceID, arg.Answering, arg.SeenAfter)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uuid.UUID
+	var items []LockAvailableRow
 	for rows.Next() {
-		var user_id uuid.UUID
-		if err := rows.Scan(&user_id); err != nil {
+		var i LockAvailableRow
+		if err := rows.Scan(&i.UserID, &i.MaxChats); err != nil {
 			return nil, err
 		}
-		items = append(items, user_id)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -235,21 +314,61 @@ func (q *Queries) SetLastAssigned(ctx context.Context, arg SetLastAssignedParams
 	return err
 }
 
-const setMode = `-- name: SetMode :exec
-INSERT INTO routing_settings (workspace_id, mode, updated_at)
-VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id) DO UPDATE
-SET mode = EXCLUDED.mode, updated_at = EXCLUDED.updated_at
+const setLimit = `-- name: SetLimit :execrows
+INSERT INTO operator_states (workspace_id, user_id, max_chats, updated_at)
+SELECT m.workspace_id, m.user_id, $1::smallint, $2::timestamptz
+FROM memberships m
+JOIN roles r ON r.id = m.role_id
+WHERE m.workspace_id = $3 AND m.user_id = $4 AND m.is_active
+  AND r.key = ANY($5::text[])
+ON CONFLICT (workspace_id, user_id) DO UPDATE
+SET max_chats = EXCLUDED.max_chats, updated_at = EXCLUDED.updated_at
 `
 
-type SetModeParams struct {
+type SetLimitParams struct {
+	MaxChats    pgtype.Int2
+	UpdatedAt   time.Time
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Answering   []string
+}
+
+// Only for an active member who answers customers.
+func (q *Queries) SetLimit(ctx context.Context, arg SetLimitParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setLimit,
+		arg.MaxChats,
+		arg.UpdatedAt,
+		arg.WorkspaceID,
+		arg.UserID,
+		arg.Answering,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setSettings = `-- name: SetSettings :exec
+INSERT INTO routing_settings (workspace_id, mode, max_chats, updated_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (workspace_id) DO UPDATE
+SET mode = EXCLUDED.mode, max_chats = EXCLUDED.max_chats, updated_at = EXCLUDED.updated_at
+`
+
+type SetSettingsParams struct {
 	WorkspaceID uuid.UUID
 	Mode        string
+	MaxChats    pgtype.Int2
 	UpdatedAt   time.Time
 }
 
-func (q *Queries) SetMode(ctx context.Context, arg SetModeParams) error {
-	_, err := q.db.Exec(ctx, setMode, arg.WorkspaceID, arg.Mode, arg.UpdatedAt)
+func (q *Queries) SetSettings(ctx context.Context, arg SetSettingsParams) error {
+	_, err := q.db.Exec(ctx, setSettings,
+		arg.WorkspaceID,
+		arg.Mode,
+		arg.MaxChats,
+		arg.UpdatedAt,
+	)
 	return err
 }
 

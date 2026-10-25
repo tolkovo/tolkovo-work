@@ -16,16 +16,22 @@ SELECT EXISTS (
 -- The settings of the bot; a workspace without the row has the defaults.
 SELECT coalesce((SELECT min_confidence FROM ai_bot_settings b WHERE b.workspace_id = @workspace_id), 75)::smallint AS min_confidence,
        coalesce((SELECT handoff_message FROM ai_bot_settings b WHERE b.workspace_id = @workspace_id), '')::text AS handoff_message,
+       coalesce((SELECT bot_name FROM ai_bot_settings b WHERE b.workspace_id = @workspace_id), '')::text AS bot_name,
+       coalesce((SELECT tone FROM ai_bot_settings b WHERE b.workspace_id = @workspace_id), 'friendly')::text AS tone,
+       coalesce((SELECT address FROM ai_bot_settings b WHERE b.workspace_id = @workspace_id), 'formal')::text AS address,
+       coalesce((SELECT rules FROM ai_bot_settings b WHERE b.workspace_id = @workspace_id), '')::text AS rules,
        coalesce((SELECT array_agg(c.channel_id ORDER BY c.channel_id) FROM ai_bot_channels c
                  WHERE c.workspace_id = @workspace_id), '{}')::uuid[] AS channel_ids,
        coalesce((SELECT array_agg(t.topic_id ORDER BY t.topic_id) FROM ai_bot_topics_off t
                  WHERE t.workspace_id = @workspace_id), '{}')::uuid[] AS topics_off;
 
 -- name: SetBotOptions :exec
-INSERT INTO ai_bot_settings (workspace_id, min_confidence, handoff_message, updated_at)
-VALUES (@workspace_id, @min_confidence, @handoff_message, @now)
+INSERT INTO ai_bot_settings (workspace_id, min_confidence, handoff_message, bot_name, tone, address, rules, updated_at)
+VALUES (@workspace_id, @min_confidence, @handoff_message, @bot_name, @tone, @address, @rules, @now)
 ON CONFLICT (workspace_id) DO UPDATE
-SET min_confidence = excluded.min_confidence, handoff_message = excluded.handoff_message, updated_at = excluded.updated_at;
+SET min_confidence = excluded.min_confidence, handoff_message = excluded.handoff_message,
+    bot_name = excluded.bot_name, tone = excluded.tone, address = excluded.address, rules = excluded.rules,
+    updated_at = excluded.updated_at;
 
 -- name: ClearBotChannels :exec
 DELETE FROM ai_bot_channels WHERE workspace_id = @workspace_id;

@@ -70,11 +70,17 @@ SELECT
     count(*) FILTER (WHERE c.status IN ('new', 'bot', 'queued', 'assigned', 'pending'))::bigint AS open
 FROM conversations c
 WHERE c.workspace_id = $2 AND c.status IN ('new', 'bot', 'queued', 'assigned', 'pending')
+  -- As ListConversations with limited.
+  AND (NOT $3::boolean OR c.assignee_id = $1
+       OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                                 JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                                 WHERE lm.workspace_id = $2 AND lm.user_id = $1))
 `
 
 type CountInboxParams struct {
 	UserID      *uuid.UUID
 	WorkspaceID uuid.UUID
+	Limited     bool
 }
 
 type CountInboxRow struct {
@@ -90,7 +96,7 @@ type CountInboxRow struct {
 // mine_unread: the caller's conversations with a customer message after
 // their read mark (the "(3)" in the tab title, docs/04 §5.5).
 func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountInboxRow, error) {
-	row := q.db.QueryRow(ctx, countInbox, arg.UserID, arg.WorkspaceID)
+	row := q.db.QueryRow(ctx, countInbox, arg.UserID, arg.WorkspaceID, arg.Limited)
 	var i CountInboxRow
 	err := row.Scan(
 		&i.Mine,
@@ -101,10 +107,49 @@ func (q *Queries) CountInbox(ctx context.Context, arg CountInboxParams) (CountIn
 	return i, err
 }
 
+const countOpenOf = `-- name: CountOpenOf :many
+SELECT assignee_id::uuid AS user_id, count(*)::integer AS open
+FROM conversations
+WHERE workspace_id = $1 AND assignee_id = ANY($2::uuid[]) AND status IN ('assigned', 'pending')
+GROUP BY assignee_id
+`
+
+type CountOpenOfParams struct {
+	WorkspaceID uuid.UUID
+	UserIds     []uuid.UUID
+}
+
+type CountOpenOfRow struct {
+	UserID uuid.UUID
+	Open   int32
+}
+
+// The load of each of user_ids: their conversations in work, assigned or
+// pending (ADR-0021). Served by conversations_assignee_idx.
+func (q *Queries) CountOpenOf(ctx context.Context, arg CountOpenOfParams) ([]CountOpenOfRow, error) {
+	rows, err := q.db.Query(ctx, countOpenOf, arg.WorkspaceID, arg.UserIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountOpenOfRow
+	for rows.Next() {
+		var i CountOpenOfRow
+		if err := rows.Scan(&i.UserID, &i.Open); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, workspace_id, number, contact_id, status, priority, subject)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at
+RETURNING id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at, line_id
 `
 
 type CreateConversationParams struct {
@@ -154,12 +199,13 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.RatedAt,
 		&i.TopicID,
 		&i.TopicAskedAt,
+		&i.LineID,
 	)
 	return i, err
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, c.line_id, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -246,6 +292,7 @@ func (q *Queries) GetConversation(ctx context.Context, arg GetConversationParams
 		&i.Conversation.RatedAt,
 		&i.Conversation.TopicID,
 		&i.Conversation.TopicAskedAt,
+		&i.Conversation.LineID,
 		&i.ContactName,
 		&i.LastSenderType,
 		&i.LastKind,
@@ -263,10 +310,14 @@ const hasQueued = `-- name: HasQueued :one
 SELECT EXISTS (
     SELECT 1 FROM conversations c
     WHERE c.workspace_id = $1 AND c.status = 'queued'
-      AND (c.topic_id IS NULL
-           OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
-           OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
-                        AND tm.user_id = ANY($2::uuid[])))
+      AND CASE WHEN c.line_id IS NOT NULL THEN
+            EXISTS (SELECT 1 FROM line_members lm WHERE lm.workspace_id = c.workspace_id AND lm.line_id = c.line_id
+                      AND lm.user_id = ANY($2::uuid[]))
+          ELSE (c.topic_id IS NULL
+                OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+                OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                             AND tm.user_id = ANY($2::uuid[])))
+          END
 )
 `
 
@@ -285,7 +336,7 @@ func (q *Queries) HasQueued(ctx context.Context, arg HasQueuedParams) (bool, err
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, ct.name AS contact_name,
+SELECT c.id, c.workspace_id, c.number, c.contact_id, c.channel_id, c.external_thread_id, c.status, c.priority, c.line_level, c.assignee_id, c.subject, c.first_response_at, c.last_message_at, c.resolved_at, c.closed_at, c.version, c.created_at, c.updated_at, c.awaiting_fix, c.rating, c.rating_comment, c.rating_resolved_by, c.rated_at, c.topic_id, c.topic_asked_at, c.line_id, ct.name AS contact_name,
        -- An empty last_kind: no visible message yet (sqlc cannot see that
        -- a LEFT JOIN LATERAL makes columns nullable, hence coalesce).
        coalesce(lm.sender_type, '')::text AS last_sender_type, coalesce(lm.kind, '')::text AS last_kind,
@@ -329,10 +380,19 @@ WHERE c.workspace_id = $2
   AND (NOT $7::boolean
        OR ($8::uuid IS NULL AND c.topic_id IS NULL)
        OR c.topic_id = $8::uuid)
-  AND ($9::timestamptz IS NULL
-       OR (c.last_message_at, c.id) < ($9::timestamptz, $10::uuid))
+  AND (NOT $9::boolean
+       OR ($10::uuid IS NULL AND c.line_id IS NULL)
+       OR c.line_id = $10::uuid)
+  -- limited: the viewer sees lines up to their level and their own
+  -- conversations (ADR-0021); the level is the highest of their lines, 1.
+  AND (NOT $11::boolean OR c.assignee_id = $1
+       OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                                 JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                                 WHERE lm.workspace_id = $2 AND lm.user_id = $1))
+  AND ($12::timestamptz IS NULL
+       OR (c.last_message_at, c.id) < ($12::timestamptz, $13::uuid))
 ORDER BY c.last_message_at DESC, c.id DESC
-LIMIT $11
+LIMIT $14
 `
 
 type ListConversationsParams struct {
@@ -344,6 +404,9 @@ type ListConversationsParams struct {
 	ContactID   *uuid.UUID
 	ByTopic     bool
 	TopicID     *uuid.UUID
+	ByLine      bool
+	LineID      *uuid.UUID
+	Limited     bool
 	BeforeAt    *time.Time
 	BeforeID    *uuid.UUID
 	Lim         int32
@@ -364,7 +427,8 @@ type ListConversationsRow struct {
 
 // Newest activity first, unread counters for user_id. The cursor is (last_message_at, id) of the last
 // row of the previous page. by_assignee with a NULL assignee_id lists the
-// unassigned ones, by_topic with a NULL topic_id those without a topic.
+// unassigned ones, by_topic with a NULL topic_id those without a topic,
+// by_line with a NULL line_id those on the first line.
 // contact_id narrows it to one customer's history (served by
 // conversations_contact_idx: a contact has few conversations to sort).
 func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsParams) ([]ListConversationsRow, error) {
@@ -377,6 +441,9 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 		arg.ContactID,
 		arg.ByTopic,
 		arg.TopicID,
+		arg.ByLine,
+		arg.LineID,
+		arg.Limited,
 		arg.BeforeAt,
 		arg.BeforeID,
 		arg.Lim,
@@ -414,6 +481,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.Conversation.RatedAt,
 			&i.Conversation.TopicID,
 			&i.Conversation.TopicAskedAt,
+			&i.Conversation.LineID,
 			&i.ContactName,
 			&i.LastSenderType,
 			&i.LastKind,
@@ -435,7 +503,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const lockConversation = `-- name: LockConversation :one
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at, line_id FROM conversations
 WHERE workspace_id = $1 AND id = $2
 FOR UPDATE
 `
@@ -475,12 +543,13 @@ func (q *Queries) LockConversation(ctx context.Context, arg LockConversationPara
 		&i.RatedAt,
 		&i.TopicID,
 		&i.TopicAskedAt,
+		&i.LineID,
 	)
 	return i, err
 }
 
 const lockOpenOf = `-- name: LockOpenOf :many
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at, line_id FROM conversations
 WHERE workspace_id = $1 AND assignee_id = $2 AND status IN ('assigned', 'pending')
 ORDER BY created_at, id
 FOR UPDATE
@@ -528,6 +597,7 @@ func (q *Queries) LockOpenOf(ctx context.Context, arg LockOpenOfParams) ([]Conve
 			&i.RatedAt,
 			&i.TopicID,
 			&i.TopicAskedAt,
+			&i.LineID,
 		); err != nil {
 			return nil, err
 		}
@@ -540,12 +610,16 @@ func (q *Queries) LockOpenOf(ctx context.Context, arg LockOpenOfParams) ([]Conve
 }
 
 const lockQueue = `-- name: LockQueue :many
-SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at FROM conversations c
+SELECT id, workspace_id, number, contact_id, channel_id, external_thread_id, status, priority, line_level, assignee_id, subject, first_response_at, last_message_at, resolved_at, closed_at, version, created_at, updated_at, awaiting_fix, rating, rating_comment, rating_resolved_by, rated_at, topic_id, topic_asked_at, line_id FROM conversations c
 WHERE c.workspace_id = $1 AND c.status = 'queued'
-  AND (c.topic_id IS NULL
-       OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
-       OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
-                    AND tm.user_id = ANY($2::uuid[])))
+  AND CASE WHEN c.line_id IS NOT NULL THEN
+        EXISTS (SELECT 1 FROM line_members lm WHERE lm.workspace_id = c.workspace_id AND lm.line_id = c.line_id
+                  AND lm.user_id = ANY($2::uuid[]))
+      ELSE (c.topic_id IS NULL
+            OR NOT EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id)
+            OR EXISTS (SELECT 1 FROM topic_members tm WHERE tm.workspace_id = c.workspace_id AND tm.topic_id = c.topic_id
+                         AND tm.user_id = ANY($2::uuid[])))
+      END
 ORDER BY c.priority DESC, c.created_at, c.id
 LIMIT $3
 FOR UPDATE OF c SKIP LOCKED
@@ -560,8 +634,9 @@ type LockQueueParams struct {
 // The head of the queue for the router (docs/02 §9.2): higher priority
 // first, then the oldest. Rows another transaction holds are skipped, so
 // an operator taking one by hand never waits for the router. Only
-// conversations someone of available may take: a topic with members goes
-// to them alone, so one nobody online may take does not block the rest.
+// conversations someone of available may take: a line goes to its members
+// alone (ADR-0021), and on the first line a topic with members goes to
+// them alone, so one nobody online may take does not block the rest.
 func (q *Queries) LockQueue(ctx context.Context, arg LockQueueParams) ([]Conversation, error) {
 	rows, err := q.db.Query(ctx, lockQueue, arg.WorkspaceID, arg.Available, arg.Lim)
 	if err != nil {
@@ -597,6 +672,7 @@ func (q *Queries) LockQueue(ctx context.Context, arg LockQueueParams) ([]Convers
 			&i.RatedAt,
 			&i.TopicID,
 			&i.TopicAskedAt,
+			&i.LineID,
 		); err != nil {
 			return nil, err
 		}
@@ -621,6 +697,33 @@ func (q *Queries) NextConversationNumber(ctx context.Context, workspaceID uuid.U
 	var last_number int64
 	err := row.Scan(&last_number)
 	return last_number, err
+}
+
+const seesConversation = `-- name: SeesConversation :one
+SELECT EXISTS (
+    SELECT 1 FROM conversations c
+    WHERE c.workspace_id = $1 AND c.id = $2
+      AND (c.assignee_id = $3::uuid
+           OR c.line_level <= (SELECT coalesce(max(l.level), 1) FROM line_members lm
+                               JOIN lines l ON l.workspace_id = lm.workspace_id AND l.id = lm.line_id
+                               WHERE lm.workspace_id = $1 AND lm.user_id = $3::uuid))
+)
+`
+
+type SeesConversationParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+	UserID      uuid.UUID
+}
+
+// Whether a viewer limited by level sees the conversation: its line is not
+// above their level (the highest of their lines, 1), or it is theirs
+// (ADR-0021). A missing conversation is not seen.
+func (q *Queries) SeesConversation(ctx context.Context, arg SeesConversationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, seesConversation, arg.WorkspaceID, arg.ID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const setAwaitingFix = `-- name: SetAwaitingFix :exec

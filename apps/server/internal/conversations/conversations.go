@@ -43,6 +43,9 @@ type Conversation struct {
 	TagIDs      []uuid.UUID // in the order they were added
 	// TopicID is what the question is about (docs/02 §7.3); nil: none yet.
 	TopicID *uuid.UUID
+	// LineID is the line the conversation is on (ADR-0021); nil: the first
+	// line. LineLevel is its level.
+	LineID *uuid.UUID
 	// LastReadMessageID and UnreadCount are the viewer's: read marks are per
 	// operator. UnreadCount counts customer messages after the mark, up to
 	// MaxUnreadCount.
@@ -95,6 +98,13 @@ type ListFilter struct {
 	// topic when TopicID is nil.
 	ByTopic bool
 	TopicID *uuid.UUID
+	// ByLine restricts the list to LineID, or to the first line when LineID
+	// is nil.
+	ByLine bool
+	LineID *uuid.UUID
+	// Limited shows only what ViewerID sees by the level of their lines
+	// (ADR-0021): owners and admins see every line.
+	Limited bool
 	Cursor  string
 	Limit   int
 }
@@ -184,7 +194,7 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		rows, err = q.ListConversations(ctx, store.ListConversationsParams{
 			UserID: f.ViewerID, WorkspaceID: workspaceID, Statuses: statuses,
 			ByAssignee: f.ByAssignee, AssigneeID: f.AssigneeID, ContactID: f.ContactID,
-			ByTopic: f.ByTopic, TopicID: f.TopicID, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
+			ByTopic: f.ByTopic, TopicID: f.TopicID, ByLine: f.ByLine, LineID: f.LineID, Limited: f.Limited, BeforeAt: beforeAt, BeforeID: beforeID, Lim: lim + 1,
 		})
 		return err
 	})
@@ -203,11 +213,12 @@ func (s *Service) Conversations(ctx context.Context, workspaceID uuid.UUID, f Li
 		}), nil
 }
 
-// InboxCounts counts the conversations of the inbox tabs for userID.
-func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID) (InboxCounts, error) {
+// InboxCounts counts the conversations of the inbox tabs for userID;
+// limited counts only those they see by the level of their lines.
+func (s *Service) InboxCounts(ctx context.Context, workspaceID, userID uuid.UUID, limited bool) (InboxCounts, error) {
 	var out InboxCounts
 	err := s.tx(ctx, workspaceID, func(q *store.Queries, _ pgx.Tx) error {
-		row, err := q.CountInbox(ctx, store.CountInboxParams{WorkspaceID: workspaceID, UserID: &userID})
+		row, err := q.CountInbox(ctx, store.CountInboxParams{WorkspaceID: workspaceID, UserID: &userID, Limited: limited})
 		out = InboxCounts{Mine: row.Mine, MineUnread: row.MineUnread, Unassigned: row.Unassigned, Open: row.Open}
 		return err
 	})
@@ -335,6 +346,25 @@ func (s *Service) queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 	return nil
 }
 
+// freed tells the router that the former assignee has room for one more
+// conversation (ADR-0021): it left their work, resolved, closed or handed
+// to someone else. Entering the queue is told by queued already.
+func (s *Service) freed(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, cur, next state) error {
+	if s.router == nil || cur.AssigneeID == nil || !inWork(cur.Status) || next.Status == StatusQueued {
+		return nil
+	}
+	if inWork(next.Status) && sameID(next.AssigneeID, cur.AssigneeID) {
+		return nil
+	}
+	if err := s.router.Freed(ctx, tx, workspaceID, *cur.AssigneeID); err != nil {
+		return fmt.Errorf("router: %w", err)
+	}
+	return nil
+}
+
+// inWork: the statuses that count against an operator's capacity.
+func inWork(st Status) bool { return st == StatusAssigned || st == StatusPending }
+
 // canReturnTo reports whether a conversation the customer reopens goes back
 // to its former assignee: an active member whom the router finds available
 // (with automatic distribution, accepting and with the panel open).
@@ -376,6 +406,9 @@ func (s *Service) addStateEvents(ctx context.Context, tx pgx.Tx, row store.Conve
 				return err
 			}
 		}
+	}
+	if err := s.freed(ctx, tx, workspaceID, cur, next); err != nil {
+		return err
 	}
 	if !sameID(next.AssigneeID, cur.AssigneeID) {
 		return outbox.Add(ctx, tx, workspaceID, "conversation.assigned", map[string]any{
@@ -428,5 +461,6 @@ func conversationFrom(c store.Conversation, contactName string) Conversation {
 		AssigneeID: c.AssigneeID, Subject: c.Subject, FirstResponseAt: c.FirstResponseAt,
 		LastMessageAt: c.LastMessageAt, ResolvedAt: c.ResolvedAt, ClosedAt: c.ClosedAt, AwaitingFix: c.AwaitingFix,
 		Version: int(c.Version), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Rating: ratingFrom(c), TopicID: c.TopicID,
+		LineID: c.LineID,
 	}
 }

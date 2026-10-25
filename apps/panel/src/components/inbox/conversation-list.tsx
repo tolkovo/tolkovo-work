@@ -1,4 +1,4 @@
-import type { Conversation, Topic } from "@tolkovo/api-client";
+import type { Conversation, Line, Topic } from "@tolkovo/api-client";
 import { useConversationList, useInboxCounts, useSession } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
@@ -8,11 +8,14 @@ import { useTranslation } from "react-i18next";
 import {
   INBOX_TABS,
   formatListTime,
+  inboxSearch,
   tabCount,
   tabFilter,
   waitsForPerson,
+  type InboxScope,
   type InboxTab,
 } from "../../lib/inbox/tabs";
+import { LineFilter, LinePill, useLineMap } from "./lines";
 import { CollaboratorMarks } from "./presence";
 import { TopicFilter, TopicPill, useTopicMap } from "./topics";
 
@@ -21,14 +24,14 @@ const MAX_UNREAD = 100;
 
 type ConversationListProps = {
   tab: InboxTab;
-  /** `none` or a topic id: the list shows only these. */
-  topic?: string | undefined;
+  /** The topic and the line the list is narrowed to. */
+  scope: InboxScope;
   selectedId?: string | undefined;
   className?: string;
 };
 
-/** The left column of the inbox: tabs with live counters, the topics and the list (docs/07 §4). */
-export function ConversationList({ tab, topic, selectedId, className }: ConversationListProps) {
+/** The left column of the inbox: tabs with live counters, the topics, the lines and the list (docs/07 §4). */
+export function ConversationList({ tab, scope, selectedId, className }: ConversationListProps) {
   const { t } = useTranslation();
   const { data: counts } = useInboxCounts();
   return (
@@ -43,7 +46,7 @@ export function ConversationList({ tab, topic, selectedId, className }: Conversa
             <Link
               key={id}
               to="/inbox"
-              search={topic ? { tab: id, topic } : { tab: id }}
+              search={inboxSearch(id, scope)}
               aria-current={id === tab ? "page" : undefined}
               className={cn(
                 "flex items-center gap-1.5 border-b-2 border-transparent px-2.5 pt-1.5 pb-2 text-[13px] whitespace-nowrap text-ink-2 no-underline",
@@ -62,16 +65,18 @@ export function ConversationList({ tab, topic, selectedId, className }: Conversa
           );
         })}
       </nav>
-      <TopicFilter tab={tab} topic={topic} />
-      <ListBody tab={tab} topic={topic} selectedId={selectedId} />
+      <TopicFilter tab={tab} scope={scope} />
+      <LineFilter tab={tab} scope={scope} />
+      <ListBody tab={tab} scope={scope} selectedId={selectedId} />
     </section>
   );
 }
 
-function ListBody({ tab, topic, selectedId }: { tab: InboxTab; topic?: string | undefined; selectedId?: string | undefined }) {
+function ListBody({ tab, scope, selectedId }: { tab: InboxTab; scope: InboxScope; selectedId?: string | undefined }) {
   const { t } = useTranslation();
-  const list = useConversationList(tabFilter(tab, topic));
+  const list = useConversationList(tabFilter(tab, scope));
   const topics = useTopicMap();
+  const lines = useLineMap();
   if (list.isPending) {
     return (
       <div className="flex flex-col gap-3 p-3" aria-busy="true" aria-label={t("app.loading")}>
@@ -108,8 +113,9 @@ function ListBody({ tab, topic, selectedId }: { tab: InboxTab; topic?: string | 
             <ConversationRow
               conversation={c}
               tab={tab}
-              topic={topic}
+              scope={scope}
               label={c.topic_id ? topics.get(c.topic_id) : undefined}
+              line={c.line_id ? lines.get(c.line_id) : undefined}
               selected={c.id === selectedId}
             />
           </li>
@@ -134,13 +140,15 @@ function ListBody({ tab, topic, selectedId }: { tab: InboxTab; topic?: string | 
 type RowProps = {
   conversation: Conversation;
   tab: InboxTab;
-  topic: string | undefined;
+  scope: InboxScope;
   /** The conversation's topic, shown before the preview. */
   label: Topic | undefined;
+  /** The conversation's line above the first, shown before the topic. */
+  line: Line | undefined;
   selected: boolean;
 };
 
-function ConversationRow({ conversation: c, tab, topic, label, selected }: RowProps) {
+function ConversationRow({ conversation: c, tab, scope, label, line, selected }: RowProps) {
   const { t, i18n } = useTranslation();
   const { data: session } = useSession();
   const wait = waitsForPerson(c, session?.user.id);
@@ -152,7 +160,7 @@ function ConversationRow({ conversation: c, tab, topic, label, selected }: RowPr
     <Link
       to="/inbox/$conversationId"
       params={{ conversationId: c.id }}
-      search={topic ? { tab, topic } : { tab }}
+      search={inboxSearch(tab, scope)}
       aria-current={selected ? "page" : undefined}
       className={cn(
         "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-0.5 border-b border-line-2 py-2.5 pr-3 pl-5 text-ink no-underline",
@@ -197,6 +205,7 @@ function ConversationRow({ conversation: c, tab, topic, label, selected }: RowPr
             </span>
           )
         )}
+        {line && <LinePill line={line} />}
         {label && <TopicPill topic={label} />}
         {c.awaiting_fix && !finished && (
           <span className="shrink-0 rounded-sm bg-lamp-soft px-1.5 py-0.5 text-[10.5px] font-medium text-lamp-ink">

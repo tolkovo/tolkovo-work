@@ -10,11 +10,15 @@ import { FormMessage, TextAreaField, TextField } from "../form/fields";
 
 /** Limits of AIBot in api/openapi.yaml. */
 const MAX_HANDOFF = 500;
+const MAX_NAME = 40;
+const MAX_RULES = 2000;
+const TONES = ["friendly", "neutral", "formal"] as const;
+const ADDRESSES = ["formal", "informal"] as const;
 
 /**
  * «ИИ-бот отвечает клиентам» (ADR-0018): the channels whose new conversations the bot takes, the
- * topics it leaves to people, how sure it must be and what the customer reads on a handoff. What
- * it knows lives in «База знаний».
+ * topics it leaves to people, how it speaks (name, tone, form of address, the company's rules), how
+ * sure it must be and what the customer reads on a handoff. What it knows lives in «База знаний».
  */
 export function AIBotSettings({ aiEnabled }: { aiEnabled: boolean }) {
   const { t } = useTranslation();
@@ -64,6 +68,10 @@ function BotForm({ bot, channels, topics }: { bot: AIBot; channels: Channel[]; t
   const [off, setOff] = useState(() => new Set(bot.topics_off));
   const [confidence, setConfidence] = useState(String(bot.min_confidence));
   const [handoff, setHandoff] = useState(bot.handoff_message);
+  const [name, setName] = useState(bot.name);
+  const [tone, setTone] = useState(bot.tone);
+  const [address, setAddress] = useState(bot.address);
+  const [rules, setRules] = useState(bot.rules);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const toggle = (set: Set<string>, value: string, update: (next: Set<string>) => void) => {
@@ -84,7 +92,16 @@ function BotForm({ bot, channels, topics }: { bot: AIBot; channels: Channel[]; t
     }
     setError(null);
     save.mutate(
-      { channel_ids: [...on], topics_off: [...off], min_confidence: value, handoff_message: handoff.trim() },
+      {
+        channel_ids: [...on],
+        topics_off: [...off],
+        min_confidence: value,
+        handoff_message: handoff.trim(),
+        name: name.trim(),
+        tone,
+        address,
+        rules: rules.trim(),
+      },
       {
         onSuccess: () => setMessage({ tone: "success", text: t("settings.ai.bot.saved") }),
         onError: (err) => setMessage({ tone: "error", text: describeApiError(t, err).message }),
@@ -123,6 +140,37 @@ function BotForm({ bot, channels, topics }: { bot: AIBot; channels: Channel[]; t
           </fieldset>
         ) : null}
         <TextField
+          id={`${uid}-name`}
+          name="name"
+          label={t("settings.ai.bot.name")}
+          hint={t("settings.ai.bot.nameHint")}
+          value={name}
+          maxLength={MAX_NAME}
+          autoComplete="off"
+          onChange={(e) => setName(e.target.value)}
+          className="max-w-[280px]"
+        />
+        <Choice legend={t("settings.ai.bot.tone")} name={`${uid}-tone`} value={tone} options={TONES} label={(v) => t(`settings.ai.bot.tones.${v}`)} onChange={setTone} />
+        <Choice
+          legend={t("settings.ai.bot.address")}
+          name={`${uid}-address`}
+          value={address}
+          options={ADDRESSES}
+          label={(v) => t(`settings.ai.bot.addresses.${v}`)}
+          onChange={setAddress}
+        />
+        <TextAreaField
+          id={`${uid}-rules`}
+          name="rules"
+          label={t("settings.ai.bot.rules")}
+          hint={t("settings.ai.bot.rulesHint", { max: MAX_RULES })}
+          value={rules}
+          rows={3}
+          maxLength={MAX_RULES}
+          placeholder={t("settings.ai.bot.rulesPlaceholder")}
+          onChange={(e) => setRules(e.currentTarget.value)}
+        />
+        <TextField
           id={`${uid}-confidence`}
           name="min_confidence"
           label={t("settings.ai.bot.confidence")}
@@ -154,5 +202,36 @@ function BotForm({ bot, channels, topics }: { bot: AIBot; channels: Channel[]; t
       <FormMessage tone="success" message={message?.tone === "success" ? message.text : null} />
       <FormMessage tone="error" message={message?.tone === "error" ? message.text : null} />
     </form>
+  );
+}
+
+/** A row of radio buttons; the choice saves with the form. */
+function Choice<T extends string>({
+  legend,
+  name,
+  value,
+  options,
+  label,
+  onChange,
+}: {
+  legend: string;
+  name: string;
+  value: T;
+  options: readonly T[];
+  label: (v: T) => string;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+      <legend className="mb-1 p-0 text-[13px] font-medium text-ink">{legend}</legend>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {options.map((o) => (
+          <label key={o} className="flex items-center gap-2 text-[13px] text-ink">
+            <input type="radio" name={name} checked={value === o} onChange={() => onChange(o)} className="size-4 shrink-0 accent-teal" />
+            {label(o)}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }

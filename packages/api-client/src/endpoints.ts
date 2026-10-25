@@ -27,6 +27,7 @@ import {
   memberListSchema,
   memberSchema,
   myPresenceSchema,
+  routingMemberListSchema,
   routingSettingsSchema,
   aiBotSchema,
   aiCheckSchema,
@@ -40,6 +41,8 @@ import {
   tagSchema,
   topicListSchema,
   topicSchema,
+  lineListSchema,
+  lineSchema,
   telegramLoginSchema,
   widgetChannelCreatedSchema,
   workspaceListSchema,
@@ -86,6 +89,7 @@ export type MyPresence = Schemas["MyPresence"];
 export type OperatorStatus = MyPresence["status"];
 export type RoutingSettings = Schemas["RoutingSettings"];
 export type RoutingMode = RoutingSettings["mode"];
+export type RoutingMember = Schemas["RoutingMember"];
 export type AIProvider = Schemas["AIProvider"];
 export type AISettings = Schemas["AISettings"];
 export type AISettingsUpdate = Schemas["AISettingsUpdate"];
@@ -125,6 +129,8 @@ export type TagColor = Schemas["TagColor"];
 export type CreateTagRequest = Schemas["CreateTagRequest"];
 export type Topic = Schemas["Topic"];
 export type TopicInput = Schemas["TopicInput"];
+export type Line = Schemas["Line"];
+export type LineInput = Schemas["LineInput"];
 export type PostMessageRequest = Schemas["PostMessageRequest"];
 
 /**
@@ -137,6 +143,8 @@ export type ConversationFilter = {
   contact_id?: string;
   /** `none` (without a topic) or a topic id. */
   topic?: string;
+  /** `first` (the first line) or a line id. */
+  line?: string;
 };
 
 /**
@@ -455,6 +463,42 @@ export async function deleteTopic(client: ApiClient, id: string): Promise<void> 
   await unwrap(client.DELETE("/topics/{id}", { params: { path: { id } } }));
 }
 
+/** The lines of support by level; at most 30 (ADR-0021). */
+export async function fetchLines(client: ApiClient): Promise<Line[]> {
+  return parseAnswer(lineListSchema, await unwrap(client.GET("/lines"))).items;
+}
+
+export async function createLine(client: ApiClient, body: LineInput): Promise<Line> {
+  return parseAnswer(lineSchema, await unwrap(client.POST("/lines", { body })), 201);
+}
+
+export async function updateLine(client: ApiClient, id: string, body: LineInput): Promise<Line> {
+  return parseAnswer(lineSchema, await unwrap(client.PUT("/lines/{id}", { params: { path: { id } }, body })));
+}
+
+export async function deleteLine(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/lines/{id}", { params: { path: { id } } }));
+}
+
+/** Moves the conversation to `lineId` (`null`: the first line); up needs a reason. */
+export async function escalateConversation(
+  client: ApiClient,
+  id: string,
+  lineId: string | null,
+  reason: string,
+  version?: number,
+): Promise<Conversation> {
+  return parseAnswer(
+    conversationSchema,
+    await unwrap(
+      client.POST("/conversations/{id}/escalate", {
+        params: { path: { id } },
+        body: version === undefined ? { line_id: lineId, reason } : { line_id: lineId, reason, version },
+      }),
+    ),
+  );
+}
+
 /** `ids` names every topic once, in the new order. */
 export async function reorderTopics(client: ApiClient, ids: string[]): Promise<Topic[]> {
   return parseAnswer(topicListSchema, await unwrap(client.PUT("/topics/order", { body: { ids } }))).items;
@@ -495,8 +539,18 @@ export async function fetchRouting(client: ApiClient): Promise<RoutingSettings> 
   return parseAnswer(routingSettingsSchema, await unwrap(client.GET("/routing")));
 }
 
-export async function setRouting(client: ApiClient, mode: RoutingMode): Promise<RoutingSettings> {
-  return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: { mode } })));
+export async function setRouting(client: ApiClient, settings: RoutingSettings): Promise<RoutingSettings> {
+  return parseAnswer(routingSettingsSchema, await unwrap(client.PUT("/routing", { body: settings })));
+}
+
+/** Capacity and load of each member who answers customers (ADR-0021). */
+export async function fetchRoutingMembers(client: ApiClient): Promise<RoutingMember[]> {
+  return parseAnswer(routingMemberListSchema, await unwrap(client.GET("/routing/members"))).items;
+}
+
+/** A member's own capacity; `null` follows the workspace's. */
+export async function setRoutingMember(client: ApiClient, userId: string, maxChats: number | null): Promise<void> {
+  await unwrap(client.PUT("/routing/members/{id}", { params: { path: { id: userId } }, body: { max_chats: maxChats } }));
 }
 
 /** The workspace's AI: provider, model, key hint, prices, budget and the month's spending (AI-01). */

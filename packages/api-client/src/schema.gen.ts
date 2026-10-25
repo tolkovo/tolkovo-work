@@ -696,11 +696,53 @@ export interface paths {
         get: operations["getRouting"];
         /**
          * Change how the workspace distributes its queue
-         * @description With `round_robin` the server assigns queued conversations at once and then each
-         *     new one, in turn, to the members who are `online` with the panel open. Requires
-         *     `routing.manage` (owner, admin).
+         * @description With `round_robin` or `least_loaded` the server assigns queued conversations at once
+         *     and then each new one to the members who are `online` with the panel open and have
+         *     room under `max_chats`. Requires `routing.manage` (owner, admin).
          */
         put: operations["setRouting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routing/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Capacity and load of the members who answer customers
+         * @description Requires `members.view` (owner, admin, operator).
+         */
+        get: operations["listRoutingMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routing/members/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a member's own capacity
+         * @description `null` follows the workspace's `max_chats`. Requires `routing.manage` (owner, admin).
+         */
+        put: operations["setRoutingMember"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2083,6 +2125,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations/{id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the conversation to another line
+         * @description Up to a line of a higher level with a `reason`, or across and down, where the reason is
+         *     optional (ADR-0021). The conversation leaves its assignee and waits in the queue of the
+         *     line, whose members get it from automatic distribution. The feed gets a line and the
+         *     reason a note after it. Requires `conversations.take` for your own conversation,
+         *     `conversations.assign` for any; only `queued`, `assigned` and `pending` ones move.
+         */
+        post: operations["escalateConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations/{id}/issues": {
         parameters: {
             query?: never;
@@ -2449,6 +2517,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The lines of support, by level
+         * @description Requires `conversations.view`. At most 30, so there are no pages. A conversation without
+         *     a line is on the first line; `POST /conversations/{id}/escalate` moves it (ADR-0021).
+         */
+        get: operations["listLines"];
+        put?: never;
+        /**
+         * Add a line
+         * @description Requires `routing.manage` (owner, admin). Names are unique without regard to case
+         *     (`409 line_exists`).
+         */
+        post: operations["createLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a line
+         * @description Requires `routing.manage`. Its conversations take the new level; changed members apply
+         *     to the queue at once.
+         */
+        put: operations["updateLine"];
+        post?: never;
+        /**
+         * Delete a line
+         * @description Requires `routing.manage`. Its conversations go back to the first line.
+         */
+        delete: operations["deleteLine"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contacts": {
         parameters: {
             query?: never;
@@ -2542,6 +2663,31 @@ export interface paths {
          *     A task moves between columns by `PUT /tasks/{id}` with its new status.
          */
         get: operations["getTaskBoard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Metrics of the flow of tasks (ADR-0019, K3)
+         * @description Requires `tasks.view`. Built from the history of statuses over the last `days` days, in
+         *     the workspace's time zone: the cycle time of every task done (from the first move to
+         *     `in_progress` to `done`) with its 50th and 85th percentiles, the tasks done each week,
+         *     the tasks in each status at the end of each day (canceled ones left out; `done` counts the
+         *     tasks done since the period began), and the open tasks standing longest in their column.
+         *     The filters are those of `GET /tasks/board`.
+         */
+        get: operations["getTaskFlow"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3234,10 +3380,26 @@ export interface components {
         RoutingSettings: {
             /**
              * @description `manual`: operators take conversations from the queue. `round_robin`: the server
-             *     assigns them in turn to members who are `online`.
+             *     assigns them in turn to members who are `online`. `least_loaded`: to the one of
+             *     them with the smallest share of their capacity in use.
              * @enum {string}
              */
-            mode: "manual" | "round_robin";
+            mode: "manual" | "round_robin" | "least_loaded";
+            /** @description Conversations in work (assigned or pending) the server gives one member; `null` is no limit. Taking one by hand is never limited. */
+            max_chats: number | null;
+        };
+        RoutingMember: {
+            user_id: string;
+            /** @description The member's own limit; `null` follows the workspace's. */
+            max_chats: number | null;
+            /** @description Conversations the member has in work now. */
+            open: number;
+        };
+        RoutingMemberList: {
+            items: components["schemas"]["RoutingMember"][];
+        };
+        SetRoutingMemberRequest: {
+            max_chats: number | null;
         };
         /**
          * @description `anthropic` (Messages API), `openai` (Chat Completions), `deepseek` (DeepSeek's
@@ -3311,6 +3473,20 @@ export interface components {
             min_confidence: number;
             /** @description What the customer reads on a handoff without the bot's own words; empty is the built-in phrase. */
             handoff_message: string;
+            /** @description What the bot introduces itself by; empty — simply the company's AI assistant. */
+            name: string;
+            /** @enum {string} */
+            tone: "friendly" | "neutral" | "formal";
+            /**
+             * @description How the bot addresses customers in languages that distinguish it: Russian «вы» (`formal`) or «ты».
+             * @enum {string}
+             */
+            address: "formal" | "informal";
+            /**
+             * @description The company's own instructions to the bot. They never override its rules: facts only from
+             *     the knowledge base, never pretending to be a person, a person whenever the customer asks.
+             */
+            rules: string;
         };
         AICheck: {
             /** @description The model that answered */
@@ -3373,6 +3549,8 @@ export interface components {
             tag_ids: string[];
             /** @description What the question is about (`GET /topics`); `null` until the customer or an operator picks one. */
             topic_id: string | null;
+            /** @description The line the conversation is on (`GET /lines`); `null` is the first line. `line_level` is its level. */
+            line_id: string | null;
             /** @description The caller's read mark; `null` when they have not read the conversation. */
             last_read_message_id: string | null;
             /** @description Customer messages after the caller's read mark, counted up to 100. */
@@ -3538,10 +3716,13 @@ export interface components {
              *     `topic_changed`: the topic was set, changed or removed (`topic_id`,
              *     `previous_topic_id`), by the customer when `by_customer`; `from` and `to` are the
              *     current status. `bot_handoff`: the AI bot handed the conversation to people
-             *     (`bot → queued`) for `reason` (ADR-0018).
+             *     (`bot → queued`) for `reason` (ADR-0018). `line_changed`: an operator moved the
+             *     conversation to another line (`line_id`, `previous_line_id`; `null` is the first line)
+             *     and it left its assignee for the line's queue; the reason, when given, is the note
+             *     after it (ADR-0021).
              * @enum {string}
              */
-            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed" | "bot_handoff";
+            type: "status_changed" | "assigned" | "issue_created" | "issue_linked" | "issue_closed" | "issue_reopened" | "task_created" | "task_linked" | "task_unlinked" | "task_closed" | "task_reopened" | "topic_changed" | "bot_handoff" | "line_changed";
             from: components["schemas"]["ConversationStatus"];
             to: components["schemas"]["ConversationStatus"];
             assignee_id: string | null;
@@ -3551,6 +3732,8 @@ export interface components {
             topic_id?: string | null;
             previous_topic_id?: string | null;
             by_customer?: boolean;
+            line_id?: string | null;
+            previous_line_id?: string | null;
             /**
              * @description Only with `bot_handoff`, why the bot handed over: the customer asked for a person;
              *     the topic is left to people; the bot did not know the answer or was not sure; the
@@ -3690,6 +3873,78 @@ export interface components {
         TaskPage: {
             items: components["schemas"]["Task"][];
             next_cursor: string | null;
+        };
+        TaskFlow: {
+            /**
+             * Format: date
+             * @description The first day of the period.
+             */
+            since: string;
+            /**
+             * Format: date
+             * @description The last day of the period
+             */
+            until: string;
+            /** @description Tasks done in the period that were in progress, in the order they were done. */
+            cycle: components["schemas"]["TaskFlowCycle"][];
+            /**
+             * Format: double
+             * @description Half of the tasks took at most this many days; `null` without tasks.
+             */
+            cycle_p50: number | null;
+            /**
+             * Format: double
+             * @description 85% of the tasks took at most this many days; `null` without tasks.
+             */
+            cycle_p85: number | null;
+            /** @description Every week of the period from its Monday, the first one possibly partial. */
+            throughput: components["schemas"]["TaskFlowWeek"][];
+            /** @description Every day of the period, the tasks in each status at its end. */
+            cfd: components["schemas"]["TaskFlowDay"][];
+            /** @description Open tasks standing longest in their column, the oldest first. */
+            aging: components["schemas"]["TaskFlowAging"][];
+            /** @description The workspace has more tasks than the metrics read; they cover the latest. */
+            truncated: boolean;
+        };
+        TaskFlowWeek: {
+            /** Format: date */
+            week: string;
+            done: number;
+        };
+        TaskFlowDay: {
+            /** Format: date */
+            day: string;
+            open: number;
+            in_progress: number;
+            review: number;
+            verified: number;
+            done: number;
+        };
+        TaskFlowCycle: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            title: string;
+            /** Format: date-time */
+            done_at: string;
+            /**
+             * Format: double
+             * @description From the first move to in progress to done
+             */
+            days: number;
+        };
+        TaskFlowAging: {
+            task_id: string;
+            /** Format: int64 */
+            number: number;
+            title: string;
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Format: double
+             * @description In the current status
+             */
+            days: number;
+            blocked: boolean;
         };
         TaskBoard: {
             /** @description Every status in the order of the path; `canceled` only when asked. */
@@ -4025,6 +4280,30 @@ export interface components {
         };
         TopicOrder: {
             ids: string[];
+        };
+        Line: {
+            id: string;
+            name: string;
+            level: number;
+            /** @description Who gets its conversations from automatic distribution, by user id. */
+            member_ids: string[];
+        };
+        LineList: {
+            items: components["schemas"]["Line"][];
+        };
+        LineInput: {
+            name: string;
+            level: number;
+            /** @description Active members of the workspace. */
+            member_ids: string[];
+        };
+        EscalateRequest: {
+            /** @description A line of the workspace; `null` is the first line. */
+            line_id: string | null;
+            /** @description Why; required up to a higher level, may be empty otherwise. It becomes a note. */
+            reason: string;
+            /** @description The conversation's `version` you read; a mismatch answers `409 version_conflict`. */
+            version?: number;
         };
         SetTopicRequest: {
             /** @description A topic of the workspace; `null` removes the topic. */
@@ -4664,6 +4943,8 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "resolved";
+            /** @description The AI bot answers the conversation; the widget offers to call a person. */
+            with_bot: boolean;
             rating: components["schemas"]["ConversationRating"] | null;
         };
         WidgetTopicRequest: {
@@ -4806,6 +5087,15 @@ export interface components {
         };
         /** @description `topic_exists`: a topic with this name exists. */
         TopicExists: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `line_exists`: a line with this name exists. */
+        LineExists: {
             headers: {
                 [name: string]: unknown;
             };
@@ -6114,6 +6404,56 @@ export interface operations {
             400: components["responses"]["Invalid"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listRoutingMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active members whose role answers customers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingMemberList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setRoutingMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRoutingMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listInvitations: {
@@ -8038,6 +8378,8 @@ export interface operations {
                 assignee?: string;
                 /** @description `none` (without a topic) or a topic id. */
                 topic?: string;
+                /** @description `first` (the first line, without a line) or a line id. */
+                line?: string;
                 /**
                  * @description Only this contact's conversations: the history in the customer card. An unknown id
                  *     gives an empty page.
@@ -8372,6 +8714,37 @@ export interface operations {
         };
         responses: {
             /** @description The conversation with its new topic. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    escalateConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EscalateRequest"];
+            };
+        };
+        responses: {
+            /** @description The conversation on its new line. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8877,6 +9250,110 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listLines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Line"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["LineExists"];
+        };
+    };
+    updateLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineInput"];
+            };
+        };
+        responses: {
+            /** @description The changed line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Line"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["LineExists"];
+        };
+    };
+    deleteLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listContacts: {
         parameters: {
             query?: {
@@ -9101,6 +9578,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskBoard"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTaskFlow: {
+        parameters: {
+            query?: {
+                /** @description How many days back the period reaches, 7–90; 30 when absent. */
+                days?: number;
+                /** @description `me`, `none` or a member id. */
+                assignee?: string;
+                /** @description `none` or a queue id. */
+                queue?: string;
+                /** @description `none` or a topic id. */
+                topic?: string;
+                /** @description A tag of tasks (`GET /task-tags`); only the tasks with it. */
+                tag?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The metrics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskFlow"];
                 };
             };
             400: components["responses"]["Invalid"];

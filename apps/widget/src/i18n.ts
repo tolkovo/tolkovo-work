@@ -56,6 +56,7 @@ const dictionaries = {
     rateThanks: "Спасибо за оценку!",
     rateYours: "Ваша оценка: {n} из 5",
     topic: "Тема вопроса",
+    callPerson: "Позвать оператора",
   },
   en: {
     open: "Open chat",
@@ -111,6 +112,7 @@ const dictionaries = {
     rateThanks: "Thanks for your rating!",
     rateYours: "Your rating: {n} of 5",
     topic: "Topic of your question",
+    callPerson: "Talk to an operator",
   },
 } as const;
 

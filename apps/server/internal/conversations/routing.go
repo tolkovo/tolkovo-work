@@ -28,22 +28,46 @@ func (s *Service) HasQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUI
 	return ok, nil
 }
 
+// Pool is who the router may give conversations to in one run, in its
+// strategy's order (ADR-0021). AssignQueued asks it for each conversation.
+type Pool interface {
+	// Users are the members with room for one more conversation now.
+	Users() []uuid.UUID
+	// Pick chooses the next of Users for whom may holds and counts the
+	// conversation against them; false when none fits.
+	Pick(may func(uuid.UUID) bool) (uuid.UUID, bool)
+}
+
+// Loads returns the conversations in work (assigned or pending) of each of
+// userIDs, in the router's transaction tx; members without any are missing.
+func (s *Service) Loads(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, userIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	rows, err := store.New(tx).CountOpenOf(ctx, store.CountOpenOfParams{WorkspaceID: workspaceID, UserIds: userIDs})
+	if err != nil {
+		return nil, wrap(err, "loads")
+	}
+	out := make(map[uuid.UUID]int, len(rows))
+	for _, r := range rows {
+		out[r.UserID] = int(r.Open)
+	}
+	return out, nil
+}
+
 // AssignQueued gives up to limit conversations from the head of the queue
-// to assignees in turn: each goes to the first of assignees, in turn order,
-// who may take it, and that one moves to the end. A conversation whose
-// topic has members goes to one of them only (docs/02 §7.3). It runs in
-// the router's tenant transaction tx (docs/02 §9.3) and records each
-// assignment as a change by the system: events, the system line and the
-// reminder. Conversations another transaction holds are left for the next
+// to the members of pool: each goes to whom the pool picks among those who
+// may take it. A conversation of a line goes to one of its members only
+// (ADR-0021); on the first line one whose topic has members goes to one of
+// them only (docs/02 §7.3). It runs in the router's tenant transaction tx
+// (docs/02 §9.3) and records each assignment as a change by the system:
+// events, the system line and the reminder. Conversations another
+// transaction holds, or nobody in the pool may take, are left for the next
 // round.
-func (s *Service) AssignQueued(
-	ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, assignees []uuid.UUID, limit int,
-) ([]Assignment, error) {
-	if len(assignees) == 0 || limit <= 0 {
+func (s *Service) AssignQueued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, pool Pool, limit int) ([]Assignment, error) {
+	users := pool.Users()
+	if len(users) == 0 || limit <= 0 {
 		return nil, nil
 	}
 	q := store.New(tx)
-	rows, err := q.LockQueue(ctx, store.LockQueueParams{WorkspaceID: workspaceID, Available: assignees, Lim: pageSize(limit)})
+	rows, err := q.LockQueue(ctx, store.LockQueueParams{WorkspaceID: workspaceID, Available: users, Lim: pageSize(limit)})
 	if err != nil {
 		return nil, wrap(err, "lock queue")
 	}
@@ -51,18 +75,25 @@ func (s *Service) AssignQueued(
 	if err != nil {
 		return nil, wrap(err, "lock queue")
 	}
-	turn := slices.Clone(assignees)
+	lines, err := lineMembers(ctx, q, workspaceID, rows)
+	if err != nil {
+		return nil, wrap(err, "lock queue")
+	}
 	out := make([]Assignment, 0, len(rows))
 	for _, row := range rows {
-		i := 0
-		if row.TopicID != nil && len(members[*row.TopicID]) > 0 {
-			i = slices.IndexFunc(turn, func(u uuid.UUID) bool { return slices.Contains(members[*row.TopicID], u) })
-			if i < 0 {
-				continue // LockQueue picked it for someone: cannot happen
-			}
+		may := func(uuid.UUID) bool { return true }
+		switch {
+		case row.LineID != nil:
+			only := lines[*row.LineID]
+			may = func(u uuid.UUID) bool { return slices.Contains(only, u) }
+		case row.TopicID != nil && len(members[*row.TopicID]) > 0:
+			only := members[*row.TopicID]
+			may = func(u uuid.UUID) bool { return slices.Contains(only, u) }
 		}
-		user := turn[i]
-		turn = append(append(turn[:i:i], turn[i+1:]...), user)
+		user, ok := pool.Pick(may)
+		if !ok {
+			continue // those who may take it are full now
+		}
 		cur := state{Status: Status(row.Status), AssigneeID: row.AssigneeID, ResolvedAt: row.ResolvedAt, ClosedAt: row.ClosedAt}
 		next, err := assign(cur, &user, s.now())
 		if err != nil {
@@ -108,12 +139,15 @@ func topicMembers(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, 
 // HandOver gives the open conversations of userID to to, or releases them
 // to the queue when to is nil, as changes by actorID: a member whose role
 // changes or who leaves the team (ADR-0020). leaving also takes the member
-// out of the topics. It runs in the caller's tenant transaction tx; the
+// out of the topics and the lines. It runs in the caller's tenant transaction tx; the
 // caller checked that to may answer customers.
 func (s *Service) HandOver(ctx context.Context, tx pgx.Tx, workspaceID, actorID, userID uuid.UUID, to *uuid.UUID, leaving bool) error {
 	q := store.New(tx)
 	if leaving {
 		if err := q.RemoveTopicMember(ctx, store.RemoveTopicMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
+			return wrap(err, "hand over")
+		}
+		if err := q.RemoveLineMember(ctx, store.RemoveLineMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
 			return wrap(err, "hand over")
 		}
 	}

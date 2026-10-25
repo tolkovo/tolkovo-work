@@ -572,6 +572,137 @@ func (q *Queries) EditorRole(ctx context.Context, arg EditorRoleParams) (string,
 	return key, err
 }
 
+const flowStatusChanges = `-- name: FlowStatusChanges :many
+SELECT a.task_id, coalesce(a.meta->>'from', '')::text AS from_status, coalesce(a.meta->>'to', '')::text AS to_status, a.created_at
+FROM task_activity a
+WHERE a.workspace_id = $1 AND a.kind = 'status' AND a.task_id = ANY($2::uuid[])
+ORDER BY a.task_id, a.created_at, a.id
+`
+
+type FlowStatusChangesParams struct {
+	WorkspaceID uuid.UUID
+	TaskIds     []uuid.UUID
+}
+
+type FlowStatusChangesRow struct {
+	TaskID     uuid.UUID
+	FromStatus string
+	ToStatus   string
+	CreatedAt  time.Time
+}
+
+// The history of statuses of these tasks, oldest first.
+func (q *Queries) FlowStatusChanges(ctx context.Context, arg FlowStatusChangesParams) ([]FlowStatusChangesRow, error) {
+	rows, err := q.db.Query(ctx, flowStatusChanges, arg.WorkspaceID, arg.TaskIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FlowStatusChangesRow
+	for rows.Next() {
+		var i FlowStatusChangesRow
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.FromStatus,
+			&i.ToStatus,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const flowTasks = `-- name: FlowTasks :many
+SELECT t.id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
+       (t.blocked_reason IS NOT NULL)::boolean AS blocked
+FROM tasks t
+WHERE t.workspace_id = $1
+  AND (t.closed_at IS NULL OR t.closed_at >= $2::timestamptz)
+  AND ($3::uuid IS NULL OR t.assignee_id = $3::uuid)
+  AND (NOT $4::boolean OR t.assignee_id IS NULL)
+  AND ($5::uuid IS NULL OR t.queue_id = $5::uuid)
+  AND (NOT $6::boolean OR t.queue_id IS NULL)
+  AND ($7::uuid IS NULL OR t.topic_id = $7::uuid)
+  AND (NOT $8::boolean OR t.topic_id IS NULL)
+  AND ($9::uuid IS NULL OR EXISTS (
+       SELECT 1 FROM task_tag_links l
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $9::uuid))
+ORDER BY t.number DESC
+LIMIT $10
+`
+
+type FlowTasksParams struct {
+	WorkspaceID uuid.UUID
+	Since       time.Time
+	AssigneeID  *uuid.UUID
+	Unassigned  bool
+	QueueID     *uuid.UUID
+	NoQueue     bool
+	TopicID     *uuid.UUID
+	NoTopic     bool
+	TagID       *uuid.UUID
+	Lim         int32
+}
+
+type FlowTasksRow struct {
+	ID              uuid.UUID
+	Number          int64
+	Title           string
+	Status          string
+	CreatedAt       time.Time
+	StatusChangedAt time.Time
+	ClosedAt        *time.Time
+	Blocked         bool
+}
+
+// The tasks the flow metrics read (ADR-0019, K3): open ones and those
+// closed since the period began, the latest numbers first, with the
+// filters of BoardTasks.
+func (q *Queries) FlowTasks(ctx context.Context, arg FlowTasksParams) ([]FlowTasksRow, error) {
+	rows, err := q.db.Query(ctx, flowTasks,
+		arg.WorkspaceID,
+		arg.Since,
+		arg.AssigneeID,
+		arg.Unassigned,
+		arg.QueueID,
+		arg.NoQueue,
+		arg.TopicID,
+		arg.NoTopic,
+		arg.TagID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FlowTasksRow
+	for rows.Next() {
+		var i FlowTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Title,
+			&i.Status,
+			&i.CreatedAt,
+			&i.StatusChangedAt,
+			&i.ClosedAt,
+			&i.Blocked,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getQueue = `-- name: GetQueue :one
 SELECT id, workspace_id, name, created_at FROM task_queues WHERE workspace_id = $1 AND id = $2
 `
@@ -1978,4 +2109,17 @@ func (q *Queries) UpsertSettings(ctx context.Context, arg UpsertSettingsParams) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const workspaceTimezone = `-- name: WorkspaceTimezone :one
+SELECT timezone FROM workspaces WHERE id = $1
+`
+
+// The days of the flow metrics follow the workspace's clock (workspaces
+// belongs to tenancy; read only).
+func (q *Queries) WorkspaceTimezone(ctx context.Context, workspaceID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, workspaceTimezone, workspaceID)
+	var timezone string
+	err := row.Scan(&timezone)
+	return timezone, err
 }

@@ -65,7 +65,7 @@ func (q *Queries) GetConversationThread(ctx context.Context, arg GetConversation
 
 const getOutgoing = `-- name: GetOutgoing :one
 
-SELECT m.id, m.workspace_id, m.conversation_id, m.direction, m.sender_type, m.sender_id, m.kind, m.body, m.body_format, m.attachments_count, m.is_private, m.external_id, m.delivery_status, m.idempotency_key, m.meta, m.created_at, m.edited_at, m.deleted_at, m.delivery_error, c.channel_id AS thread_channel_id, c.external_thread_id,
+SELECT m.id, m.workspace_id, m.conversation_id, m.direction, m.sender_type, m.sender_id, m.kind, m.body, m.body_format, m.attachments_count, m.is_private, m.external_id, m.delivery_status, m.idempotency_key, m.meta, m.created_at, m.edited_at, m.deleted_at, m.delivery_error, c.channel_id AS thread_channel_id, c.external_thread_id, c.status AS conversation_status,
     EXISTS (
         SELECT 1 FROM messages p
         WHERE p.workspace_id = m.workspace_id AND p.conversation_id = m.conversation_id
@@ -83,10 +83,11 @@ type GetOutgoingParams struct {
 }
 
 type GetOutgoingRow struct {
-	Message          Message
-	ThreadChannelID  *uuid.UUID
-	ExternalThreadID *string
-	Waiting          bool
+	Message            Message
+	ThreadChannelID    *uuid.UUID
+	ExternalThreadID   *string
+	ConversationStatus string
+	Waiting            bool
 }
 
 // Operator replies on their way to a channel (T-03, docs/02 §11.4).
@@ -119,6 +120,7 @@ func (q *Queries) GetOutgoing(ctx context.Context, arg GetOutgoingParams) (GetOu
 		&i.Message.DeliveryError,
 		&i.ThreadChannelID,
 		&i.ExternalThreadID,
+		&i.ConversationStatus,
 		&i.Waiting,
 	)
 	return i, err

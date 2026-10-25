@@ -17,6 +17,7 @@ import {
   fetchTaskActivity,
   fetchTaskBoard,
   fetchTaskBoardSettings,
+  fetchTaskFlow,
   fetchTaskColumn,
   fetchTaskDraft,
   fetchTaskQueues,
@@ -42,6 +43,7 @@ import {
   type TaskBoard,
   type TaskBoardFilter,
   type TaskBoardSettings,
+  type TaskFlowFilter,
   type TaskCreate,
   type TaskFilter,
   type TaskStatus,
@@ -70,6 +72,11 @@ export function useTasks(filter: TaskFilter, { enabled = true }: { enabled?: boo
 export function useTaskBoard(filter: TaskBoardFilter, { enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskBoard(filter), queryFn: () => fetchTaskBoard(client, filter), enabled });
+}
+
+export function useTaskFlow(filter: TaskFlowFilter) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskFlow(filter), queryFn: () => fetchTaskFlow(client, filter) });
 }
 
 export function useTaskBoardSettings({ enabled = true }: { enabled?: boolean } = {}) {

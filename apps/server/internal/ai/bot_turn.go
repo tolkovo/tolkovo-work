@@ -127,7 +127,7 @@ func (s *Service) plan(ctx context.Context, ws, convID uuid.UUID, view conversat
 	}
 	call := BotReplyCall(BotInput{
 		ConversationID: convID, Guide: guide, Hits: hits, Lines: view.Lines,
-		FirstReply: st.Replies == 0 && !botWrote(view.Lines), Collected: p.collected,
+		FirstReply: st.Replies == 0 && !botWrote(view.Lines), Collected: p.collected, Persona: settings.Persona(),
 	})
 	res, err := s.Complete(ctx, ws, call)
 	if err != nil {
@@ -314,6 +314,19 @@ type BotInput struct {
 	Lines          []conversations.BotLine
 	FirstReply     bool
 	Collected      []Detail
+	// Persona is how the bot speaks.
+	Persona Persona
+}
+
+// Persona is how the bot speaks (AI-05): its name, tone, form of address
+// and the company's own rules.
+type Persona struct {
+	Name, Tone, Address, Rules string
+}
+
+// Persona returns how the bot of these settings speaks.
+func (b BotSettings) Persona() Persona {
+	return Persona{Name: b.Name, Tone: b.Tone, Address: b.Address, Rules: b.Rules}
 }
 
 // BotReplyCall is the call of a turn; the eval runs it too. The rules and
@@ -322,6 +335,22 @@ type BotInput struct {
 func BotReplyCall(in BotInput) Call {
 	var sys strings.Builder
 	sys.WriteString(prompts.BotReply)
+	pe := in.Persona
+	name := oneLine(pe.Name)
+	if name == "" {
+		name = "none"
+	}
+	tone, address := pe.Tone, pe.Address
+	if tone == "" {
+		tone = ToneFriendly
+	}
+	if address == "" {
+		address = AddressFormal
+	}
+	fmt.Fprintf(&sys, "\n<assistant>\nname: %s\ntone: %s\naddress: %s\n</assistant>\n", botData(name), tone, address)
+	if rules := strings.TrimSpace(pe.Rules); rules != "" {
+		fmt.Fprintf(&sys, "\n<company_rules>\n%s\n</company_rules>\n", botData(rules))
+	}
 	for _, part := range []struct{ tag, text string }{
 		{"company", in.Guide.About}, {"handoff_rules", in.Guide.HandoffRules}, {"task_checklist", in.Guide.TaskChecklist},
 	} {
@@ -368,7 +397,7 @@ func BotReplyCall(in BotInput) Call {
 }
 
 // botTag finds anything that would open or close a block of the prompt.
-var botTag = regexp.MustCompile(`(?i)</?\s*(company|handoff_rules|task_checklist|turn|knowledge|entry|collected|conversation)`)
+var botTag = regexp.MustCompile(`(?i)</?\s*(company|assistant|handoff_rules|task_checklist|turn|knowledge|entry|collected|conversation)`)
 
 // botData keeps data from closing a block of the prompt early.
 func botData(s string) string {

@@ -44,6 +44,10 @@ const (
 	// EventBotHandoff: the AI bot handed the conversation to people
 	// (bot → queued) for Reason (ADR-0018).
 	EventBotHandoff = "bot_handoff"
+	// EventLineChanged: an operator moved the conversation to another line
+	// (ADR-0021), up, across or down; it left its assignee for the line's
+	// queue. The reason, when given, is the note after it.
+	EventLineChanged = "line_changed"
 )
 
 // Why GitHub closed an issue (IssueRef.Reason).
@@ -77,6 +81,10 @@ type Event struct {
 	ByCustomer      bool       `json:"by_customer,omitempty"`
 	// Reason is set on EventBotHandoff: one of the Handoff… reasons.
 	Reason string `json:"reason,omitempty"`
+	// LineID and PreviousLineID are set on EventLineChanged; nil is the
+	// first line. The panel names them from the workspace's lines.
+	LineID         *uuid.UUID `json:"line_id,omitempty"`
+	PreviousLineID *uuid.UUID `json:"previous_line_id,omitempty"`
 }
 
 // IssueRef names an issue in a feed line: no title, the panel links to it.
@@ -147,7 +155,7 @@ func eventFrom(kind string, meta []byte) *Event {
 		return nil
 	}
 	switch ev.Type {
-	case EventStatusChanged, EventAssigned, EventTopicChanged:
+	case EventStatusChanged, EventAssigned, EventTopicChanged, EventLineChanged:
 	case EventBotHandoff:
 		if ev.Reason == "" {
 			return nil

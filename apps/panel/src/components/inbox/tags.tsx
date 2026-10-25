@@ -1,5 +1,5 @@
 import { isApiError, setConversationTags, type Conversation, type Tag } from "@tolkovo/api-client";
-import { useCreateTag, useTags, useTopics } from "@tolkovo/api-client/react";
+import { useCreateTag, useLines, useTags, useTopics } from "@tolkovo/api-client/react";
 import { cn } from "@tolkovo/ui";
 import { Plus, X } from "lucide-react";
 import { useId, useState } from "react";
@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { useAbilities, type ConversationChange } from "../../lib/inbox/actions";
 import { Popover } from "../menu";
 import { TAG_DOT as DOT } from "./palette";
+import { ConversationLine } from "./lines";
 import { ConversationTopic } from "./topics";
 
 /** At most this many tags on one conversation (SetTagsRequest in api/openapi.yaml). */
@@ -36,7 +37,7 @@ export function TagChip({ tag, onRemove }: { tag: Tag; onRemove?: (() => void) |
 }
 
 /**
- * The topic and tags of the conversation under its header (docs/04 §3.1). A change goes to the
+ * The line, the topic and the tags of the conversation under its header (docs/04 §3.1). A change goes to the
  * server at once with the version the operator saw; who may create tags (tags.manage) can do it
  * from the picker.
  */
@@ -49,11 +50,14 @@ export function ConversationTags({ conversation: c, change }: { conversation: Co
 
   const { data: topics } = useTopics();
   const topic = (topics?.length ?? 0) > 0 || c.topic_id !== null;
+  const { data: lines } = useLines();
+  const line = (lines?.length ?? 0) > 0 || c.line_id !== null;
   const save = (ids: string[]) => change.mutate((api) => setConversationTags(api, c.id, ids, c.version));
-  if (tags.length === 0 && !can.tag && !topic) return null;
+  if (tags.length === 0 && !can.tag && !topic && !line) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface px-4 py-1.5 max-nav:px-3">
+      {line && <ConversationLine conversation={c} change={change} />}
       {topic && <ConversationTopic conversation={c} change={change} />}
       <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label={t("inbox.tags.label")}>
         {tags.map((tag) => (

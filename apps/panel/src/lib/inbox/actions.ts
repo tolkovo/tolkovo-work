@@ -38,6 +38,8 @@ export type Abilities = {
   createTag: boolean;
   /** Create a GitHub issue from the conversation or link it to one (GH-02). */
   issues: boolean;
+  /** Move it to another line, up or down (ADR-0021). */
+  escalate: boolean;
 };
 
 export function abilities(session: Session | null | undefined, c: Conversation): Abilities {
@@ -62,6 +64,7 @@ export function abilities(session: Session | null | undefined, c: Conversation):
     tag: can("conversations.tag"),
     createTag: can("tags.manage"),
     issues: can("issues.create"),
+    escalate: (c.status === "queued" || c.status === "assigned" || c.status === "pending") && (moveOwn || assignOthers),
   };
 }
 

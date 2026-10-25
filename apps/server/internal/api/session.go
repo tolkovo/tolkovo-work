@@ -64,6 +64,7 @@ var tokenOperations = map[string]bool{
 	"POST /api/v1/tasks":                        true,
 	"GET /api/v1/tasks/summary":                 true,
 	"GET /api/v1/tasks/board":                   true,
+	"GET /api/v1/tasks/flow":                    true,
 	"GET /api/v1/tasks/{id}":                    true,
 	"PUT /api/v1/tasks/{id}":                    true,
 	"GET /api/v1/tasks/{id}/activity":           true,

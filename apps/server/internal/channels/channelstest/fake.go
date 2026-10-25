@@ -117,10 +117,12 @@ type Answer struct {
 	CallbackID, Text string
 }
 
-// Edit is one EditText call.
+// Edit is one EditText or DropButtons call.
 type Edit struct {
 	ChatID, MessageID int64
 	Text              string
+	// Dropped: DropButtons, the text stays.
+	Dropped bool
 }
 
 // AnswerCallback records the answer.
@@ -136,6 +138,14 @@ func (b *Bots) EditText(_ context.Context, _ string, chatID, messageID int64, te
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.Edits = append(b.Edits, Edit{ChatID: chatID, MessageID: messageID, Text: text})
+	return nil
+}
+
+// DropButtons records the edit.
+func (b *Bots) DropButtons(_ context.Context, _ string, chatID, messageID int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.Edits = append(b.Edits, Edit{ChatID: chatID, MessageID: messageID, Dropped: true})
 	return nil
 }
 

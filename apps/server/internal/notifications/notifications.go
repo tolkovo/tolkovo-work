@@ -166,7 +166,7 @@ func boolOf(v *bool) pgtype.Bool {
 func (s *Service) NeedsAttention(
 	ctx context.Context, tx pgx.Tx, workspaceID, conversationID, userID uuid.UUID, why conversations.Attention,
 ) error {
-	if err := s.chatNotice(ctx, tx, workspaceID, conversationID, &userID, nil, chatAbout(why)); err != nil {
+	if err := s.chatNotice(ctx, tx, workspaceID, conversationID, &userID, nil, nil, chatAbout(why)); err != nil {
 		return err
 	}
 	if s.jobs == nil {

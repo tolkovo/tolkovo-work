@@ -43,6 +43,11 @@ import {
   fetchMembers,
   fetchMyPresence,
   fetchRouting,
+  fetchLines,
+  createLine,
+  updateLine,
+  deleteLine,
+  fetchRoutingMembers,
   fetchAISettings,
   fetchAIBot,
   checkAISettings,
@@ -92,6 +97,7 @@ import {
   updateNotificationSettings,
   setMyPresence,
   setRouting,
+  setRoutingMember,
   setAISettings,
   setAIBot,
   updateMe,
@@ -107,7 +113,8 @@ import {
   type Contact,
   type NotificationSettingsInput,
   type OperatorStatus,
-  type RoutingMode,
+  type RoutingSettings,
+  type LineInput,
   type AISettingsUpdate,
   type AIBot,
   type ContactInput,
@@ -747,6 +754,27 @@ export function useTopicMutations() {
   };
 }
 
+/** The lines of support (ADR-0021). */
+export function useLines() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.lines, queryFn: () => fetchLines(client), staleTime: 5 * 60_000 });
+}
+
+/** Creates, changes or deletes lines; the list is read again after each. */
+export function useLineMutations() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const onSettled = () => queryClient.invalidateQueries({ queryKey: queryKeys.lines });
+  return {
+    create: useMutation({ mutationFn: (body: LineInput) => createLine(client, body), onSettled }),
+    update: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: LineInput }) => updateLine(client, id, body),
+      onSettled,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => deleteLine(client, id), onSettled }),
+  };
+}
+
 export function useContact(id: string) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.contact(id), queryFn: () => fetchContact(client, id) });
@@ -801,8 +829,23 @@ export function useSetRouting() {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (mode: RoutingMode) => setRouting(client, mode),
+    mutationFn: (settings: RoutingSettings) => setRouting(client, settings),
     onSuccess: (settings) => queryClient.setQueryData(queryKeys.routing, settings),
+  });
+}
+
+/** Capacity and load of each member who answers customers (ADR-0021). */
+export function useRoutingMembers() {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.routingMembers, queryFn: () => fetchRoutingMembers(client) });
+}
+
+export function useSetRoutingMember() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, maxChats }: { userId: string; maxChats: number | null }) => setRoutingMember(client, userId, maxChats),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.routingMembers }),
   });
 }
 

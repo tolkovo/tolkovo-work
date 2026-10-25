@@ -75,6 +75,8 @@ export class FakeServer {
   /** Topics of questions the session offers, and the one of the conversation. */
   topics: { id: string; name: string }[] = [];
   topicId: string | null = null;
+  /** The AI bot answers the conversation. */
+  withBot = false;
   private issued = 0;
 
   install(): void {
@@ -143,7 +145,7 @@ export class FakeServer {
         const items = (since ? this.messages.filter((m) => m.id > since) : this.messages.slice(-100)).map(fresh);
         const last = items.at(-1)?.id ?? since;
         const conversation = this.messages.length
-          ? { id: this.conversationId, status: this.resolved ? "resolved" : "open", rating: this.rating, topic_id: this.topicId }
+          ? { id: this.conversationId, status: this.resolved ? "resolved" : "open", rating: this.rating, topic_id: this.topicId, with_bot: this.withBot }
           : null;
         return json(200, { items, cursor: last, more: false, conversation });
       }

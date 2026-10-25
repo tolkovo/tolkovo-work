@@ -296,7 +296,7 @@ func (s *Service) openThread(
 	if status == StatusBot {
 		return conv, nil
 	}
-	if err := s.waitsInQueue(ctx, tx, workspaceID, id, conv.TopicID); err != nil {
+	if err := s.waitsInQueue(ctx, tx, workspaceID, id, conv.LineID, conv.TopicID); err != nil {
 		return store.Conversation{}, err
 	}
 	return conv, s.queued(ctx, tx, workspaceID, nil)
@@ -354,7 +354,7 @@ func (s *Service) wakeUp(ctx context.Context, q *store.Queries, tx pgx.Tx, conv 
 		return conv, err
 	}
 	if next.Status == StatusQueued {
-		if err := s.waitsInQueue(ctx, tx, conv.WorkspaceID, conv.ID, conv.TopicID); err != nil {
+		if err := s.waitsInQueue(ctx, tx, conv.WorkspaceID, conv.ID, conv.LineID, conv.TopicID); err != nil {
 			return conv, err
 		}
 	}

@@ -163,7 +163,7 @@ func (s *server) ListWidgetMessages(w http.ResponseWriter, r *http.Request, para
 		if c.Resolved {
 			status = oapi.WidgetConversationStatusResolved
 		}
-		body.Conversation = &oapi.WidgetConversation{Id: c.ID, Status: status, Rating: ratingBody(c.Rating), TopicId: c.TopicID}
+		body.Conversation = &oapi.WidgetConversation{Id: c.ID, Status: status, Rating: ratingBody(c.Rating), TopicId: c.TopicID, WithBot: c.WithBot}
 	}
 	writeJSON(w, http.StatusOK, body)
 }

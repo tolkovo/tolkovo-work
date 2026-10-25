@@ -12,11 +12,11 @@ describe("panel shell", () => {
     expect(router.state.location.pathname).toBe("/inbox");
   });
 
-  it("shows the five sections in the rail and marks the current one", async () => {
+  it("shows the sections in the rail and marks the current one", async () => {
     renderApp("/monitor");
     const nav = await screen.findByRole("navigation", { name: "Разделы" });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["Диалоги", "Монитор", "Аналитика", "База", "Настройки"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Диалоги", "Монитор", "Аналитика", "Настройки"]);
     expect(within(nav).getByRole("link", { name: "Монитор" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "Диалоги" })).not.toHaveAttribute("aria-current");
   });
@@ -25,11 +25,18 @@ describe("panel shell", () => {
     ["/inbox", "Диалогов пока нет", "Подключить канал", "/settings"],
     ["/monitor", "Сейчас никого нет на смене", "Пригласить операторов", "/settings"],
     ["/analytics", "Данных пока нет", "Открыть диалоги", "/inbox"],
-    ["/kb", "Статей пока нет", "Настроить ИИ", "/settings"],
   ])("%s shows an empty state with a call to action", async (url, title, action, href) => {
     renderApp(url);
     expect(await screen.findByRole("heading", { level: 2, name: title })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: action })).toHaveAttribute("href", href);
+  });
+
+  it("leads those who keep the knowledge base to «Настройки → База знаний»", async () => {
+    const session = { ...ownerSession, permissions: [...ownerSession.permissions, "knowledge.manage"] };
+    const { router } = renderApp("/kb", { api: fakeApi({ session }) });
+    const nav = await screen.findByRole("navigation", { name: "Разделы" });
+    expect(within(nav).getByRole("link", { name: "База" })).toHaveAttribute("href", "/kb");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/knowledge"));
   });
 
   it("navigates between sections from the rail", async () => {

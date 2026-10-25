@@ -5,7 +5,7 @@
 -- this one must not overtake it. Only replies of the last two hours count:
 -- retries end after about 40 minutes, so an older pending reply lost its
 -- job (or was retried by hand long after) and must not hold the rest.
-SELECT sqlc.embed(m), c.channel_id AS thread_channel_id, c.external_thread_id,
+SELECT sqlc.embed(m), c.channel_id AS thread_channel_id, c.external_thread_id, c.status AS conversation_status,
     EXISTS (
         SELECT 1 FROM messages p
         WHERE p.workspace_id = m.workspace_id AND p.conversation_id = m.conversation_id

@@ -30,6 +30,7 @@ const conv = (patch: Partial<Conversation> = {}): Conversation => ({
   last_message: null,
   tag_ids: [],
   topic_id: null,
+  line_id: null,
   last_read_message_id: null,
   unread_count: 1,
   rating: null,

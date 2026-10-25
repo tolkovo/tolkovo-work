@@ -184,6 +184,10 @@ func (q *Queries) FinishBotTurn(ctx context.Context, arg FinishBotTurnParams) er
 const getBotSettings = `-- name: GetBotSettings :one
 SELECT coalesce((SELECT min_confidence FROM ai_bot_settings b WHERE b.workspace_id = $1), 75)::smallint AS min_confidence,
        coalesce((SELECT handoff_message FROM ai_bot_settings b WHERE b.workspace_id = $1), '')::text AS handoff_message,
+       coalesce((SELECT bot_name FROM ai_bot_settings b WHERE b.workspace_id = $1), '')::text AS bot_name,
+       coalesce((SELECT tone FROM ai_bot_settings b WHERE b.workspace_id = $1), 'friendly')::text AS tone,
+       coalesce((SELECT address FROM ai_bot_settings b WHERE b.workspace_id = $1), 'formal')::text AS address,
+       coalesce((SELECT rules FROM ai_bot_settings b WHERE b.workspace_id = $1), '')::text AS rules,
        coalesce((SELECT array_agg(c.channel_id ORDER BY c.channel_id) FROM ai_bot_channels c
                  WHERE c.workspace_id = $1), '{}')::uuid[] AS channel_ids,
        coalesce((SELECT array_agg(t.topic_id ORDER BY t.topic_id) FROM ai_bot_topics_off t
@@ -193,6 +197,10 @@ SELECT coalesce((SELECT min_confidence FROM ai_bot_settings b WHERE b.workspace_
 type GetBotSettingsRow struct {
 	MinConfidence  int16
 	HandoffMessage string
+	BotName        string
+	Tone           string
+	Address        string
+	Rules          string
 	ChannelIds     []uuid.UUID
 	TopicsOff      []uuid.UUID
 }
@@ -204,6 +212,10 @@ func (q *Queries) GetBotSettings(ctx context.Context, workspaceID uuid.UUID) (Ge
 	err := row.Scan(
 		&i.MinConfidence,
 		&i.HandoffMessage,
+		&i.BotName,
+		&i.Tone,
+		&i.Address,
+		&i.Rules,
 		&i.ChannelIds,
 		&i.TopicsOff,
 	)
@@ -263,16 +275,22 @@ func (q *Queries) ReleaseBotTurn(ctx context.Context, arg ReleaseBotTurnParams) 
 }
 
 const setBotOptions = `-- name: SetBotOptions :exec
-INSERT INTO ai_bot_settings (workspace_id, min_confidence, handoff_message, updated_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO ai_bot_settings (workspace_id, min_confidence, handoff_message, bot_name, tone, address, rules, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (workspace_id) DO UPDATE
-SET min_confidence = excluded.min_confidence, handoff_message = excluded.handoff_message, updated_at = excluded.updated_at
+SET min_confidence = excluded.min_confidence, handoff_message = excluded.handoff_message,
+    bot_name = excluded.bot_name, tone = excluded.tone, address = excluded.address, rules = excluded.rules,
+    updated_at = excluded.updated_at
 `
 
 type SetBotOptionsParams struct {
 	WorkspaceID    uuid.UUID
 	MinConfidence  int16
 	HandoffMessage string
+	BotName        string
+	Tone           string
+	Address        string
+	Rules          string
 	Now            time.Time
 }
 
@@ -281,6 +299,10 @@ func (q *Queries) SetBotOptions(ctx context.Context, arg SetBotOptionsParams) er
 		arg.WorkspaceID,
 		arg.MinConfidence,
 		arg.HandoffMessage,
+		arg.BotName,
+		arg.Tone,
+		arg.Address,
+		arg.Rules,
 		arg.Now,
 	)
 	return err

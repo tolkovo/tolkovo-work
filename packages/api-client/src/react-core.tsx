@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ApiClient } from "./client";
 import type { ConversationFilter } from "./endpoints";
-import type { TaskBoardFilter, TaskFilter } from "./tasks";
+import type { TaskBoardFilter, TaskFilter, TaskFlowFilter } from "./tasks";
 
 // The API client of the app and the keys of the Query cache, shared by every hook module
 // (react.tsx re-exports them).
@@ -31,6 +31,7 @@ export const queryKeys = {
   myNotifications: ["me", "notifications"] as const,
   myPresence: ["me", "presence"] as const,
   routing: ["routing"] as const,
+  routingMembers: ["routing", "members"] as const,
   aiSettings: ["ai", "settings"] as const,
   aiBot: ["ai", "bot"] as const,
   kbArticles: ["kb", "articles"] as const,
@@ -65,6 +66,7 @@ export const queryKeys = {
   taskList: (filter: TaskFilter) => ["tasks", "list", filter] as const,
   taskBoard: (filter: TaskBoardFilter) => ["tasks", "board", filter] as const,
   taskBoardSettings: ["tasks", "board-settings"] as const,
+  taskFlow: (filter: TaskFlowFilter) => ["tasks", "flow", filter] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   taskActivity: (id: string) => ["tasks", "activity", id] as const,
   taskSummary: ["tasks", "summary"] as const,
@@ -76,5 +78,6 @@ export const queryKeys = {
   contact: (id: string) => ["contacts", "detail", id] as const,
   tags: ["tags"] as const,
   topics: ["topics"] as const,
+  lines: ["lines"] as const,
   attachmentLink: (id: string) => ["attachments", "link", id] as const,
 };

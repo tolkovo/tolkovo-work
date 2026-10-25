@@ -1,15 +1,132 @@
-import type { RoutingMode } from "@tolkovo/api-client";
-import { useMembers, useRouting, useSetRouting } from "@tolkovo/api-client/react";
-import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { useState } from "react";
+import type { RoutingMode, RoutingSettings } from "@tolkovo/api-client";
+import { useMembers, useRouting, useRoutingMembers, useSetRouting, useSetRoutingMember } from "@tolkovo/api-client/react";
+import { Button, Select, Skeleton, cn } from "@tolkovo/ui";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
 import { answersCustomers } from "../../lib/team";
 import { FormMessage } from "../form/fields";
+import { LineSettings } from "./line-settings";
 import { PresenceDot } from "../presence-dot";
 
-const MODES: readonly RoutingMode[] = ["manual", "round_robin"];
+const MODES: readonly RoutingMode[] = ["manual", "round_robin", "least_loaded"];
+
+/** The limits offered: the server takes 1–50. */
+const LIMITS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 50] as const;
+
+function LimitOptions({ none }: { none: string }) {
+  return (
+    <>
+      <option value="">{none}</option>
+      {LIMITS.map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </>
+  );
+}
+
+const limitOf = (value: string) => (value === "" ? null : Number(value));
+
+/**
+ * Capacity (ADR-0021): how many conversations in work the router gives each operator, the
+ * workspace's limit and each member's own, with their load now.
+ */
+function Capacity({ settings, onSave, saving }: { settings: RoutingSettings; onSave: (next: RoutingSettings) => void; saving: boolean }) {
+  const { t } = useTranslation();
+  const id = useId();
+  const { data: members } = useMembers();
+  const limits = useRoutingMembers();
+  const setOwn = useSetRoutingMember();
+  const [error, setError] = useState<string | null>(null);
+  const names = new Map(members?.map((m) => [m.user_id, m]) ?? []);
+  const fallback = settings.max_chats;
+  return (
+    <div className="flex flex-col gap-3 border-t border-line pt-3">
+      <div className="flex flex-col gap-1">
+        <label htmlFor={id} className="text-[13px] font-medium text-ink">
+          {t("settings.routing.maxChats")}
+        </label>
+        <div className="w-40">
+          <Select
+            id={id}
+            aria-describedby={`${id}-hint`}
+            value={fallback === null ? "" : String(fallback)}
+            disabled={saving}
+            onChange={(e) => onSave({ ...settings, max_chats: limitOf(e.currentTarget.value) })}
+          >
+            <LimitOptions none={t("settings.routing.noLimit")} />
+          </Select>
+        </div>
+        <p id={`${id}-hint`} className="m-0 text-[12.5px] text-ink-2">
+          {t("settings.routing.maxChatsHint")}
+        </p>
+      </div>
+      {limits.data && limits.data.length > 0 ? (
+        <table className="w-full table-fixed border-collapse text-[13px]">
+          <caption className="mb-1 text-left text-[13px] font-medium text-ink">{t("settings.routing.members")}</caption>
+          <colgroup>
+            <col />
+            <col className="w-24 max-nav:w-16" />
+            <col className="w-40 max-nav:w-28" />
+          </colgroup>
+          <thead>
+            <tr className="text-left text-[12px] text-ink-2">
+              <th scope="col" className="py-1 font-normal">
+                {t("settings.routing.member")}
+              </th>
+              <th scope="col" className="py-1 font-normal">
+                {t("settings.routing.inWork")}
+              </th>
+              <th scope="col" className="py-1 font-normal">
+                {t("settings.routing.ownLimit")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {limits.data.map((l) => {
+              const m = names.get(l.user_id);
+              const max = l.max_chats ?? fallback;
+              const full = max !== null && l.open >= max;
+              return (
+                <tr key={l.user_id} className="border-t border-line">
+                  <th scope="row" className="truncate py-1.5 pr-2 text-left font-normal text-ink">
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      {m ? <PresenceDot presence={m.presence} /> : null}
+                      <span className="truncate">{m?.name ?? l.user_id}</span>
+                    </span>
+                  </th>
+                  <td className={cn("py-1.5 pr-2 tabular-nums whitespace-nowrap", full ? "font-medium text-ink" : "text-ink-2")}>
+                    {max === null ? l.open : t("settings.routing.load", { open: l.open, max })}
+                  </td>
+                  <td className="py-1.5">
+                    <Select
+                      aria-label={t("settings.routing.ownLimitOf", { name: m?.name ?? "" })}
+                      value={l.max_chats === null ? "" : String(l.max_chats)}
+                      disabled={setOwn.isPending}
+                      onChange={(e) => {
+                        setError(null);
+                        setOwn.mutate(
+                          { userId: l.user_id, maxChats: limitOf(e.currentTarget.value) },
+                          { onError: (err) => setError(describeApiError(t, err).message) },
+                        );
+                      }}
+                    >
+                      <LimitOptions none={t("settings.routing.asEveryone")} />
+                    </Select>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : null}
+      <FormMessage tone="error" message={error} />
+    </div>
+  );
+}
 
 /** Who takes conversations now: the members the router would give one to. */
 function OnlineNow() {
@@ -33,8 +150,8 @@ function OnlineNow() {
 }
 
 /**
- * «Распределение» (docs/07 §7, docs/04 §5.2): how queued conversations reach operators. Phase 1
- * has two ways; lines, capacity, skills and offers with a timeout come with phase 3.
+ * «Распределение» (docs/07 §7, docs/04 §5.2, ADR-0021): how queued conversations reach operators
+ * and how many each may have in work. Skills and offers with a timeout come later.
  */
 export function RoutingSettingsPage() {
   const { t } = useTranslation();
@@ -43,10 +160,10 @@ export function RoutingSettingsPage() {
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const save = (mode: RoutingMode) => {
+  const save = (next: RoutingSettings) => {
     setSaved(null);
     setError(null);
-    update.mutate(mode, {
+    update.mutate(next, {
       onSuccess: () => setSaved(t("settings.routing.saved")),
       onError: (e) => setError(describeApiError(t, e).message),
     });
@@ -75,7 +192,7 @@ export function RoutingSettingsPage() {
             <legend className="mb-1 p-0 text-[13px] font-medium text-ink">{t("settings.routing.mode")}</legend>
             {MODES.map((mode) => {
               const id = `routing-mode-${mode}`;
-              const checked = (update.isPending && update.variables ? update.variables : query.data.mode) === mode;
+              const checked = (update.isPending && update.variables ? update.variables.mode : query.data.mode) === mode;
               return (
                 <label
                   key={mode}
@@ -92,7 +209,7 @@ export function RoutingSettingsPage() {
                     value={mode}
                     checked={checked}
                     disabled={update.isPending}
-                    onChange={() => save(mode)}
+                    onChange={() => save({ ...query.data, mode })}
                     aria-labelledby={`${id}-label`}
                     aria-describedby={`${id}-hint`}
                     className="mt-0.5 size-4 shrink-0 accent-teal"
@@ -109,16 +226,18 @@ export function RoutingSettingsPage() {
               );
             })}
           </fieldset>
-          {query.data.mode === "round_robin" ? (
+          {query.data.mode !== "manual" ? (
             <>
               <p className="m-0 text-[12.5px] text-ink-2">{t("settings.routing.rules")}</p>
               <OnlineNow />
+              <Capacity settings={query.data} onSave={save} saving={update.isPending} />
             </>
           ) : null}
           <FormMessage tone="error" message={error} />
           <FormMessage tone="success" message={saved} />
         </div>
       )}
+      <LineSettings />
     </section>
   );
 }

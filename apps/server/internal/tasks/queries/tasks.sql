@@ -388,3 +388,36 @@ SELECT EXISTS (
 SELECT r.key FROM memberships m
 JOIN roles r ON r.id = m.role_id
 WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active;
+
+-- name: FlowTasks :many
+-- The tasks the flow metrics read (ADR-0019, K3): open ones and those
+-- closed since the period began, the latest numbers first, with the
+-- filters of BoardTasks.
+SELECT t.id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
+       (t.blocked_reason IS NOT NULL)::boolean AS blocked
+FROM tasks t
+WHERE t.workspace_id = @workspace_id
+  AND (t.closed_at IS NULL OR t.closed_at >= @since::timestamptz)
+  AND (sqlc.narg(assignee_id)::uuid IS NULL OR t.assignee_id = sqlc.narg(assignee_id)::uuid)
+  AND (NOT @unassigned::boolean OR t.assignee_id IS NULL)
+  AND (sqlc.narg(queue_id)::uuid IS NULL OR t.queue_id = sqlc.narg(queue_id)::uuid)
+  AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
+  AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
+  AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
+  AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
+       SELECT 1 FROM task_tag_links l
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
+ORDER BY t.number DESC
+LIMIT @lim;
+
+-- name: FlowStatusChanges :many
+-- The history of statuses of these tasks, oldest first.
+SELECT a.task_id, coalesce(a.meta->>'from', '')::text AS from_status, coalesce(a.meta->>'to', '')::text AS to_status, a.created_at
+FROM task_activity a
+WHERE a.workspace_id = @workspace_id AND a.kind = 'status' AND a.task_id = ANY(@task_ids::uuid[])
+ORDER BY a.task_id, a.created_at, a.id;
+
+-- name: WorkspaceTimezone :one
+-- The days of the flow metrics follow the workspace's clock (workspaces
+-- belongs to tenancy; read only).
+SELECT timezone FROM workspaces WHERE id = @workspace_id;

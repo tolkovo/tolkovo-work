@@ -113,6 +113,11 @@ type Outgoing struct {
 	SentParts []string
 	// Waiting: an earlier reply of the conversation is still pending.
 	Waiting bool
+	// OfferPerson: a reply of the AI bot in a conversation it still
+	// answers; a channel that can show a button offers to call a person.
+	OfferPerson bool
+	// Locale is the workspace's language, ru or en, set with OfferPerson.
+	Locale string
 }
 
 // OutgoingFile is an attachment of a reply with its object in storage.
@@ -149,6 +154,12 @@ func (s *Service) Outgoing(ctx context.Context, workspaceID, messageID uuid.UUID
 			_ = json.Unmarshal(m.Meta, &meta) // written only by this module
 		}
 		out.SentParts = meta.SentParts
+		if m.SenderType == SenderBot && Status(row.ConversationStatus) == StatusBot {
+			out.OfferPerson = true
+			if out.Locale, err = q.WorkspaceLocale(ctx, workspaceID); err != nil {
+				return err
+			}
+		}
 		atts, err := q.MessageAttachments(ctx, store.MessageAttachmentsParams{WorkspaceID: workspaceID, MessageIds: []uuid.UUID{m.ID}})
 		if err != nil {
 			return err

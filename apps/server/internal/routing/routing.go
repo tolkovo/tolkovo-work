@@ -1,9 +1,10 @@
 // Package routing distributes the queue among operators (docs/02 §9,
-// docs/06 Q-01, Q-02).
+// docs/06 Q-01, Q-02, ADR-0021).
 //
-// Phase 1 has no lines, teams, skills or shifts. A workspace either leaves
-// the queue to its operators (manual) or lets the router give queued
-// conversations in turn to the members available now (round_robin).
+// There are no teams, skills or shifts yet. A workspace either leaves the
+// queue to its operators (manual) or lets the router give queued
+// conversations to the members available now: in turn (round_robin) or to
+// the least loaded (least_loaded), each up to their capacity (max_chats).
 //
 // Available means two things. The member accepts conversations: a status
 // they choose in the panel, online or away. And the panel is open: the
@@ -26,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/db"
@@ -33,8 +35,16 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/routing/store"
 )
 
-// ErrInvalid is a mode or a status outside the allowed values.
-var ErrInvalid = errors.New("routing: invalid input")
+// Errors.
+var (
+	// ErrInvalid is a mode, a status or a limit outside the allowed values.
+	ErrInvalid = errors.New("routing: invalid input")
+	// ErrNotFound is a member who is not an active one answering customers.
+	ErrNotFound = errors.New("routing: not found")
+)
+
+// MaxChatsLimit is the highest capacity one may set.
+const MaxChatsLimit = 50
 
 // answering are the roles that answer customers: only their members are
 // available for conversations (ADR-0020: the programmer is not).
@@ -45,9 +55,30 @@ type Mode string
 
 // Modes.
 const (
-	ModeManual     Mode = "manual"      // operators take conversations themselves
-	ModeRoundRobin Mode = "round_robin" // the router assigns them in turn
+	ModeManual      Mode = "manual"       // operators take conversations themselves
+	ModeRoundRobin  Mode = "round_robin"  // the router assigns them in turn
+	ModeLeastLoaded Mode = "least_loaded" // the router assigns them to the least loaded
 )
+
+// auto: the router assigns conversations itself.
+func auto(m string) bool { return Mode(m) == ModeRoundRobin || Mode(m) == ModeLeastLoaded }
+
+// Settings are how a workspace distributes its queue.
+type Settings struct {
+	Mode Mode
+	// MaxChats is how many conversations in work the router gives a
+	// member; nil is no limit. A member's own limit overrides it.
+	MaxChats *int
+}
+
+// Limit is a member's own capacity and their load now.
+type Limit struct {
+	UserID uuid.UUID
+	// MaxChats is the member's own limit; nil follows the workspace's.
+	MaxChats *int
+	// Open is how many conversations they have in work.
+	Open int
+}
 
 // Status is what a member chose: to accept conversations or not.
 type Status string
@@ -90,39 +121,122 @@ func New(d *db.DB, jobsClient *jobs.Client) *Service {
 	return &Service{db: d, jobs: jobsClient, now: func() time.Time { return time.Now().UTC() }}
 }
 
-// Mode returns how the workspace distributes its queue.
-func (s *Service) Mode(ctx context.Context, workspaceID uuid.UUID) (Mode, error) {
-	var m Mode
+// Settings returns how the workspace distributes its queue.
+func (s *Service) Settings(ctx context.Context, workspaceID uuid.UUID) (Settings, error) {
+	var out Settings
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		v, err := store.New(tx).GetMode(ctx, workspaceID)
-		m = Mode(v)
+		row, err := store.New(tx).GetSettings(ctx, workspaceID)
+		out = Settings{Mode: Mode(row.Mode), MaxChats: intOf(row.MaxChats)}
 		return err
 	})
 	if err != nil {
-		return "", fmt.Errorf("routing mode: %w", err)
+		return Settings{}, fmt.Errorf("routing settings: %w", err)
 	}
-	return m, nil
+	return out, nil
 }
 
-// SetMode changes how the workspace distributes its queue. Switching to
-// round_robin distributes what is waiting at once.
-func (s *Service) SetMode(ctx context.Context, workspaceID uuid.UUID, mode Mode) (Mode, error) {
-	if mode != ModeManual && mode != ModeRoundRobin {
-		return "", fmt.Errorf("%w: mode must be %q or %q", ErrInvalid, ModeManual, ModeRoundRobin)
+// SetSettings changes how the workspace distributes its queue. Switching to
+// automatic distribution, or giving members more room, distributes what is
+// waiting at once.
+func (s *Service) SetSettings(ctx context.Context, workspaceID uuid.UUID, in Settings) (Settings, error) {
+	if in.Mode != ModeManual && in.Mode != ModeRoundRobin && in.Mode != ModeLeastLoaded {
+		return Settings{}, fmt.Errorf("%w: mode must be %q, %q or %q", ErrInvalid, ModeManual, ModeRoundRobin, ModeLeastLoaded)
 	}
-	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		if err := store.New(tx).SetMode(ctx, store.SetModeParams{WorkspaceID: workspaceID, Mode: string(mode), UpdatedAt: s.now()}); err != nil {
+	limit, err := limitOf(in.MaxChats)
+	if err != nil {
+		return Settings{}, err
+	}
+	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		if err := store.New(tx).SetSettings(ctx, store.SetSettingsParams{
+			WorkspaceID: workspaceID, Mode: string(in.Mode), MaxChats: limit, UpdatedAt: s.now(),
+		}); err != nil {
 			return err
 		}
-		if mode == ModeRoundRobin {
+		if auto(string(in.Mode)) {
 			return s.dispatchLater(ctx, tx, workspaceID)
 		}
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("set routing mode: %w", err)
+		return Settings{}, fmt.Errorf("set routing settings: %w", err)
 	}
-	return mode, nil
+	return in, nil
+}
+
+// Limits returns the own limit of each active member answering customers
+// and their load now. load counts conversations in work; the conversations
+// module provides it.
+func (s *Service) Limits(
+	ctx context.Context, workspaceID uuid.UUID,
+	load func(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, userIDs []uuid.UUID) (map[uuid.UUID]int, error),
+) ([]Limit, error) {
+	var out []Limit
+	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		rows, err := store.New(tx).ListLimits(ctx, store.ListLimitsParams{WorkspaceID: workspaceID, Answering: answering})
+		if err != nil {
+			return err
+		}
+		ids := make([]uuid.UUID, len(rows))
+		for i, r := range rows {
+			ids[i] = r.UserID
+		}
+		open, err := load(ctx, tx, workspaceID, ids)
+		if err != nil {
+			return err
+		}
+		out = make([]Limit, len(rows))
+		for i, r := range rows {
+			out[i] = Limit{UserID: r.UserID, MaxChats: intOf(r.MaxChats), Open: open[r.UserID]}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("routing limits: %w", err)
+	}
+	return out, nil
+}
+
+// SetLimit sets a member's own capacity; nil follows the workspace's. A
+// member given more room may get what is waiting.
+func (s *Service) SetLimit(ctx context.Context, workspaceID, userID uuid.UUID, maxChats *int) error {
+	limit, err := limitOf(maxChats)
+	if err != nil {
+		return err
+	}
+	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		n, err := store.New(tx).SetLimit(ctx, store.SetLimitParams{
+			MaxChats: limit, UpdatedAt: s.now(), WorkspaceID: workspaceID, UserID: userID, Answering: answering,
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return s.dispatchIfAuto(ctx, tx, workspaceID)
+	})
+	if err != nil {
+		return fmt.Errorf("set routing limit: %w", err)
+	}
+	return nil
+}
+
+func limitOf(n *int) (pgtype.Int2, error) {
+	if n == nil {
+		return pgtype.Int2{}, nil
+	}
+	if *n < 1 || *n > MaxChatsLimit {
+		return pgtype.Int2{}, fmt.Errorf("%w: max_chats must be between 1 and %d", ErrInvalid, MaxChatsLimit)
+	}
+	return pgtype.Int2{Int16: int16(*n), Valid: true}, nil //nolint:gosec // checked above
+}
+
+func intOf(n pgtype.Int2) *int {
+	if !n.Valid {
+		return nil
+	}
+	v := int(n.Int16)
+	return &v
 }
 
 // Status returns what the member chose; online until they change it.
@@ -161,7 +275,7 @@ func (s *Service) SetStatus(ctx context.Context, workspaceID, userID uuid.UUID, 
 		if err != nil || !ok {
 			return err
 		}
-		return s.dispatchIfRoundRobin(ctx, tx, workspaceID)
+		return s.dispatchIfAuto(ctx, tx, workspaceID)
 	})
 	if err != nil {
 		return "", fmt.Errorf("set operator status: %w", err)
@@ -217,7 +331,7 @@ func (s *Service) Seen(ctx context.Context, workspaceID uuid.UUID, userIDs []uui
 		if !back {
 			return nil
 		}
-		return s.dispatchIfRoundRobin(ctx, tx, workspaceID)
+		return s.dispatchIfAuto(ctx, tx, workspaceID)
 	})
 	if err != nil {
 		return fmt.Errorf("operators seen: %w", err)
@@ -231,7 +345,7 @@ func (s *Service) Seen(ctx context.Context, workspaceID uuid.UUID, userIDs []uui
 func (s *Service) Queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, releasedBy *uuid.UUID) error {
 	q := store.New(tx)
 	mode, err := q.GetMode(ctx, workspaceID)
-	if err != nil || Mode(mode) != ModeRoundRobin {
+	if err != nil || !auto(mode) {
 		return err
 	}
 	if releasedBy != nil {
@@ -252,10 +366,29 @@ func (s *Service) Queued(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 func (s *Service) Available(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) (bool, error) {
 	q := store.New(tx)
 	mode, err := q.GetMode(ctx, workspaceID)
-	if err != nil || Mode(mode) != ModeRoundRobin {
+	if err != nil || !auto(mode) {
 		return true, err
 	}
 	return q.IsAvailable(ctx, store.IsAvailableParams{Answering: answering, WorkspaceID: workspaceID, UserID: userID, SeenAfter: s.seenAfter()})
+}
+
+// Freed implements conversations.Router: a conversation left the work of a
+// member. With automatic distribution and capacity limits in use they may
+// have room now, so the router looks at the queue again; without limits
+// nobody waited for room.
+func (s *Service) Freed(ctx context.Context, tx pgx.Tx, workspaceID, _ uuid.UUID) error {
+	q := store.New(tx)
+	set, err := q.GetSettings(ctx, workspaceID)
+	if err != nil || !auto(set.Mode) {
+		return err
+	}
+	if !set.MaxChats.Valid {
+		own, err := q.AnyOwnLimit(ctx, workspaceID)
+		if err != nil || !own {
+			return err
+		}
+	}
+	return s.dispatchLater(ctx, tx, workspaceID)
 }
 
 // AnyOnline reports whether someone in the workspace takes conversations
@@ -276,9 +409,9 @@ func (s *Service) AnyOnline(ctx context.Context, workspaceID uuid.UUID) (bool, e
 
 func (s *Service) seenAfter() time.Time { return s.now().Add(-SeenTimeout) }
 
-func (s *Service) dispatchIfRoundRobin(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) error {
+func (s *Service) dispatchIfAuto(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) error {
 	mode, err := store.New(tx).GetMode(ctx, workspaceID)
-	if err != nil || Mode(mode) != ModeRoundRobin {
+	if err != nil || !auto(mode) {
 		return err
 	}
 	return s.dispatchLater(ctx, tx, workspaceID)

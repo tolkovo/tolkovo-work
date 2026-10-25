@@ -77,10 +77,10 @@ export function storeLanguage(language: Language): void {
 export const TASKS_LAYOUT_KEY = "tolkovo.tasks.layout";
 
 /** The last view of the tasks section the member picked; a link with ?layout= wins over it. */
-export function readStoredTasksLayout(): "list" | "board" {
-  return z.enum(["list", "board"]).catch("list").parse(readStorage(TASKS_LAYOUT_KEY));
+export function readStoredTasksLayout(): "list" | "board" | "flow" {
+  return z.enum(["list", "board", "flow"]).catch("list").parse(readStorage(TASKS_LAYOUT_KEY));
 }
 
-export function storeTasksLayout(layout: "list" | "board"): void {
+export function storeTasksLayout(layout: "list" | "board" | "flow"): void {
   writeStorage(TASKS_LAYOUT_KEY, layout === "list" ? null : layout);
 }

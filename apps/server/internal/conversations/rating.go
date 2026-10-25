@@ -46,8 +46,10 @@ type Rating struct {
 type VisitorConversation struct {
 	ID       uuid.UUID
 	Resolved bool // resolved or closed
-	Rating   *Rating
-	TopicID  *uuid.UUID
+	// WithBot: the AI bot answers it (status bot).
+	WithBot bool
+	Rating  *Rating
+	TopicID *uuid.UUID
 }
 
 // RateVisitorConversation stores the visitor's rating of a resolved
@@ -112,7 +114,7 @@ func visitorConversation(ctx context.Context, q *store.Queries, workspaceID uuid
 	if err != nil {
 		return nil, err
 	}
-	return &VisitorConversation{ID: row.ID, Resolved: isSettled(Status(row.Status)), Rating: ratingFrom(row), TopicID: row.TopicID}, nil
+	return &VisitorConversation{ID: row.ID, Resolved: isSettled(Status(row.Status)), WithBot: Status(row.Status) == StatusBot, Rating: ratingFrom(row), TopicID: row.TopicID}, nil
 }
 
 func ratingFrom(c store.Conversation) *Rating {

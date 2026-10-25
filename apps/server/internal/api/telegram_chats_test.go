@@ -155,6 +155,30 @@ func TestTelegram_Conversations(t *testing.T) {
 		t.Fatal("sent about messages already read")
 	}
 
+	// Escalated to a line without the operator: not news to them; to one
+	// with them: news (ADR-0021).
+	decode[oapi.Line](t, in.owner.do(http.MethodPost, "/api/v1/lines", map[string]any{"name": "Эксперты", "level": 3, "member_ids": []any{}}))
+	billing := decode[oapi.Line](t, in.owner.do(http.MethodPost, "/api/v1/lines", map[string]any{"name": "Биллинг", "level": 2, "member_ids": []any{opID}}))
+	experts := decode[oapi.LineList](t, in.owner.do(http.MethodGet, "/api/v1/lines", nil)).Items[1]
+	// Queue notices are unique per conversation and member for a while:
+	// start from none.
+	forget := func() { e.ownerExec("DELETE FROM river.river_job WHERE kind = 'notifications.telegram_chat'") }
+	forget()
+	if rec := op.do(http.MethodPost, "/api/v1/conversations/"+conv.String()+"/escalate", map[string]any{"line_id": experts.Id, "reason": "Сложный случай"}); rec.Code != http.StatusOK {
+		t.Fatalf("escalate: %d %s", rec.Code, rec.Body)
+	}
+	if jobs := chatJobs(t, e, ws); len(jobs) != 0 {
+		t.Fatalf("a line without the operator told them: %+v", jobs)
+	}
+	forget()
+	if rec := in.owner.do(http.MethodPost, "/api/v1/conversations/"+conv.String()+"/escalate", map[string]any{"line_id": billing.Id, "reason": ""}); rec.Code != http.StatusOK {
+		t.Fatalf("down to billing: %d %s", rec.Code, rec.Body)
+	}
+	jobs = chatJobs(t, e, ws)
+	if len(jobs) != 1 || jobs[0].About != notifications.ChatQueue || jobs[0].UserID != opID {
+		t.Fatalf("line queue jobs: %+v", jobs)
+	}
+
 	// The member turns the queue off: a new customer is not news to them.
 	got := decode[oapi.NotificationSettings](t, op.do(http.MethodPatch, "/api/v1/me/notifications", map[string]any{"telegram_queue": false}))
 	if got.TelegramQueue || !got.TelegramAssigned || !got.TelegramMessages {

@@ -27,15 +27,50 @@ func TestRouting_Settings(t *testing.T) {
 	if got := decode[oapi.RoutingSettings](t, in.op.do(http.MethodGet, "/api/v1/routing", nil)); got.Mode != oapi.Manual {
 		t.Fatalf("default mode %q", got.Mode)
 	}
-	wantProblem(t, in.op.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "round_robin"}), http.StatusForbidden, "forbidden")
-	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "random"}), http.StatusBadRequest, "invalid_request")
-	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "manual", "team": "x"}), http.StatusBadRequest, "invalid_request")
-	rec := in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "round_robin"})
+	wantProblem(t, in.op.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "round_robin", "max_chats": nil}), http.StatusForbidden, "forbidden")
+	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "random", "max_chats": nil}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "manual", "max_chats": nil, "team": "x"}), http.StatusBadRequest, "invalid_request")
+	rec := in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "round_robin", "max_chats": nil})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("set mode: %d %s", rec.Code, rec.Body)
 	}
 	if got := decode[oapi.RoutingSettings](t, in.op.do(http.MethodGet, "/api/v1/routing", nil)); got.Mode != oapi.RoundRobin {
 		t.Fatalf("mode %q", got.Mode)
+	}
+	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "least_loaded"}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "least_loaded", "max_chats": 0}), http.StatusBadRequest, "invalid_request")
+	rec = in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "least_loaded", "max_chats": 3})
+	if got := decode[oapi.RoutingSettings](t, rec); got.Mode != oapi.LeastLoaded || got.MaxChats == nil || *got.MaxChats != 3 {
+		t.Fatalf("least loaded: %+v", got)
+	}
+}
+
+// A member's own capacity: owners and admins set it, everyone sees it with
+// the load.
+func TestRouting_Members(t *testing.T) {
+	in := setupInbox(t)
+	op := in.sop.User.Id
+	path := "/api/v1/routing/members/" + op.String()
+	wantProblem(t, in.op.do(http.MethodPut, path, map[string]any{"max_chats": 1}), http.StatusForbidden, "forbidden")
+	wantProblem(t, in.owner.do(http.MethodPut, path, map[string]any{}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.owner.do(http.MethodPut, path, map[string]any{"max_chats": 51}), http.StatusBadRequest, "invalid_request")
+	wantProblem(t, in.owner.do(http.MethodPut, "/api/v1/routing/members/"+uuid.NewString(), map[string]any{"max_chats": 1}), http.StatusNotFound, "not_found")
+	if rec := in.owner.do(http.MethodPut, path, map[string]any{"max_chats": 2}); rec.Code != http.StatusNoContent {
+		t.Fatalf("set: %d %s", rec.Code, rec.Body)
+	}
+	c := in.conversation(t)
+	if rec := in.op.do(http.MethodPut, "/api/v1/conversations/"+c.Id.String()+"/assignee", map[string]any{"assignee_id": op, "version": c.Version}); rec.Code != http.StatusOK {
+		t.Fatalf("take: %d %s", rec.Code, rec.Body)
+	}
+	var mine *oapi.RoutingMember
+	list := decode[oapi.RoutingMemberList](t, in.op.do(http.MethodGet, "/api/v1/routing/members", nil))
+	for i := range list.Items {
+		if list.Items[i].UserId == op {
+			mine = &list.Items[i]
+		}
+	}
+	if mine == nil || mine.MaxChats == nil || *mine.MaxChats != 2 || mine.Open != 1 {
+		t.Fatalf("operator: %+v", mine)
 	}
 }
 
@@ -82,7 +117,7 @@ func TestRouting_Presence(t *testing.T) {
 func TestRouting_AssignsNewConversations(t *testing.T) {
 	in := setupInbox(t)
 	ws, op := in.so.Workspace.Id, in.sop.User.Id
-	if rec := in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "round_robin"}); rec.Code != http.StatusOK {
+	if rec := in.owner.do(http.MethodPut, "/api/v1/routing", map[string]any{"mode": "round_robin", "max_chats": nil}); rec.Code != http.StatusOK {
 		t.Fatalf("set mode: %d %s", rec.Code, rec.Body)
 	}
 	if rec := in.owner.do(http.MethodPut, "/api/v1/me/presence", map[string]any{"status": "away"}); rec.Code != http.StatusOK {

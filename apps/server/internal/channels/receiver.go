@@ -220,7 +220,7 @@ func (s *Service) pollBot(ctx context.Context, workspaceID, channelID uuid.UUID,
 				}
 			}
 			if u.Callback != nil {
-				s.chooseTopic(ctx, workspaceID, channelID, sec.Token, *u.Callback)
+				s.callback(ctx, workspaceID, channelID, sec.Token, *u.Callback)
 			}
 			offset = u.ID + 1
 		}

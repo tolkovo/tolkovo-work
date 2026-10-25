@@ -116,7 +116,7 @@ func TestInboxCounts_MineUnread(t *testing.T) {
 
 	count := func(user uuid.UUID) int64 {
 		t.Helper()
-		n, err := f.svc.InboxCounts(f.ctx, f.wsA, user)
+		n, err := f.svc.InboxCounts(f.ctx, f.wsA, user, false)
 		if err != nil {
 			t.Fatal(err)
 		}

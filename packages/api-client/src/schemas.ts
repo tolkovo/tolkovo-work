@@ -81,8 +81,19 @@ export const myPresenceSchema = z.object({
 }) satisfies z.ZodType<Schemas["MyPresence"]>;
 
 export const routingSettingsSchema = z.object({
-  mode: z.enum(["manual", "round_robin"]),
+  mode: z.enum(["manual", "round_robin", "least_loaded"]),
+  max_chats: z.number().int().nullable(),
 }) satisfies z.ZodType<Schemas["RoutingSettings"]>;
+
+export const routingMemberListSchema = z.object({
+  items: z.array(
+    z.object({
+      user_id: z.string(),
+      max_chats: z.number().int().nullable(),
+      open: z.number().int(),
+    }),
+  ),
+}) satisfies z.ZodType<Schemas["RoutingMemberList"]>;
 
 const aiProviderSchema = z.enum(["anthropic", "openai", "deepseek", "openai_compatible"]) satisfies z.ZodType<Schemas["AIProvider"]>;
 const aiPricesSchema = z.object({
@@ -112,6 +123,10 @@ export const aiBotSchema = z.object({
   topics_off: z.array(z.string()),
   min_confidence: z.number(),
   handoff_message: z.string(),
+  name: z.string(),
+  tone: z.enum(["friendly", "neutral", "formal"]),
+  address: z.enum(["formal", "informal"]),
+  rules: z.string(),
 }) satisfies z.ZodType<Schemas["AIBot"]>;
 
 export const aiCheckSchema = z.object({
@@ -207,6 +222,7 @@ export const conversationSchema = z.object({
   last_message: conversationPreviewSchema.nullable(),
   tag_ids: z.array(z.string()),
   topic_id: z.string().nullable(),
+  line_id: z.string().nullable(),
   last_read_message_id: z.string().nullable(),
   unread_count: z.number(),
   rating: conversationRatingSchema.nullable(),
@@ -259,6 +275,7 @@ export const messageEventSchema = z.object({
     "task_reopened",
     "topic_changed",
     "bot_handoff",
+    "line_changed",
   ]),
   from: conversationStatusSchema,
   to: conversationStatusSchema,
@@ -279,6 +296,8 @@ export const messageEventSchema = z.object({
   topic_id: z.string().nullable().optional(),
   previous_topic_id: z.string().nullable().optional(),
   by_customer: z.boolean().optional(),
+  line_id: z.string().nullable().optional(),
+  previous_line_id: z.string().nullable().optional(),
   reason: z
     .enum(["customer_asked", "topic", "unknown", "rules", "checks_failed", "ai_unavailable", "limit", "task_created", "task_incomplete"])
     .optional(),
@@ -354,6 +373,15 @@ export const topicSchema = z.object({
 }) satisfies z.ZodType<Schemas["Topic"]>;
 
 export const topicListSchema = z.object({ items: z.array(topicSchema) }) satisfies z.ZodType<Schemas["TopicList"]>;
+
+export const lineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  level: z.number().int(),
+  member_ids: z.array(z.string()),
+}) satisfies z.ZodType<Schemas["Line"]>;
+
+export const lineListSchema = z.object({ items: z.array(lineSchema) }) satisfies z.ZodType<Schemas["LineList"]>;
 
 export const appLimitsSchema = z.object({
   max_file_mb: z.number(),
@@ -589,6 +617,44 @@ export const taskBoardSchema = z.object({
     }) satisfies z.ZodType<Schemas["TaskBoardColumn"]>,
   ),
 }) satisfies z.ZodType<Schemas["TaskBoard"]>;
+
+export const taskFlowSchema = z.object({
+  since: z.string(),
+  until: z.string(),
+  cycle: z.array(
+    z.object({
+      task_id: z.string(),
+      number: z.number(),
+      title: z.string(),
+      done_at: z.string(),
+      days: z.number(),
+    }) satisfies z.ZodType<Schemas["TaskFlowCycle"]>,
+  ),
+  cycle_p50: z.number().nullable(),
+  cycle_p85: z.number().nullable(),
+  throughput: z.array(z.object({ week: z.string(), done: z.number() }) satisfies z.ZodType<Schemas["TaskFlowWeek"]>),
+  cfd: z.array(
+    z.object({
+      day: z.string(),
+      open: z.number(),
+      in_progress: z.number(),
+      review: z.number(),
+      verified: z.number(),
+      done: z.number(),
+    }) satisfies z.ZodType<Schemas["TaskFlowDay"]>,
+  ),
+  aging: z.array(
+    z.object({
+      task_id: z.string(),
+      number: z.number(),
+      title: z.string(),
+      status: taskStatusSchema,
+      days: z.number(),
+      blocked: z.boolean(),
+    }) satisfies z.ZodType<Schemas["TaskFlowAging"]>,
+  ),
+  truncated: z.boolean(),
+}) satisfies z.ZodType<Schemas["TaskFlow"]>;
 
 export const taskBoardSettingsSchema = z.object({
   rules: z.array(

@@ -46,6 +46,7 @@ export const conv = (id: string, patch: Partial<Conversation> = {}): Conversatio
   },
   tag_ids: [],
   topic_id: null,
+  line_id: null,
   last_read_message_id: null,
   unread_count: 0,
   rating: null,

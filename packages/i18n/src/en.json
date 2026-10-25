@@ -60,14 +60,6 @@
         "action": "Open inbox"
       }
     },
-    "kb": {
-      "title": "Knowledge base",
-      "empty": {
-        "title": "No articles yet",
-        "text": "The AI answers customers from knowledge base articles. Start with the most common questions: delivery, payment, returns.",
-        "action": "Set up AI"
-      }
-    },
     "settings": {
       "title": "Settings"
     }
@@ -531,12 +523,48 @@
         "manual": "Manually",
         "manualHint": "Conversations wait in the queue; operators take them with «Take».",
         "round_robin": "In turn",
-        "round_robinHint": "Each new conversation goes at once to the next operator who is «Online» with the panel open. Those already waiting are distributed as soon as you switch this on."
+        "round_robinHint": "Each new conversation goes at once to the next operator who is «Online» with the panel open. Those already waiting are distributed as soon as you switch this on.",
+        "least_loaded": "To the least loaded",
+        "least_loadedHint": "Each new conversation goes to the «Online» operator with the panel open who uses the smallest part of their limit; equals in turn. Useful when operators have different limits."
       },
-      "rules": "With nobody online, a conversation waits in the queue and goes to the first one back. A conversation given back to the queue does not return to the same operator while others are available. A resolved conversation the customer writes to again goes back to its operator if they are online, otherwise to the next one.",
+      "rules": "With nobody online or everyone at their limit, a conversation waits in the queue and goes to the first one back or with room. A conversation given back to the queue does not return to the same operator while others are available. A resolved conversation the customer writes to again goes back to its operator if they are online, otherwise to the next one.",
       "onlineNow": "{count, plural, one {# person takes conversations now:} other {# people take conversations now:}}",
       "nobodyOnline": "Nobody takes conversations now: new ones will wait in the queue.",
-      "saved": "Saved."
+      "saved": "Saved.",
+      "maxChats": "Conversations per operator",
+      "maxChatsHint": "How many conversations in work (assigned or waiting for the customer) one operator gets. Over the limit a conversation waits in the queue and goes to the first one with room. «Take» and «Transfer» are not limited.",
+      "noLimit": "No limit",
+      "members": "Own limit of an operator",
+      "member": "Operator",
+      "inWork": "In work",
+      "ownLimit": "Limit",
+      "ownLimitOf": "Limit for {name}",
+      "asEveryone": "As for everyone",
+      "load": "{open} of {max}"
+    },
+    "lines": {
+      "title": "Lines",
+      "lead": "New conversations and those from the AI bot land on the first line. An operator passes a conversation to a higher line with a reason, and only that line's members get it. A specialist can return it lower.",
+      "add": "Add a line",
+      "empty": "No lines yet: every conversation is on the first line.",
+      "name": "Name",
+      "nameHint": "For example, «Billing» or «Experts».",
+      "nameRequired": "Name the line.",
+      "level": "Level",
+      "levelHint": "Passing to a higher level takes a reason.",
+      "levels": {
+        "1": "L1 — first line",
+        "2": "L2 — specialists",
+        "3": "L3 — experts"
+      },
+      "members": "Members",
+      "membersHint": "They get the line's conversations from automatic distribution and hear about its queue.",
+      "nobody": "No members: the line's conversations are taken by hand",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete the line? Its conversations go back to the first line.",
+      "deleteSubmit": "Delete",
+      "save": "Save"
     },
     "topics": {
       "title": "Topics",
@@ -653,7 +681,23 @@
         "handoffHint": "The customer reads it when the bot hands over without words of its own. Up to {max} characters; empty uses the default phrase.",
         "handoffPlaceholder": "I'm passing your question to our support team. The reply will come here, in this chat.",
         "save": "Save bot settings",
-        "saved": "Bot settings saved."
+        "saved": "Bot settings saved.",
+        "name": "Bot name",
+        "nameHint": "What the bot introduces itself by. Empty — “AI assistant”. The bot always says it is an AI.",
+        "tone": "Tone",
+        "tones": {
+          "friendly": "Friendly",
+          "neutral": "Neutral",
+          "formal": "Formal"
+        },
+        "address": "Form of address",
+        "addresses": {
+          "formal": "Formal (Russian «вы»)",
+          "informal": "Informal (Russian «ты»)"
+        },
+        "rules": "Your rules",
+        "rulesHint": "What else the bot should or should not do, up to {max} characters. The rules never override the main ones: the bot says only what the knowledge base has and always calls a person when the customer asks.",
+        "rulesPlaceholder": "For example: do not promise discounts; end replies with a link to the help center."
       }
     },
     "knowledge": {
@@ -995,6 +1039,7 @@
     "fileRejected": "The file did not pass the check: it was not uploaded whole, its content does not match its type, or a virus was found in it.",
     "scanUnavailable": "The antivirus is not answering. Attach the file again a bit later.",
     "topicExists": "A topic with this name exists.",
+    "lineExists": "A line with this name exists.",
     "tagExists": "A tag with this name exists.",
     "protectedMember": "Your own role and the owner's cannot be changed here."
   },
@@ -1212,6 +1257,21 @@
       "all": "All topics",
       "without": "No topic"
     },
+    "line": {
+      "level": "L{level}",
+      "first": "First line",
+      "named": "L{level} «{name}»",
+      "deleted": "Deleted line",
+      "move": "Pass to a line",
+      "to": "To",
+      "reason": "Reason — the specialist will see it",
+      "comment": "Comment",
+      "hint": "The conversation leaves yours for the line's queue; the text becomes a note.",
+      "reasonRequired": "Write the reason: the specialist sees it first.",
+      "submit": "Pass",
+      "filter": "Lines",
+      "all": "All lines"
+    },
     "event": {
       "taken": "Taken by {name}",
       "assigned": "Assigned to {name}",
@@ -1257,7 +1317,10 @@
         "limit": "the bot replied as often as it may",
         "task_created": "a task for IT was created",
         "task_incomplete": "not enough details for a task"
-      }
+      },
+      "lineUp": "Passed to line {line}",
+      "lineDown": "Returned to line {line}",
+      "lineFirst": "Returned to the first line"
     },
     "card": {
       "label": "Customer card",
@@ -1579,7 +1642,8 @@
     "layout": {
       "label": "Section view",
       "list": "List",
-      "board": "Board"
+      "board": "Board",
+      "flow": "Flow"
     },
     "board": {
       "label": "Task board",
@@ -1680,7 +1744,40 @@
       "done": "{number} is blocked",
       "undone": "{number} is unblocked"
     },
-    "backToTask": "Back to the task"
+    "backToTask": "Back to the task",
+    "flow": {
+      "label": "Flow of tasks",
+      "period": "Period",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "daysShort": "{count, plural, one {# d} other {# d}}",
+      "truncated": "There are more tasks than the metrics read: they cover the latest 5,000.",
+      "empty": {
+        "title": "No tasks in the period",
+        "text": "The metrics appear once tasks move across the board. Try another period or other filters."
+      },
+      "cycle": {
+        "title": "Cycle time",
+        "lead": "From In progress to Done, tasks: {count}. Half took at most {p50}, 85% at most {p85}",
+        "none": "No task went from In progress to Done in the period."
+      },
+      "throughput": {
+        "title": "Done by week",
+        "lead": "{count, plural, one {# task done in the period.} other {# tasks done in the period.}}",
+        "week": "Week of {week}: {count, plural, one {# task} other {# tasks}}"
+      },
+      "cfd": {
+        "title": "Tasks by status",
+        "lead": "How many tasks were in each status at the end of each day. A growing band is where tasks pile up."
+      },
+      "aging": {
+        "title": "Longest in their column",
+        "lead": "Open tasks standing longest in their status.",
+        "none": "No open tasks.",
+        "task": "Task",
+        "status": "Column",
+        "days": "In the column"
+      }
+    }
   },
   "notifications": {
     "alert": {

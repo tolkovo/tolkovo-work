@@ -115,7 +115,7 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		})
 	case errors.Is(err, auth.ErrWorkspaceNotFound), errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, tenancy.ErrNotFound),
 		errors.Is(err, tenancy.ErrInvitationNotFound), errors.Is(err, conversations.ErrNotFound), errors.Is(err, channels.ErrNotFound),
-		errors.Is(err, integrations.ErrNotFound), errors.Is(err, ai.ErrNotFound):
+		errors.Is(err, integrations.ErrNotFound), errors.Is(err, ai.ErrNotFound), errors.Is(err, routing.ErrNotFound):
 		writeProblem(w, r, Problem{Status: http.StatusNotFound, Code: "not_found", Title: "Not Found"})
 	case errors.Is(err, tenancy.ErrRegistrationClosed):
 		writeProblem(w, r, Problem{Status: http.StatusForbidden, Code: "registration_closed", Title: "Forbidden",
@@ -135,6 +135,8 @@ func (s *server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "tag_exists", Title: "Conflict"})
 	case errors.Is(err, conversations.ErrTopicExists):
 		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "topic_exists", Title: "Conflict"})
+	case errors.Is(err, conversations.ErrLineExists):
+		writeProblem(w, r, Problem{Status: http.StatusConflict, Code: "line_exists", Title: "Conflict"})
 	case errors.Is(err, conversations.ErrNotFailed):
 		writeProblem(w, r, Problem{
 			Status: http.StatusConflict, Code: "not_failed", Title: "Conflict",

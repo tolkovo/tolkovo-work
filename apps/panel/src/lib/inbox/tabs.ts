@@ -8,18 +8,29 @@ export type InboxTab = (typeof INBOX_TABS)[number];
 export const OPEN_STATUSES: ConversationStatus[] = ["new", "bot", "queued", "assigned", "pending"];
 
 /**
- * The list filter of a tab, narrowed to a topic when one is picked. The server counts the same
- * sets (GET /conversations/counts), without the topic.
+ * What narrows every tab: a topic (`none` or a topic id) and a line (`first` or a line id). The
+ * tabs, the rows and the chips keep it in the search of /inbox.
  */
-export function tabFilter(tab: InboxTab, topic?: string): ConversationFilter {
-  const byTopic = topic ? { topic } : {};
+export type InboxScope = { topic?: string | undefined; line?: string | undefined };
+
+/** The search of an inbox link: the tab with the scope, without empty parts. */
+export function inboxSearch(tab: InboxTab, scope: InboxScope): { tab: InboxTab; topic?: string; line?: string } {
+  return { tab, ...(scope.topic ? { topic: scope.topic } : {}), ...(scope.line ? { line: scope.line } : {}) };
+}
+
+/**
+ * The list filter of a tab, narrowed to the scope. The server counts the same sets
+ * (GET /conversations/counts), without the scope.
+ */
+export function tabFilter(tab: InboxTab, scope: InboxScope = {}): ConversationFilter {
+  const narrow = { ...(scope.topic ? { topic: scope.topic } : {}), ...(scope.line ? { line: scope.line } : {}) };
   switch (tab) {
     case "mine":
-      return { assignee: "me", status: ["assigned", "pending"], ...byTopic };
+      return { assignee: "me", status: ["assigned", "pending"], ...narrow };
     case "queue":
-      return { assignee: "none", status: ["queued"], ...byTopic };
+      return { assignee: "none", status: ["queued"], ...narrow };
     case "all":
-      return byTopic;
+      return narrow;
   }
 }
 
@@ -32,16 +43,19 @@ export function tabCount(tab: InboxTab, counts: InboxCounts | undefined): number
 }
 
 /**
- * `?tab=` and `?topic=` of /inbox. An absent or unknown tab means «Мои», so plain links to /inbox
- * stay valid; the topic is `none` or a topic id, anything else is dropped.
+ * `?tab=`, `?topic=` and `?line=` of /inbox. An absent or unknown tab means «Мои», so plain links
+ * to /inbox stay valid; the topic is `none` or a topic id, the line `first` or a line id, anything
+ * else is dropped.
  */
 export function validateInboxSearch(search: Record<string, unknown>): {
   tab?: InboxTab | undefined;
   topic?: string | undefined;
+  line?: string | undefined;
 } {
   const tab = search.tab;
   const topic = typeof search.topic === "string" && /^(none|[0-9a-f-]{36})$/.test(search.topic) ? search.topic : undefined;
-  return { tab: (INBOX_TABS as readonly unknown[]).includes(tab) ? (tab as InboxTab) : undefined, topic };
+  const line = typeof search.line === "string" && /^(first|[0-9a-f-]{36})$/.test(search.line) ? search.line : undefined;
+  return { tab: (INBOX_TABS as readonly unknown[]).includes(tab) ? (tab as InboxTab) : undefined, topic, line };
 }
 
 /**
