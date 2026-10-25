@@ -9,10 +9,10 @@
 # --- Panel: static files from apps/panel (Vite) ------------------------------
 # Built on the build machine's platform: the output is the same for every
 # target architecture.
-FROM --platform=$BUILDPLATFORM node:22.12-alpine AS panel
+FROM --platform=$BUILDPLATFORM node:22.20-alpine AS panel
 WORKDIR /src
 # The version of "packageManager" in package.json. Not corepack: the one in
-# Node 22.12 fails to verify current npm registry signatures.
+# Node 22.12 failed to verify current npm registry signatures.
 RUN npm install -g pnpm@10.14.0
 # Manifests first, so dependencies are cached until the lockfile changes.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
