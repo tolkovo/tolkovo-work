@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "openapi-fetch": "0.17.0",
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.0.0",
