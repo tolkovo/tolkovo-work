@@ -1,6 +1,6 @@
 import { setConversationTopic, type Conversation, type MessageEvent, type Topic } from "@tolkovo/api-client";
 import { useTopics } from "@tolkovo/api-client/react";
-import { cn } from "@tolkovo/ui";
+import { Select, cn } from "@tolkovo/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,7 +48,7 @@ export function ConversationTopic({ conversation: c, change }: { conversation: C
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-ink-2">
       <label htmlFor={id}>{t("inbox.topic.label")}</label>
-      <select
+      <Select
         id={id}
         value={c.topic_id ?? ""}
         disabled={change.isPending}
@@ -56,7 +56,7 @@ export function ConversationTopic({ conversation: c, change }: { conversation: C
           const next = e.currentTarget.value || null;
           change.mutate((api) => setConversationTopic(api, c.id, next, c.version));
         }}
-        className="h-[22px] rounded-full border border-line bg-surface px-2 text-xs text-ink"
+        className="h-[22px] w-auto rounded-full border-line bg-size-[0.75rem] bg-position-[right_0.375rem_center] pr-5 pl-2 text-xs"
       >
         <option value="">{t("inbox.topic.none")}</option>
         {topics.map((topic) => (
@@ -65,7 +65,7 @@ export function ConversationTopic({ conversation: c, change }: { conversation: C
           </option>
         ))}
         {c.topic_id && !current && <option value={c.topic_id}>{t("inbox.topic.deleted")}</option>}
-      </select>
+      </Select>
     </span>
   );
 }

@@ -24,6 +24,8 @@
   --ink: #14212a;
   --ink-2: #4b5a64;
   --ink-3: #5e6c75;
+  /* Select's chevron, drawn in --ink-3 like the other chevrons: a data URI can't read currentColor */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235e6c75' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --line: #d6ddd9;
   --line-2: #e6ebe8;
 
@@ -85,6 +87,7 @@
     --ink: #e4ebe8;
     --ink-2: #9dadb5;
     --ink-3: #7f909a;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237f909a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     --line: #25343d;
     --line-2: #1c2a32;
     --teal: #3bc2a6;
@@ -125,6 +128,7 @@
   --ink: #e4ebe8;
   --ink-2: #9dadb5;
   --ink-3: #7f909a;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237f909a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --line: #25343d;
   --line-2: #1c2a32;
   --teal: #3bc2a6;

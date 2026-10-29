@@ -61,7 +61,7 @@ export function ConversationActions({
           trigger={
             <>
               {t("inbox.actions.transfer")}
-              <ChevronDown aria-hidden="true" className="size-3.5" />
+              <ChevronDown aria-hidden="true" className="size-3.5 text-ink-3" />
             </>
           }
           triggerClassName="inline-flex h-[26px] items-center gap-1 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-hover disabled:opacity-55"
