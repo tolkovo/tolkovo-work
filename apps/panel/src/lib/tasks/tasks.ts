@@ -31,6 +31,8 @@ export type TasksSearch = {
   q?: string;
   /** Days back the flow metrics reach. */
   days?: FlowDays;
+  /** On the board, the open task takes the whole page instead of the side panel. */
+  full?: true;
 };
 
 /** Periods of the flow metrics (ADR-0019, K3). */
@@ -43,6 +45,7 @@ export function validateTasksSearch(search: Record<string, unknown>): TasksSearc
   if (typeof search.layout === "string" && (TASK_LAYOUTS as readonly string[]).includes(search.layout)) out.layout = search.layout as TaskLayout;
   if (typeof search.lanes === "string" && (TASK_LANES as readonly string[]).includes(search.lanes)) out.lanes = search.lanes as TaskLanes;
   if (search.blocked === true || search.blocked === "true") out.blocked = true;
+  if (search.full === true || search.full === "true") out.full = true;
   if (typeof search.view === "string" && (TASK_VIEWS as readonly string[]).includes(search.view)) out.view = search.view as TaskView;
   if (typeof search.queue === "string" && /^(none|[0-9a-f-]{36})$/.test(search.queue)) out.queue = search.queue;
   if (typeof search.topic === "string" && /^(none|[0-9a-f-]{36})$/.test(search.topic)) out.topic = search.topic;
