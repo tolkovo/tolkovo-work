@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { LANGUAGE_KEY, THEME_KEY, applyTheme, readStoredLanguage, readStoredTheme } from "./preferences";
+import {
+  LANGUAGE_KEY,
+  TASK_PANEL_WIDTH_KEY,
+  THEME_KEY,
+  applyTheme,
+  readStoredLanguage,
+  readStoredTaskPanelWidth,
+  readStoredTheme,
+  storeTaskPanelWidth,
+} from "./preferences";
+
+describe("readStoredTaskPanelWidth", () => {
+  it("returns the width the member dragged to", () => {
+    window.localStorage.setItem(TASK_PANEL_WIDTH_KEY, "720");
+    expect(readStoredTaskPanelWidth()).toBe(720);
+  });
+
+  // 379 is below the handle's minimum: the handle never stores it, so it is not a width of ours.
+  it.each([null, "", "379", "99999", "12.5", "wide"])("falls back to 560 for %j", (value) => {
+    if (value !== null) window.localStorage.setItem(TASK_PANEL_WIDTH_KEY, value);
+    expect(readStoredTaskPanelWidth()).toBe(560);
+  });
+
+  it("forgets the default width", () => {
+    storeTaskPanelWidth(720);
+    storeTaskPanelWidth(560);
+    expect(window.localStorage.getItem(TASK_PANEL_WIDTH_KEY)).toBeNull();
+  });
+});
 
 describe("readStoredTheme", () => {
   it("returns the saved theme", () => {

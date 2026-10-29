@@ -35,6 +35,11 @@ export type TasksSearch = {
   full?: true;
 };
 
+/** The search for links that lead away from the open task: `full` belongs to that task only. */
+export function withoutFull({ full: _full, ...rest }: TasksSearch): TasksSearch {
+  return rest;
+}
+
 /** Periods of the flow metrics (ADR-0019, K3). */
 export const FLOW_DAYS = [30, 90] as const;
 export type FlowDays = (typeof FLOW_DAYS)[number];

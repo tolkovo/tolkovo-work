@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -18,11 +19,12 @@ import { TaskBoard } from "../../components/tasks/task-board";
 import { TaskList } from "../../components/tasks/task-list";
 import {
   TASK_PANEL_DEFAULT_WIDTH,
+  TASK_PANEL_MIN_WIDTH,
   readStoredTaskPanelWidth,
   readStoredTasksLayout,
   storeTaskPanelWidth,
 } from "../../lib/preferences";
-import { validateTasksSearch } from "../../lib/tasks/tasks";
+import { validateTasksSearch, withoutFull, type TasksSearch } from "../../lib/tasks/tasks";
 
 // The flow metrics load with their tab: most visits never open them.
 const TaskFlowView = lazy(() => import("../../components/tasks/task-flow"));
@@ -38,12 +40,14 @@ export const Route = createFileRoute("/_app/tasks")({
  * slides over them from the right.
  */
 function TasksLayout() {
-  const search = Route.useSearch();
+  const all = Route.useSearch();
+  // Links and filters never carry `full`: it belongs to the task open over the board only.
+  const search = useMemo(() => withoutFull(all), [all]);
   const { taskId } = useParams({ strict: false });
   const matchRoute = useMatchRoute();
   const open = Boolean(taskId) || Boolean(matchRoute({ to: "/tasks/new" }));
   const layout = search.layout ?? readStoredTasksLayout();
-  if (layout === "board") return <BoardLayout open={open} taskId={taskId} />;
+  if (layout === "board") return <BoardLayout search={search} full={all.full === true} open={open} taskId={taskId} />;
   if (layout === "flow")
     return (
       <div className="flex h-full min-h-0 min-w-0">
@@ -62,16 +66,19 @@ function TasksLayout() {
   );
 }
 
-function BoardLayout({ open, taskId }: { open: boolean; taskId: string | undefined }) {
+function BoardLayout({
+  search: board,
+  full,
+  open,
+  taskId,
+}: {
+  search: TasksSearch;
+  full: boolean;
+  open: boolean;
+  taskId: string | undefined;
+}) {
   const { t } = useTranslation();
-  const search = Route.useSearch();
   const navigate = useNavigate();
-  const full = search.full === true;
-  // The board and its links never carry `full`: it belongs to the open task only.
-  const board = useMemo(() => {
-    const { full: _full, ...rest } = search;
-    return rest;
-  }, [search]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -93,10 +100,13 @@ function BoardLayout({ open, taskId }: { open: boolean; taskId: string | undefin
       {open && (
         <aside
           aria-label={t("pages.tasks.title")}
-          style={fullPage ? undefined : { width: `min(${width}px, 100%)` }}
+          style={fullPage ? undefined : panelWidthVars(width)}
           className={cn(
             "absolute inset-y-0 right-0 z-30 flex flex-col bg-paper",
-            fullPage ? "left-0" : "border-l border-line shadow-pop",
+            fullPage
+              ? "left-0"
+              : // A width stored on a wider window still leaves the board its strip when the window narrows.
+                "w-[min(var(--panel-width),max(var(--panel-min),100%_-_var(--board-min)),100%)] border-l border-line shadow-pop max-nav:w-[min(560px,100%)]",
           )}
         >
           {!fullPage && <PanelResizer frame={frame} width={width} onWidth={setWidth} />}
@@ -134,10 +144,18 @@ function BoardLayout({ open, taskId }: { open: boolean; taskId: string | undefin
   );
 }
 
-const PANEL_MIN_WIDTH = 380;
 /** The board keeps at least this much of itself visible beside the panel. */
 const BOARD_MIN_WIDTH = 240;
 const PANEL_KEY_STEP = 40;
+
+/** The panel's width for its CSS, which also caps it by the board's current width. */
+function panelWidthVars(width: number): CSSProperties {
+  return {
+    "--panel-width": `${width}px`,
+    "--panel-min": `${TASK_PANEL_MIN_WIDTH}px`,
+    "--board-min": `${BOARD_MIN_WIDTH}px`,
+  } as CSSProperties;
+}
 
 /**
  * The left edge of the open task: drag it, or focus it and use the arrows, to widen the panel
@@ -153,12 +171,27 @@ function PanelResizer({
   onWidth: (width: number) => void;
 }) {
   const { t } = useTranslation();
-  const max = () => Math.max(PANEL_MIN_WIDTH, (frame.current?.clientWidth ?? window.innerWidth) - BOARD_MIN_WIDTH);
-  const clamp = (w: number) => Math.round(Math.min(max(), Math.max(PANEL_MIN_WIDTH, w)));
-  const set = (w: number, keep: boolean) => {
+  // A drag still under way when the handle goes (the task closes, opens as a page) ends here.
+  const endDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDrag.current?.(), []);
+  // The board's width now, so the limits follow the window as it narrows or widens; the
+  // observer reports the first size as soon as it starts.
+  const [frameWidth, setFrameWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => entry && setFrameWidth(Math.round(entry.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [frame]);
+  const max = Math.max(TASK_PANEL_MIN_WIDTH, frameWidth - BOARD_MIN_WIDTH);
+  const clamp = (w: number) => Math.round(Math.min(max, Math.max(TASK_PANEL_MIN_WIDTH, w)));
+  // What the panel shows: a width stored on a wider window is capped by CSS, and the handle says the same.
+  const shown = clamp(width);
+  const set = (w: number) => {
     const next = clamp(w);
     onWidth(next);
-    if (keep) storeTaskPanelWidth(next);
+    storeTaskPanelWidth(next);
   };
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -166,27 +199,31 @@ function PanelResizer({
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
     const right = frame.current?.getBoundingClientRect().right ?? window.innerWidth;
-    let last = width;
-    const move = (ev: PointerEvent) => {
-      last = clamp(right - ev.clientX);
-      onWidth(last);
-    };
-    const up = () => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", up);
-      handle.removeEventListener("pointercancel", up);
+    let last = shown;
+    const stop = new AbortController();
+    const end = () => {
+      stop.abort();
+      endDrag.current = null;
       storeTaskPanelWidth(last);
     };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up);
-    handle.addEventListener("pointercancel", up);
+    handle.addEventListener(
+      "pointermove",
+      (ev: PointerEvent) => {
+        last = clamp(right - ev.clientX);
+        onWidth(last);
+      },
+      { signal: stop.signal },
+    );
+    handle.addEventListener("pointerup", end, { signal: stop.signal });
+    handle.addEventListener("pointercancel", end, { signal: stop.signal });
+    endDrag.current = end;
   };
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     // The panel grows to the left, so the left arrow widens it.
-    if (e.key === "ArrowLeft") set(width + PANEL_KEY_STEP, true);
-    else if (e.key === "ArrowRight") set(width - PANEL_KEY_STEP, true);
-    else if (e.key === "Home") set(max(), true);
-    else if (e.key === "End") set(PANEL_MIN_WIDTH, true);
+    if (e.key === "ArrowLeft") set(shown + PANEL_KEY_STEP);
+    else if (e.key === "ArrowRight") set(shown - PANEL_KEY_STEP);
+    else if (e.key === "Home") set(max);
+    else if (e.key === "End") set(TASK_PANEL_MIN_WIDTH);
     else return;
     e.preventDefault();
   };
@@ -195,12 +232,13 @@ function PanelResizer({
       role="separator"
       aria-orientation="vertical"
       aria-label={t("tasks.board.resize")}
-      aria-valuenow={width}
-      aria-valuemin={PANEL_MIN_WIDTH}
+      aria-valuenow={shown}
+      aria-valuemin={TASK_PANEL_MIN_WIDTH}
+      aria-valuemax={max}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
-      onDoubleClick={() => set(TASK_PANEL_DEFAULT_WIDTH, true)}
+      onDoubleClick={() => set(TASK_PANEL_DEFAULT_WIDTH)}
       title={t("tasks.board.resize")}
       className="group absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none outline-none max-nav:hidden"
     >
