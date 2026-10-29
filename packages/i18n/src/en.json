@@ -1706,6 +1706,9 @@
       "moved": "{number} is in {column}",
       "taken": "{number} is yours now",
       "close": "Close the task",
+      "fullPage": "Open as a page",
+      "sidePanel": "Back to the side panel",
+      "resize": "Drag to resize the task panel",
       "confirm": {
         "title": "Is the task in production?",
         "text": "{count, plural, one {# conversation goes} other {# conversations go}} back to their assignees with a reply draft. An operator sends it.",
