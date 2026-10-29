@@ -84,3 +84,23 @@ export function readStoredTasksLayout(): "list" | "board" | "flow" {
 export function storeTasksLayout(layout: "list" | "board" | "flow"): void {
   writeStorage(TASKS_LAYOUT_KEY, layout === "list" ? null : layout);
 }
+
+export const TASK_PANEL_WIDTH_KEY = "tolkovo.tasks.panelWidth";
+export const TASK_PANEL_DEFAULT_WIDTH = 560;
+/** The narrowest the open task beside the board gets; the handle and the stored width share it. */
+export const TASK_PANEL_MIN_WIDTH = 380;
+
+/** The width of the open task beside the board the member dragged it to, in px. */
+export function readStoredTaskPanelWidth(): number {
+  return z.coerce
+    .number()
+    .int()
+    .min(TASK_PANEL_MIN_WIDTH)
+    .max(4000)
+    .catch(TASK_PANEL_DEFAULT_WIDTH)
+    .parse(readStorage(TASK_PANEL_WIDTH_KEY) ?? undefined);
+}
+
+export function storeTaskPanelWidth(width: number): void {
+  writeStorage(TASK_PANEL_WIDTH_KEY, width === TASK_PANEL_DEFAULT_WIDTH ? null : String(Math.round(width)));
+}

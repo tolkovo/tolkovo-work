@@ -1,9 +1,9 @@
 import type { Session, Task, TaskBoard, TaskStatus } from "@tolkovo/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TASKS_LAYOUT_KEY } from "../../lib/preferences";
+import { TASKS_LAYOUT_KEY, TASK_PANEL_WIDTH_KEY } from "../../lib/preferences";
 import { fakeApi, json, ownerSession, problem } from "../../test/fake-api";
 import { inboxOperator } from "../../test/inbox-fixtures";
 import { renderApp } from "../../test/render-app";
@@ -57,6 +57,9 @@ function server(tasks: Task[], put?: (body: Task) => Response, rules: Rules = {}
       "GET /tasks/board": () => json(200, boardOf(state.tasks, rules)),
       "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
       "GET /task-queues": () => json(200, { items: [] }),
+      "GET /tasks": () => json(200, { items: state.tasks, next_cursor: null }),
+      "GET /tasks/t1": () => json(200, state.tasks.find((x) => x.id === "t1")),
+      "GET /tasks/t1/activity": () => json(200, { items: [] }),
       ...Object.fromEntries(
         tasks.map((x) => [
           `PUT /tasks/${x.id}`,
@@ -75,11 +78,32 @@ function server(tasks: Task[], put?: (body: Task) => Response, rules: Rules = {}
 }
 
 const firstLook = { timeout: 3000 };
+
+/** jsdom has no layout: the board reports this width to the panel's edge, as a browser's observer would. */
+function boardWidth(width: number) {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      readonly report: ResizeObserverCallback;
+      constructor(report: ResizeObserverCallback) {
+        this.report = report;
+      }
+      observe() {
+        this.report([{ contentRect: { width } } as ResizeObserverEntry], this);
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+}
 const column = (name: RegExp) => screen.getByRole("region", { name });
 const puts = (api: ReturnType<typeof fakeApi>, id: string) => api.calls.filter((c) => c.method === "PUT" && c.path === `/tasks/${id}`);
 
 describe("the board of tasks", () => {
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
 
   it("shows a column by status, the urgent first, and remembers the view", async () => {
     const { api } = server([
@@ -238,6 +262,70 @@ describe("the board of tasks", () => {
     expect(low).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("link", { name: "#3, Задача 3" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
+  });
+
+  it("opens the task as a page and back, and the board's links never carry it", async () => {
+    const user = userEvent.setup();
+    const { api } = server([task(1), task(2)]);
+    renderApp("/tasks/t1?layout=board", { api });
+    const page = await screen.findByRole("link", { name: "Открыть на всю страницу" }, firstLook);
+    expect(page.getAttribute("href")).toContain("full=true");
+    expect((await screen.findByRole("link", { name: "#2, Задача 2" })).getAttribute("href")).not.toContain("full");
+
+    await user.click(page);
+    const side = await screen.findByRole("link", { name: "Вернуть в боковую панель" });
+    expect(side.getAttribute("href")).not.toContain("full");
+    expect(column(/^Новые/).closest("[inert]")).not.toBeNull();
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+
+    await user.click(side);
+    expect(await screen.findByRole("separator")).toBeInTheDocument();
+    expect(column(/^Новые/).closest("[inert]")).toBeNull();
+  });
+
+  it("drops the page view in the list, so it does not come back on the board", async () => {
+    const { api } = server([task(1), task(2)]);
+    renderApp("/tasks/t1?layout=list&full=true", { api });
+    const row = await screen.findByRole("link", { name: /Задача 2/ }, firstLook);
+    expect(row.getAttribute("href")).not.toContain("full");
+    expect(screen.getByRole("link", { name: "Доска" }).getAttribute("href")).not.toContain("full");
+    expect((await screen.findByRole("link", { name: /К списку задач/ })).getAttribute("href")).not.toContain("full");
+  });
+
+  it("resizes the open task with the keys, within the board's width, and remembers it", async () => {
+    boardWidth(1200);
+    // jsdom has no pointer capture; the double click below goes through pointerdown.
+    if (!("setPointerCapture" in HTMLElement.prototype)) Object.assign(HTMLElement.prototype, { setPointerCapture: () => {} });
+    const user = userEvent.setup();
+    const { api } = server([task(1)]);
+    renderApp("/tasks/t1?layout=board", { api });
+    const edge = await screen.findByRole("separator", { name: "Потяните, чтобы изменить ширину панели задачи" }, firstLook);
+    expect(edge).toHaveAttribute("aria-valuenow", "560");
+    expect(edge).toHaveAttribute("aria-valuemax", "960");
+
+    // The task takes the focus to its heading once it loads.
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Задача 1/ })).toHaveFocus());
+    edge.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(edge).toHaveAttribute("aria-valuenow", "600");
+    expect(localStorage.getItem(TASK_PANEL_WIDTH_KEY)).toBe("600");
+    // Home is the widest the board allows: 240 px of it stay in sight.
+    await user.keyboard("{Home}{ArrowLeft}");
+    expect(edge).toHaveAttribute("aria-valuenow", "960");
+    await user.keyboard("{End}");
+    expect(edge).toHaveAttribute("aria-valuenow", "380");
+
+    await user.dblClick(edge);
+    expect(edge).toHaveAttribute("aria-valuenow", "560");
+    expect(localStorage.getItem(TASK_PANEL_WIDTH_KEY)).toBeNull();
+  });
+
+  it("caps a width stored on a wider window by the board it has now", async () => {
+    boardWidth(900);
+    localStorage.setItem(TASK_PANEL_WIDTH_KEY, "1500");
+    const { api } = server([task(1)]);
+    renderApp("/tasks/t1?layout=board", { api });
+    expect(await screen.findByRole("separator", {}, firstLook)).toHaveAttribute("aria-valuenow", "660");
   });
 });
 
