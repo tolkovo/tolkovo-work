@@ -8,13 +8,14 @@ import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
 import { boardFilter, comparePriorities, lanesOf, neighbourStatus, nextStep, placeTask, type Lane } from "../../lib/tasks/board";
-import { taskUpdate, type TaskLanes, type TasksSearch } from "../../lib/tasks/tasks";
+import { taskRef, taskUpdate, type TaskLanes, type TasksSearch } from "../../lib/tasks/tasks";
 import { useMemberNames } from "../inbox/presence";
 import { Column, ColumnHeader } from "./task-board-column";
 import { AssigneeFilter, BoardBody, ConfirmDone, LanesFilter } from "./task-board-parts";
 import { BlockDialog } from "./task-block";
 import { TaskCard } from "./task-card";
 import { LayoutSwitch, TaskFilters } from "./task-filters";
+import { ProjectSwitch, useCurrentTaskProject } from "./task-project";
 
 type Move = { task: Task; status: TaskStatus };
 
@@ -29,7 +30,8 @@ export function TaskBoard({ search, openId }: { search: TasksSearch; openId: str
   const { t } = useTranslation();
   const { data: session } = useSession();
   const me = session?.user.id;
-  const filter = useMemo(() => boardFilter(search), [search]);
+  const projectId = useCurrentTaskProject()?.id;
+  const filter = useMemo(() => boardFilter(search, projectId), [search, projectId]);
   const board = useTaskBoard(filter);
   const move = useMoveTask(filter, (b, task, body) => placeTask(b, task, body, me, new Date()));
   const laneName = useLaneName(search.lanes);
@@ -48,7 +50,7 @@ export function TaskBoard({ search, openId }: { search: TasksSearch; openId: str
   const now = useMemo(() => new Date(), [shown]); // eslint-disable-line react-hooks/exhaustive-deps -- ages refresh with the data
   const root = useRef<HTMLDivElement>(null);
   const columnName = (s: TaskStatus) => t(`tasks.board.column.${s}`);
-  const number = (task: Task) => t("tasks.number", { number: task.number });
+  const number = (task: Task) => taskRef(task);
 
   // The open task's card is the keyboard's; closing the task brings focus back to it.
   const [lastOpen, setLastOpen] = useState(openId);
@@ -229,6 +231,7 @@ export function TaskBoard({ search, openId }: { search: TasksSearch; openId: str
     <section aria-label={t("tasks.board.label")} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5 max-nav:px-3">
         <h1 className="m-0 mr-1 font-display text-base font-semibold max-nav:mr-auto">{t("pages.tasks.title")}</h1>
+        <ProjectSwitch search={search} />
         <LayoutSwitch search={search} layout="board" />
         {/* One row on a phone, scrolled sideways, so the columns keep the screen. */}
         <div className="contents max-nav:order-last max-nav:flex max-nav:w-full max-nav:gap-2 max-nav:overflow-x-auto">

@@ -1,5 +1,5 @@
 import type { TagColor, Topic } from "@tolkovo/api-client";
-import { useCan, useMembers, useTaskQueues, useTopicMutations, useTopics } from "@tolkovo/api-client/react";
+import { useCan, useMembers, useTaskProjects, useTaskQueues, useTopicMutations, useTopics } from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -9,6 +9,7 @@ import { describeApiError } from "../../lib/api-errors";
 import { answersCustomers } from "../../lib/team";
 import { FormMessage, SelectField, TextField } from "../form/fields";
 import { TAG_DOT } from "../inbox/palette";
+import { defaultProject, projectQueues } from "../tasks/task-project";
 
 const COLORS: readonly TagColor[] = ["gray", "teal", "amber", "red", "violet", "blue", "green"];
 const PRIORITIES = [0, 1, 2, 3] as const;
@@ -65,7 +66,9 @@ export function TopicSettingsPage() {
 function TopicItem({ topic, order, index }: { topic: Topic; order: string[]; index: number }) {
   const { t } = useTranslation();
   const { data: members } = useMembers();
-  const { data: queues } = useTaskQueues({ enabled: useCan("tasks.view") });
+  const canTasks = useCan("tasks.view");
+  const { data: queues } = useTaskQueues({ enabled: canTasks });
+  const { data: projects } = useTaskProjects({ enabled: canTasks });
   const { remove, reorder } = useTopicMutations();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -85,6 +88,7 @@ function TopicItem({ topic, order, index }: { topic: Topic; order: string[]; ind
   };
   const names = topic.member_ids.map((id) => members?.find((m) => m.user_id === id)?.name).filter(Boolean);
   const queue = queues?.find((q) => q.id === topic.task_queue_id);
+  const project = (projects?.length ?? 0) > 1 ? projects?.find((p) => p.id === topic.task_project_id) : undefined;
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[13px]">
       <span className="flex flex-col">
@@ -116,6 +120,7 @@ function TopicItem({ topic, order, index }: { topic: Topic; order: string[]; ind
           {t(`settings.topics.priorities.${topic.priority as (typeof PRIORITIES)[number]}`)}
           {" · "}
           {names.length > 0 ? names.join(", ") : t("settings.topics.everyone")}
+          {project && ` · ${t("settings.topics.projectShort", { name: project.name })}`}
           {queue && ` · ${t("settings.topics.queueShort", { name: queue.name })}`}
         </span>
       </span>
@@ -153,12 +158,17 @@ function TopicForm({ topic, onDone }: { topic?: Topic; onDone: () => void }) {
   const { data: members } = useMembers();
   const canQueues = useCan("tasks.view");
   const { data: queues } = useTaskQueues({ enabled: canQueues });
+  const { data: projects } = useTaskProjects({ enabled: canQueues });
   const { create, update } = useTopicMutations();
   const save = topic ? update : create;
   const [name, setName] = useState(topic?.name ?? "");
   const [color, setColor] = useState<TagColor>(topic?.color ?? "gray");
   const [priority, setPriority] = useState(topic?.priority ?? 0);
   const [queueId, setQueueId] = useState(topic?.task_queue_id ?? "");
+  const [projectId, setProjectId] = useState(topic?.task_project_id ?? "");
+  // Tasks of the topic go to its project (ADR-0022); its queue is one of that project's.
+  const activeProjects = (projects ?? []).filter((p) => p.archived_at === null || p.id === projectId);
+  const queueChoices = activeProjects.length > 1 ? projectQueues(queues, projectId || defaultProject(projects)?.id) : (queues ?? []);
   const [memberIds, setMemberIds] = useState<string[]>(topic?.member_ids ?? []);
   const [nameError, setNameError] = useState<string | undefined>();
   const key = topic?.id ?? "new";
@@ -171,7 +181,7 @@ function TopicForm({ topic, onDone }: { topic?: Topic; onDone: () => void }) {
       return;
     }
     setNameError(undefined);
-    const body = { name: name.trim(), color, priority, task_queue_id: queueId || null, member_ids: memberIds };
+    const body = { name: name.trim(), color, priority, task_queue_id: queueId || null, task_project_id: projectId || null, member_ids: memberIds };
     if (topic) update.mutate({ id: topic.id, body }, { onSuccess: onDone });
     else create.mutate(body, { onSuccess: onDone });
   };
@@ -239,6 +249,25 @@ function TopicForm({ topic, onDone }: { topic?: Topic; onDone: () => void }) {
             </label>
           ))}
       </fieldset>
+      {canQueues && activeProjects.length > 1 && (
+        <SelectField
+          id={`topic-project-${key}`}
+          name="project"
+          label={t("settings.topics.project")}
+          hint={t("settings.topics.projectHint")}
+          value={projectId || (defaultProject(projects)?.id ?? "")}
+          onChange={(e) => {
+            setProjectId(e.currentTarget.value);
+            setQueueId(""); // a queue of the other project would be refused
+          }}
+        >
+          {activeProjects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </SelectField>
+      )}
       {canQueues && (
         <SelectField
           id={`topic-queue-${key}`}
@@ -249,7 +278,7 @@ function TopicForm({ topic, onDone }: { topic?: Topic; onDone: () => void }) {
           onChange={(e) => setQueueId(e.currentTarget.value)}
         >
           <option value="">{t("settings.topics.noQueue")}</option>
-          {queues?.map((q) => (
+          {queueChoices.map((q) => (
             <option key={q.id} value={q.id}>
               {q.name}
             </option>

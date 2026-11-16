@@ -11,6 +11,7 @@ import { FormMessage, TextField } from "../form/fields";
 import type { MenuItem } from "../menu";
 import { TaskStatusBadge } from "../tasks/task-bits";
 import { NewTaskForm } from "../tasks/task-form";
+import { taskRef } from "../../lib/tasks/tasks";
 
 /**
  * Tasks of the tasks section from a conversation (ADR-0015, docs/04 §3). Like a GitHub issue,
@@ -130,7 +131,7 @@ function CreateTask({ conversationId, onClose, onDone }: { conversationId: strin
         initial={{ title: draft.data.title, body: draft.data.body }}
         conversationId={conversationId}
         onCancel={onClose}
-        onDone={(task) => onDone(t("inbox.tasks.created", { number: task.number }))}
+        onDone={(task) => onDone(t("inbox.tasks.created", { number: taskRef(task) }))}
       />
     </div>
   );
@@ -159,7 +160,7 @@ function LinkTask({ conversationId, onClose, onDone }: { conversationId: string;
       return;
     }
     setError(undefined);
-    link.mutate({ taskId: task.id, conversationId }, { onSuccess: () => onDone(t("inbox.tasks.linked", { number: task.number })) });
+    link.mutate({ taskId: task.id, conversationId }, { onSuccess: () => onDone(t("inbox.tasks.linked", { number: taskRef(task) })) });
   };
 
   return (
@@ -186,7 +187,7 @@ function LinkTask({ conversationId, onClose, onDone }: { conversationId: string;
           {items.map((i) => (
             <label key={i.id} className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-hover">
               <input type="radio" name="open-task" checked={picked === i.id} onChange={() => setPicked(i.id)} />
-              <span className="shrink-0 font-mono text-ink-2">{t("tasks.number", { number: i.number })}</span>
+              <span className="shrink-0 font-mono text-ink-2">{taskRef(i)}</span>
               <span className="truncate">{i.title}</span>
             </label>
           ))}
@@ -224,7 +225,7 @@ export function ConversationTasksList({ conversation: c }: { conversation: Conve
         <li key={task.id} className="flex min-w-0 items-start gap-2 text-[13px]">
           <TaskStatusBadge status={task.status} />
           <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="min-w-0 break-words text-ink">
-            <span className="font-mono text-ink-2">{t("tasks.number", { number: task.number })}</span> {task.title}
+            <span className="font-mono text-ink-2">{taskRef(task)}</span> {task.title}
           </Link>
         </li>
       ))}
@@ -258,7 +259,7 @@ export function TaskEventText({ event: e, by }: { event: MessageEvent; by: strin
     <>
       {before}
       <Link to="/tasks/$taskId" params={{ taskId: e.task.task_id }} className="text-ink-2 underline">
-        {t("tasks.number", { number: e.task.number })}
+        {taskRef(e.task)}
       </Link>
       {after}
       {e.from !== e.to && e.to === "pending" ? t("inbox.event.awaitingFix") : ""}
@@ -283,7 +284,7 @@ export function TaskReplyOffer({ conversation: c, text, onInsert }: { conversati
     <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-teal bg-teal-soft px-3 py-2 text-[13px] text-ink">
       <ListTodo aria-hidden="true" className="size-4 shrink-0 text-teal" />
       <span className="mr-auto min-w-0">
-        {t("inbox.tasks.done", { number: d.number })} <span className="text-ink-2">«{d.text}»</span>
+        {t("inbox.tasks.done", { number: taskRef(d) })} <span className="text-ink-2">«{d.text}»</span>
       </span>
       <Button size="sm" variant="primary" onClick={() => onInsert(d.text)}>
         {t("inbox.issues.insertReply")}

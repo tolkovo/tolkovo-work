@@ -4254,6 +4254,8 @@ export interface components {
             task_id: string;
             /** Format: int64 */
             number: number;
+            /** @description KEY-N of the task's project (ADR-0022); absent on lines written before projects. */
+            ref?: string;
             /**
              * @description Only with `task_closed`.
              * @enum {string}

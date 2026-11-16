@@ -5,6 +5,7 @@ import type { RealtimeEvent } from "../realtime/protocol";
 import type { Leader } from "./leader";
 import { CRITICAL_KINDS, desktopPermission, useNotifySettings, type AlertKind } from "./settings";
 import type { SoundPlayer } from "./sound";
+import { taskRef } from "../tasks/tasks";
 
 /**
  * Decides which realtime events deserve a sound or a desktop notification (docs/04 §5.5,
@@ -111,7 +112,7 @@ export function createNotifier({ sound, leader, t, openConversationId, openConve
       const settings = useNotifySettings.getState();
       if (settings.sounds.assigned) sound.play("assigned", settings.volume);
       if (settings.desktop) {
-        showDesktop(t("notifications.alert.task", { number: task.number }), task.title, `task-${task.id}`, () => openTask?.(task.id));
+        showDesktop(t("notifications.alert.task", { number: taskRef(task) }), task.title, `task-${task.id}`, () => openTask?.(task.id));
       }
     },
     test() {

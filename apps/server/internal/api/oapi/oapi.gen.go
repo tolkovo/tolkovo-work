@@ -2723,7 +2723,10 @@ type MessageEventTask struct {
 
 	// Reason Only with `task_closed`.
 	Reason *MessageEventTaskReason `json:"reason,omitempty"`
-	TaskId uuid.UUID               `json:"task_id"`
+
+	// Ref KEY-N of the task's project (ADR-0022); absent on lines written before projects.
+	Ref    *string   `json:"ref,omitempty"`
+	TaskId uuid.UUID `json:"task_id"`
 }
 
 // MessageEventTaskReason Only with `task_closed`.

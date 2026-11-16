@@ -79,7 +79,7 @@ describe("the tasks section", () => {
     });
     renderApp("/tasks?view=open", { api });
     await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }, firstLook));
-    const heading = await screen.findByRole("heading", { name: /#12.*Обновить сертификат на сервере/ });
+    const heading = await screen.findByRole("heading", { name: /TSK-12.*Обновить сертификат на сервере/ });
     expect(heading).toHaveFocus();
     expect(screen.getByText("Истекает в пятницу")).toBeInTheDocument();
     expect(await screen.findByText(/Задача создана/)).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("the tasks section", () => {
     });
     state.task = task("t1", { status: "review", assignee_id: admin.user.id });
     renderApp("/tasks/t1", { api });
-    expect(await screen.findByRole("heading", { name: /#12/ }, firstLook)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /TSK-12/ }, firstLook)).toBeInTheDocument();
 
     // Taking a task in review keeps it in review.
     await user.click(screen.getByRole("button", { name: "Взять в работу" }));
@@ -152,7 +152,7 @@ describe("the tasks section", () => {
       queue_id: "q-dev",
       assignee_id: null,
     });
-    expect(await screen.findByRole("heading", { name: /#12/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /TSK-12/ })).toBeInTheDocument();
   });
 
   it("files a task under a topic, filters by it and names its change in the feed", async () => {
@@ -362,7 +362,7 @@ describe("tasks in a conversation", () => {
       assignee_id: null,
       conversation_id: "c1",
     });
-    expect(await screen.findByText("Задача #12 создана. Диалог ждёт, пока её не закроют.")).toBeInTheDocument();
+    expect(await screen.findByText("Задача TSK-12 создана. Диалог ждёт, пока её не закроют.")).toBeInTheDocument();
   });
 
   it("offers the reply about a done task and no task button when the workspace keeps only GitHub", async () => {
@@ -373,7 +373,7 @@ describe("tasks in a conversation", () => {
       reply_draft: { task_id: "t1", number: 12, ref: "TSK-12", text: "Марина, задачу выполнили." },
     });
     renderApp("/inbox/c1", { api });
-    expect(await screen.findByText("Задача #12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
+    expect(await screen.findByText("Задача TSK-12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Вставить в ответ" }));
     expect(screen.getByLabelText("Ответ клиенту")).toHaveValue("Марина, задачу выполнили.");
     await user.click(screen.getByRole("button", { name: "Ещё действия" }));

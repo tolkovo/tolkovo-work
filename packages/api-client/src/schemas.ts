@@ -291,7 +291,7 @@ export const messageEventSchema = z.object({
     })
     .optional() satisfies z.ZodType<Schemas["MessageEventIssue"] | undefined>,
   task: z
-    .object({ task_id: z.string(), number: z.number(), reason: z.enum(["done", "canceled"]).optional() })
+    .object({ task_id: z.string(), number: z.number(), ref: z.string().optional(), reason: z.enum(["done", "canceled"]).optional() })
     .optional() satisfies z.ZodType<Schemas["MessageEventTask"] | undefined>,
   topic_id: z.string().nullable().optional(),
   previous_topic_id: z.string().nullable().optional(),

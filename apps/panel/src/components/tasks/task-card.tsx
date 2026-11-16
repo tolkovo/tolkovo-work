@@ -6,7 +6,7 @@ import { Ellipsis, Lock, MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BOARD_STATUSES, daysInColumn, hoursInColumn, nextStep, standsTooLong } from "../../lib/tasks/board";
-import type { TasksSearch } from "../../lib/tasks/tasks";
+import { taskRef, type TasksSearch } from "../../lib/tasks/tasks";
 import { TAG_DOT } from "../inbox/palette";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
@@ -41,7 +41,7 @@ export function TaskCard({ task, search, current, open, dragging, me, now, ageDa
   const names = useMemberNames();
   const topics = useTopicMap();
   const tags = useTaskTagMap();
-  const number = t("tasks.number", { number: task.number });
+  const number = taskRef(task);
   const closed = task.status === "done" || task.status === "canceled";
   const age = ageText(t, task, now);
   const old = standsTooLong(task, ageDays, now);
@@ -160,7 +160,7 @@ function CardMenu({ task, me, onMove, onTake, onBlock }: Pick<TaskCardProps, "ta
   ];
   return (
     <Menu
-      label={t("tasks.board.actions", { number: t("tasks.number", { number: task.number }) })}
+      label={t("tasks.board.actions", { number: taskRef(task) })}
       trigger={<Ellipsis aria-hidden="true" className="size-4" />}
       items={items}
       triggerClassName={cn(

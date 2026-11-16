@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { NewTaskForm } from "../../../components/tasks/task-form";
+import { useCurrentTaskProject } from "../../../components/tasks/task-project";
 
 export const Route = createFileRoute("/_app/tasks/new")({
   component: NewTaskPage,
@@ -13,6 +14,7 @@ function NewTaskPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const project = useCurrentTaskProject();
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   return (
@@ -21,6 +23,7 @@ function NewTaskPage() {
         {t("tasks.newTitle")}
       </h2>
       <NewTaskForm
+        projectId={project?.id}
         onDone={(task) => void navigate({ to: "/tasks/$taskId", params: { taskId: task.id }, search })}
         onCancel={() => void navigate({ to: "/tasks", search })}
       />

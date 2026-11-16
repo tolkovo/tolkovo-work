@@ -110,7 +110,7 @@ function parseBody(text: string): unknown {
 export function fakeApi(
   { session = ownerSession, routes = {} }: { session?: Session | null; routes?: Record<string, Handler> } = {},
 ) {
-  const calls: { method: string; path: string; headers: Headers; body: unknown }[] = [];
+  const calls: { method: string; path: string; query: URLSearchParams; headers: Headers; body: unknown }[] = [];
   const defaults: Record<string, Handler> = {
     "GET /me": () => (session ? json(200, session) : problem(401, "unauthenticated")),
     "GET /me/workspaces": () => json(200, { items: workspaces }),
@@ -129,6 +129,13 @@ export function fakeApi(
       json(200, { channel_ids: [], topics_off: [], min_confidence: 75, handoff_message: "", name: "", tone: "friendly", address: "formal", rules: "" }),
     "GET /tags": () => json(200, { items: [] }),
     "GET /task-tags": () => json(200, { items: [] }),
+    // One project, as in a workspace before projects (ADR-0022): the whole team sees its tasks.
+    "GET /task-projects": () =>
+      json(200, {
+        items: [
+          { id: "p1", name: "Задачи", key: "TSK", icon: null, color: "blue", access: "team", is_default: true, position: 0, member_ids: [], open_tasks: 1, archived_at: null, member: true },
+        ],
+      }),
     "GET /topics": () => json(200, { items: [] }),
     "GET /lines": () => json(200, { items: [] }),
     "GET /channels": () => json(200, { items: [], telegram_user_available: true, encryption_available: true }),
@@ -148,6 +155,7 @@ export function fakeApi(
     calls.push({
       method: request.method,
       path,
+      query: url.searchParams,
       headers: request.headers,
       body: text ? parseBody(text) : undefined,
     });

@@ -15,7 +15,10 @@ import {
 import { cn } from "@tolkovo/ui";
 import { useTranslation } from "react-i18next";
 
+import { useTaskProjects } from "@tolkovo/api-client/react";
+
 import { TaskBoard } from "../../components/tasks/task-board";
+import { TaskProjectContext, projectByKey } from "../../components/tasks/task-project";
 import { TaskList } from "../../components/tasks/task-list";
 import {
   TASK_PANEL_DEFAULT_WIDTH,
@@ -41,6 +44,17 @@ export const Route = createFileRoute("/_app/tasks")({
  */
 function TasksLayout() {
   const all = Route.useSearch();
+  const projects = useTaskProjects();
+  // The URL names the project by its key: the lists wait for the projects rather than show all first.
+  if (all.project && projects.isPending) return null;
+  return (
+    <TaskProjectContext.Provider value={projectByKey(projects.data, all.project)}>
+      <TasksSections all={all} />
+    </TaskProjectContext.Provider>
+  );
+}
+
+function TasksSections({ all }: { all: TasksSearch }) {
   // Links and filters never carry `full`: it belongs to the task open over the board only.
   const search = useMemo(() => withoutFull(all), [all]);
   const { taskId } = useParams({ strict: false });

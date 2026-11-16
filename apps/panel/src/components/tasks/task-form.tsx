@@ -1,5 +1,5 @@
 import type { Task, TaskPriority } from "@tolkovo/api-client";
-import { useCreateTask, useMembers, useTaskQueues, useTopics } from "@tolkovo/api-client/react";
+import { useCan, useCreateTask, useMembers, useTaskProjects, useTaskQueues, useTopics } from "@tolkovo/api-client/react";
 import { Button, Label, Select, cn } from "@tolkovo/ui";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,7 @@ import { TASK_PRIORITIES } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { control } from "./task-bits";
 import { AttachArea, useFileDrafts } from "./task-files";
+import { defaultProject, projectMembers, projectQueues, projectsForNewTask } from "./task-project";
 import { TaskTagsEditor } from "./task-tags";
 
 type NewTaskFormProps = {
@@ -16,6 +17,8 @@ type NewTaskFormProps = {
   initial?: { title: string; body: string };
   /** The conversation the task is created from: it waits for the task. */
   conversationId?: string;
+  /** The project picked at first (ADR-0022): the one the section shows. */
+  projectId?: string | undefined;
   onDone: (task: Task) => void;
   onCancel: () => void;
 };
@@ -24,12 +27,14 @@ type NewTaskFormProps = {
  * A new task (ADR-0015): title, description, topic, queue, priority, assignee and tags. A task from a
  * conversation takes the conversation's topic and the topic's queue unless they are picked here.
  */
-export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTaskFormProps) {
+export function NewTaskForm({ initial, conversationId, projectId, onDone, onCancel }: NewTaskFormProps) {
   const { t } = useTranslation();
   const create = useCreateTask();
   const { data: members } = useMembers();
   const { data: queues } = useTaskQueues();
   const { data: topics } = useTopics();
+  const { data: projects } = useTaskProjects();
+  const [project, setProject] = useState(projectId ?? "");
   const [topic, setTopic] = useState("");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [body, setBody] = useState(initial?.body ?? "");
@@ -39,7 +44,14 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
   const [tags, setTags] = useState<string[]>([]);
   const [titleError, setTitleError] = useState<string | undefined>();
   const files = useFileDrafts();
-  const ids = { body: useId(), topic: useId(), queue: useId(), priority: useId(), assignee: useId() };
+  const ids = { body: useId(), project: useId(), topic: useId(), queue: useId(), priority: useId(), assignee: useId() };
+  const choices = projectsForNewTask(projects, useCan("tasks.manage"));
+  // Without a pick the task goes to the topic's project, or to the default one; a conversation's
+  // topic is known to the server only, so its queues are those of the default project here.
+  const topicProject = topics?.find((x) => x.id === topic)?.task_project_id ?? undefined;
+  const target = projects?.find((p) => p.id === (project || topicProject)) ?? defaultProject(projects);
+  const queueChoices = projectQueues(queues, target?.id);
+  const assignees = projectMembers(members, target);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -54,6 +66,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
         title: title.trim(),
         body,
         priority,
+        ...(project ? { project_id: project } : {}),
         queue_id: queue || null,
         ...(topic ? { topic_id: topic } : {}),
         assignee_id: assignee || null,
@@ -90,6 +103,28 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
         </AttachArea>
       </div>
       <div className="grid grid-cols-2 gap-3 max-nav:grid-cols-1">
+        {choices.length > 1 && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={ids.project}>{t("tasks.fields.project")}</Label>
+            <Select
+              id={ids.project}
+              value={project}
+              onChange={(e) => {
+                setProject(e.currentTarget.value);
+                // A queue and an assignee belong to a project: the picks start over.
+                setQueue("");
+                setAssignee("");
+              }}
+            >
+              <option value="">{t(topic || conversationId ? "tasks.projectOfTopic" : "tasks.projectDefault")}</option>
+              {choices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {p.key}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         {(topics?.length ?? 0) > 0 && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={ids.topic}>{t("tasks.fields.topic")}</Label>
@@ -107,7 +142,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
           <Label htmlFor={ids.queue}>{t("tasks.fields.queue")}</Label>
           <Select id={ids.queue} value={queue} onChange={(e) => setQueue(e.currentTarget.value)}>
             <option value="">{t(topic || conversationId ? "tasks.queueOfTopic" : "tasks.noQueue")}</option>
-            {queues?.map((q) => (
+            {queueChoices.map((q) => (
               <option key={q.id} value={q.id}>
                 {q.name}
               </option>
@@ -128,7 +163,7 @@ export function NewTaskForm({ initial, conversationId, onDone, onCancel }: NewTa
           <Label htmlFor={ids.assignee}>{t("tasks.fields.assignee")}</Label>
           <Select id={ids.assignee} value={assignee} onChange={(e) => setAssignee(e.currentTarget.value)}>
             <option value="">{t("tasks.unassigned")}</option>
-            {members?.map((m) => (
+            {assignees.map((m) => (
               <option key={m.user_id} value={m.user_id}>
                 {m.name}
               </option>

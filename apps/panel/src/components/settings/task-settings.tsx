@@ -8,6 +8,7 @@ import {
   useSetTaskTelegramBot,
   useTaskTelegramBot,
   useMembers,
+  useTaskProjects,
   useTaskQueues,
   useTaskSettings,
   useTaskTags,
@@ -24,6 +25,7 @@ import { FormMessage, TextField } from "../form/fields";
 import { TAG_DOT } from "../inbox/palette";
 import { control } from "../tasks/task-bits";
 import { BoardRules } from "./task-board-rules";
+import { TaskProjects } from "./task-projects-settings";
 
 const BUTTONS: readonly TaskButton[] = ["both", "tasks", "github"];
 const COLORS: readonly TagColor[] = ["gray", "teal", "amber", "red", "violet", "blue", "green"];
@@ -54,6 +56,7 @@ export function TaskSettingsPage() {
       ) : (
         <>
           <SettingsForm view={query.data} />
+          <TaskProjects />
           <Queues />
           <BoardRules />
           <Tags />
@@ -205,6 +208,7 @@ function Queues() {
 function QueueItem({ queue }: { queue: TaskQueue }) {
   const { t } = useTranslation();
   const { data: members } = useMembers();
+  const { data: projects } = useTaskProjects();
   const remove = useDeleteTaskQueue();
   const [editing, setEditing] = useState(false);
   if (editing) {
@@ -215,11 +219,13 @@ function QueueItem({ queue }: { queue: TaskQueue }) {
     );
   }
   const names = queue.member_ids.map((id) => members?.find((m) => m.user_id === id)?.name).filter(Boolean);
+  const project = (projects?.length ?? 0) > 1 ? projects?.find((p) => p.id === queue.project_id) : undefined;
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[13px]">
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="font-medium">{queue.name}</span>
         <span className="text-[12.5px] text-ink-2">
+          {project && `${t("settings.topics.projectShort", { name: project.name })} · `}
           {t("settings.tasks.openTasks", { count: queue.open_tasks })}
           {" · "}
           {names.length > 0 ? names.join(", ") : t("settings.tasks.noMembers")}
@@ -242,6 +248,10 @@ function QueueForm({ queue, onDone }: { queue?: TaskQueue; onDone: () => void })
   const create = useCreateTaskQueue();
   const update = useUpdateTaskQueue();
   const save = queue ? update : create;
+  const { data: projects } = useTaskProjects();
+  const active = (projects ?? []).filter((p) => p.archived_at === null);
+  const [projectId, setProjectId] = useState("");
+  const projectField = useId();
   const [name, setName] = useState(queue?.name ?? "");
   const [memberIds, setMemberIds] = useState<string[]>(queue?.member_ids ?? []);
   const [nameError, setNameError] = useState<string | undefined>();
@@ -257,7 +267,8 @@ function QueueForm({ queue, onDone }: { queue?: TaskQueue; onDone: () => void })
     setNameError(undefined);
     const body = { name: name.trim(), member_ids: memberIds };
     if (queue) update.mutate({ id: queue.id, ...body }, { onSuccess: onDone });
-    else create.mutate(body, { onSuccess: onDone });
+    // A queue stays in the project it is made in.
+    else create.mutate(projectId ? { ...body, project_id: projectId } : body, { onSuccess: onDone });
   };
 
   const error = save.isError ? describeApiError(t, save.error, { queue_exists: "name" }) : null;
@@ -272,6 +283,18 @@ function QueueForm({ queue, onDone }: { queue?: TaskQueue; onDone: () => void })
         error={nameError ?? (error?.field === "name" ? error.message : undefined)}
         onChange={(e) => setName(e.currentTarget.value)}
       />
+      {!queue && active.length > 1 && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={projectField}>{t("tasks.fields.project")}</Label>
+          <Select id={projectField} value={projectId} onChange={(e) => setProjectId(e.currentTarget.value)}>
+            {active.map((p) => (
+              <option key={p.id} value={p.is_default ? "" : p.id}>
+                {p.name} · {p.key}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
         <legend className="mb-1 p-0 text-[13px] font-medium">{t("settings.tasks.queueMembers")}</legend>
         {members

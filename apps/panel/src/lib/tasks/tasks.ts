@@ -17,6 +17,8 @@ export const TASK_LANES = ["assignee", "queue", "priority"] as const;
 export type TaskLanes = (typeof TASK_LANES)[number];
 
 export type TasksSearch = {
+  /** The key of the project shown (ADR-0022); absent: every project the member sees. */
+  project?: string;
   layout?: TaskLayout;
   lanes?: TaskLanes;
   /** Only the blocked tasks. */
@@ -47,6 +49,7 @@ export type FlowDays = (typeof FLOW_DAYS)[number];
 /** Keeps only known values from the URL: a hand-edited link never breaks the page. */
 export function validateTasksSearch(search: Record<string, unknown>): TasksSearch {
   const out: TasksSearch = {};
+  if (typeof search.project === "string" && /^[A-Za-z]{2,6}$/.test(search.project)) out.project = search.project.toUpperCase();
   if (typeof search.layout === "string" && (TASK_LAYOUTS as readonly string[]).includes(search.layout)) out.layout = search.layout as TaskLayout;
   if (typeof search.lanes === "string" && (TASK_LANES as readonly string[]).includes(search.lanes)) out.lanes = search.lanes as TaskLanes;
   if (search.blocked === true || search.blocked === "true") out.blocked = true;
@@ -61,9 +64,9 @@ export function validateTasksSearch(search: Record<string, unknown>): TasksSearc
   return out;
 }
 
-/** The API filter of a view. */
-export function taskFilter({ view = "mine", queue, topic, tag, blocked, q }: TasksSearch): TaskFilter {
-  const filter: TaskFilter = {};
+/** The API filter of a view, in the project shown (`projectId`) or in all of them. */
+export function taskFilter({ view = "mine", queue, topic, tag, blocked, q }: TasksSearch, projectId?: string): TaskFilter {
+  const filter: TaskFilter = projectId ? { project: projectId } : {};
   switch (view) {
     case "mine":
       filter.state = "open";
@@ -88,6 +91,11 @@ export function taskFilter({ view = "mine", queue, topic, tag, blocked, q }: Tas
   if (blocked) filter.blocked = true;
   if (q) filter.q = q.trim();
   return filter;
+}
+
+/** How people name a task: KEY-N of its project (ADR-0022); a feed line older than projects has only #N. */
+export function taskRef(task: { ref?: string | undefined; number: number }): string {
+  return task.ref || `#${task.number}`;
 }
 
 export function isClosed(status: TaskStatus): boolean {

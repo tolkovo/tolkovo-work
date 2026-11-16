@@ -9,6 +9,8 @@ import {
   taskFlowSchema,
   taskDraftSchema,
   taskPageSchema,
+  taskProjectListSchema,
+  taskProjectSchema,
   taskQueueListSchema,
   taskQueueSchema,
   signedRequestSchema,
@@ -41,6 +43,8 @@ export type TaskCreate = Schemas["TaskCreate"];
 export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
 export type TaskQueue = Schemas["TaskQueue"];
+export type TaskProject = Schemas["TaskProject"];
+export type TaskProjectInput = Schemas["TaskProjectInput"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
 /** A tag of tasks has the shape of a conversation's tag, in a list of its own (GET /task-tags). */
 export type TaskTag = Schemas["Tag"];
@@ -54,10 +58,12 @@ export type TelegramLinkStart = Schemas["TelegramLinkStart"];
 export type TelegramBotState = Schemas["TelegramBotState"];
 
 /**
- * Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` and `topic` are
- * `none` or an id, `tag` is a tag id.
+ * Filter of GET /tasks; `project` is a project id (ADR-0022; absent: every project the member
+ * sees), `assignee` is `me`, `none` or a member id, `queue` and `topic` are `none` or an id,
+ * `tag` is a tag id.
  */
 export type TaskFilter = {
+  project?: string;
   state?: "open" | "closed";
   status?: TaskStatus;
   assignee?: string;
@@ -83,7 +89,7 @@ export async function fetchTaskBoard(client: ApiClient, filter: TaskBoardFilter)
 
 /** Soft limits and age thresholds of the board's open columns, the workspace's and the queues'. */
 /** Filter of the flow metrics (ADR-0019, K3): the board's people, queue, topic and tag, and the days back. */
-export type TaskFlowFilter = Pick<TaskFilter, "assignee" | "queue" | "topic" | "tag"> & { days?: number };
+export type TaskFlowFilter = Pick<TaskFilter, "project" | "assignee" | "queue" | "topic" | "tag"> & { days?: number };
 
 export async function fetchTaskFlow(client: ApiClient, filter: TaskFlowFilter): Promise<TaskFlow> {
   return parseAnswer(taskFlowSchema, await unwrap(client.GET("/tasks/flow", { params: { query: filter } })));
@@ -145,8 +151,33 @@ export async function unlinkTaskConversation(client: ApiClient, id: string, conv
   await unwrap(client.DELETE("/tasks/{id}/conversations/{conversation_id}", { params: { path: { id, conversation_id: conversationId } } }));
 }
 
-export async function fetchTaskQueues(client: ApiClient): Promise<TaskQueue[]> {
-  return parseAnswer(taskQueueListSchema, await unwrap(client.GET("/task-queues"))).items;
+/** Queues of one project, or of every project without one. */
+export async function fetchTaskQueues(client: ApiClient, project?: string): Promise<TaskQueue[]> {
+  const query = project ? { project } : {};
+  return parseAnswer(taskQueueListSchema, await unwrap(client.GET("/task-queues", { params: { query } }))).items;
+}
+
+/**
+ * Projects of tasks (ADR-0022) in the switcher's order: the member's own; admins get every one,
+ * `member` telling theirs apart.
+ */
+export async function fetchTaskProjects(client: ApiClient): Promise<TaskProject[]> {
+  return parseAnswer(taskProjectListSchema, await unwrap(client.GET("/task-projects"))).items;
+}
+
+/** Admins add a project; a taken name or key answers `409 project_exists`. */
+export async function createTaskProject(client: ApiClient, body: TaskProjectInput): Promise<TaskProject> {
+  return parseAnswer(taskProjectSchema, await unwrap(client.POST("/task-projects", { body })), 201);
+}
+
+/** The key does not change; the default project is never archived. */
+export async function updateTaskProject(client: ApiClient, id: string, body: TaskProjectInput): Promise<TaskProject> {
+  return parseAnswer(taskProjectSchema, await unwrap(client.PUT("/task-projects/{id}", { params: { path: { id } }, body })));
+}
+
+/** Only a project without tasks; one with tasks answers `409 project_not_empty`. */
+export async function deleteTaskProject(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/task-projects/{id}", { params: { path: { id } } }));
 }
 
 export async function createTaskQueue(client: ApiClient, body: TaskQueueInput): Promise<TaskQueue> {

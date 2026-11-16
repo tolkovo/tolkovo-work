@@ -154,6 +154,10 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
             () => undefined, // deleted or unreachable meanwhile: nothing to tell
           );
         }
+      } else if (event.type === "task.project_changed") {
+        // A project was added, changed or its members changed (ADR-0022): the switcher, and
+        // the tasks a member now sees or no longer does.
+        roots.set("tasks", queryKeys.tasks);
       } else if (event.type === "member.changed") {
         // A role changed or someone left the team (ADR-0020): the team, and for the member
         // themselves their permissions, then everything those permissions show.

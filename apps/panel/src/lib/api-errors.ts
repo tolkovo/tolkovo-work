@@ -124,6 +124,10 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.lineExists"), ...(field ? { field } : {}) };
     case "tag_exists":
       return { message: t("errors.tagExists"), ...(field ? { field } : {}) };
+    case "project_exists":
+      return { message: t("errors.projectExists"), ...(field ? { field } : {}) };
+    case "project_not_empty":
+      return { message: t("errors.projectNotEmpty") };
     case "tasks_disabled":
       return { message: t("errors.tasksDisabled") };
     case "no_notify_bot":

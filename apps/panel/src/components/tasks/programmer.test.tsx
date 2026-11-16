@@ -83,6 +83,6 @@ describe("the programmer (ADR-0020)", () => {
     expect(screen.queryByRole("button", { name: "Ответ" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Назад к задаче" }));
-    expect(await screen.findByRole("heading", { name: /#12.*Двойное списание при оплате/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /TSK-12.*Двойное списание при оплате/ })).toBeInTheDocument();
   });
 });

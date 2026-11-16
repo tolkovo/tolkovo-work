@@ -13,8 +13,8 @@ const PRIORITY_RANK: Record<Task["priority"], number> = { urgent: 0, high: 1, no
  * The board's filter of a search: the list's views become the assignee filter, the columns
  * part open from closed themselves. Without a view the board is the whole team's.
  */
-export function boardFilter({ view, queue, topic, tag, blocked, q }: TasksSearch): TaskBoardFilter {
-  const filter: TaskBoardFilter = {};
+export function boardFilter({ view, queue, topic, tag, blocked, q }: TasksSearch, projectId?: string): TaskBoardFilter {
+  const filter: TaskBoardFilter = projectId ? { project: projectId } : {};
   if (view === "mine") filter.assignee = "me";
   if (view === "unassigned") filter.assignee = "none";
   if (queue) filter.queue = queue;

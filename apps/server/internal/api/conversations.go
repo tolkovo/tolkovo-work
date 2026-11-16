@@ -620,6 +620,9 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 	}
 	if e.Task != nil {
 		out.Task = &oapi.MessageEventTask{TaskId: e.Task.TaskID, Number: e.Task.Number}
+		if e.Task.Ref != "" {
+			out.Task.Ref = &e.Task.Ref
+		}
 		if e.Task.Reason != "" {
 			r := oapi.MessageEventTaskReason(e.Task.Reason)
 			out.Task.Reason = &r

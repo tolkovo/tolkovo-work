@@ -11,6 +11,10 @@ import {
   createTaskTag,
   deleteTask,
   deleteTaskQueue,
+  createTaskProject,
+  deleteTaskProject,
+  fetchTaskProjects,
+  updateTaskProject,
   deleteTaskTag,
   fetchConversationTasks,
   fetchTask,
@@ -48,6 +52,7 @@ import {
   type TaskFilter,
   type TaskStatus,
   type TaskQueueInput,
+  type TaskProjectInput,
   type TaskSettings,
   type TaskTagInput,
   type TaskUpdate,
@@ -140,9 +145,16 @@ export function useTaskSummary({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({ queryKey: queryKeys.taskSummary, queryFn: () => fetchTaskSummary(client), enabled });
 }
 
+/** Queues of every project; a project's are those with its `project_id`. */
 export function useTaskQueues({ enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskQueues, queryFn: () => fetchTaskQueues(client), enabled });
+}
+
+/** Projects of tasks the member sees (ADR-0022), in the switcher's order. */
+export function useTaskProjects({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskProjects, queryFn: () => fetchTaskProjects(client), enabled, staleTime: 60_000 });
 }
 
 /** Tags of tasks, a list apart from the tags of conversations (useTags). */
@@ -258,6 +270,18 @@ export function useUpdateTaskQueue() {
 
 export function useDeleteTaskQueue() {
   return useTaskMutation((client, id: string) => deleteTaskQueue(client, id));
+}
+
+export function useCreateTaskProject() {
+  return useTaskMutation((client, body: TaskProjectInput) => createTaskProject(client, body));
+}
+
+export function useUpdateTaskProject() {
+  return useTaskMutation((client, { id, ...body }: TaskProjectInput & { id: string }) => updateTaskProject(client, id, body));
+}
+
+export function useDeleteTaskProject() {
+  return useTaskMutation((client, id: string) => deleteTaskProject(client, id));
 }
 
 export function useCreateTaskTag() {

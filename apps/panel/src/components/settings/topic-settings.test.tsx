@@ -56,6 +56,7 @@ describe("topic settings", () => {
       color: "blue",
       priority: 2,
       task_queue_id: "q-crm",
+      task_project_id: null,
       member_ids: ["u-anna"],
     });
     const item = (await screen.findByText("CRM", { selector: "span" })).closest("li")!;

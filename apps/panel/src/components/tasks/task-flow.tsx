@@ -7,9 +7,10 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
-import { FLOW_DAYS, type TasksSearch } from "../../lib/tasks/tasks";
+import { FLOW_DAYS, taskRef, type TasksSearch } from "../../lib/tasks/tasks";
 import { AssigneeFilter } from "./task-board-parts";
 import { LayoutSwitch, TaskFilters } from "./task-filters";
+import { ProjectSwitch, useCurrentTaskProject } from "./task-project";
 
 /** The statuses of the cumulative flow, bottom up, each with its categorical slot (ADR-0019, K3). */
 const BANDS = [
@@ -23,8 +24,9 @@ const BANDS = [
 const H = 180;
 const PAD = { top: 8, right: 8, bottom: 22, left: 30 };
 
-export function flowFilter({ view, queue, topic, tag, days }: TasksSearch): TaskFlowFilter {
+export function flowFilter({ view, queue, topic, tag, days }: TasksSearch, projectId?: string): TaskFlowFilter {
   const filter: TaskFlowFilter = { days: days ?? 30 };
+  if (projectId) filter.project = projectId;
   if (view === "mine") filter.assignee = "me";
   if (view === "unassigned") filter.assignee = "none";
   if (queue) filter.queue = queue;
@@ -40,12 +42,14 @@ export function flowFilter({ view, queue, topic, tag, days }: TasksSearch): Task
  */
 export default function TaskFlowView({ search }: { search: TasksSearch }) {
   const { t } = useTranslation();
-  const filter = useMemo(() => flowFilter(search), [search]);
+  const projectId = useCurrentTaskProject()?.id;
+  const filter = useMemo(() => flowFilter(search, projectId), [search, projectId]);
   const flow = useTaskFlow(filter);
   return (
     <section aria-label={t("tasks.flow.label")} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5 max-nav:px-3">
         <h1 className="m-0 mr-1 font-display text-base font-semibold max-nav:mr-auto">{t("pages.tasks.title")}</h1>
+        <ProjectSwitch search={search} />
         <LayoutSwitch search={search} layout="flow" />
         <div className="contents max-nav:order-last max-nav:flex max-nav:w-full max-nav:gap-2 max-nav:overflow-x-auto">
           <PeriodFilter search={search} />
@@ -164,7 +168,7 @@ function FlowBody({ flow, search }: { flow: TaskFlow; search: TasksSearch }) {
                       search={{ ...search, layout: "board" }}
                       className="flex min-w-0 items-center gap-1.5 text-ink no-underline hover:underline"
                     >
-                      <span className="shrink-0 font-mono text-ink-3">{t("tasks.number", { number: a.number })}</span>
+                      <span className="shrink-0 font-mono text-ink-3">{taskRef(a)}</span>
                       {a.blocked ? <Lock aria-label={t("tasks.blocked.label")} className="size-3.5 shrink-0 text-lamp" /> : null}
                       <span className="truncate">{a.title}</span>
                     </Link>
@@ -284,7 +288,7 @@ function CycleChart({ flow, day, days }: { flow: TaskFlow; day: (iso: string) =>
             {line(flow.cycle_p50, `50% · ${flow.cycle_p50 === null ? "" : days(flow.cycle_p50)}`)}
             {flow.cycle.map((c) => (
               <circle key={c.task_id} cx={x(c.done_at)} cy={y(c.days)} r={4.5} fill="var(--color-chart-1)" stroke="var(--color-surface)" strokeWidth={2}>
-                <title>{`${t("tasks.number", { number: c.number })} ${c.title} — ${days(c.days)}`}</title>
+                <title>{`${taskRef(c)} ${c.title} — ${days(c.days)}`}</title>
               </circle>
             ))}
             <XLabels

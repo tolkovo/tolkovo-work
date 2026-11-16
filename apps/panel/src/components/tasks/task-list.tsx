@@ -5,11 +5,12 @@ import { Button, Skeleton, cn } from "@tolkovo/ui";
 import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { TASK_VIEWS, taskFilter, type TasksSearch } from "../../lib/tasks/tasks";
+import { TASK_VIEWS, taskFilter, taskRef, type TasksSearch } from "../../lib/tasks/tasks";
 import { useMemberNames } from "../inbox/presence";
 import { TopicPill, useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge } from "./task-bits";
 import { LayoutSwitch, TaskFilters } from "./task-filters";
+import { ProjectSwitch, useCurrentTaskProject } from "./task-project";
 import { TaskTagDots } from "./task-tags";
 
 type TaskListProps = {
@@ -35,6 +36,9 @@ export function TaskList({ search, selectedId, className }: TaskListProps) {
             {t("tasks.new")}
           </Link>
         </Button>
+      </div>
+      <div className="flex px-3 pt-2 empty:hidden">
+        <ProjectSwitch search={search} />
       </div>
       <nav aria-label={t("tasks.views.label")} className="flex gap-0.5 overflow-x-auto border-b border-line px-3 pt-2">
         {TASK_VIEWS.map((id) => (
@@ -62,7 +66,8 @@ export function TaskList({ search, selectedId, className }: TaskListProps) {
 
 function ListBody({ search, selectedId }: { search: TasksSearch; selectedId?: string | undefined }) {
   const { t } = useTranslation();
-  const list = useTasks(taskFilter(search));
+  const projectId = useCurrentTaskProject()?.id;
+  const list = useTasks(taskFilter(search, projectId));
   if (list.isPending) {
     return (
       <div className="flex flex-col gap-3 p-3" aria-busy="true" aria-label={t("app.loading")}>
@@ -128,7 +133,7 @@ function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; 
       className="flex flex-col gap-1 border-b border-line-2 px-4 py-2.5 text-ink no-underline hover:bg-hover aria-[current=page]:bg-sel"
     >
       <span className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 font-mono text-[12px] text-ink-3 tabular-nums">{t("tasks.number", { number: task.number })}</span>
+        <span className="shrink-0 font-mono text-[12px] text-ink-3 tabular-nums">{taskRef(task)}</span>
         <span className="min-w-0 truncate text-[13.5px] font-medium">{task.title}</span>
       </span>
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-2">

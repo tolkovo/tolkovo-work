@@ -1,4 +1,5 @@
 import { cn } from "@tolkovo/ui";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
 /**
@@ -27,6 +28,10 @@ export type MenuItem = {
   hint?: string;
   /** A quieter line under the label. */
   detail?: string;
+  /** Items in a row with the same group go under its heading. */
+  group?: string;
+  /** The item the menu's trigger shows now: a radio item, checked. */
+  checked?: boolean;
 };
 
 type MenuProps = {
@@ -52,7 +57,7 @@ export function Menu({ trigger, label, items, align = "end", triggerClassName, d
   }, []);
   useDismiss(open, box, close);
 
-  const itemsEl = () => [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+  const itemsEl = () => [...(list.current?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)') ?? [])];
   useEffect(() => {
     if (open) itemsEl()[0]?.focus();
   }, [open]);
@@ -105,36 +110,61 @@ export function Menu({ trigger, label, items, align = "end", triggerClassName, d
             align === "end" ? "right-0" : "left-0",
           )}
         >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              disabled={item.disabled}
-              onClick={() => {
-                close(true);
-                item.onSelect();
-              }}
-              className="flex items-center justify-between gap-4 px-3 py-1.5 text-left text-[13px] text-ink outline-none hover:bg-hover focus-visible:bg-hover disabled:text-ink-3"
-            >
-              {item.detail ? (
-                <span className="flex flex-col">
-                  {item.label}
-                  <span className="text-[12px] text-ink-3">
-                    <span className="sr-only">,</span> {item.detail}
+          {groupsOf(items).map(({ group, items: groupItems }, i) => {
+            const buttons = groupItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+                aria-checked={item.checked}
+                tabIndex={-1}
+                disabled={item.disabled}
+                onClick={() => {
+                  close(true);
+                  item.onSelect();
+                }}
+                className="flex items-center justify-between gap-4 px-3 py-1.5 text-left text-[13px] text-ink outline-none hover:bg-hover focus-visible:bg-hover disabled:text-ink-3 aria-checked:font-medium"
+              >
+                {item.detail ? (
+                  <span className="flex flex-col">
+                    {item.label}
+                    <span className="text-[12px] text-ink-3">
+                      <span className="sr-only">,</span> {item.detail}
+                    </span>
                   </span>
-                </span>
-              ) : (
-                item.label
-              )}
-              {item.hint && <kbd className="font-mono text-[11px] text-ink-3">{item.hint}</kbd>}
-            </button>
-          ))}
+                ) : (
+                  item.label
+                )}
+                {item.hint && <kbd className="font-mono text-[11px] text-ink-3">{item.hint}</kbd>}
+                {item.checked && <Check aria-hidden="true" className="size-3.5 shrink-0 text-teal" />}
+              </button>
+            ));
+            if (!group) return buttons;
+            const headingId = `${id}-g${i}`;
+            return (
+              <div key={headingId} role="group" aria-labelledby={headingId} className="mt-1 border-t border-line-2 pt-1">
+                <div id={headingId} className="px-3 pt-1 pb-0.5 text-[11.5px] font-medium text-ink-3">
+                  {group}
+                </div>
+                {buttons}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
+}
+
+/** Items in runs of the same group, in their order. */
+function groupsOf(items: MenuItem[]): { group: string | undefined; items: MenuItem[] }[] {
+  const out: { group: string | undefined; items: MenuItem[] }[] = [];
+  for (const item of items) {
+    const last = out.at(-1);
+    if (last && last.group === item.group) last.items.push(item);
+    else out.push({ group: item.group, items: [item] });
+  }
+  return out;
 }
 
 type PopoverProps = {
