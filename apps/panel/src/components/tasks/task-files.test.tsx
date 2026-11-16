@@ -52,7 +52,7 @@ function server(routes: FakeRoutes = {}) {
     session: member,
     routes: {
       "GET /tasks": () => json(200, { items: [state.task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /tasks/t1": () => json(200, state.task),
       "GET /tasks/t1/activity": () => json(200, { items: state.feed }),
       "GET /task-queues": () => json(200, { items: [] }),

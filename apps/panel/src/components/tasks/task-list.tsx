@@ -23,22 +23,27 @@ type TaskListProps = {
 export function TaskList({ search, selectedId, className }: TaskListProps) {
   const { t } = useTranslation();
   const view = search.view ?? "mine";
-  const { data: mine } = useTaskSummary();
+  const { data: summary } = useTaskSummary();
+  const project = useCurrentTaskProject();
+  // In a project, my open tasks there (ADR-0022).
+  const mine = project ? (summary?.projects.find((p) => p.project_id === project.id)?.assigned_open ?? 0) : summary?.assigned_open;
 
   return (
-    <section aria-label={t("tasks.listLabel")} className={cn("flex min-h-0 min-w-0 flex-col border-r border-line bg-surface", className)}>
-      <div className="flex items-center gap-2 px-3 pt-3">
+    <section aria-label={t("tasks.listLabel")} className={cn("@container flex min-h-0 min-w-0 flex-col border-r border-line bg-surface", className)}>
+      {/* Two rows, so a phone fits them too: the section and its project, then the layout and a new task. */}
+      <div className="flex min-h-8 items-center gap-2 px-3 pt-3">
         <h1 className="m-0 mr-auto font-display text-base font-semibold">{t("pages.tasks.title")}</h1>
+        <ProjectSwitch search={search} />
+      </div>
+      <div className="flex items-center gap-2 px-3 pt-2">
         <LayoutSwitch search={search} layout="list" />
-        <Button asChild size="sm" variant="primary">
-          <Link to="/tasks/new" search={search}>
+        <Button asChild size="sm" variant="primary" className="ml-auto">
+          <Link to="/tasks/new" search={search} title={t("tasks.new")}>
             <Plus aria-hidden="true" className="size-4" />
-            {t("tasks.new")}
+            {/* A narrow column keeps the plus only. */}
+            <span className="@max-[24rem]:sr-only">{t("tasks.new")}</span>
           </Link>
         </Button>
-      </div>
-      <div className="flex px-3 pt-2 empty:hidden">
-        <ProjectSwitch search={search} />
       </div>
       <nav aria-label={t("tasks.views.label")} className="flex gap-0.5 overflow-x-auto border-b border-line px-3 pt-2">
         {TASK_VIEWS.map((id) => (

@@ -6424,9 +6424,23 @@ components:
 
     TaskSummary:
       type: object
-      required: [assigned_open]
+      required: [assigned_open, projects]
       properties:
         assigned_open: { type: integer, format: int64, description: Open tasks assigned to the caller. }
+        projects:
+          type: array
+          description: The same by project (ADR-0022), for the project tiles; projects without such tasks are absent.
+          items: { $ref: '#/components/schemas/TaskProjectSummary' }
+
+    TaskProjectSummary:
+      type: object
+      required: [project_id, assigned_open]
+      properties:
+        project_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        assigned_open: { type: integer, format: int64 }
 
     TaskActivity:
       type: object

@@ -3375,6 +3375,12 @@ type TaskProjectList struct {
 	Items []TaskProject `json:"items"`
 }
 
+// TaskProjectSummary defines model for TaskProjectSummary.
+type TaskProjectSummary struct {
+	AssignedOpen int64     `json:"assigned_open"`
+	ProjectId    uuid.UUID `json:"project_id"`
+}
+
 // TaskQueue defines model for TaskQueue.
 type TaskQueue struct {
 	Id uuid.UUID `json:"id"`
@@ -3443,6 +3449,9 @@ type TaskStatus string
 type TaskSummary struct {
 	// AssignedOpen Open tasks assigned to the caller.
 	AssignedOpen int64 `json:"assigned_open"`
+
+	// Projects The same by project (ADR-0022), for the project tiles; projects without such tasks are absent.
+	Projects []TaskProjectSummary `json:"projects"`
 }
 
 // TaskTagInput defines model for TaskTagInput.

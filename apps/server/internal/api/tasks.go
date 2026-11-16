@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -440,7 +441,14 @@ func (s *server) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, oapi.TaskSummary{AssignedOpen: n})
+	projects := make([]oapi.TaskProjectSummary, 0, len(n.ByProject))
+	for id, open := range n.ByProject {
+		projects = append(projects, oapi.TaskProjectSummary{ProjectId: id, AssignedOpen: open})
+	}
+	slices.SortFunc(projects, func(a, b oapi.TaskProjectSummary) int {
+		return strings.Compare(a.ProjectId.String(), b.ProjectId.String())
+	})
+	writeJSON(w, http.StatusOK, oapi.TaskSummary{AssignedOpen: n.Open, Projects: projects})
 }
 
 // GetTask implements GET /tasks/{id}.

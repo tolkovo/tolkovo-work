@@ -58,7 +58,7 @@ function server(tasks: Task[], put?: (body: Task) => Response, rules: Rules = {}
     session: member,
     routes: {
       "GET /tasks/board": () => json(200, boardOf(state.tasks, rules)),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /task-queues": () => json(200, { items: [] }),
       "GET /tasks": () => json(200, { items: state.tasks, next_cursor: null }),
       "GET /tasks/t1": () => json(200, state.tasks.find((x) => x.id === "t1")),
@@ -203,7 +203,7 @@ describe("the board of tasks", () => {
       session: member,
       routes: {
         "GET /tasks/board": () => (fail ? problem(403, "forbidden") : json(200, boardOf([task(1)]))),
-        "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+        "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
         "GET /task-queues": () => json(200, { items: [] }),
       },
     });

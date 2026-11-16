@@ -130,10 +130,12 @@ SELECT task_id, count(*) AS n FROM task_conversations
 WHERE workspace_id = @workspace_id AND task_id = ANY(@task_ids::uuid[])
 GROUP BY task_id;
 
--- name: CountOpenAssigned :one
--- The open tasks of a member, for the counter in the menu.
-SELECT count(*) FROM tasks
-WHERE workspace_id = @workspace_id AND assignee_id = @assignee_id AND closed_at IS NULL;
+-- name: CountOpenAssigned :many
+-- The open tasks of a member by project, for the counters in the menu (ADR-0022).
+SELECT project_id, count(*) AS n FROM tasks
+WHERE workspace_id = @workspace_id AND assignee_id = @assignee_id AND closed_at IS NULL
+GROUP BY project_id
+ORDER BY project_id;
 
 -- name: ListQueues :many
 SELECT q.id, q.project_id, q.name, q.created_at,

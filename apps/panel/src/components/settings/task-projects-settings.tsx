@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { describeApiError } from "../../lib/api-errors";
 import { FormMessage, TextField } from "../form/fields";
 import { TAG_DOT } from "../inbox/palette";
+import { PROJECT_ICON_KEYS, PROJECT_ICONS, ProjectTile, type ProjectIconKey } from "../tasks/project-icon";
 
 const COLORS: readonly TagColor[] = ["gray", "teal", "amber", "red", "violet", "blue", "green"];
 /** At most this many projects in a workspace (MaxProjects on the server). */
@@ -88,7 +89,7 @@ function ProjectItem({ project }: { project: TaskProject }) {
     <li className={cn("flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[13px]", archived && "bg-sunk")}>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="inline-flex items-center gap-1.5 font-medium">
-          <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TAG_DOT[project.color])} />
+          <ProjectTile icon={project.icon} color={project.color} projectKey={project.key} size="sm" />
           {project.name}
           <span className="font-mono text-[11.5px] font-normal text-ink-3">{project.key}</span>
           {project.is_default && <span className="text-[12px] font-normal text-ink-3">{t("settings.tasks.projectDefault")}</span>}
@@ -152,6 +153,7 @@ function ProjectForm({ project, onDone }: { project?: TaskProject; onDone: () =>
   const [name, setName] = useState(project?.name ?? "");
   const [key, setKey] = useState(project?.key ?? "");
   const [color, setColor] = useState<TagColor>(project?.color ?? "blue");
+  const [icon, setIcon] = useState<ProjectIconKey | null>(project?.icon ?? null);
   const [access, setAccess] = useState<TaskProject["access"]>(project?.access ?? "members");
   const [memberIds, setMemberIds] = useState<string[]>(project?.member_ids ?? []);
   const [errors, setErrors] = useState<{ name?: string; key?: string }>({});
@@ -168,7 +170,7 @@ function ProjectForm({ project, onDone }: { project?: TaskProject; onDone: () =>
       document.getElementById(next.name ? `${prefix}-name` : `${prefix}-key`)?.focus();
       return;
     }
-    const change = { name: name.trim(), color, access, member_ids: memberIds };
+    const change = { name: name.trim(), icon, color, access, member_ids: memberIds };
     if (project) update.mutate({ id: project.id, ...projectBody(project, change) }, { onSuccess: onDone });
     else create.mutate({ ...change, key: key.toUpperCase() }, { onSuccess: onDone });
   };
@@ -216,6 +218,35 @@ function ProjectForm({ project, onDone }: { project?: TaskProject; onDone: () =>
           </Select>
         </div>
       </div>
+      <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+        <legend className="mb-1 p-0 text-[13px] font-medium">{t("settings.tasks.projectIcon")}</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {([null, ...PROJECT_ICON_KEYS] as const).map((k) => {
+            const Icon = k ? PROJECT_ICONS[k] : null;
+            const label = t(`settings.tasks.projectIcons.${k ?? "key"}`);
+            return (
+              <label
+                key={k ?? "key"}
+                title={label}
+                className={cn(
+                  "grid size-9 cursor-pointer place-items-center rounded-lg border text-ink-2 has-focus-visible:outline-2 has-focus-visible:outline-teal",
+                  icon === k ? "border-teal bg-teal-soft text-ink" : "border-line hover:bg-hover",
+                )}
+              >
+                <input type="radio" name={`${prefix}-icon`} checked={icon === k} onChange={() => setIcon(k)} className="sr-only" />
+                <span className="sr-only">{label}</span>
+                {Icon ? (
+                  <Icon aria-hidden="true" className="size-[18px]" strokeWidth={1.8} />
+                ) : (
+                  <span aria-hidden="true" className="font-mono text-[10.5px] font-semibold">
+                    {((project?.key ?? key) || "ABC").slice(0, 3)}
+                  </span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
       <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
         <legend className="mb-1 p-0 text-[13px] font-medium">{t("settings.tasks.projectAccess")}</legend>
         {(["members", "team"] as const).map((a) => (

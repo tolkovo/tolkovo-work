@@ -38,7 +38,7 @@ function server() {
     session: programmerSession,
     routes: {
       "GET /tasks": () => json(200, { items: [task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 1 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 1, projects: [] }),
       "GET /tasks/t1": () => json(200, task),
       "GET /tasks/t1/activity": () => json(200, { items: [] }),
       "GET /task-queues": () => json(200, { items: [] }),

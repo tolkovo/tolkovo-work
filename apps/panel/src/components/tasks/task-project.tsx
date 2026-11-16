@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import type { TasksSearch } from "../../lib/tasks/tasks";
 import { Menu, type MenuItem } from "../menu";
+import { ProjectTile } from "./project-icon";
 
 /**
  * Projects of tasks (ADR-0022): the section shows one project, named by its key in the URL
@@ -104,6 +105,7 @@ export function ProjectSwitch({ search }: { search: TasksSearch }) {
       triggerClassName="flex h-8 max-w-56 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink hover:bg-hover"
       trigger={
         <>
+          {current && <ProjectTile icon={current.icon} color={current.color} projectKey={current.key} size="sm" />}
           <span className="truncate font-medium">{current ? current.name : t("tasks.projects.all")}</span>
           {current && <span className="font-mono text-[11px] text-ink-3">{current.key}</span>}
           <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-ink-3" />

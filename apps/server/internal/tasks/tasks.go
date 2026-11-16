@@ -369,18 +369,27 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	return out, nil
 }
 
+// Assigned is the open tasks of a member: in all, and by project for the project tiles.
+type Assigned struct {
+	Open      int64
+	ByProject map[uuid.UUID]int64
+}
+
 // OpenAssigned counts the open tasks of a member, for the menu.
-func (s *Service) OpenAssigned(ctx context.Context, workspaceID, userID uuid.UUID) (int64, error) {
-	var n int64
+func (s *Service) OpenAssigned(ctx context.Context, workspaceID, userID uuid.UUID) (Assigned, error) {
+	out := Assigned{ByProject: map[uuid.UUID]int64{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		var err error
-		n, err = store.New(tx).CountOpenAssigned(ctx, store.CountOpenAssignedParams{WorkspaceID: workspaceID, AssigneeID: &userID})
+		rows, err := store.New(tx).CountOpenAssigned(ctx, store.CountOpenAssignedParams{WorkspaceID: workspaceID, AssigneeID: &userID})
+		for _, r := range rows {
+			out.Open += r.N
+			out.ByProject[r.ProjectID] = r.N
+		}
 		return err
 	})
 	if err != nil {
-		return 0, dbError(err, "count tasks")
+		return Assigned{}, dbError(err, "count tasks")
 	}
-	return n, nil
+	return out, nil
 }
 
 // Update is the whole changeable state of a task, read at Version.

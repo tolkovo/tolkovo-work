@@ -12,7 +12,12 @@
     "analytics": "Analytics",
     "kb": "Knowledge",
     "settings": "Settings",
-    "myTasks": "{count, plural, one {# open task of mine} other {# open tasks of mine}}"
+    "myTasks": "{count, plural, one {# open task of mine} other {# open tasks of mine}}",
+    "projects": {
+      "label": "Projects",
+      "moved": "{name}: place {position} of {count}",
+      "reorderHint": "Alt+↑ or Alt+↓ to move"
+    }
   },
   "topbar": {
     "theme": {
@@ -487,7 +492,19 @@
       "projectMembers": "Members",
       "projectMembersHint": "Members see the project on the left and can be assignees.",
       "projectMembersTeam": "The whole team sees the tasks; members see the project on the left.",
-      "deleteProjectConfirm": "Delete the project with its queues?"
+      "deleteProjectConfirm": "Delete the project with its queues?",
+      "projectIcon": "Icon",
+      "projectIcons": {
+        "key": "Key letters",
+        "chart": "Chart",
+        "monitor": "Monitor",
+        "server": "Server",
+        "phone": "Phone",
+        "cart": "Cart",
+        "rocket": "Rocket",
+        "heart": "Heart",
+        "globe": "Globe"
+      }
     },
     "team": {
       "title": "Team",

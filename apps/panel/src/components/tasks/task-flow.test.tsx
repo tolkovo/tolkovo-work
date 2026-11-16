@@ -37,7 +37,7 @@ function server(answer: TaskFlow) {
         queries.push(new URL(request.url).search);
         return json(200, answer);
       },
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /task-queues": () => json(200, { items: [] }),
     },
   });

@@ -673,7 +673,10 @@ export const taskBoardSettingsSchema = z.object({
   ),
 }) satisfies z.ZodType<Schemas["TaskBoardSettings"]>;
 
-export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfies z.ZodType<Schemas["TaskSummary"]>;
+export const taskSummarySchema = z.object({
+  assigned_open: z.number(),
+  projects: z.array(z.object({ project_id: z.string(), assigned_open: z.number() })),
+}) satisfies z.ZodType<Schemas["TaskSummary"]>;
 
 export const taskActivitySchema = z.object({
   id: z.string(),

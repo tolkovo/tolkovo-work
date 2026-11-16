@@ -124,6 +124,25 @@ func TestTaskProjects_AccessAndNumbers(t *testing.T) {
 		t.Fatalf("member's task: %d %s", rec.Code, rec.Body)
 	}
 
+	// The menu counts my open tasks in all and by project, for the project tiles.
+	for _, id := range []uuid.UUID{first.Id, secret.Id} {
+		task := decode[oapi.Task](t, op.do(http.MethodGet, "/api/v1/tasks/"+id.String(), nil))
+		if rec := op.do(http.MethodPut, "/api/v1/tasks/"+id.String(), taskUpdate(task, func(b map[string]any) {
+			b["assignee_id"] = opID
+		})); rec.Code != http.StatusOK {
+			t.Fatalf("assign %s: %d %s", task.Ref, rec.Code, rec.Body)
+		}
+	}
+	summary := decode[oapi.TaskSummary](t, op.do(http.MethodGet, "/api/v1/tasks/summary", nil))
+	if summary.AssignedOpen != 2 || len(summary.Projects) != 2 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	for _, p := range summary.Projects {
+		if p.AssignedOpen != 1 || (p.ProjectId != crm.Id && p.ProjectId != first.ProjectId) {
+			t.Fatalf("summary of a project: %+v", p)
+		}
+	}
+
 	// A project with tasks is archived, not deleted; the default one is neither.
 	wantProblem(t, owner.do(http.MethodDelete, "/api/v1/task-projects/"+crm.Id.String(), nil), http.StatusConflict, "project_not_empty")
 	wantProblem(t, owner.do(http.MethodDelete, "/api/v1/task-projects/"+first.ProjectId.String(), nil),

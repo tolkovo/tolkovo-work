@@ -1,7 +1,9 @@
 import type { Session, Task, TaskProject } from "@tolkovo/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { PROJECT_ORDER_KEY, inOrder, moved, useProjectOrder } from "../../lib/tasks/project-order";
 
 import { fakeApi, json, ownerSession, problem, type FakeRoutes } from "../../test/fake-api";
 import { renderApp } from "../../test/render-app";
@@ -64,7 +66,7 @@ function server(routes: FakeRoutes = {}) {
     routes: {
       "GET /task-projects": () => json(200, { items: projects }),
       "GET /tasks": () => json(200, { items: [task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 4, projects: [{ project_id: "p2", assigned_open: 3 }, { project_id: "p1", assigned_open: 1 }] }),
       "GET /tasks/t1": () => json(200, task),
       "GET /tasks/t1/activity": () => json(200, { items: [] }),
       "GET /task-queues": () =>
@@ -90,6 +92,40 @@ function server(routes: FakeRoutes = {}) {
 const firstLook = { timeout: 3000 };
 
 describe("projects of tasks", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    useProjectOrder.setState({ orders: {} });
+  });
+
+  it("puts my projects on the rail with my open tasks, and the order is mine", async () => {
+    const user = userEvent.setup();
+    renderApp("/tasks?project=CRM", { api: server() });
+    const rail = await screen.findByRole("list", { name: "Проекты" }, firstLook);
+    // Only the projects I am in, admins too: «Склад» opens from the switch.
+    const tiles = () => within(rail).getAllByRole("link").map((a) => a.getAttribute("title"));
+    await waitFor(() => expect(tiles()).toEqual(["Задачи", "CRM", "Новый проект"]));
+    const crm = within(rail).getByRole("link", { name: /CRM/ });
+    expect(crm).toHaveAccessibleName("CRM, 3 мои открытые задачи");
+    expect(crm).toHaveAttribute("aria-current", "page");
+    expect(crm).toHaveAttribute("href", "/tasks?project=CRM");
+    expect(within(rail).getByRole("link", { name: "Новый проект" })).toHaveAttribute("href", "/settings/tasks#projects");
+
+    // Alt+↑ moves a tile, and the order stays in this browser.
+    crm.focus();
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    await waitFor(() => expect(tiles()).toEqual(["CRM", "Задачи", "Новый проект"]));
+    expect(within(rail).getByRole("link", { name: /CRM/ })).toHaveFocus();
+    expect(screen.getByText("CRM: место 1 из 2")).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem(PROJECT_ORDER_KEY)!)).toEqual({ "w-zerno": ["p2", "p1"] });
+  });
+
+  it("keeps a stored order and puts projects new to it after", () => {
+    const items = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    expect(inOrder(items, ["c", "gone", "a"]).map((x) => x.id)).toEqual(["c", "a", "b"]);
+    expect(moved(["a", "b", "c"], 0, 2)).toEqual(["b", "c", "a"]);
+    expect(moved(["a", "b"], 0, -1)).toEqual(["a", "b"]);
+  });
+
   it("switches the section to a project by its key and asks for its tasks only", async () => {
     const user = userEvent.setup();
     const api = server();
@@ -144,6 +180,7 @@ describe("projects of tasks", () => {
     await user.type(screen.getByLabelText("Ключ"), "wh-b");
     expect(screen.getByLabelText("Ключ")).toHaveValue("WHB");
     await user.click(screen.getByRole("radio", { name: /Вся команда/ }));
+    await user.click(screen.getByRole("radio", { name: "Ракета" }));
     await user.click(screen.getByRole("button", { name: "Сохранить проект" }));
     expect(await screen.findByText("Проект с таким названием или ключом уже есть.")).toBeInTheDocument();
 
@@ -152,6 +189,7 @@ describe("projects of tasks", () => {
     expect(api.calls.filter((c) => c.method === "POST" && c.path === "/task-projects")[1]?.body).toEqual({
       name: "Склад 2",
       key: "WHB",
+      icon: "rocket",
       color: "blue",
       access: "team",
       member_ids: [],
@@ -167,7 +205,7 @@ describe("projects of tasks", () => {
     renderApp("/settings/tasks", { api });
     const section = await screen.findByRole("region", { name: "Проекты" }, firstLook);
     const rows = await within(section).findAllByRole("listitem");
-    const item = rows.find((li) => li.textContent?.startsWith("CRMCRM"))!;
+    const item = rows.find((li) => li.textContent?.includes("CRM"))!;
     // The default project is never archived or deleted.
     const main = within(section).getByText("основной").closest("li")!;
     expect(within(main).queryByRole("button", { name: "В архив" })).not.toBeInTheDocument();

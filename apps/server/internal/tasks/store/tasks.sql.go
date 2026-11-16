@@ -360,9 +360,11 @@ func (q *Queries) ConversationTopic(ctx context.Context, arg ConversationTopicPa
 	return topic_id, err
 }
 
-const countOpenAssigned = `-- name: CountOpenAssigned :one
-SELECT count(*) FROM tasks
+const countOpenAssigned = `-- name: CountOpenAssigned :many
+SELECT project_id, count(*) AS n FROM tasks
 WHERE workspace_id = $1 AND assignee_id = $2 AND closed_at IS NULL
+GROUP BY project_id
+ORDER BY project_id
 `
 
 type CountOpenAssignedParams struct {
@@ -370,12 +372,30 @@ type CountOpenAssignedParams struct {
 	AssigneeID  *uuid.UUID
 }
 
-// The open tasks of a member, for the counter in the menu.
-func (q *Queries) CountOpenAssigned(ctx context.Context, arg CountOpenAssignedParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countOpenAssigned, arg.WorkspaceID, arg.AssigneeID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CountOpenAssignedRow struct {
+	ProjectID uuid.UUID
+	N         int64
+}
+
+// The open tasks of a member by project, for the counters in the menu (ADR-0022).
+func (q *Queries) CountOpenAssigned(ctx context.Context, arg CountOpenAssignedParams) ([]CountOpenAssignedRow, error) {
+	rows, err := q.db.Query(ctx, countOpenAssigned, arg.WorkspaceID, arg.AssigneeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountOpenAssignedRow
+	for rows.Next() {
+		var i CountOpenAssignedRow
+		if err := rows.Scan(&i.ProjectID, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const countQueues = `-- name: CountQueues :one

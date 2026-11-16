@@ -4097,6 +4097,13 @@ export interface components {
              * @description Open tasks assigned to the caller.
              */
             assigned_open: number;
+            /** @description The same by project (ADR-0022), for the project tiles; projects without such tasks are absent. */
+            projects: components["schemas"]["TaskProjectSummary"][];
+        };
+        TaskProjectSummary: {
+            project_id: string;
+            /** Format: int64 */
+            assigned_open: number;
         };
         TaskActivity: {
             id: string;

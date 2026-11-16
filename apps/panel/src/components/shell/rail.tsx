@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { LogoMark } from "../logo";
 import { navItems } from "./nav-items";
+import { RailProjects } from "./rail-projects";
 
 /** Section rail: on the left on wide screens, at the bottom below 760 px (docs/07 §3). */
 export function Rail() {
@@ -13,7 +14,9 @@ export function Rail() {
   const { data: session } = useSession();
   const tasksAllowed = hasPermission(session, "tasks.view");
   const { data: taskSettings } = useTaskSettings({ enabled: tasksAllowed });
-  const { data: myTasks } = useTaskSummary({ enabled: tasksAllowed && taskSettings?.settings.enabled !== false });
+  const tasksOn = tasksAllowed && taskSettings?.settings.enabled !== false;
+  const { data: summary } = useTaskSummary({ enabled: tasksOn });
+  const myTasks = summary?.assigned_open;
   const items = navItems.filter(
     (item) =>
       (!item.permission || hasPermission(session, item.permission)) && !(item.to === "/tasks" && taskSettings?.settings.enabled === false),
@@ -22,7 +25,7 @@ export function Rail() {
     <nav
       aria-label={t("nav.label")}
       className={cn(
-        "flex flex-col items-center gap-1 border-r border-line bg-sunk pt-2.5 pb-3",
+        "flex min-h-0 flex-col items-center gap-1 border-r border-line bg-sunk pt-2.5 pb-3",
         "max-nav:row-start-2 max-nav:flex-row max-nav:justify-around max-nav:border-t max-nav:border-r-0",
         "max-nav:px-2 max-nav:pt-1 max-nav:pb-[calc(4px+env(safe-area-inset-bottom,0px))]",
       )}
@@ -49,6 +52,7 @@ export function Rail() {
           )}
         </Link>
       ))}
+      {tasksOn && taskSettings !== undefined && <RailProjects summary={summary} />}
     </nav>
   );
 }

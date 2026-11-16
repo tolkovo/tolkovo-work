@@ -48,7 +48,7 @@ function server(session: Session, routes: FakeRoutes = {}) {
     session,
     routes: {
       "GET /tasks": () => json(200, { items: [state.task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /tasks/t1": () => json(200, state.task),
       "GET /tasks/t1/activity": () => json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "created", created_at: "2026-10-06T10:00:00Z" }] }),
       "GET /task-queues": () => json(200, { items: [{ id: "q-dev", project_id: "p1", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
@@ -336,7 +336,7 @@ describe("tasks in a conversation", () => {
         "GET /conversations/c1/tasks/draft": () => json(200, draft),
         "GET /task-queues": () => json(200, { items: [] }),
         "GET /task-settings": () => json(200, { settings, defaults: { reply_ru: "Готово", reply_en: "Done" }, placeholders: [] }),
-        "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+        "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
         ...extra,
       },
     });

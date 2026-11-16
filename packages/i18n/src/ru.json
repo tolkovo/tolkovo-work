@@ -12,7 +12,12 @@
     "analytics": "Аналитика",
     "kb": "База",
     "settings": "Настройки",
-    "myTasks": "{count, plural, one {# моя открытая задача} few {# мои открытые задачи} many {# моих открытых задач} other {# моей открытой задачи}}"
+    "myTasks": "{count, plural, one {# моя открытая задача} few {# мои открытые задачи} many {# моих открытых задач} other {# моей открытой задачи}}",
+    "projects": {
+      "label": "Проекты",
+      "moved": "{name}: место {position} из {count}",
+      "reorderHint": "Alt+↑ или Alt+↓ — переставить"
+    }
   },
   "topbar": {
     "theme": {
@@ -487,7 +492,19 @@
       "projectMembers": "Участники",
       "projectMembersHint": "Участники видят проект слева и могут быть исполнителями.",
       "projectMembersTeam": "Задачи видит вся команда; участники видят проект слева.",
-      "deleteProjectConfirm": "Удалить проект вместе с его очередями?"
+      "deleteProjectConfirm": "Удалить проект вместе с его очередями?",
+      "projectIcon": "Значок",
+      "projectIcons": {
+        "key": "Буквы ключа",
+        "chart": "График",
+        "monitor": "Монитор",
+        "server": "Сервер",
+        "phone": "Телефон",
+        "cart": "Корзина",
+        "rocket": "Ракета",
+        "heart": "Сердце",
+        "globe": "Глобус"
+      }
     },
     "team": {
       "title": "Команда",

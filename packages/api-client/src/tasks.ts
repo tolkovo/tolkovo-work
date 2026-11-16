@@ -43,6 +43,7 @@ export type TaskCreate = Schemas["TaskCreate"];
 export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
 export type TaskQueue = Schemas["TaskQueue"];
+export type TaskSummary = Schemas["TaskSummary"];
 export type TaskProject = Schemas["TaskProject"];
 export type TaskProjectInput = Schemas["TaskProjectInput"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
@@ -114,8 +115,9 @@ export async function fetchTask(client: ApiClient, id: string): Promise<Task> {
   return parseAnswer(taskSchema, await unwrap(client.GET("/tasks/{id}", { params: { path: { id } } })));
 }
 
-export async function fetchTaskSummary(client: ApiClient): Promise<number> {
-  return parseAnswer(taskSummarySchema, await unwrap(client.GET("/tasks/summary"))).assigned_open;
+/** My open tasks: in all, and by project for the project tiles (ADR-0022). */
+export async function fetchTaskSummary(client: ApiClient): Promise<TaskSummary> {
+  return parseAnswer(taskSummarySchema, await unwrap(client.GET("/tasks/summary")));
 }
 
 export async function createTask(client: ApiClient, body: TaskCreate): Promise<Task> {
