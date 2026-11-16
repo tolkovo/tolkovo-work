@@ -1095,6 +1095,60 @@ func (e TaskPriority) Valid() bool {
 	}
 }
 
+// Defines values for TaskProjectAccess.
+const (
+	Members TaskProjectAccess = "members"
+	Team    TaskProjectAccess = "team"
+)
+
+// Valid indicates whether the value is a known member of the TaskProjectAccess enum.
+func (e TaskProjectAccess) Valid() bool {
+	switch e {
+	case Members:
+		return true
+	case Team:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskProjectIcon.
+const (
+	Cart    TaskProjectIcon = "cart"
+	Chart   TaskProjectIcon = "chart"
+	Globe   TaskProjectIcon = "globe"
+	Heart   TaskProjectIcon = "heart"
+	Monitor TaskProjectIcon = "monitor"
+	Phone   TaskProjectIcon = "phone"
+	Rocket  TaskProjectIcon = "rocket"
+	Server  TaskProjectIcon = "server"
+)
+
+// Valid indicates whether the value is a known member of the TaskProjectIcon enum.
+func (e TaskProjectIcon) Valid() bool {
+	switch e {
+	case Cart:
+		return true
+	case Chart:
+		return true
+	case Globe:
+		return true
+	case Heart:
+		return true
+	case Monitor:
+		return true
+	case Phone:
+		return true
+	case Rocket:
+		return true
+	case Server:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskStatus.
 const (
 	TaskStatusCanceled   TaskStatus = "canceled"
@@ -1818,6 +1872,10 @@ type ConversationStatus string
 
 // ConversationTasks defines model for ConversationTasks.
 type ConversationTasks struct {
+	// HiddenCount Linked tasks of projects the caller does not see (ADR-0022).
+	HiddenCount int `json:"hidden_count"`
+
+	// Items The tasks the caller sees.
 	Items []Task `json:"items"`
 
 	// ReplyDraft The reply the operator may send once a task of the conversation is done; `null`
@@ -2952,11 +3010,22 @@ type Task struct {
 	CreatedBy *uuid.UUID `json:"created_by"`
 
 	// Files Files of the description, in the order they came; empty in lists.
-	Files    []TaskFile   `json:"files"`
-	Id       uuid.UUID    `json:"id"`
+	Files []TaskFile `json:"files"`
+	Id    uuid.UUID  `json:"id"`
+
+	// Number The number in the project.
 	Number   int64        `json:"number"`
 	Priority TaskPriority `json:"priority"`
-	QueueId  *uuid.UUID   `json:"queue_id"`
+
+	// ProjectId The project (`GET /task-projects`, ADR-0022).
+	ProjectId uuid.UUID `json:"project_id"`
+
+	// ProjectKey The key of the project, as `CRM`.
+	ProjectKey string     `json:"project_key"`
+	QueueId    *uuid.UUID `json:"queue_id"`
+
+	// Ref How people call the task: `CRM-41`.
+	Ref string `json:"ref"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
@@ -3100,7 +3169,10 @@ type TaskCreate struct {
 	FileIds  *[]uuid.UUID  `json:"file_ids,omitempty"`
 	Priority *TaskPriority `json:"priority,omitempty"`
 
-	// QueueId Absent or `null` with a topic that has a task queue — that queue.
+	// ProjectId Absent or `null` — the topic's project, or the default one.
+	ProjectId *uuid.UUID `json:"project_id,omitempty"`
+
+	// QueueId A queue of the task's project. Absent or `null` with a topic that has a task queue in that project — that queue.
 	QueueId *uuid.UUID `json:"queue_id,omitempty"`
 
 	// TagIds Tags of tasks (`GET /task-tags`), unique.
@@ -3194,6 +3266,7 @@ type TaskFlowAging struct {
 	// Days In the current status
 	Days   float64 `json:"days"`
 	Number int64   `json:"number"`
+	Ref    string  `json:"ref"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
@@ -3209,6 +3282,7 @@ type TaskFlowCycle struct {
 	Days   float64   `json:"days"`
 	DoneAt time.Time `json:"done_at"`
 	Number int64     `json:"number"`
+	Ref    string    `json:"ref"`
 	TaskId uuid.UUID `json:"task_id"`
 	Title  string    `json:"title"`
 }
@@ -3243,20 +3317,81 @@ type TaskPage struct {
 // TaskPriority defines model for TaskPriority.
 type TaskPriority string
 
+// TaskProject defines model for TaskProject.
+type TaskProject struct {
+	// Access `members` — its members see it; `team` — every member of the workspace.
+	Access     TaskProjectAccess `json:"access"`
+	ArchivedAt *time.Time        `json:"archived_at"`
+
+	// Color A palette key of the panel, readable in both themes.
+	Color TagColor `json:"color"`
+
+	// Icon One of the panel's icons; `null` shows the letters of the key.
+	Icon *TaskProjectIcon `json:"icon"`
+	Id   uuid.UUID        `json:"id"`
+
+	// IsDefault The project of tasks from before projects, of bare numbers and of topics without a project.
+	IsDefault bool `json:"is_default"`
+
+	// Key Starts the refs of its tasks: `CRM-41`.
+	Key string `json:"key"`
+
+	// Member The caller works in it (a member, or the project is open to the team).
+	Member    bool        `json:"member"`
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+	OpenTasks int64       `json:"open_tasks"`
+	Position  int32       `json:"position"`
+}
+
+// TaskProjectAccess `members` — its members see it; `team` — every member of the workspace.
+type TaskProjectAccess string
+
+// TaskProjectIcon defines model for TaskProjectIcon.
+type TaskProjectIcon string
+
+// TaskProjectInput defines model for TaskProjectInput.
+type TaskProjectInput struct {
+	// Access `members` — its members see it; `team` — every member of the workspace.
+	Access   *TaskProjectAccess `json:"access,omitempty"`
+	Archived *bool              `json:"archived,omitempty"`
+
+	// Color A palette key of the panel, readable in both themes.
+	Color *TagColor        `json:"color,omitempty"`
+	Icon  *TaskProjectIcon `json:"icon,omitempty"`
+
+	// Key Required on create; 2–6 latin letters, stored upper case.
+	Key       *string     `json:"key,omitempty"`
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+	Position  *int32      `json:"position,omitempty"`
+}
+
+// TaskProjectList defines model for TaskProjectList.
+type TaskProjectList struct {
+	Items []TaskProject `json:"items"`
+}
+
 // TaskQueue defines model for TaskQueue.
 type TaskQueue struct {
 	Id uuid.UUID `json:"id"`
 
 	// MemberIds Members told about new tasks without an assignee in the queue.
 	MemberIds []uuid.UUID `json:"member_ids"`
-	Name      string      `json:"name"`
-	OpenTasks int64       `json:"open_tasks"`
+
+	// Name Unique in its project.
+	Name      string    `json:"name"`
+	OpenTasks int64     `json:"open_tasks"`
+	ProjectId uuid.UUID `json:"project_id"`
 }
 
 // TaskQueueInput defines model for TaskQueueInput.
 type TaskQueueInput struct {
 	MemberIds []uuid.UUID `json:"member_ids"`
 	Name      string      `json:"name"`
+
+	// ProjectId Taken on create (absent or `null` — the default project); a queue stays in its project.
+	ProjectId *uuid.UUID `json:"project_id,omitempty"`
 }
 
 // TaskQueueList defines model for TaskQueueList.
@@ -3267,9 +3402,10 @@ type TaskQueueList struct {
 // TaskReplyDraft defines model for TaskReplyDraft.
 type TaskReplyDraft struct {
 	Number int64     `json:"number"`
+	Ref    string    `json:"ref"`
 	TaskId uuid.UUID `json:"task_id"`
 
-	// Text The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+	// Text The section's reply in the contact's language, `{name}` and `{task_number}` (the full ref, `CRM-41`) filled.
 	Text string `json:"text"`
 }
 
@@ -3411,6 +3547,9 @@ type Topic struct {
 	// Higher conversations are taken from the queue first.
 	Priority int `json:"priority"`
 
+	// TaskProjectId The project of tasks created from its conversations (ADR-0022); `null` — the default one. The queue is of this project.
+	TaskProjectId *uuid.UUID `json:"task_project_id"`
+
 	// TaskQueueId The queue of tasks created from its conversations; `null` — none.
 	TaskQueueId *uuid.UUID `json:"task_queue_id"`
 }
@@ -3421,10 +3560,13 @@ type TopicInput struct {
 	Color *TagColor `json:"color,omitempty"`
 
 	// MemberIds Active members of the workspace; absent or empty — everyone.
-	MemberIds   *[]uuid.UUID `json:"member_ids,omitempty"`
-	Name        string       `json:"name"`
-	Priority    *int         `json:"priority,omitempty"`
-	TaskQueueId *uuid.UUID   `json:"task_queue_id,omitempty"`
+	MemberIds *[]uuid.UUID `json:"member_ids,omitempty"`
+	Name      string       `json:"name"`
+	Priority  *int         `json:"priority,omitempty"`
+
+	// TaskProjectId Absent or `null` with a queue — the queue's project; another one than the queue's is 400.
+	TaskProjectId *uuid.UUID `json:"task_project_id,omitempty"`
+	TaskQueueId   *uuid.UUID `json:"task_queue_id,omitempty"`
 }
 
 // TopicList defines model for TopicList.
@@ -3762,6 +3904,9 @@ type MessageId = uuid.UUID
 // ReportToken defines model for ReportToken.
 type ReportToken = string
 
+// TaskProjectFilter defines model for TaskProjectFilter.
+type TaskProjectFilter = uuid.UUID
+
 // ChannelExists RFC 9457 problem details.
 type ChannelExists = Problem
 
@@ -3946,11 +4091,20 @@ type SearchKBParams struct {
 	Topic *uuid.UUID `form:"topic,omitempty" json:"topic,omitempty"`
 }
 
+// ListTaskQueuesParams defines parameters for ListTaskQueues.
+type ListTaskQueuesParams struct {
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
+}
+
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
 	// State `open` (new or in progress), `closed` (done or canceled); all when absent.
 	State  *ListTasksParamsState `form:"state,omitempty" json:"state,omitempty"`
 	Status *TaskStatus           `form:"status,omitempty" json:"status,omitempty"`
+
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
 
 	// Assignee `me`, `none` or a member id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
@@ -3964,7 +4118,7 @@ type ListTasksParams struct {
 	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
 	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
 
-	// Q Part of the title, or the task number.
+	// Q Part of the title, or the task number in its project.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Blocked `true` only the blocked tasks, `false` only the others.
@@ -3992,6 +4146,9 @@ type ListTasksParamsSort string
 
 // GetTaskBoardParams defines parameters for GetTaskBoard.
 type GetTaskBoardParams struct {
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
+
 	// Assignee `me`, `none` or a member id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
 
@@ -4004,7 +4161,7 @@ type GetTaskBoardParams struct {
 	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
 	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
 
-	// Q Part of the title, or the task number.
+	// Q Part of the title, or the task number in its project.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Blocked `true` only the blocked tasks, `false` only the others.
@@ -4021,6 +4178,9 @@ type GetTaskBoardParams struct {
 type GetTaskFlowParams struct {
 	// Days How many days back the period reaches, 7–90; 30 when absent.
 	Days *int `form:"days,omitempty" json:"days,omitempty"`
+
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
 
 	// Assignee `me`, `none` or a member id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
@@ -4227,6 +4387,12 @@ type UpdateTaskBoardSettingsJSONRequestBody = TaskBoardSettings
 
 // CreateTaskFileUploadJSONRequestBody defines body for CreateTaskFileUpload for application/json ContentType.
 type CreateTaskFileUploadJSONRequestBody = TaskFileUploadRequest
+
+// CreateTaskProjectJSONRequestBody defines body for CreateTaskProject for application/json ContentType.
+type CreateTaskProjectJSONRequestBody = TaskProjectInput
+
+// UpdateTaskProjectJSONRequestBody defines body for UpdateTaskProject for application/json ContentType.
+type UpdateTaskProjectJSONRequestBody = TaskProjectInput
 
 // CreateTaskQueueJSONRequestBody defines body for CreateTaskQueue for application/json ContentType.
 type CreateTaskQueueJSONRequestBody = TaskQueueInput
@@ -4662,9 +4828,21 @@ type ServerInterface interface {
 	// GetTaskFileDownloadLink A short-lived signed download request for a file of a task
 	// (GET /task-files/{id}/download-link)
 	GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
+	// ListTaskProjects Projects of tasks the caller sees (ADR-0022)
+	// (GET /task-projects)
+	ListTaskProjects(w http.ResponseWriter, r *http.Request)
+	// CreateTaskProject Add a project
+	// (POST /task-projects)
+	CreateTaskProject(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskProject Delete a project without tasks
+	// (DELETE /task-projects/{id})
+	DeleteTaskProject(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTaskProject Change a project and replace its members
+	// (PUT /task-projects/{id})
+	UpdateTaskProject(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTaskQueues Queues of tasks, by name
 	// (GET /task-queues)
-	ListTaskQueues(w http.ResponseWriter, r *http.Request)
+	ListTaskQueues(w http.ResponseWriter, r *http.Request, params ListTaskQueuesParams)
 	// CreateTaskQueue Add a queue
 	// (POST /task-queues)
 	CreateTaskQueue(w http.ResponseWriter, r *http.Request)
@@ -5529,9 +5707,33 @@ func (_ Unimplemented) GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListTaskProjects Projects of tasks the caller sees (ADR-0022)
+// (GET /task-projects)
+func (_ Unimplemented) ListTaskProjects(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTaskProject Add a project
+// (POST /task-projects)
+func (_ Unimplemented) CreateTaskProject(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskProject Delete a project without tasks
+// (DELETE /task-projects/{id})
+func (_ Unimplemented) DeleteTaskProject(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskProject Change a project and replace its members
+// (PUT /task-projects/{id})
+func (_ Unimplemented) UpdateTaskProject(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListTaskQueues Queues of tasks, by name
 // (GET /task-queues)
-func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request, params ListTaskQueuesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -8497,11 +8699,110 @@ func (siw *ServerInterfaceWrapper) GetTaskFileDownloadLink(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// ListTaskProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskProjects(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTaskProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskProject(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskProject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskProject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskProject operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTaskQueues operation middleware
 func (siw *ServerInterfaceWrapper) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTaskQueuesParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTaskQueues(w, r)
+		siw.Handler.ListTaskQueues(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8762,6 +9063,19 @@ func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "assignee" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8926,6 +9240,19 @@ func (siw *ServerInterfaceWrapper) GetTaskBoard(w http.ResponseWriter, r *http.R
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTaskBoardParams
 
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "assignee" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -9059,6 +9386,19 @@ func (siw *ServerInterfaceWrapper) GetTaskFlow(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
 		}
 		return
 	}
@@ -10254,6 +10594,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/tasks/{id}/files/{file_id}", wrapper.RemoveTaskFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-projects", wrapper.ListTaskProjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/task-projects", wrapper.CreateTaskProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-projects/{id}", wrapper.DeleteTaskProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-projects/{id}", wrapper.UpdateTaskProject)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/task-queues", wrapper.ListTaskQueues)

@@ -29,7 +29,7 @@ const (
 type FlowKey struct {
 	Rank    int32
 	Changed time.Time
-	Number  int64
+	ID      uuid.UUID
 }
 
 // priorityRank orders priorities on the board, most urgent first; it is
@@ -47,11 +47,15 @@ func priorityRank(p string) int32 {
 }
 
 func flowKey(t Task) FlowKey {
-	return FlowKey{Rank: priorityRank(t.Priority), Changed: t.StatusChangedAt, Number: t.Number}
+	return FlowKey{Rank: priorityRank(t.Priority), Changed: t.StatusChangedAt, ID: t.ID}
 }
 
 // BoardFilter narrows the board like Filter narrows the list.
 type BoardFilter struct {
+	// Viewer sees the tasks of the board (task_visible).
+	Viewer Viewer
+	// ProjectID keeps the tasks of one project.
+	ProjectID  *uuid.UUID
 	AssigneeID *uuid.UUID
 	Unassigned bool
 	QueueID    *uuid.UUID
@@ -119,6 +123,7 @@ func (s *Service) Board(ctx context.Context, workspaceID uuid.UUID, f BoardFilte
 		}
 		rows, err := q.BoardTasks(ctx, store.BoardTasksParams{
 			WorkspaceID: workspaceID, PerColumn: BoardColumnLimit, ClosedSince: s.now().AddDate(0, 0, -f.ClosedDays), Canceled: f.Canceled,
+			ProjectID: f.ProjectID, Viewer: f.Viewer.UserID, SeeAll: f.Viewer.All,
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic,
 			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)),
 		})
@@ -166,11 +171,12 @@ func (s *Service) listFlow(ctx context.Context, workspaceID uuid.UUID, f Filter,
 	}
 	p := store.ListTasksFlowParams{
 		WorkspaceID: workspaceID, Status: f.Status, ClosedSince: since, ClosedOrder: closed(f.Status),
+		ProjectID: f.ProjectID, Viewer: f.Viewer.UserID, SeeAll: f.Viewer.All,
 		AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic,
 		TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 	}
 	if f.After != nil {
-		p.AfterRank, p.AfterChanged, p.AfterNumber = f.After.Rank, f.After.Changed, f.After.Number
+		p.AfterRank, p.AfterChanged, p.AfterID = f.After.Rank, f.After.Changed, &f.After.ID
 	}
 	out := Page{Items: []Task{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
@@ -197,10 +203,13 @@ func (s *Service) listFlow(ctx context.Context, workspaceID uuid.UUID, f Filter,
 	return out, nil
 }
 
-// fillLists fills what lists show of a page of tasks: tags and the number
-// of linked conversations, one query each.
+// fillLists fills what lists show of a page of tasks: refs, tags and the
+// number of linked conversations, one query each.
 func fillLists(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, items []Task) error {
 	if err := fillTags(ctx, q, workspaceID, items); err != nil || len(items) == 0 {
+		return err
+	}
+	if err := fillRefs(ctx, q, workspaceID, items); err != nil {
 		return err
 	}
 	ids := make([]uuid.UUID, len(items))
@@ -217,6 +226,22 @@ func fillLists(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, ite
 		if i, ok := at[r.TaskID]; ok {
 			items[i].ConversationCount = int(r.N)
 		}
+	}
+	return nil
+}
+
+// fillRefs writes the refs, KEY-N, of a page of tasks.
+func fillRefs(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, items []Task) error {
+	if len(items) == 0 {
+		return nil
+	}
+	keys, err := projectKeys(ctx, q, workspaceID)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		items[i].ProjectKey = keys[items[i].ProjectID]
+		items[i].Ref = Ref(items[i].ProjectKey, items[i].Number)
 	}
 	return nil
 }

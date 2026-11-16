@@ -2630,13 +2630,18 @@ export interface paths {
         };
         /**
          * Tasks, newest first or in the order of a column of the board
-         * @description Requires `tasks.view`.
+         * @description Requires `tasks.view`. Only the tasks the caller sees (ADR-0022): of the projects they
+         *     are a member of, of projects open to the team, their own (author or assignee); a role
+         *     with `tasks.manage` sees all.
          */
         get: operations["listTasks"];
         put?: never;
         /**
          * Create a task
-         * @description Requires `tasks.edit`. With `conversation_id` (a visible conversation) the task is
+         * @description Requires `tasks.edit`. The task goes to `project_id` (a project the caller sees and that
+         *     is not archived), else to the topic's project, else to the default one, and takes the next
+         *     number there. A queue of another project and an assignee who is not a member of the
+         *     project are `400`/`422`. With `conversation_id` (a visible conversation) the task is
          *     linked to it: a line appears in its feed and the conversation waits for the fix
          *     (`awaiting_fix`; an assigned one goes to `pending`) until the task is closed. The
          *     assignee, or the queue's members when there is none, are notified (in Telegram when
@@ -2968,6 +2973,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/task-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Projects of tasks the caller sees (ADR-0022)
+         * @description Requires `tasks.view`. Active projects first, the default one at the top, then the
+         *     archived. A member gets the projects they are a member of and those open to the team
+         *     (`member` true: the left rail shows these); a role with `tasks.manage` gets every project,
+         *     the others with `member` false (the header switcher shows them apart).
+         */
+        get: operations["listTaskProjects"];
+        put?: never;
+        /**
+         * Add a project
+         * @description Up to 50 projects. Requires `tasks.manage`, and a session: tokens do not manage projects.
+         *     The name and the key are unique in the workspace (`409 project_exists`).
+         */
+        post: operations["createTaskProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/task-projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a project and replace its members
+         * @description Requires `tasks.manage`. The key does not change yet (send the current one or leave it
+         *     out). The default project is never archived. An archived project takes no new tasks.
+         */
+        put: operations["updateTaskProject"];
+        post?: never;
+        /**
+         * Delete a project without tasks
+         * @description Requires `tasks.manage`. Its queues go with it. A project with tasks is `409 project_not_empty`; archive it instead.
+         */
+        delete: operations["deleteTaskProject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/task-queues": {
         parameters: {
             query?: never;
@@ -2983,7 +3043,7 @@ export interface paths {
         put?: never;
         /**
          * Add a queue
-         * @description Up to 50 queues. Requires `tasks.manage`.
+         * @description Up to 50 queues in a project. Requires `tasks.manage`.
          */
         post: operations["createTaskQueue"];
         delete?: never;
@@ -3803,8 +3863,17 @@ export interface components {
         TaskPriority: "low" | "normal" | "high" | "urgent";
         Task: {
             id: string;
-            /** Format: int64 */
+            /** @description The project (`GET /task-projects`, ADR-0022). */
+            project_id: string;
+            /** @description The key of the project, as `CRM`. */
+            project_key: string;
+            /**
+             * Format: int64
+             * @description The number in the project.
+             */
             number: number;
+            /** @description How people call the task: `CRM-41`. */
+            ref: string;
             queue_id: string | null;
             /** @description The topic of questions (`GET /topics`); a task from a conversation takes the conversation's. */
             topic_id: string | null;
@@ -3924,6 +3993,7 @@ export interface components {
             task_id: string;
             /** Format: int64 */
             number: number;
+            ref: string;
             title: string;
             /** Format: date-time */
             done_at: string;
@@ -3937,6 +4007,7 @@ export interface components {
             task_id: string;
             /** Format: int64 */
             number: number;
+            ref: string;
             title: string;
             status: components["schemas"]["TaskStatus"];
             /**
@@ -3987,7 +4058,9 @@ export interface components {
         TaskCreate: {
             title: string;
             body?: string;
-            /** @description Absent or `null` with a topic that has a task queue — that queue. */
+            /** @description Absent or `null` — the topic's project, or the default one. */
+            project_id?: string | null;
+            /** @description A queue of the task's project. Absent or `null` with a topic that has a task queue in that project — that queue. */
             queue_id?: string | null;
             /** @description Absent or `null` for a task from a conversation — the conversation's topic. */
             topic_id?: string | null;
@@ -4065,8 +4138,53 @@ export interface components {
         TaskLinkRequest: {
             conversation_id: string;
         };
+        TaskProject: {
+            id: string;
+            name: string;
+            /** @description Starts the refs of its tasks: `CRM-41`. */
+            key: string;
+            /** @description One of the panel's icons; `null` shows the letters of the key. */
+            icon: components["schemas"]["TaskProjectIcon"] | null;
+            color: components["schemas"]["TagColor"];
+            access: components["schemas"]["TaskProjectAccess"];
+            /** @description The project of tasks from before projects, of bare numbers and of topics without a project. */
+            is_default: boolean;
+            /** Format: int32 */
+            position: number;
+            member_ids: string[];
+            /** Format: int64 */
+            open_tasks: number;
+            /** Format: date-time */
+            archived_at: string | null;
+            /** @description The caller works in it (a member, or the project is open to the team). */
+            member: boolean;
+        };
+        /** @enum {string} */
+        TaskProjectIcon: "chart" | "monitor" | "server" | "phone" | "cart" | "rocket" | "heart" | "globe";
+        /**
+         * @description `members` — its members see it; `team` — every member of the workspace.
+         * @enum {string}
+         */
+        TaskProjectAccess: "members" | "team";
+        TaskProjectList: {
+            items: components["schemas"]["TaskProject"][];
+        };
+        TaskProjectInput: {
+            name: string;
+            /** @description Required on create; 2–6 latin letters, stored upper case. */
+            key?: string;
+            icon?: components["schemas"]["TaskProjectIcon"] | null;
+            color?: components["schemas"]["TagColor"];
+            access?: components["schemas"]["TaskProjectAccess"];
+            /** Format: int32 */
+            position?: number;
+            archived?: boolean;
+            member_ids: string[];
+        };
         TaskQueue: {
             id: string;
+            project_id: string;
+            /** @description Unique in its project. */
             name: string;
             /** @description Members told about new tasks without an assignee in the queue. */
             member_ids: string[];
@@ -4077,6 +4195,8 @@ export interface components {
             items: components["schemas"]["TaskQueue"][];
         };
         TaskQueueInput: {
+            /** @description Taken on create (absent or `null` — the default project); a queue stays in its project. */
+            project_id?: string | null;
             name: string;
             member_ids: string[];
         };
@@ -4096,7 +4216,10 @@ export interface components {
             placeholders: string[];
         };
         ConversationTasks: {
+            /** @description The tasks the caller sees. */
             items: components["schemas"]["Task"][];
+            /** @description Linked tasks of projects the caller does not see (ADR-0022). */
+            hidden_count: number;
             settings: {
                 enabled: boolean;
                 conversation_button: components["schemas"]["TaskButton"];
@@ -4112,7 +4235,8 @@ export interface components {
             task_id: string;
             /** Format: int64 */
             number: number;
-            /** @description The section's reply in the contact's language, `{name}` and `{task_number}` filled. */
+            ref: string;
+            /** @description The section's reply in the contact's language, `{name}` and `{task_number}` (the full ref, `CRM-41`) filled. */
             text: string;
         };
         TaskDraft: {
@@ -4260,6 +4384,8 @@ export interface components {
             priority: number;
             /** @description The queue of tasks created from its conversations; `null` — none. */
             task_queue_id: string | null;
+            /** @description The project of tasks created from its conversations (ADR-0022); `null` — the default one. The queue is of this project. */
+            task_project_id: string | null;
             /**
              * @description Who gets its conversations from automatic distribution, by user id; empty — everyone.
              *     Taking one from the queue by hand is open to all.
@@ -4275,6 +4401,8 @@ export interface components {
             /** @default 0 */
             priority: number;
             task_queue_id?: string | null;
+            /** @description Absent or `null` with a queue — the queue's project; another one than the queue's is 400. */
+            task_project_id?: string | null;
             /** @description Active members of the workspace; absent or empty — everyone. */
             member_ids?: string[];
         };
@@ -5356,8 +5484,9 @@ export interface components {
         };
         /**
          * @description `task_conflict` (the task changed since `version`), `task_linked` (the conversation
-         *     is linked to this task already), `queue_exists` (a queue has this name) or
-         *     `tasks_disabled` (the section is turned off).
+         *     is linked to this task already), `queue_exists` (a queue has this name),
+         *     `project_exists` (a project has this name or key), `project_not_empty` (the project has
+         *     tasks; archive it) or `tasks_disabled` (the section is turned off).
          */
         TaskConflict: {
             headers: {
@@ -5414,6 +5543,8 @@ export interface components {
         Cursor: string;
         /** @description Page size, 1–100; 50 when absent. */
         Limit: number;
+        /** @description A project of tasks (`GET /task-projects`); only its tasks. */
+        TaskProjectFilter: string;
         /** @description How many days back closed tasks of the board reach, 1–90; 14 when absent. */
         ClosedDays: number;
         /**
@@ -9470,6 +9601,8 @@ export interface operations {
                 /** @description `open` (new or in progress), `closed` (done or canceled); all when absent. */
                 state?: "open" | "closed";
                 status?: components["schemas"]["TaskStatus"];
+                /** @description A project of tasks (`GET /task-projects`); only its tasks. */
+                project?: components["parameters"]["TaskProjectFilter"];
                 /** @description `me`, `none` or a member id. */
                 assignee?: string;
                 /** @description `none` or a queue id. */
@@ -9478,7 +9611,7 @@ export interface operations {
                 topic?: string;
                 /** @description A tag of tasks (`GET /task-tags`); only the tasks with it. */
                 tag?: string;
-                /** @description Part of the title, or the task number. */
+                /** @description Part of the title, or the task number in its project. */
                 q?: string;
                 /** @description `true` only the blocked tasks, `false` only the others. */
                 blocked?: boolean;
@@ -9548,6 +9681,8 @@ export interface operations {
     getTaskBoard: {
         parameters: {
             query?: {
+                /** @description A project of tasks (`GET /task-projects`); only its tasks. */
+                project?: components["parameters"]["TaskProjectFilter"];
                 /** @description `me`, `none` or a member id. */
                 assignee?: string;
                 /** @description `none` or a queue id. */
@@ -9556,7 +9691,7 @@ export interface operations {
                 topic?: string;
                 /** @description A tag of tasks (`GET /task-tags`); only the tasks with it. */
                 tag?: string;
-                /** @description Part of the title, or the task number. */
+                /** @description Part of the title, or the task number in its project. */
                 q?: string;
                 /** @description `true` only the blocked tasks, `false` only the others. */
                 blocked?: boolean;
@@ -9590,6 +9725,8 @@ export interface operations {
             query?: {
                 /** @description How many days back the period reaches, 7–90; 30 when absent. */
                 days?: number;
+                /** @description A project of tasks (`GET /task-projects`); only its tasks. */
+                project?: components["parameters"]["TaskProjectFilter"];
                 /** @description `me`, `none` or a member id. */
                 assignee?: string;
                 /** @description `none` or a queue id. */
@@ -10034,9 +10171,118 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    listTaskQueues: {
+    listTaskProjects: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The projects. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskProjectList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTaskProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskProjectInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskProject"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    updateTaskProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskProjectInput"];
+            };
+        };
+        responses: {
+            /** @description The project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskProject"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    deleteTaskProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    listTaskQueues: {
+        parameters: {
+            query?: {
+                /** @description A project of tasks (`GET /task-projects`); only its tasks. */
+                project?: components["parameters"]["TaskProjectFilter"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

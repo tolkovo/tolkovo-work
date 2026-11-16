@@ -9,7 +9,10 @@ import { renderApp } from "../../test/render-app";
 
 const task: Task = {
   id: "t1",
+  project_id: "p1",
+  project_key: "TSK",
   number: 12,
+  ref: "TSK-12",
   queue_id: null,
   topic_id: null,
   title: "Двойное списание при оплате",

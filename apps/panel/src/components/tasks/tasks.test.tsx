@@ -15,7 +15,10 @@ const admin: Session = { ...ownerSession, permissions: [...ownerSession.permissi
 
 const task = (id: string, patch: Partial<Task> = {}): Task => ({
   id,
+  project_id: "p1",
+  project_key: "TSK",
   number: 12,
+  ref: "TSK-12",
   queue_id: null,
   topic_id: null,
   title: "Обновить сертификат на сервере",
@@ -48,7 +51,7 @@ function server(session: Session, routes: FakeRoutes = {}) {
       "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
       "GET /tasks/t1": () => json(200, state.task),
       "GET /tasks/t1/activity": () => json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "created", created_at: "2026-10-06T10:00:00Z" }] }),
-      "GET /task-queues": () => json(200, { items: [{ id: "q-dev", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
+      "GET /task-queues": () => json(200, { items: [{ id: "q-dev", project_id: "p1", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
       "GET /task-settings": () => json(200, { settings, defaults: { reply_ru: "Готово", reply_en: "Done" }, placeholders: ["name", "task_number"] }),
       "GET /task-board-settings": () => json(200, { rules: [] }),
       ...routes,
@@ -157,7 +160,7 @@ describe("the tasks section", () => {
     const crm = "0199a000-0000-7000-8000-00000000c0a1";
     const { api } = server(member, {
       "GET /topics": () =>
-        json(200, { items: [{ id: crm, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, member_ids: [] }] }),
+        json(200, { items: [{ id: crm, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, task_project_id: null, member_ids: [] }] }),
       "GET /tasks": () => json(200, { items: [task("t1", { topic_id: crm })], next_cursor: null }),
       "GET /tasks/t1": () => json(200, task("t1", { topic_id: crm })),
       "GET /tasks/t1/activity": () =>
@@ -299,7 +302,7 @@ describe("the tasks section", () => {
   it("lets admins add a queue in the settings", async () => {
     const user = userEvent.setup();
     const { api } = server(admin, {
-      "POST /task-queues": () => json(201, { id: "q-it", name: "Инфраструктура", member_ids: [], open_tasks: 0 }),
+      "POST /task-queues": () => json(201, { id: "q-it", project_id: "p1", name: "Инфраструктура", member_ids: [], open_tasks: 0 }),
     });
     renderApp("/settings/tasks", { api });
     await user.click(await screen.findByRole("button", { name: "Добавить очередь" }, firstLook));
@@ -319,7 +322,8 @@ describe("tasks in a conversation", () => {
     drafted_by: "ai",
   };
 
-  function inbox(conversationTasks: ConversationTasks, extra: FakeRoutes = {}) {
+  function inbox(given: Omit<ConversationTasks, "hidden_count">, extra: FakeRoutes = {}) {
+    const conversationTasks: ConversationTasks = { hidden_count: 0, ...given };
     return fakeApi({
       session: member,
       routes: {
@@ -366,7 +370,7 @@ describe("tasks in a conversation", () => {
     const api = inbox({
       items: [task("t1", { status: "done", closed_at: "2026-10-06T11:00:00Z", conversation_ids: ["c1"] })],
       settings: { enabled: true, conversation_button: "github" },
-      reply_draft: { task_id: "t1", number: 12, text: "Марина, задачу выполнили." },
+      reply_draft: { task_id: "t1", number: 12, ref: "TSK-12", text: "Марина, задачу выполнили." },
     });
     renderApp("/inbox/c1", { api });
     expect(await screen.findByText("Задача #12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();

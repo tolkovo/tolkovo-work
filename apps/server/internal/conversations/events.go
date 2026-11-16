@@ -101,6 +101,9 @@ type IssueRef struct {
 type TaskRef struct {
 	TaskID uuid.UUID `json:"task_id"`
 	Number int64     `json:"number"`
+	// Ref is KEY-N of the task's project (ADR-0022); lines written before
+	// projects have none.
+	Ref string `json:"ref,omitempty"`
 	// Reason is set on EventTaskClosed: TaskDone or TaskCanceled.
 	Reason string `json:"reason,omitempty"`
 }

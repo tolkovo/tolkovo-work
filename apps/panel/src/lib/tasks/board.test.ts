@@ -6,7 +6,10 @@ import { taskUpdate } from "./tasks";
 
 const task = (number: number, patch: Partial<Task> = {}): Task => ({
   id: `t${number}`,
+  project_id: "p1",
+  project_key: "TSK",
   number,
+  ref: `TSK-${number}`,
   queue_id: null,
   topic_id: null,
   title: `Задача ${number}`,

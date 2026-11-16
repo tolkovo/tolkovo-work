@@ -187,7 +187,7 @@ describe("createInboxSync", () => {
     vi.setSystemTime(new Date("2026-10-04T12:00:30Z"));
     const me = ownerSession.user.id;
     const task = {
-      id: "t1", number: 7, queue_id: null, topic_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
+      id: "t1", project_id: "p1", project_key: "TSK", number: 7, ref: "TSK-7", queue_id: null, topic_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
       assignee_id: me, created_by: "u2", created_at: "2026-10-04T12:00:00Z", updated_at: "2026-10-04T12:00:00Z",
       closed_at: null, status_changed_at: "2026-10-04T12:00:00Z", blocked_reason: null, version: 2, conversation_ids: [], conversation_count: 0, files: [], tag_ids: [],
     };

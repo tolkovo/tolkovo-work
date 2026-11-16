@@ -567,12 +567,12 @@ const (
 var phrases = map[string][]string{
 	"ru": {
 		phraseHandoff:   "Передаю ваш вопрос сотруднику поддержки. Ответ придёт сюда, в этот чат.",
-		phraseTask:      "Задача №%d передана технической команде. Ответ придёт сюда, в этот чат.",
+		phraseTask:      "Задача %s передана технической команде. Ответ придёт сюда, в этот чат.",
 		phraseCollected: "Собрано для задачи:",
 	},
 	"en": {
 		phraseHandoff:   "I'm passing your question to our support team. The reply will come here, in this chat.",
-		phraseTask:      "Task #%d is with our technical team. The reply will come here, in this chat.",
+		phraseTask:      "Task %s is with our technical team. The reply will come here, in this chat.",
 		phraseCollected: "Collected for a task:",
 	},
 }

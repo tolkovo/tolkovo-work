@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -105,7 +104,7 @@ func TestAIBotAPI(t *testing.T) {
 	if handoff == nil || handoff.Reason == nil || *handoff.Reason != oapi.MessageEventReasonTaskCreated {
 		t.Fatalf("handoff %+v", handoff)
 	}
-	if want := "Спасибо, передаю разработчикам.\n\nЗадача №" + strconv.FormatInt(task.Number, 10) + " передана технической команде. Ответ придёт сюда, в этот чат."; reply != want {
+	if want := "Спасибо, передаю разработчикам.\n\nЗадача " + task.Ref + " передана технической команде. Ответ придёт сюда, в этот чат."; reply != want {
 		t.Fatalf("reply %q", reply)
 	}
 

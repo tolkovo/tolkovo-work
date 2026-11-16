@@ -369,6 +369,7 @@ export const topicSchema = z.object({
   position: z.number(),
   priority: z.number(),
   task_queue_id: z.string().nullable(),
+  task_project_id: z.string().nullable(),
   member_ids: z.array(z.string()),
 }) satisfies z.ZodType<Schemas["Topic"]>;
 
@@ -579,7 +580,10 @@ export const taskFileUploadSchema = z.object({
 
 export const taskSchema = z.object({
   id: z.string(),
+  project_id: z.string(),
+  project_key: z.string(),
   number: z.number(),
+  ref: z.string(),
   queue_id: z.string().nullable(),
   topic_id: z.string().nullable(),
   title: z.string(),
@@ -625,6 +629,7 @@ export const taskFlowSchema = z.object({
     z.object({
       task_id: z.string(),
       number: z.number(),
+      ref: z.string(),
       title: z.string(),
       done_at: z.string(),
       days: z.number(),
@@ -647,6 +652,7 @@ export const taskFlowSchema = z.object({
     z.object({
       task_id: z.string(),
       number: z.number(),
+      ref: z.string(),
       title: z.string(),
       status: taskStatusSchema,
       days: z.number(),
@@ -705,10 +711,28 @@ export const taskActivityListSchema = z.object({ items: z.array(taskActivitySche
 
 export const taskQueueSchema = z.object({
   id: z.string(),
+  project_id: z.string(),
   name: z.string(),
   member_ids: z.array(z.string()),
   open_tasks: z.number(),
 }) satisfies z.ZodType<Schemas["TaskQueue"]>;
+
+export const taskProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  key: z.string(),
+  icon: z.enum(["chart", "monitor", "server", "phone", "cart", "rocket", "heart", "globe"]).nullable(),
+  color: tagColorSchema,
+  access: z.enum(["members", "team"]),
+  is_default: z.boolean(),
+  position: z.number(),
+  member_ids: z.array(z.string()),
+  open_tasks: z.number(),
+  archived_at: z.string().nullable(),
+  member: z.boolean(),
+}) satisfies z.ZodType<Schemas["TaskProject"]>;
+
+export const taskProjectListSchema = z.object({ items: z.array(taskProjectSchema) }) satisfies z.ZodType<Schemas["TaskProjectList"]>;
 
 export const taskQueueListSchema = z.object({ items: z.array(taskQueueSchema) }) satisfies z.ZodType<Schemas["TaskQueueList"]>;
 
@@ -727,8 +751,9 @@ export const taskSettingsViewSchema = z.object({
 
 export const conversationTasksSchema = z.object({
   items: z.array(taskSchema),
+  hidden_count: z.number(),
   settings: z.object({ enabled: z.boolean(), conversation_button: taskButtonSchema }),
-  reply_draft: z.object({ task_id: z.string(), number: z.number(), text: z.string() }).nullable(),
+  reply_draft: z.object({ task_id: z.string(), number: z.number(), ref: z.string(), text: z.string() }).nullable(),
 }) satisfies z.ZodType<Schemas["ConversationTasks"]>;
 
 export const taskDraftSchema = z.object({

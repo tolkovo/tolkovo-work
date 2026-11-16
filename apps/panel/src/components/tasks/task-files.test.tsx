@@ -22,7 +22,10 @@ const log: TaskFile = { ...shot, id: "f-log", file_name: "app.log", content_type
 
 const baseTask: Task = {
   id: "t1",
+  project_id: "p1",
+  project_key: "TSK",
   number: 12,
+  ref: "TSK-12",
   queue_id: null,
   topic_id: null,
   title: "Кнопка не нажимается",

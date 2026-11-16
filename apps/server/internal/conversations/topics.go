@@ -42,6 +42,9 @@ type Topic struct {
 	// Priority is the conversations.priority (0–3) of its conversations.
 	Priority    int
 	TaskQueueID *uuid.UUID
+	// TaskProjectID is the project of tasks created from its conversations
+	// (ADR-0022); nil: the default one. Its TaskQueueID is of this project.
+	TaskProjectID *uuid.UUID
 	// MemberIDs get its conversations from automatic distribution; empty:
 	// everyone.
 	MemberIDs []uuid.UUID
@@ -55,7 +58,9 @@ type TopicInput struct {
 	Color       string
 	Priority    int
 	TaskQueueID *uuid.UUID
-	MemberIDs   []uuid.UUID
+	// TaskProjectID nil with a queue: the queue's project.
+	TaskProjectID *uuid.UUID
+	MemberIDs     []uuid.UUID
 }
 
 func (in TopicInput) valid() (TopicInput, error) {
@@ -117,9 +122,13 @@ func (s *Service) CreateTopic(ctx context.Context, workspaceID uuid.UUID, in Top
 		if n >= MaxTopics {
 			return fmt.Errorf("%w: a workspace has at most %d topics", ErrInvalid, MaxTopics)
 		}
+		project, err := topicProject(ctx, q, workspaceID, in)
+		if err != nil {
+			return err
+		}
 		row, err := q.CreateTopic(ctx, store.CreateTopicParams{
 			ID: id, WorkspaceID: workspaceID, Name: in.Name, Color: in.Color,
-			Priority: int16(in.Priority), TaskQueueID: in.TaskQueueID, Now: s.now(), //nolint:gosec // G115: checked to be 0..3
+			Priority: int16(in.Priority), TaskQueueID: in.TaskQueueID, TaskProjectID: project, Now: s.now(), //nolint:gosec // G115: checked to be 0..3
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrTopicExists
@@ -145,9 +154,13 @@ func (s *Service) UpdateTopic(ctx context.Context, workspaceID, id uuid.UUID, in
 	}
 	var out Topic
 	err = s.tx(ctx, workspaceID, func(q *store.Queries, tx pgx.Tx) error {
+		project, err := topicProject(ctx, q, workspaceID, in)
+		if err != nil {
+			return err
+		}
 		row, err := q.UpdateTopic(ctx, store.UpdateTopicParams{
 			Name: in.Name, Color: in.Color, Priority: int16(in.Priority), //nolint:gosec // G115: checked to be 0..3
-			TaskQueueID: in.TaskQueueID, Now: s.now(), WorkspaceID: workspaceID, ID: id,
+			TaskQueueID: in.TaskQueueID, TaskProjectID: project, Now: s.now(), WorkspaceID: workspaceID, ID: id,
 		})
 		if err != nil {
 			return err
@@ -467,10 +480,29 @@ func listTopics(ctx context.Context, q *store.Queries, workspaceID uuid.UUID) ([
 
 // topicError turns a missing task queue (foreign key) into ErrInvalid and
 // a name another topic has (a rename) into ErrTopicExists.
+// topicProject is the project of the topic's tasks: the queue's when it
+// has one, which must then agree with the one given.
+func topicProject(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, in TopicInput) (*uuid.UUID, error) {
+	if in.TaskQueueID == nil {
+		return in.TaskProjectID, nil
+	}
+	project, err := q.TaskQueueProject(ctx, store.TaskQueueProjectParams{WorkspaceID: workspaceID, ID: *in.TaskQueueID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("%w: the task queue does not exist", ErrInvalid)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if in.TaskProjectID != nil && *in.TaskProjectID != project {
+		return nil, fmt.Errorf("%w: the task queue is of another project", ErrInvalid)
+	}
+	return &project, nil
+}
+
 func topicError(err error, what string) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-		return fmt.Errorf("%w: the task queue does not exist", ErrInvalid)
+		return fmt.Errorf("%w: the task queue or project does not exist", ErrInvalid)
 	}
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrTopicExists
@@ -484,6 +516,6 @@ func topicFrom(t store.Topic, members []uuid.UUID) Topic {
 	}
 	return Topic{
 		ID: t.ID, Name: t.Name, Color: t.Color, Position: int(t.Position), Priority: int(t.Priority),
-		TaskQueueID: t.TaskQueueID, MemberIDs: members, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
+		TaskQueueID: t.TaskQueueID, TaskProjectID: t.TaskProjectID, MemberIDs: members, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 	}
 }

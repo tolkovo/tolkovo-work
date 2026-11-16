@@ -34,13 +34,20 @@ func (s *Service) Link(ctx context.Context, workspaceID, actorID, taskID, conver
 		if err != nil {
 			return err
 		}
-		if err := s.link(ctx, tx, q, row, conversationID, &actorID, conversations.EventTaskLinked); err != nil {
+		ref, err := taskRef(ctx, q, row)
+		if err != nil {
+			return err
+		}
+		if err := s.link(ctx, tx, q, row, ref, conversationID, &actorID, conversations.EventTaskLinked); err != nil {
 			return err
 		}
 		if err := changed(ctx, tx, row, &actorID, false); err != nil {
 			return err
 		}
 		out = taskFrom(row)
+		if err := fillRef(ctx, q, workspaceID, &out); err != nil {
+			return err
+		}
 		out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
 		if err != nil {
 			return err
@@ -78,8 +85,9 @@ func (s *Service) Unlink(ctx context.Context, workspaceID, actorID, taskID, conv
 }
 
 // link stores the link and records it in the conversation (typ is
-// EventTaskCreated or EventTaskLinked); actor is nil for the AI bot.
-func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row store.Task, conversationID uuid.UUID, actor *uuid.UUID, typ string) error {
+// EventTaskCreated or EventTaskLinked) with the task's ref; actor is nil
+// for the AI bot.
+func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row store.Task, ref string, conversationID uuid.UUID, actor *uuid.UUID, typ string) error {
 	n, err := q.LinkConversation(ctx, store.LinkConversationParams{
 		WorkspaceID: row.WorkspaceID, TaskID: row.ID, ConversationID: conversationID, CreatedBy: actor, CreatedAt: s.now(),
 	})
@@ -100,7 +108,7 @@ func (s *Service) link(ctx context.Context, tx pgx.Tx, q *store.Queries, row sto
 		return err
 	}
 	if err := s.opts.Conversations.RecordTask(ctx, tx, row.WorkspaceID, conversationID, conversations.TaskNote{
-		Type: typ, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number}, ActorID: actor, AwaitingFix: open,
+		Type: typ, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number, Ref: ref}, ActorID: actor, AwaitingFix: open,
 	}); err != nil {
 		return err
 	}
@@ -127,8 +135,12 @@ func (s *Service) unlink(ctx context.Context, tx pgx.Tx, q *store.Queries, row s
 	if err != nil {
 		return err
 	}
+	ref, err := taskRef(ctx, q, row)
+	if err != nil {
+		return err
+	}
 	if err := s.opts.Conversations.RecordTask(ctx, tx, row.WorkspaceID, conversationID, conversations.TaskNote{
-		Type: conversations.EventTaskUnlinked, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number},
+		Type: conversations.EventTaskUnlinked, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number, Ref: ref},
 		ActorID: &actorID, AwaitingFix: open, Key: act.String(),
 	}); err != nil {
 		return err
@@ -136,13 +148,16 @@ func (s *Service) unlink(ctx context.Context, tx pgx.Tx, q *store.Queries, row s
 	return conversationChanged(ctx, tx, row.WorkspaceID, conversationID)
 }
 
-// IsLinked reports whether a task, open or closed, is linked to the
-// conversation: the programmer sees only such conversations (ADR-0020).
-func (s *Service) IsLinked(ctx context.Context, workspaceID, conversationID uuid.UUID) (bool, error) {
+// IsLinked reports whether a task the viewer sees, open or closed, is
+// linked to the conversation: the programmer sees only such conversations
+// (ADR-0020, ADR-0022).
+func (s *Service) IsLinked(ctx context.Context, workspaceID uuid.UUID, v Viewer, conversationID uuid.UUID) (bool, error) {
 	var ok bool
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		var err error
-		ok, err = store.New(tx).IsLinked(ctx, store.IsLinkedParams{WorkspaceID: workspaceID, ConversationID: conversationID})
+		ok, err = store.New(tx).IsLinked(ctx, store.IsLinkedParams{
+			WorkspaceID: workspaceID, ConversationID: conversationID, Viewer: v.UserID, SeeAll: v.All,
+		})
 		return err
 	})
 	if err != nil {
@@ -160,7 +175,9 @@ func (s *Service) HasOpenTask(ctx context.Context, tx pgx.Tx, workspaceID, conve
 // ConversationTasks are the tasks of a conversation, what the conversation
 // shows of the section and the reply to send about a done task.
 type ConversationTasks struct {
+	// Items are the tasks the viewer sees; Hidden counts the others.
 	Items    []Task
+	Hidden   int
 	Settings Settings
 	// ReplyDraft is the reply about the task done most recently, until an
 	// operator writes to the customer after it; nil when there is none.
@@ -171,29 +188,42 @@ type ConversationTasks struct {
 type ReplyDraft struct {
 	TaskID uuid.UUID
 	Number int64
+	Ref    string
 	Text   string
 }
 
-// ConversationTasks lists the tasks of a conversation, oldest link first.
-// The caller has checked the conversation is visible; locale is the
-// workspace language, the reply's when the contact's is unknown.
-func (s *Service) ConversationTasks(ctx context.Context, workspaceID, conversationID uuid.UUID, locale string) (ConversationTasks, error) {
+// ConversationTasks lists the tasks of a conversation the viewer sees,
+// oldest link first, and counts the others. The caller has checked the
+// conversation is visible; locale is the workspace language, the reply's
+// when the contact's is unknown. The reply is about any done task: the
+// customer is told of the fix whoever sees the task.
+func (s *Service) ConversationTasks(ctx context.Context, workspaceID uuid.UUID, v Viewer, conversationID uuid.UUID, locale string) (ConversationTasks, error) {
 	out := ConversationTasks{Items: []Task{}}
 	var done *store.Task
+	var doneRef string
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		var err error
 		if out.Settings, err = settingsIn(ctx, q, workspaceID); err != nil {
 			return err
 		}
-		rows, err := q.ConversationTasks(ctx, store.ConversationTasksParams{WorkspaceID: workspaceID, ConversationID: conversationID})
+		rows, err := q.ConversationTasks(ctx, store.ConversationTasksParams{
+			WorkspaceID: workspaceID, ConversationID: conversationID, Viewer: v.UserID, SeeAll: v.All,
+		})
 		if err != nil {
 			return err
 		}
 		for _, r := range rows {
-			out.Items = append(out.Items, taskFrom(r))
+			if !r.Visible {
+				out.Hidden++
+				continue
+			}
+			out.Items = append(out.Items, taskFrom(r.Task))
 		}
 		if err := fillTags(ctx, q, workspaceID, out.Items); err != nil {
+			return err
+		}
+		if err := fillRefs(ctx, q, workspaceID, out.Items); err != nil {
 			return err
 		}
 		got, err := q.DoneTask(ctx, store.DoneTaskParams{WorkspaceID: workspaceID, ConversationID: conversationID})
@@ -201,13 +231,14 @@ func (s *Service) ConversationTasks(ctx context.Context, workspaceID, conversati
 			return err
 		}
 		done = &got[0]
-		return nil
+		doneRef, err = taskRef(ctx, q, *done)
+		return err
 	})
 	if err != nil {
 		return ConversationTasks{}, dbError(err, "conversation tasks")
 	}
 	if done != nil && s.opts.Conversations != nil {
-		if out.ReplyDraft, err = s.replyDraft(ctx, workspaceID, conversationID, *done, out.Settings, locale); err != nil {
+		if out.ReplyDraft, err = s.replyDraft(ctx, workspaceID, conversationID, *done, doneRef, out.Settings, locale); err != nil {
 			return ConversationTasks{}, dbError(err, "draft reply")
 		}
 	}
@@ -218,7 +249,7 @@ func (s *Service) ConversationTasks(ctx context.Context, workspaceID, conversati
 // returns nil when an operator already wrote to the customer after the
 // task was done.
 func (s *Service) replyDraft(
-	ctx context.Context, workspaceID, conversationID uuid.UUID, done store.Task, set Settings, locale string,
+	ctx context.Context, workspaceID, conversationID uuid.UUID, done store.Task, ref string, set Settings, locale string,
 ) (*ReplyDraft, error) {
 	src, err := s.opts.Conversations.ReplySource(ctx, workspaceID, conversationID)
 	if err != nil {
@@ -234,8 +265,9 @@ func (s *Service) replyDraft(
 	if locale == "en" {
 		text = set.ReplyEN
 	}
-	text = render(text, map[string]string{"name": src.ContactName, "task_number": fmt.Sprint(done.Number)})
-	return &ReplyDraft{TaskID: done.ID, Number: done.Number, Text: truncate(text, MaxReply)}, nil
+	// The customer sees the full ref, CRM-41 (ADR-0022).
+	text = render(text, map[string]string{"name": src.ContactName, "task_number": ref})
+	return &ReplyDraft{TaskID: done.ID, Number: done.Number, Ref: ref, Text: truncate(text, MaxReply)}, nil
 }
 
 // Who wrote a draft (Draft.DraftedBy).

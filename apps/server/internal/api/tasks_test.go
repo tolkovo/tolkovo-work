@@ -144,26 +144,28 @@ func TestTasks_Lifecycle(t *testing.T) {
 		return out
 	}
 	for query, want := range map[string]string{
-		"":                               "[2 1]",
-		"?state=open":                    "[2]",
-		"?state=closed":                  "[1]",
-		"?assignee=me":                   "[2 1]", // #1 came back to its author for review
-		"?assignee=none":                 "[]",
-		"?queue=" + dev.Id.String():      "[1]",
-		"?queue=none":                    "[2]",
-		"?q=принтер":                     "[2]",
-		"?q=1":                           "[1]",
-		"?q=%25":                         "[]",
-		"?limit=1":                       "[2]",
-		"?limit=1&cursor=2":              "[1]",
-		"?status=done":                   "[1]",
-		"?assignee=" + opID.String():     "[2 1]",
-		"?state=open&assignee=none&q=xx": "[]",
+		"":                                     "[2 1]",
+		"?state=open":                          "[2]",
+		"?state=closed":                        "[1]",
+		"?assignee=me":                         "[2 1]", // #1 came back to its author for review
+		"?assignee=none":                       "[]",
+		"?queue=" + dev.Id.String():            "[1]",
+		"?queue=none":                          "[2]",
+		"?q=принтер":                           "[2]",
+		"?q=1":                                 "[1]",
+		"?q=%25":                               "[]",
+		"?limit=1":                             "[2]",
+		"?limit=1&cursor=" + other.Id.String(): "[1]",
+		"?status=done":                         "[1]",
+		"?assignee=" + opID.String():           "[2 1]",
+		"?state=open&assignee=none&q=xx":       "[]",
 	} {
 		if got := fmt.Sprint(list(query)); got != want {
 			t.Errorf("list %q: %s, want %s", query, got, want)
 		}
 	}
+	// The cursor is the id of the last task of a page; a number is not one.
+	wantProblem(t, op.do(http.MethodGet, "/api/v1/tasks?cursor=2", nil), http.StatusBadRequest, "invalid_request")
 	if s := decode[oapi.TaskSummary](t, op.do(http.MethodGet, "/api/v1/tasks/summary", nil)); s.AssignedOpen != 1 {
 		t.Fatalf("summary: %+v", s)
 	}
@@ -432,7 +434,7 @@ func TestTasks_TelegramNotifications(t *testing.T) {
 	}
 	sent = e.bots.SnapshotSent()
 	msg := sent[len(sent)-1]
-	if msg.ChatID != 555 || !strings.Contains(msg.Text, "#1") || !strings.Contains(msg.Text, "Обновить сертификат") ||
+	if msg.ChatID != 555 || !strings.Contains(msg.Text, "TSK-1") || !strings.Contains(msg.Text, "Обновить сертификат") ||
 		!strings.Contains(msg.Text, panelURL+"/tasks/"+task.Id.String()) || strings.Contains(msg.Text, "секретная") || !msg.NoPreview {
 		t.Fatalf("message: %+v", msg)
 	}

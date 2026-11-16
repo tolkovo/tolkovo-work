@@ -108,24 +108,26 @@ WITH ranked AS (
            row_number() OVER (PARTITION BY t.status ORDER BY
                CASE WHEN t.closed_at IS NULL THEN CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END,
                CASE WHEN t.closed_at IS NULL THEN t.status_changed_at END,
-               CASE WHEN t.closed_at IS NULL THEN t.number END,
-               t.status_changed_at DESC, t.number DESC) AS pos
+               CASE WHEN t.closed_at IS NULL THEN t.id END,
+               t.status_changed_at DESC, t.id DESC) AS pos
     FROM tasks t
     WHERE t.workspace_id = $1
       AND (t.closed_at IS NULL OR (t.status_changed_at >= $3::timestamptz AND (t.status = 'done' OR $4::boolean)))
-      AND ($5::uuid IS NULL OR t.assignee_id = $5::uuid)
-      AND (NOT $6::boolean OR t.assignee_id IS NULL)
-      AND ($7::uuid IS NULL OR t.queue_id = $7::uuid)
-      AND (NOT $8::boolean OR t.queue_id IS NULL)
-      AND ($9::uuid IS NULL OR t.topic_id = $9::uuid)
-      AND (NOT $10::boolean OR t.topic_id IS NULL)
-      AND ($11::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $11::boolean)
-      AND ($12::uuid IS NULL OR EXISTS (
+      AND ($5::uuid IS NULL OR t.project_id = $5::uuid)
+      AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, $6::uuid, $7::boolean)
+      AND ($8::uuid IS NULL OR t.assignee_id = $8::uuid)
+      AND (NOT $9::boolean OR t.assignee_id IS NULL)
+      AND ($10::uuid IS NULL OR t.queue_id = $10::uuid)
+      AND (NOT $11::boolean OR t.queue_id IS NULL)
+      AND ($12::uuid IS NULL OR t.topic_id = $12::uuid)
+      AND (NOT $13::boolean OR t.topic_id IS NULL)
+      AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $14::boolean)
+      AND ($15::uuid IS NULL OR EXISTS (
            SELECT 1 FROM task_tag_links l
-           WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $12::uuid))
-      AND ($13::text = '' OR t.title ILIKE '%' || $13::text || '%' OR t.number::text = $13::text)
+           WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $15::uuid))
+      AND ($16::text = '' OR t.title ILIKE '%' || $16::text || '%' OR t.number::text = $16::text)
 )
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, r.column_count
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, t.project_id, r.column_count
 FROM ranked r
 JOIN tasks t ON t.workspace_id = $1 AND t.id = r.id
 WHERE r.pos <= $2::bigint
@@ -137,6 +139,9 @@ type BoardTasksParams struct {
 	PerColumn   int64
 	ClosedSince time.Time
 	Canceled    bool
+	ProjectID   *uuid.UUID
+	Viewer      uuid.UUID
+	SeeAll      bool
 	AssigneeID  *uuid.UUID
 	Unassigned  bool
 	QueueID     *uuid.UUID
@@ -164,6 +169,9 @@ func (q *Queries) BoardTasks(ctx context.Context, arg BoardTasksParams) ([]Board
 		arg.PerColumn,
 		arg.ClosedSince,
 		arg.Canceled,
+		arg.ProjectID,
+		arg.Viewer,
+		arg.SeeAll,
 		arg.AssigneeID,
 		arg.Unassigned,
 		arg.QueueID,
@@ -200,6 +208,7 @@ func (q *Queries) BoardTasks(ctx context.Context, arg BoardTasksParams) ([]Board
 			&i.Task.StatusChangedAt,
 			&i.Task.BlockedReason,
 			&i.Task.ReviewFrom,
+			&i.Task.ProjectID,
 			&i.ColumnCount,
 		); err != nil {
 			return nil, err
@@ -265,47 +274,64 @@ func (q *Queries) ConversationCounts(ctx context.Context, arg ConversationCounts
 
 const conversationTasks = `-- name: ConversationTasks :many
 
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, t.project_id,
+       task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, $1::uuid, $2::boolean)::boolean AS visible
+FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
-WHERE l.workspace_id = $1 AND l.conversation_id = $2
+WHERE l.workspace_id = $3 AND l.conversation_id = $4
 ORDER BY l.created_at, t.id
 `
 
 type ConversationTasksParams struct {
+	Viewer         uuid.UUID
+	SeeAll         bool
 	WorkspaceID    uuid.UUID
 	ConversationID uuid.UUID
 }
 
+type ConversationTasksRow struct {
+	Task    Task
+	Visible bool
+}
+
 // one order for every task: no deadlock between two tasks sharing conversations
-// The tasks of a conversation, oldest link first.
-func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksParams) ([]Task, error) {
-	rows, err := q.db.Query(ctx, conversationTasks, arg.WorkspaceID, arg.ConversationID)
+// The tasks of a conversation, oldest link first, and whether the viewer
+// sees each (task_visible): the others are only counted.
+func (q *Queries) ConversationTasks(ctx context.Context, arg ConversationTasksParams) ([]ConversationTasksRow, error) {
+	rows, err := q.db.Query(ctx, conversationTasks,
+		arg.Viewer,
+		arg.SeeAll,
+		arg.WorkspaceID,
+		arg.ConversationID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Task
+	var items []ConversationTasksRow
 	for rows.Next() {
-		var i Task
+		var i ConversationTasksRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.Number,
-			&i.QueueID,
-			&i.Title,
-			&i.Body,
-			&i.Status,
-			&i.Priority,
-			&i.AssigneeID,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ClosedAt,
-			&i.Version,
-			&i.TopicID,
-			&i.StatusChangedAt,
-			&i.BlockedReason,
-			&i.ReviewFrom,
+			&i.Task.ID,
+			&i.Task.WorkspaceID,
+			&i.Task.Number,
+			&i.Task.QueueID,
+			&i.Task.Title,
+			&i.Task.Body,
+			&i.Task.Status,
+			&i.Task.Priority,
+			&i.Task.AssigneeID,
+			&i.Task.CreatedBy,
+			&i.Task.CreatedAt,
+			&i.Task.UpdatedAt,
+			&i.Task.ClosedAt,
+			&i.Task.Version,
+			&i.Task.TopicID,
+			&i.Task.StatusChangedAt,
+			&i.Task.BlockedReason,
+			&i.Task.ReviewFrom,
+			&i.Task.ProjectID,
+			&i.Visible,
 		); err != nil {
 			return nil, err
 		}
@@ -353,11 +379,16 @@ func (q *Queries) CountOpenAssigned(ctx context.Context, arg CountOpenAssignedPa
 }
 
 const countQueues = `-- name: CountQueues :one
-SELECT count(*) FROM task_queues WHERE workspace_id = $1
+SELECT count(*) FROM task_queues WHERE workspace_id = $1 AND project_id = $2
 `
 
-func (q *Queries) CountQueues(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countQueues, workspaceID)
+type CountQueuesParams struct {
+	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
+}
+
+func (q *Queries) CountQueues(ctx context.Context, arg CountQueuesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countQueues, arg.WorkspaceID, arg.ProjectID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -498,7 +529,7 @@ func (q *Queries) DetachTaskFile(ctx context.Context, arg DetachTaskFileParams) 
 }
 
 const doneTask = `-- name: DoneTask :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, t.project_id FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = $1 AND l.conversation_id = $2 AND t.status = 'done'
 ORDER BY t.closed_at DESC, t.id DESC
@@ -540,6 +571,7 @@ func (q *Queries) DoneTask(ctx context.Context, arg DoneTaskParams) ([]Task, err
 			&i.StatusChangedAt,
 			&i.BlockedReason,
 			&i.ReviewFrom,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -618,27 +650,32 @@ func (q *Queries) FlowStatusChanges(ctx context.Context, arg FlowStatusChangesPa
 }
 
 const flowTasks = `-- name: FlowTasks :many
-SELECT t.id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
+SELECT t.id, t.project_id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
        (t.blocked_reason IS NOT NULL)::boolean AS blocked
 FROM tasks t
 WHERE t.workspace_id = $1
   AND (t.closed_at IS NULL OR t.closed_at >= $2::timestamptz)
-  AND ($3::uuid IS NULL OR t.assignee_id = $3::uuid)
-  AND (NOT $4::boolean OR t.assignee_id IS NULL)
-  AND ($5::uuid IS NULL OR t.queue_id = $5::uuid)
-  AND (NOT $6::boolean OR t.queue_id IS NULL)
-  AND ($7::uuid IS NULL OR t.topic_id = $7::uuid)
-  AND (NOT $8::boolean OR t.topic_id IS NULL)
-  AND ($9::uuid IS NULL OR EXISTS (
+  AND ($3::uuid IS NULL OR t.project_id = $3::uuid)
+  AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, $4::uuid, $5::boolean)
+  AND ($6::uuid IS NULL OR t.assignee_id = $6::uuid)
+  AND (NOT $7::boolean OR t.assignee_id IS NULL)
+  AND ($8::uuid IS NULL OR t.queue_id = $8::uuid)
+  AND (NOT $9::boolean OR t.queue_id IS NULL)
+  AND ($10::uuid IS NULL OR t.topic_id = $10::uuid)
+  AND (NOT $11::boolean OR t.topic_id IS NULL)
+  AND ($12::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
-       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $9::uuid))
-ORDER BY t.number DESC
-LIMIT $10
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $12::uuid))
+ORDER BY t.id DESC
+LIMIT $13
 `
 
 type FlowTasksParams struct {
 	WorkspaceID uuid.UUID
 	Since       time.Time
+	ProjectID   *uuid.UUID
+	Viewer      uuid.UUID
+	SeeAll      bool
 	AssigneeID  *uuid.UUID
 	Unassigned  bool
 	QueueID     *uuid.UUID
@@ -651,6 +688,7 @@ type FlowTasksParams struct {
 
 type FlowTasksRow struct {
 	ID              uuid.UUID
+	ProjectID       uuid.UUID
 	Number          int64
 	Title           string
 	Status          string
@@ -661,12 +699,15 @@ type FlowTasksRow struct {
 }
 
 // The tasks the flow metrics read (ADR-0019, K3): open ones and those
-// closed since the period began, the latest numbers first, with the
-// filters of BoardTasks.
+// closed since the period began, the newest first, with the filters and
+// the visibility of BoardTasks.
 func (q *Queries) FlowTasks(ctx context.Context, arg FlowTasksParams) ([]FlowTasksRow, error) {
 	rows, err := q.db.Query(ctx, flowTasks,
 		arg.WorkspaceID,
 		arg.Since,
+		arg.ProjectID,
+		arg.Viewer,
+		arg.SeeAll,
 		arg.AssigneeID,
 		arg.Unassigned,
 		arg.QueueID,
@@ -685,6 +726,7 @@ func (q *Queries) FlowTasks(ctx context.Context, arg FlowTasksParams) ([]FlowTas
 		var i FlowTasksRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.Number,
 			&i.Title,
 			&i.Status,
@@ -704,7 +746,7 @@ func (q *Queries) FlowTasks(ctx context.Context, arg FlowTasksParams) ([]FlowTas
 }
 
 const getQueue = `-- name: GetQueue :one
-SELECT id, workspace_id, name, created_at FROM task_queues WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, name, created_at, project_id FROM task_queues WHERE workspace_id = $1 AND id = $2
 `
 
 type GetQueueParams struct {
@@ -720,6 +762,7 @@ func (q *Queries) GetQueue(ctx context.Context, arg GetQueueParams) (TaskQueue, 
 		&i.WorkspaceID,
 		&i.Name,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -743,7 +786,7 @@ func (q *Queries) GetSettings(ctx context.Context, workspaceID uuid.UUID) (TaskS
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from FROM tasks WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id FROM tasks WHERE workspace_id = $1 AND id = $2
 `
 
 type GetTaskParams struct {
@@ -773,6 +816,7 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) 
 		&i.StatusChangedAt,
 		&i.BlockedReason,
 		&i.ReviewFrom,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -806,7 +850,7 @@ func (q *Queries) GetTaskFile(ctx context.Context, arg GetTaskFileParams) (TaskF
 }
 
 const getTaskForUpdate = `-- name: GetTaskForUpdate :one
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id FROM tasks WHERE workspace_id = $1 AND id = $2 FOR UPDATE
 `
 
 type GetTaskForUpdateParams struct {
@@ -836,6 +880,7 @@ func (q *Queries) GetTaskForUpdate(ctx context.Context, arg GetTaskForUpdatePara
 		&i.StatusChangedAt,
 		&i.BlockedReason,
 		&i.ReviewFrom,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -916,14 +961,15 @@ func (q *Queries) InsertColumnRule(ctx context.Context, arg InsertColumnRulePara
 }
 
 const insertQueue = `-- name: InsertQueue :one
-INSERT INTO task_queues (id, workspace_id, name, created_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id, workspace_id, name, created_at
+INSERT INTO task_queues (id, workspace_id, project_id, name, created_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, workspace_id, name, created_at, project_id
 `
 
 type InsertQueueParams struct {
 	ID          uuid.UUID
 	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
 	Name        string
 	CreatedAt   time.Time
 }
@@ -932,6 +978,7 @@ func (q *Queries) InsertQueue(ctx context.Context, arg InsertQueueParams) (TaskQ
 	row := q.db.QueryRow(ctx, insertQueue,
 		arg.ID,
 		arg.WorkspaceID,
+		arg.ProjectID,
 		arg.Name,
 		arg.CreatedAt,
 	)
@@ -941,19 +988,21 @@ func (q *Queries) InsertQueue(ctx context.Context, arg InsertQueueParams) (TaskQ
 		&i.WorkspaceID,
 		&i.Name,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :one
-INSERT INTO tasks (id, workspace_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, status_changed_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9, $10, $11, $11, $11)
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from
+INSERT INTO tasks (id, workspace_id, project_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, status_changed_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10, $11, $12, $12, $12)
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id
 `
 
 type InsertTaskParams struct {
 	ID          uuid.UUID
 	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
 	Number      int64
 	QueueID     *uuid.UUID
 	TopicID     *uuid.UUID
@@ -969,6 +1018,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 	row := q.db.QueryRow(ctx, insertTask,
 		arg.ID,
 		arg.WorkspaceID,
+		arg.ProjectID,
 		arg.Number,
 		arg.QueueID,
 		arg.TopicID,
@@ -999,6 +1049,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Task, e
 		&i.StatusChangedAt,
 		&i.BlockedReason,
 		&i.ReviewFrom,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -1088,20 +1139,30 @@ func (q *Queries) InsertTaskTag(ctx context.Context, arg InsertTaskTagParams) (T
 
 const isLinked = `-- name: IsLinked :one
 SELECT EXISTS (
-    SELECT 1 FROM task_conversations
-    WHERE workspace_id = $1 AND conversation_id = $2
+    SELECT 1 FROM task_conversations l
+    JOIN tasks t ON t.workspace_id = l.workspace_id AND t.id = l.task_id
+    WHERE l.workspace_id = $1 AND l.conversation_id = $2
+      AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, $3::uuid, $4::boolean)
 )
 `
 
 type IsLinkedParams struct {
 	WorkspaceID    uuid.UUID
 	ConversationID uuid.UUID
+	Viewer         uuid.UUID
+	SeeAll         bool
 }
 
-// Whether a task, open or closed, is linked to the conversation: the
-// programmer sees such conversations only (ADR-0020).
+// Whether a task the viewer sees, open or closed, is linked to the
+// conversation: the programmer sees such conversations only (ADR-0020,
+// ADR-0022).
 func (q *Queries) IsLinked(ctx context.Context, arg IsLinkedParams) (bool, error) {
-	row := q.db.QueryRow(ctx, isLinked, arg.WorkspaceID, arg.ConversationID)
+	row := q.db.QueryRow(ctx, isLinked,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.Viewer,
+		arg.SeeAll,
+	)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -1215,25 +1276,32 @@ func (q *Queries) ListColumnRules(ctx context.Context, workspaceID uuid.UUID) ([
 }
 
 const listQueues = `-- name: ListQueues :many
-SELECT q.id, q.name, q.created_at,
+SELECT q.id, q.project_id, q.name, q.created_at,
        coalesce((SELECT array_agg(m.user_id ORDER BY m.user_id) FROM task_queue_members m
                  WHERE m.workspace_id = q.workspace_id AND m.queue_id = q.id), '{}')::uuid[] AS member_ids,
        (SELECT count(*) FROM tasks t WHERE t.workspace_id = q.workspace_id AND t.queue_id = q.id AND t.closed_at IS NULL) AS open_tasks
 FROM task_queues q
 WHERE q.workspace_id = $1
+  AND ($2::uuid IS NULL OR q.project_id = $2::uuid)
 ORDER BY lower(q.name), q.id
 `
 
+type ListQueuesParams struct {
+	WorkspaceID uuid.UUID
+	ProjectID   *uuid.UUID
+}
+
 type ListQueuesRow struct {
 	ID        uuid.UUID
+	ProjectID uuid.UUID
 	Name      string
 	CreatedAt time.Time
 	MemberIds []uuid.UUID
 	OpenTasks int64
 }
 
-func (q *Queries) ListQueues(ctx context.Context, workspaceID uuid.UUID) ([]ListQueuesRow, error) {
-	rows, err := q.db.Query(ctx, listQueues, workspaceID)
+func (q *Queries) ListQueues(ctx context.Context, arg ListQueuesParams) ([]ListQueuesRow, error) {
+	rows, err := q.db.Query(ctx, listQueues, arg.WorkspaceID, arg.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -1243,6 +1311,7 @@ func (q *Queries) ListQueues(ctx context.Context, workspaceID uuid.UUID) ([]List
 		var i ListQueuesRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.Name,
 			&i.CreatedAt,
 			&i.MemberIds,
@@ -1295,53 +1364,62 @@ func (q *Queries) ListTaskTags(ctx context.Context, workspaceID uuid.UUID) ([]Ta
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, t.project_id FROM tasks t
 WHERE t.workspace_id = $1
-  AND ($2::bigint = 0 OR t.number < $2::bigint)
-  AND (NOT $3::boolean OR t.closed_at IS NULL)
-  AND (NOT $4::boolean OR t.closed_at IS NOT NULL)
-  AND ($5::uuid IS NULL OR t.assignee_id = $5::uuid)
-  AND (NOT $6::boolean OR t.assignee_id IS NULL)
-  AND ($7::uuid IS NULL OR t.queue_id = $7::uuid)
-  AND (NOT $8::boolean OR t.queue_id IS NULL)
-  AND ($9::uuid IS NULL OR t.topic_id = $9::uuid)
-  AND (NOT $10::boolean OR t.topic_id IS NULL)
-  AND ($11::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $11::boolean)
-  AND ($12::text IS NULL OR t.status = $12::text)
-  AND ($13::uuid IS NULL OR EXISTS (
+  AND ($2::uuid IS NULL OR t.id < $2::uuid)
+  AND ($3::uuid IS NULL OR t.project_id = $3::uuid)
+  AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, $4::uuid, $5::boolean)
+  AND (NOT $6::boolean OR t.closed_at IS NULL)
+  AND (NOT $7::boolean OR t.closed_at IS NOT NULL)
+  AND ($8::uuid IS NULL OR t.assignee_id = $8::uuid)
+  AND (NOT $9::boolean OR t.assignee_id IS NULL)
+  AND ($10::uuid IS NULL OR t.queue_id = $10::uuid)
+  AND (NOT $11::boolean OR t.queue_id IS NULL)
+  AND ($12::uuid IS NULL OR t.topic_id = $12::uuid)
+  AND (NOT $13::boolean OR t.topic_id IS NULL)
+  AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $14::boolean)
+  AND ($15::text IS NULL OR t.status = $15::text)
+  AND ($16::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
-       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $13::uuid))
-  AND ($14::text = '' OR t.title ILIKE '%' || $14::text || '%' OR t.number::text = $14::text)
-ORDER BY t.number DESC
-LIMIT $15
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $16::uuid))
+  AND ($17::text = '' OR t.title ILIKE '%' || $17::text || '%' OR t.number::text = $17::text)
+ORDER BY t.id DESC
+LIMIT $18
 `
 
 type ListTasksParams struct {
-	WorkspaceID  uuid.UUID
-	BeforeNumber int64
-	OpenOnly     bool
-	ClosedOnly   bool
-	AssigneeID   *uuid.UUID
-	Unassigned   bool
-	QueueID      *uuid.UUID
-	NoQueue      bool
-	TopicID      *uuid.UUID
-	NoTopic      bool
-	Blocked      pgtype.Bool
-	Status       *string
-	TagID        *uuid.UUID
-	Query        string
-	Lim          int32
+	WorkspaceID uuid.UUID
+	BeforeID    *uuid.UUID
+	ProjectID   *uuid.UUID
+	Viewer      uuid.UUID
+	SeeAll      bool
+	OpenOnly    bool
+	ClosedOnly  bool
+	AssigneeID  *uuid.UUID
+	Unassigned  bool
+	QueueID     *uuid.UUID
+	NoQueue     bool
+	TopicID     *uuid.UUID
+	NoTopic     bool
+	Blocked     pgtype.Bool
+	Status      *string
+	TagID       *uuid.UUID
+	Query       string
+	Lim         int32
 }
 
-// A page of tasks, newest first, before the number before_number (0: from
-// the newest). open_only and closed_only pick the state; assignee_id and
+// A page of the tasks the viewer sees (task_visible), newest first, before
+// the task before_id (NULL: from the newest); ids are UUIDv7, so they
+// order by creation, and numbers repeat across projects. open_only and closed_only pick the state; assignee_id and
 // queue_id and topic_id filter when set; unassigned, no_queue and no_topic
 // ask for NULL; tag_id keeps the tasks with that tag.
 func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listTasks,
 		arg.WorkspaceID,
-		arg.BeforeNumber,
+		arg.BeforeID,
+		arg.ProjectID,
+		arg.Viewer,
+		arg.SeeAll,
 		arg.OpenOnly,
 		arg.ClosedOnly,
 		arg.AssigneeID,
@@ -1382,6 +1460,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.StatusChangedAt,
 			&i.BlockedReason,
 			&i.ReviewFrom,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -1394,40 +1473,45 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 }
 
 const listTasksFlow = `-- name: ListTasksFlow :many
-SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from FROM tasks t
+SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, t.project_id FROM tasks t
 WHERE t.workspace_id = $1 AND t.status = $2
   AND ($3::timestamptz IS NULL OR t.closed_at IS NULL OR t.status_changed_at >= $3::timestamptz)
-  AND ($4::bigint = 0 OR CASE WHEN $5::boolean
-       THEN (t.status_changed_at, t.number) < ($6::timestamptz, $4::bigint)
-       ELSE (CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, t.status_changed_at, t.number)
-            > ($7::int, $6::timestamptz, $4::bigint) END)
-  AND ($8::uuid IS NULL OR t.assignee_id = $8::uuid)
-  AND (NOT $9::boolean OR t.assignee_id IS NULL)
-  AND ($10::uuid IS NULL OR t.queue_id = $10::uuid)
-  AND (NOT $11::boolean OR t.queue_id IS NULL)
-  AND ($12::uuid IS NULL OR t.topic_id = $12::uuid)
-  AND (NOT $13::boolean OR t.topic_id IS NULL)
-  AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $14::boolean)
-  AND ($15::uuid IS NULL OR EXISTS (
+  AND ($4::uuid IS NULL OR CASE WHEN $5::boolean
+       THEN (t.status_changed_at, t.id) < ($6::timestamptz, $4::uuid)
+       ELSE (CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, t.status_changed_at, t.id)
+            > ($7::int, $6::timestamptz, $4::uuid) END)
+  AND ($8::uuid IS NULL OR t.project_id = $8::uuid)
+  AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, $9::uuid, $10::boolean)
+  AND ($11::uuid IS NULL OR t.assignee_id = $11::uuid)
+  AND (NOT $12::boolean OR t.assignee_id IS NULL)
+  AND ($13::uuid IS NULL OR t.queue_id = $13::uuid)
+  AND (NOT $14::boolean OR t.queue_id IS NULL)
+  AND ($15::uuid IS NULL OR t.topic_id = $15::uuid)
+  AND (NOT $16::boolean OR t.topic_id IS NULL)
+  AND ($17::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $17::boolean)
+  AND ($18::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
-       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $15::uuid))
-  AND ($16::text = '' OR t.title ILIKE '%' || $16::text || '%' OR t.number::text = $16::text)
+       WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $18::uuid))
+  AND ($19::text = '' OR t.title ILIKE '%' || $19::text || '%' OR t.number::text = $19::text)
 ORDER BY
   CASE WHEN NOT $5::boolean THEN CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END,
   CASE WHEN NOT $5::boolean THEN t.status_changed_at END,
-  CASE WHEN NOT $5::boolean THEN t.number END,
-  t.status_changed_at DESC, t.number DESC
-LIMIT $17
+  CASE WHEN NOT $5::boolean THEN t.id END,
+  t.status_changed_at DESC, t.id DESC
+LIMIT $20
 `
 
 type ListTasksFlowParams struct {
 	WorkspaceID  uuid.UUID
 	Status       string
 	ClosedSince  *time.Time
-	AfterNumber  int64
+	AfterID      *uuid.UUID
 	ClosedOrder  bool
 	AfterChanged time.Time
 	AfterRank    int32
+	ProjectID    *uuid.UUID
+	Viewer       uuid.UUID
+	SeeAll       bool
 	AssigneeID   *uuid.UUID
 	Unassigned   bool
 	QueueID      *uuid.UUID
@@ -1441,7 +1525,7 @@ type ListTasksFlowParams struct {
 }
 
 // A page of one column of the board (BoardTasks order) after the task at
-// (after_rank, after_changed, after_number); after_number 0 starts from the
+// (after_rank, after_changed, after_id); after_id NULL starts from the
 // top. closed_order is the order of done and canceled, latest first;
 // closed_since, when set, keeps the tasks closed since then.
 func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([]Task, error) {
@@ -1449,10 +1533,13 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 		arg.WorkspaceID,
 		arg.Status,
 		arg.ClosedSince,
-		arg.AfterNumber,
+		arg.AfterID,
 		arg.ClosedOrder,
 		arg.AfterChanged,
 		arg.AfterRank,
+		arg.ProjectID,
+		arg.Viewer,
+		arg.SeeAll,
 		arg.AssigneeID,
 		arg.Unassigned,
 		arg.QueueID,
@@ -1490,6 +1577,7 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 			&i.StatusChangedAt,
 			&i.BlockedReason,
 			&i.ReviewFrom,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -1502,9 +1590,9 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 }
 
 const lockOpenTasksOf = `-- name: LockOpenTasksOf :many
-SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from FROM tasks
+SELECT id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id FROM tasks
 WHERE workspace_id = $1 AND assignee_id = $2 AND closed_at IS NULL
-ORDER BY number
+ORDER BY id
 FOR UPDATE
 `
 
@@ -1542,6 +1630,7 @@ func (q *Queries) LockOpenTasksOf(ctx context.Context, arg LockOpenTasksOfParams
 			&i.StatusChangedAt,
 			&i.BlockedReason,
 			&i.ReviewFrom,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -1638,20 +1727,6 @@ func (q *Queries) LooseTaskFilesToClean(ctx context.Context, arg LooseTaskFilesT
 	return items, nil
 }
 
-const nextTaskNumber = `-- name: NextTaskNumber :one
-INSERT INTO task_counters (workspace_id, last_number)
-VALUES ($1, 1)
-ON CONFLICT (workspace_id) DO UPDATE SET last_number = task_counters.last_number + 1
-RETURNING last_number
-`
-
-func (q *Queries) NextTaskNumber(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, nextTaskNumber, workspaceID)
-	var last_number int64
-	err := row.Scan(&last_number)
-	return last_number, err
-}
-
 const queueMemberIDs = `-- name: QueueMemberIDs :many
 SELECT user_id FROM task_queue_members
 WHERE workspace_id = $1 AND queue_id = $2
@@ -1735,7 +1810,7 @@ func (q *Queries) RemoveTaskTags(ctx context.Context, arg RemoveTaskTagsParams) 
 const renameQueue = `-- name: RenameQueue :one
 UPDATE task_queues SET name = $1
 WHERE workspace_id = $2 AND id = $3
-RETURNING id, workspace_id, name, created_at
+RETURNING id, workspace_id, name, created_at, project_id
 `
 
 type RenameQueueParams struct {
@@ -1752,6 +1827,7 @@ func (q *Queries) RenameQueue(ctx context.Context, arg RenameQueueParams) (TaskQ
 		&i.WorkspaceID,
 		&i.Name,
 		&i.CreatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -1760,7 +1836,7 @@ const setTaskAssignee = `-- name: SetTaskAssignee :one
 UPDATE tasks
 SET assignee_id = $1, updated_at = $2, version = version + 1
 WHERE workspace_id = $3 AND id = $4
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id
 `
 
 type SetTaskAssigneeParams struct {
@@ -1797,6 +1873,7 @@ func (q *Queries) SetTaskAssignee(ctx context.Context, arg SetTaskAssigneeParams
 		&i.StatusChangedAt,
 		&i.BlockedReason,
 		&i.ReviewFrom,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -1914,23 +1991,24 @@ func (q *Queries) TaskFiles(ctx context.Context, arg TaskFilesParams) ([]TaskFil
 }
 
 const taskIDByNumber = `-- name: TaskIDByNumber :one
-SELECT id FROM tasks WHERE workspace_id = $1 AND number = $2
+SELECT id FROM tasks WHERE workspace_id = $1 AND project_id = $2 AND number = $3
 `
 
 type TaskIDByNumberParams struct {
 	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
 	Number      int64
 }
 
 func (q *Queries) TaskIDByNumber(ctx context.Context, arg TaskIDByNumberParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, taskIDByNumber, arg.WorkspaceID, arg.Number)
+	row := q.db.QueryRow(ctx, taskIDByNumber, arg.WorkspaceID, arg.ProjectID, arg.Number)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
 const topicQueue = `-- name: TopicQueue :one
-SELECT id, task_queue_id FROM topics WHERE workspace_id = $1 AND id = $2
+SELECT id, task_project_id, task_queue_id FROM topics WHERE workspace_id = $1 AND id = $2
 `
 
 type TopicQueueParams struct {
@@ -1939,16 +2017,17 @@ type TopicQueueParams struct {
 }
 
 type TopicQueueRow struct {
-	ID          uuid.UUID
-	TaskQueueID *uuid.UUID
+	ID            uuid.UUID
+	TaskProjectID *uuid.UUID
+	TaskQueueID   *uuid.UUID
 }
 
-// A topic of the workspace and the queue of its tasks (topics belongs to
-// conversations; tasks only reads it). No row: no such topic.
+// A topic of the workspace and the project and queue of its tasks (topics
+// belongs to conversations; tasks only reads it). No row: no such topic.
 func (q *Queries) TopicQueue(ctx context.Context, arg TopicQueueParams) (TopicQueueRow, error) {
 	row := q.db.QueryRow(ctx, topicQueue, arg.WorkspaceID, arg.ID)
 	var i TopicQueueRow
-	err := row.Scan(&i.ID, &i.TaskQueueID)
+	err := row.Scan(&i.ID, &i.TaskProjectID, &i.TaskQueueID)
 	return i, err
 }
 
@@ -1979,7 +2058,7 @@ SET queue_id = $1, topic_id = $2, title = $3, body = $4, status = $5, priority =
     status_changed_at = CASE WHEN status = $5 THEN status_changed_at ELSE $9 END,
     version = version + 1
 WHERE workspace_id = $12 AND id = $13
-RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id
 `
 
 type UpdateTaskParams struct {
@@ -2036,6 +2115,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.StatusChangedAt,
 		&i.BlockedReason,
 		&i.ReviewFrom,
+		&i.ProjectID,
 	)
 	return i, err
 }

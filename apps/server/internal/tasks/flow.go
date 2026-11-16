@@ -30,6 +30,10 @@ const (
 
 // FlowFilter narrows the metrics like BoardFilter narrows the board.
 type FlowFilter struct {
+	// Viewer sees the tasks counted (task_visible).
+	Viewer Viewer
+	// ProjectID keeps the tasks of one project.
+	ProjectID  *uuid.UUID
 	AssigneeID *uuid.UUID
 	Unassigned bool
 	QueueID    *uuid.UUID
@@ -61,6 +65,7 @@ type Flow struct {
 type FlowCycle struct {
 	TaskID uuid.UUID
 	Number int64
+	Ref    string
 	Title  string
 	DoneAt time.Time
 	Days   float64
@@ -83,6 +88,7 @@ type FlowDay struct {
 type FlowAging struct {
 	TaskID  uuid.UUID
 	Number  int64
+	Ref     string
 	Title   string
 	Status  string
 	Days    float64
@@ -111,7 +117,8 @@ func (s *Service) Flow(ctx context.Context, workspaceID uuid.UUID, f FlowFilter)
 		now := s.now().In(loc)
 		since := midnight(now).AddDate(0, 0, -(f.Days - 1))
 		rows, err := q.FlowTasks(ctx, store.FlowTasksParams{
-			WorkspaceID: workspaceID, Since: since, AssigneeID: f.AssigneeID, Unassigned: f.Unassigned,
+			WorkspaceID: workspaceID, Since: since, ProjectID: f.ProjectID, Viewer: f.Viewer.UserID, SeeAll: f.Viewer.All,
+			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned,
 			QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic, TagID: f.TagID, Lim: flowTaskLimit + 1,
 		})
 		if err != nil {
@@ -133,6 +140,22 @@ func (s *Service) Flow(ctx context.Context, workspaceID uuid.UUID, f FlowFilter)
 		}
 		out = computeFlow(rows, history, since, now)
 		out.Truncated = truncated
+		keys, err := projectKeys(ctx, q, workspaceID)
+		if err != nil {
+			return err
+		}
+		project := make(map[uuid.UUID]uuid.UUID, len(rows))
+		for _, r := range rows {
+			project[r.ID] = r.ProjectID
+		}
+		for i := range out.Cycle {
+			c := &out.Cycle[i]
+			c.Ref = Ref(keys[project[c.TaskID]], c.Number)
+		}
+		for i := range out.Aging {
+			a := &out.Aging[i]
+			a.Ref = Ref(keys[project[a.TaskID]], a.Number)
+		}
 		return nil
 	})
 	if err != nil {

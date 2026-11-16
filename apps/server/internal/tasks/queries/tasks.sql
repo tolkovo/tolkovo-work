@@ -1,19 +1,13 @@
--- name: NextTaskNumber :one
-INSERT INTO task_counters (workspace_id, last_number)
-VALUES (@workspace_id, 1)
-ON CONFLICT (workspace_id) DO UPDATE SET last_number = task_counters.last_number + 1
-RETURNING last_number;
-
 -- name: InsertTask :one
-INSERT INTO tasks (id, workspace_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, status_changed_at)
-VALUES (@id, @workspace_id, @number, sqlc.narg(queue_id), sqlc.narg(topic_id), @title, @body, 'open', @priority, sqlc.narg(assignee_id), sqlc.narg(created_by), @created_at, @created_at, @created_at)
+INSERT INTO tasks (id, workspace_id, project_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, status_changed_at)
+VALUES (@id, @workspace_id, @project_id, @number, sqlc.narg(queue_id), sqlc.narg(topic_id), @title, @body, 'open', @priority, sqlc.narg(assignee_id), sqlc.narg(created_by), @created_at, @created_at, @created_at)
 RETURNING *;
 
 -- name: GetTask :one
 SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id;
 
 -- name: TaskIDByNumber :one
-SELECT id FROM tasks WHERE workspace_id = @workspace_id AND number = @number;
+SELECT id FROM tasks WHERE workspace_id = @workspace_id AND project_id = @project_id AND number = @number;
 
 -- name: GetTaskForUpdate :one
 SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id FOR UPDATE;
@@ -34,13 +28,16 @@ RETURNING *;
 DELETE FROM tasks WHERE workspace_id = @workspace_id AND id = @id;
 
 -- name: ListTasks :many
--- A page of tasks, newest first, before the number before_number (0: from
--- the newest). open_only and closed_only pick the state; assignee_id and
+-- A page of the tasks the viewer sees (task_visible), newest first, before
+-- the task before_id (NULL: from the newest); ids are UUIDv7, so they
+-- order by creation, and numbers repeat across projects. open_only and closed_only pick the state; assignee_id and
 -- queue_id and topic_id filter when set; unassigned, no_queue and no_topic
 -- ask for NULL; tag_id keeps the tasks with that tag.
 SELECT t.* FROM tasks t
 WHERE t.workspace_id = @workspace_id
-  AND (@before_number::bigint = 0 OR t.number < @before_number::bigint)
+  AND (sqlc.narg(before_id)::uuid IS NULL OR t.id < sqlc.narg(before_id)::uuid)
+  AND (sqlc.narg(project_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_id)::uuid)
+  AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, @viewer::uuid, @see_all::boolean)
   AND (NOT @open_only::boolean OR t.closed_at IS NULL)
   AND (NOT @closed_only::boolean OR t.closed_at IS NOT NULL)
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR t.assignee_id = sqlc.narg(assignee_id)::uuid)
@@ -55,7 +52,7 @@ WHERE t.workspace_id = @workspace_id
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
   AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text)
-ORDER BY t.number DESC
+ORDER BY t.id DESC
 LIMIT @lim;
 
 -- name: BoardTasks :many
@@ -70,11 +67,13 @@ WITH ranked AS (
            row_number() OVER (PARTITION BY t.status ORDER BY
                CASE WHEN t.closed_at IS NULL THEN CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END,
                CASE WHEN t.closed_at IS NULL THEN t.status_changed_at END,
-               CASE WHEN t.closed_at IS NULL THEN t.number END,
-               t.status_changed_at DESC, t.number DESC) AS pos
+               CASE WHEN t.closed_at IS NULL THEN t.id END,
+               t.status_changed_at DESC, t.id DESC) AS pos
     FROM tasks t
     WHERE t.workspace_id = @workspace_id
       AND (t.closed_at IS NULL OR (t.status_changed_at >= @closed_since::timestamptz AND (t.status = 'done' OR @canceled::boolean)))
+      AND (sqlc.narg(project_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_id)::uuid)
+      AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, @viewer::uuid, @see_all::boolean)
       AND (sqlc.narg(assignee_id)::uuid IS NULL OR t.assignee_id = sqlc.narg(assignee_id)::uuid)
       AND (NOT @unassigned::boolean OR t.assignee_id IS NULL)
       AND (sqlc.narg(queue_id)::uuid IS NULL OR t.queue_id = sqlc.narg(queue_id)::uuid)
@@ -95,16 +94,18 @@ ORDER BY t.status, r.pos;
 
 -- name: ListTasksFlow :many
 -- A page of one column of the board (BoardTasks order) after the task at
--- (after_rank, after_changed, after_number); after_number 0 starts from the
+-- (after_rank, after_changed, after_id); after_id NULL starts from the
 -- top. closed_order is the order of done and canceled, latest first;
 -- closed_since, when set, keeps the tasks closed since then.
 SELECT t.* FROM tasks t
 WHERE t.workspace_id = @workspace_id AND t.status = @status
   AND (sqlc.narg(closed_since)::timestamptz IS NULL OR t.closed_at IS NULL OR t.status_changed_at >= sqlc.narg(closed_since)::timestamptz)
-  AND (@after_number::bigint = 0 OR CASE WHEN @closed_order::boolean
-       THEN (t.status_changed_at, t.number) < (@after_changed::timestamptz, @after_number::bigint)
-       ELSE (CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, t.status_changed_at, t.number)
-            > (@after_rank::int, @after_changed::timestamptz, @after_number::bigint) END)
+  AND (sqlc.narg(after_id)::uuid IS NULL OR CASE WHEN @closed_order::boolean
+       THEN (t.status_changed_at, t.id) < (@after_changed::timestamptz, sqlc.narg(after_id)::uuid)
+       ELSE (CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, t.status_changed_at, t.id)
+            > (@after_rank::int, @after_changed::timestamptz, sqlc.narg(after_id)::uuid) END)
+  AND (sqlc.narg(project_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_id)::uuid)
+  AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, @viewer::uuid, @see_all::boolean)
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR t.assignee_id = sqlc.narg(assignee_id)::uuid)
   AND (NOT @unassigned::boolean OR t.assignee_id IS NULL)
   AND (sqlc.narg(queue_id)::uuid IS NULL OR t.queue_id = sqlc.narg(queue_id)::uuid)
@@ -119,8 +120,8 @@ WHERE t.workspace_id = @workspace_id AND t.status = @status
 ORDER BY
   CASE WHEN NOT @closed_order::boolean THEN CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END,
   CASE WHEN NOT @closed_order::boolean THEN t.status_changed_at END,
-  CASE WHEN NOT @closed_order::boolean THEN t.number END,
-  t.status_changed_at DESC, t.number DESC
+  CASE WHEN NOT @closed_order::boolean THEN t.id END,
+  t.status_changed_at DESC, t.id DESC
 LIMIT @lim;
 
 -- name: ConversationCounts :many
@@ -135,23 +136,24 @@ SELECT count(*) FROM tasks
 WHERE workspace_id = @workspace_id AND assignee_id = @assignee_id AND closed_at IS NULL;
 
 -- name: ListQueues :many
-SELECT q.id, q.name, q.created_at,
+SELECT q.id, q.project_id, q.name, q.created_at,
        coalesce((SELECT array_agg(m.user_id ORDER BY m.user_id) FROM task_queue_members m
                  WHERE m.workspace_id = q.workspace_id AND m.queue_id = q.id), '{}')::uuid[] AS member_ids,
        (SELECT count(*) FROM tasks t WHERE t.workspace_id = q.workspace_id AND t.queue_id = q.id AND t.closed_at IS NULL) AS open_tasks
 FROM task_queues q
 WHERE q.workspace_id = @workspace_id
+  AND (sqlc.narg(project_id)::uuid IS NULL OR q.project_id = sqlc.narg(project_id)::uuid)
 ORDER BY lower(q.name), q.id;
 
 -- name: GetQueue :one
 SELECT * FROM task_queues WHERE workspace_id = @workspace_id AND id = @id;
 
 -- name: CountQueues :one
-SELECT count(*) FROM task_queues WHERE workspace_id = @workspace_id;
+SELECT count(*) FROM task_queues WHERE workspace_id = @workspace_id AND project_id = @project_id;
 
 -- name: InsertQueue :one
-INSERT INTO task_queues (id, workspace_id, name, created_at)
-VALUES (@id, @workspace_id, @name, @created_at)
+INSERT INTO task_queues (id, workspace_id, project_id, name, created_at)
+VALUES (@id, @workspace_id, @project_id, @name, @created_at)
 RETURNING *;
 
 -- name: RenameQueue :one
@@ -204,8 +206,11 @@ WHERE workspace_id = @workspace_id AND task_id = @task_id
 ORDER BY conversation_id; -- one order for every task: no deadlock between two tasks sharing conversations
 
 -- name: ConversationTasks :many
--- The tasks of a conversation, oldest link first.
-SELECT t.* FROM tasks t
+-- The tasks of a conversation, oldest link first, and whether the viewer
+-- sees each (task_visible): the others are only counted.
+SELECT sqlc.embed(t),
+       task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, @viewer::uuid, @see_all::boolean)::boolean AS visible
+FROM tasks t
 JOIN task_conversations l ON l.workspace_id = t.workspace_id AND l.task_id = t.id
 WHERE l.workspace_id = @workspace_id AND l.conversation_id = @conversation_id
 ORDER BY l.created_at, t.id;
@@ -334,9 +339,9 @@ WHERE workspace_id = @workspace_id AND task_id = @task_id
 RETURNING tag_id;
 
 -- name: TopicQueue :one
--- A topic of the workspace and the queue of its tasks (topics belongs to
--- conversations; tasks only reads it). No row: no such topic.
-SELECT id, task_queue_id FROM topics WHERE workspace_id = @workspace_id AND id = @id;
+-- A topic of the workspace and the project and queue of its tasks (topics
+-- belongs to conversations; tasks only reads it). No row: no such topic.
+SELECT id, task_project_id, task_queue_id FROM topics WHERE workspace_id = @workspace_id AND id = @id;
 
 -- name: ConversationTopic :one
 -- The topic of a conversation a task is created from.
@@ -360,7 +365,7 @@ VALUES (@workspace_id, sqlc.narg(queue_id), @status, sqlc.narg(wip_limit), sqlc.
 -- The open tasks of a member who leaves the team (ADR-0020).
 SELECT * FROM tasks
 WHERE workspace_id = @workspace_id AND assignee_id = @user_id AND closed_at IS NULL
-ORDER BY number
+ORDER BY id
 FOR UPDATE;
 
 -- name: SetTaskAssignee :one
@@ -374,11 +379,14 @@ RETURNING *;
 DELETE FROM task_queue_members WHERE workspace_id = @workspace_id AND user_id = @user_id;
 
 -- name: IsLinked :one
--- Whether a task, open or closed, is linked to the conversation: the
--- programmer sees such conversations only (ADR-0020).
+-- Whether a task the viewer sees, open or closed, is linked to the
+-- conversation: the programmer sees such conversations only (ADR-0020,
+-- ADR-0022).
 SELECT EXISTS (
-    SELECT 1 FROM task_conversations
-    WHERE workspace_id = @workspace_id AND conversation_id = @conversation_id
+    SELECT 1 FROM task_conversations l
+    JOIN tasks t ON t.workspace_id = l.workspace_id AND t.id = l.task_id
+    WHERE l.workspace_id = @workspace_id AND l.conversation_id = @conversation_id
+      AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, @viewer::uuid, @see_all::boolean)
 );
 
 -- name: EditorRole :one
@@ -391,13 +399,15 @@ WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active;
 
 -- name: FlowTasks :many
 -- The tasks the flow metrics read (ADR-0019, K3): open ones and those
--- closed since the period began, the latest numbers first, with the
--- filters of BoardTasks.
-SELECT t.id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
+-- closed since the period began, the newest first, with the filters and
+-- the visibility of BoardTasks.
+SELECT t.id, t.project_id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
        (t.blocked_reason IS NOT NULL)::boolean AS blocked
 FROM tasks t
 WHERE t.workspace_id = @workspace_id
   AND (t.closed_at IS NULL OR t.closed_at >= @since::timestamptz)
+  AND (sqlc.narg(project_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_id)::uuid)
+  AND task_visible(t.workspace_id, t.project_id, t.created_by, t.assignee_id, @viewer::uuid, @see_all::boolean)
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR t.assignee_id = sqlc.narg(assignee_id)::uuid)
   AND (NOT @unassigned::boolean OR t.assignee_id IS NULL)
   AND (sqlc.narg(queue_id)::uuid IS NULL OR t.queue_id = sqlc.narg(queue_id)::uuid)
@@ -407,7 +417,7 @@ WHERE t.workspace_id = @workspace_id
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
-ORDER BY t.number DESC
+ORDER BY t.id DESC
 LIMIT @lim;
 
 -- name: FlowStatusChanges :many

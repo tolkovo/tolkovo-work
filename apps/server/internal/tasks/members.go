@@ -12,11 +12,14 @@ import (
 
 // HandOver gives the open tasks of a member who leaves the team to to, or
 // to nobody when to is nil, as changes by actorID, and takes the member out
-// of the queues (ADR-0020). It runs in the caller's tenant transaction tx;
+// of the queues and the projects (ADR-0020, ADR-0022). It runs in the caller's tenant transaction tx;
 // the caller checked that to may edit tasks.
 func (s *Service) HandOver(ctx context.Context, tx pgx.Tx, workspaceID, actorID, userID uuid.UUID, to *uuid.UUID) error {
 	q := store.New(tx)
 	if err := q.RemoveQueueMember(ctx, store.RemoveQueueMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
+		return fmt.Errorf("hand over tasks: %w", err)
+	}
+	if err := q.RemoveProjectMember(ctx, store.RemoveProjectMemberParams{WorkspaceID: workspaceID, UserID: userID}); err != nil {
 		return fmt.Errorf("hand over tasks: %w", err)
 	}
 	rows, err := q.LockOpenTasksOf(ctx, store.LockOpenTasksOfParams{WorkspaceID: workspaceID, UserID: &userID})

@@ -3665,7 +3665,10 @@ paths:
         - sessionCookie: []
         - accessToken: []
       summary: Tasks, newest first or in the order of a column of the board
-      description: Requires `tasks.view`.
+      description: |
+        Requires `tasks.view`. Only the tasks the caller sees (ADR-0022): of the projects they
+        are a member of, of projects open to the team, their own (author or assignee); a role
+        with `tasks.manage` sees all.
       parameters:
         - name: state
           in: query
@@ -3674,6 +3677,7 @@ paths:
         - name: status
           in: query
           schema: { $ref: '#/components/schemas/TaskStatus' }
+        - $ref: '#/components/parameters/TaskProjectFilter'
         - name: assignee
           in: query
           description: '`me`, `none` or a member id.'
@@ -3695,7 +3699,7 @@ paths:
             x-go-type-import: { path: github.com/google/uuid }
         - name: q
           in: query
-          description: Part of the title, or the task number.
+          description: Part of the title, or the task number in its project.
           schema: { type: string, maxLength: 100 }
         - name: blocked
           in: query
@@ -3727,7 +3731,10 @@ paths:
       operationId: createTask
       summary: Create a task
       description: |
-        Requires `tasks.edit`. With `conversation_id` (a visible conversation) the task is
+        Requires `tasks.edit`. The task goes to `project_id` (a project the caller sees and that
+        is not archived), else to the topic's project, else to the default one, and takes the next
+        number there. A queue of another project and an assignee who is not a member of the
+        project are `400`/`422`. With `conversation_id` (a visible conversation) the task is
         linked to it: a line appears in its feed and the conversation waits for the fix
         (`awaiting_fix`; an assigned one goes to `pending`) until the task is closed. The
         assignee, or the queue's members when there is none, are notified (in Telegram when
@@ -3768,6 +3775,7 @@ paths:
         are those of `GET /tasks`; `done` holds the tasks closed in the last `closed_days` days.
         A task moves between columns by `PUT /tasks/{id}` with its new status.
       parameters:
+        - $ref: '#/components/parameters/TaskProjectFilter'
         - name: assignee
           in: query
           description: '`me`, `none` or a member id.'
@@ -3789,7 +3797,7 @@ paths:
             x-go-type-import: { path: github.com/google/uuid }
         - name: q
           in: query
-          description: Part of the title, or the task number.
+          description: Part of the title, or the task number in its project.
           schema: { type: string, maxLength: 100 }
         - name: blocked
           in: query
@@ -3830,6 +3838,7 @@ paths:
           in: query
           description: How many days back the period reaches, 7–90; 30 when absent.
           schema: { type: integer, minimum: 7, maximum: 90 }
+        - $ref: '#/components/parameters/TaskProjectFilter'
         - name: assignee
           in: query
           description: '`me`, `none` or a member id.'
@@ -4238,6 +4247,98 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /task-projects:
+    get:
+      tags: [tasks]
+      operationId: listTaskProjects
+      security:
+        - sessionCookie: []
+        - accessToken: []
+      summary: Projects of tasks the caller sees (ADR-0022)
+      description: |
+        Requires `tasks.view`. Active projects first, the default one at the top, then the
+        archived. A member gets the projects they are a member of and those open to the team
+        (`member` true: the left rail shows these); a role with `tasks.manage` gets every project,
+        the others with `member` false (the header switcher shows them apart).
+      responses:
+        '200':
+          description: The projects.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskProjectList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [tasks]
+      operationId: createTaskProject
+      summary: Add a project
+      description: |
+        Up to 50 projects. Requires `tasks.manage`, and a session: tokens do not manage projects.
+        The name and the key are unique in the workspace (`409 project_exists`).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskProjectInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskProject' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
+  /task-projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [tasks]
+      operationId: updateTaskProject
+      summary: Change a project and replace its members
+      description: |
+        Requires `tasks.manage`. The key does not change yet (send the current one or leave it
+        out). The default project is never archived. An archived project takes no new tasks.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskProjectInput' }
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskProject' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+    delete:
+      tags: [tasks]
+      operationId: deleteTaskProject
+      summary: Delete a project without tasks
+      description: Requires `tasks.manage`. Its queues go with it. A project with tasks is `409 project_not_empty`; archive it instead.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204': { description: Deleted. }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
   /task-queues:
     get:
       tags: [tasks]
@@ -4247,6 +4348,8 @@ paths:
         - accessToken: []
       summary: Queues of tasks, by name
       description: Requires `tasks.view`.
+      parameters:
+        - $ref: '#/components/parameters/TaskProjectFilter'
       responses:
         '200':
           description: The queues.
@@ -4259,7 +4362,7 @@ paths:
       tags: [tasks]
       operationId: createTaskQueue
       summary: Add a queue
-      description: Up to 50 queues. Requires `tasks.manage`.
+      description: Up to 50 queues in a project. Requires `tasks.manage`.
       security:
         - sessionCookie: []
           csrfHeader: []
@@ -4584,6 +4687,14 @@ components:
       in: query
       description: Page size, 1–100; 50 when absent.
       schema: { type: integer, minimum: 1, maximum: 100 }
+    TaskProjectFilter:
+      name: project
+      in: query
+      description: A project of tasks (`GET /task-projects`); only its tasks.
+      schema:
+        type: string
+        x-go-type: uuid.UUID
+        x-go-type-import: { path: github.com/google/uuid }
     ClosedDays:
       name: closed_days
       in: query
@@ -4852,8 +4963,9 @@ components:
     TaskConflict:
       description: |
         `task_conflict` (the task changed since `version`), `task_linked` (the conversation
-        is linked to this task already), `queue_exists` (a queue has this name) or
-        `tasks_disabled` (the section is turned off).
+        is linked to this task already), `queue_exists` (a queue has this name),
+        `project_exists` (a project has this name or key), `project_not_empty` (the project has
+        tasks; archive it) or `tasks_disabled` (the section is turned off).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -5936,13 +6048,20 @@ components:
 
     Task:
       type: object
-      required: [id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, status_changed_at, blocked_reason, version, conversation_ids, conversation_count, files, tag_ids]
+      required: [id, project_id, project_key, number, ref, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, status_changed_at, blocked_reason, version, conversation_ids, conversation_count, files, tag_ids]
       properties:
         id:
           type: string
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
-        number: { type: integer, format: int64 }
+        project_id:
+          type: string
+          description: The project (`GET /task-projects`, ADR-0022).
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        project_key: { type: string, description: 'The key of the project, as `CRM`.' }
+        number: { type: integer, format: int64, description: The number in the project. }
+        ref: { type: string, description: 'How people call the task: `CRM-41`.' }
         queue_id:
           type: [string, 'null']
           x-go-type: uuid.UUID
@@ -6127,26 +6246,28 @@ components:
 
     TaskFlowCycle:
       type: object
-      required: [task_id, number, title, done_at, days]
+      required: [task_id, number, ref, title, done_at, days]
       properties:
         task_id:
           type: string
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         number: { type: integer, format: int64 }
+        ref: { type: string }
         title: { type: string }
         done_at: { type: string, format: date-time }
         days: { type: number, format: double, description: From the first move to in progress to done, in days. }
 
     TaskFlowAging:
       type: object
-      required: [task_id, number, title, status, days, blocked]
+      required: [task_id, number, ref, title, status, days, blocked]
       properties:
         task_id:
           type: string
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         number: { type: integer, format: int64 }
+        ref: { type: string }
         title: { type: string }
         status: { $ref: '#/components/schemas/TaskStatus' }
         days: { type: number, format: double, description: In the current status, in days. }
@@ -6222,9 +6343,14 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 256 }
         body: { type: string, maxLength: 20000 }
+        project_id:
+          type: [string, 'null']
+          description: Absent or `null` — the topic's project, or the default one.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
         queue_id:
           type: [string, 'null']
-          description: Absent or `null` with a topic that has a task queue — that queue.
+          description: A queue of the task's project. Absent or `null` with a topic that has a task queue in that project — that queue.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         topic_id:
@@ -6386,15 +6512,92 @@ components:
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
 
-    TaskQueue:
+    TaskProject:
       type: object
-      required: [id, name, member_ids, open_tasks]
+      required: [id, name, key, icon, color, access, is_default, position, member_ids, open_tasks, archived_at, member]
       properties:
         id:
           type: string
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         name: { type: string }
+        key: { type: string, description: 'Starts the refs of its tasks: `CRM-41`.' }
+        icon:
+          description: One of the panel's icons; `null` shows the letters of the key.
+          oneOf:
+            - $ref: '#/components/schemas/TaskProjectIcon'
+            - type: 'null'
+        color: { $ref: '#/components/schemas/TagColor' }
+        access: { $ref: '#/components/schemas/TaskProjectAccess' }
+        is_default:
+          type: boolean
+          description: The project of tasks from before projects, of bare numbers and of topics without a project.
+        position: { type: integer, format: int32 }
+        member_ids:
+          type: array
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+        open_tasks: { type: integer, format: int64 }
+        archived_at: { type: [string, 'null'], format: date-time }
+        member:
+          type: boolean
+          description: The caller works in it (a member, or the project is open to the team).
+
+    TaskProjectIcon:
+      type: string
+      enum: [chart, monitor, server, phone, cart, rocket, heart, globe]
+
+    TaskProjectAccess:
+      type: string
+      description: '`members` — its members see it; `team` — every member of the workspace.'
+      enum: [members, team]
+
+    TaskProjectList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskProject' }
+
+    TaskProjectInput:
+      type: object
+      additionalProperties: false
+      required: [name, member_ids]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        key: { type: string, pattern: '^[A-Za-z]{2,6}$', description: 'Required on create; 2–6 latin letters, stored upper case.' }
+        icon:
+          oneOf:
+            - $ref: '#/components/schemas/TaskProjectIcon'
+            - type: 'null'
+        color: { $ref: '#/components/schemas/TagColor' }
+        access: { $ref: '#/components/schemas/TaskProjectAccess' }
+        position: { type: integer, format: int32, minimum: 0, maximum: 10000 }
+        archived: { type: boolean }
+        member_ids:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+            x-go-type: uuid.UUID
+            x-go-type-import: { path: github.com/google/uuid }
+
+    TaskQueue:
+      type: object
+      required: [id, project_id, name, member_ids, open_tasks]
+      properties:
+        id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        project_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        name: { type: string, description: Unique in its project. }
         member_ids:
           type: array
           description: Members told about new tasks without an assignee in the queue.
@@ -6417,6 +6620,11 @@ components:
       additionalProperties: false
       required: [name, member_ids]
       properties:
+        project_id:
+          type: [string, 'null']
+          description: Taken on create (absent or `null` — the default project); a queue stays in its project.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
         name: { type: string, minLength: 1, maxLength: 60 }
         member_ids:
           type: array
@@ -6455,11 +6663,15 @@ components:
 
     ConversationTasks:
       type: object
-      required: [items, settings, reply_draft]
+      required: [items, hidden_count, settings, reply_draft]
       properties:
         items:
           type: array
+          description: The tasks the caller sees.
           items: { $ref: '#/components/schemas/Task' }
+        hidden_count:
+          type: integer
+          description: Linked tasks of projects the caller does not see (ADR-0022).
         settings:
           type: object
           required: [enabled, conversation_button]
@@ -6477,17 +6689,18 @@ components:
 
     TaskReplyDraft:
       type: object
-      required: [task_id, number, text]
+      required: [task_id, number, ref, text]
       properties:
         task_id:
           type: string
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         number: { type: integer, format: int64 }
+        ref: { type: string }
         text:
           type: string
           maxLength: 4000
-          description: The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+          description: The section's reply in the contact's language, `{name}` and `{task_number}` (the full ref, `CRM-41`) filled.
 
     TaskDraft:
       type: object
@@ -6722,7 +6935,7 @@ components:
 
     Topic:
       type: object
-      required: [id, name, color, position, priority, task_queue_id, member_ids]
+      required: [id, name, color, position, priority, task_queue_id, task_project_id, member_ids]
       properties:
         id:
           type: string
@@ -6741,6 +6954,11 @@ components:
         task_queue_id:
           type: [string, 'null']
           description: The queue of tasks created from its conversations; `null` — none.
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        task_project_id:
+          type: [string, 'null']
+          description: The project of tasks created from its conversations (ADR-0022); `null` — the default one. The queue is of this project.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         member_ids:
@@ -6773,6 +6991,11 @@ components:
         priority: { type: integer, minimum: 0, maximum: 3, default: 0 }
         task_queue_id:
           type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        task_project_id:
+          type: [string, 'null']
+          description: Absent or `null` with a queue — the queue's project; another one than the queue's is 400.
           x-go-type: uuid.UUID
           x-go-type-import: { path: github.com/google/uuid }
         member_ids:

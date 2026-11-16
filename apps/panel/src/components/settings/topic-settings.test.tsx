@@ -15,6 +15,7 @@ const topic = (id: string, name: string, patch: Partial<Topic> = {}): Topic => (
   position: 0,
   priority: 0,
   task_queue_id: null,
+  task_project_id: null,
   member_ids: [],
   ...patch,
 });
@@ -27,7 +28,7 @@ describe("topic settings", () => {
       session: admin,
       routes: {
         "GET /topics": () => json(200, { items: topics }),
-        "GET /task-queues": () => json(200, { items: [{ id: "q-crm", name: "CRM", member_ids: [], open_tasks: 0 }] }),
+        "GET /task-queues": () => json(200, { items: [{ id: "q-crm", project_id: "p1", name: "CRM", member_ids: [], open_tasks: 0 }] }),
         "POST /topics": async (r) => {
           const body = (await r.json()) as Topic;
           topics = [topic("t1", body.name, { ...body, position: 0 })];

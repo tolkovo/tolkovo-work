@@ -569,14 +569,18 @@ func SendTaskMessage(ctx context.Context, o TelegramWorkerOptions, a TaskMessage
 // taskMessage is the text of a message: the number, the title and the
 // link, nothing of the description or the customer.
 func taskMessage(locale, kind string, t tasks.Task, panel string) string {
-	head := fmt.Sprintf("Вам назначена задача #%d", t.Number)
+	ref := t.Ref
+	if ref == "" {
+		ref = fmt.Sprintf("#%d", t.Number)
+	}
+	head := "Вам назначена задача " + ref
 	if kind == tasks.NoticeQueued {
-		head = fmt.Sprintf("Новая задача в очереди: #%d", t.Number)
+		head = "Новая задача в очереди: " + ref
 	}
 	if locale == "en" {
-		head = fmt.Sprintf("Task #%d is assigned to you", t.Number)
+		head = "Task " + ref + " is assigned to you"
 		if kind == tasks.NoticeQueued {
-			head = fmt.Sprintf("New task in the queue: #%d", t.Number)
+			head = "New task in the queue: " + ref
 		}
 	}
 	text := head + "\n" + t.Title

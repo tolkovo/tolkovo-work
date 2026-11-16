@@ -16,7 +16,7 @@ const day = (n: number) => `2026-10-${String(n).padStart(2, "0")}`;
 const flow: TaskFlow = {
   since: day(16),
   until: day(22),
-  cycle: [{ task_id: "t1", number: 1, title: "Вылет при входе", done_at: "2026-10-20T10:00:00Z", days: 2 }],
+  cycle: [{ task_id: "t1", number: 1, ref: "TSK-1", title: "Вылет при входе", done_at: "2026-10-20T10:00:00Z", days: 2 }],
   cycle_p50: 2,
   cycle_p85: 2,
   throughput: [
@@ -24,7 +24,7 @@ const flow: TaskFlow = {
     { week: day(19), done: 1 },
   ],
   cfd: [16, 17, 18, 19, 20, 21, 22].map((n) => ({ day: day(n), open: 3, in_progress: n >= 19 ? 1 : 0, review: 0, verified: 0, done: n >= 20 ? 2 : 1 })),
-  aging: [{ task_id: "t4", number: 4, title: "Отчёт по сменам", status: "open", days: 21.1, blocked: true }],
+  aging: [{ task_id: "t4", number: 4, ref: "TSK-4", title: "Отчёт по сменам", status: "open", days: 21.1, blocked: true }],
   truncated: false,
 };
 

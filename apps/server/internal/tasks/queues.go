@@ -19,7 +19,9 @@ import (
 // Queue groups tasks: development, infrastructure and so on. Its members
 // hear about new tasks without an assignee in it.
 type Queue struct {
-	ID        uuid.UUID
+	ID uuid.UUID
+	// ProjectID is the project the queue belongs to (ADR-0022).
+	ProjectID uuid.UUID
 	Name      string
 	MemberIDs []uuid.UUID
 	OpenTasks int64
@@ -28,17 +30,20 @@ type Queue struct {
 
 // QueueInput is a queue to create or change.
 type QueueInput struct {
+	// ProjectID is taken on create: nil is the default project. A queue
+	// stays in its project.
+	ProjectID *uuid.UUID
 	Name      string
 	MemberIDs []uuid.UUID
 }
 
-// Queues lists the queues of the workspace by name.
-func (s *Service) Queues(ctx context.Context, workspaceID uuid.UUID) ([]Queue, error) {
+// Queues lists the queues of the workspace, or of one project, by name.
+func (s *Service) Queues(ctx context.Context, workspaceID uuid.UUID, projectID *uuid.UUID) ([]Queue, error) {
 	out := []Queue{}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		rows, err := store.New(tx).ListQueues(ctx, workspaceID)
+		rows, err := store.New(tx).ListQueues(ctx, store.ListQueuesParams{WorkspaceID: workspaceID, ProjectID: projectID})
 		for _, r := range rows {
-			out = append(out, Queue{ID: r.ID, Name: r.Name, MemberIDs: r.MemberIds, OpenTasks: r.OpenTasks, CreatedAt: r.CreatedAt})
+			out = append(out, Queue{ID: r.ID, ProjectID: r.ProjectID, Name: r.Name, MemberIDs: r.MemberIds, OpenTasks: r.OpenTasks, CreatedAt: r.CreatedAt})
 		}
 		return err
 	})
@@ -61,21 +66,25 @@ func (s *Service) CreateQueue(ctx context.Context, workspaceID uuid.UUID, in Que
 	var out Queue
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		n, err := q.CountQueues(ctx, workspaceID)
+		project, err := s.taskProject(ctx, q, workspaceID, nil, in.ProjectID)
+		if err != nil {
+			return err
+		}
+		n, err := q.CountQueues(ctx, store.CountQueuesParams{WorkspaceID: workspaceID, ProjectID: project.ID})
 		if err != nil {
 			return err
 		}
 		if n >= MaxQueues {
-			return fmt.Errorf("%w: at most %d queues", ErrInvalid, MaxQueues)
+			return fmt.Errorf("%w: at most %d queues in a project", ErrInvalid, MaxQueues)
 		}
-		row, err := q.InsertQueue(ctx, store.InsertQueueParams{ID: id, WorkspaceID: workspaceID, Name: name, CreatedAt: s.now()})
+		row, err := q.InsertQueue(ctx, store.InsertQueueParams{ID: id, WorkspaceID: workspaceID, ProjectID: project.ID, Name: name, CreatedAt: s.now()})
 		if err != nil {
 			return err
 		}
 		if err := setMembers(ctx, q, workspaceID, id, in.MemberIDs); err != nil {
 			return err
 		}
-		out = Queue{ID: row.ID, Name: row.Name, MemberIDs: sorted(in.MemberIDs), CreatedAt: row.CreatedAt}
+		out = Queue{ID: row.ID, ProjectID: row.ProjectID, Name: row.Name, MemberIDs: sorted(in.MemberIDs), CreatedAt: row.CreatedAt}
 		return nil
 	})
 	if err != nil {
@@ -103,7 +112,7 @@ func (s *Service) UpdateQueue(ctx context.Context, workspaceID, queueID uuid.UUI
 		if err := setMembers(ctx, q, workspaceID, queueID, in.MemberIDs); err != nil {
 			return err
 		}
-		out = Queue{ID: row.ID, Name: row.Name, MemberIDs: sorted(in.MemberIDs), CreatedAt: row.CreatedAt}
+		out = Queue{ID: row.ID, ProjectID: row.ProjectID, Name: row.Name, MemberIDs: sorted(in.MemberIDs), CreatedAt: row.CreatedAt}
 		return nil
 	})
 	if err != nil {

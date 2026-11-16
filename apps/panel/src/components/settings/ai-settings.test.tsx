@@ -189,7 +189,7 @@ describe("AI settings", () => {
         "GET /channels": () => json(200, { items: [channel], telegram_user_available: true, encryption_available: true }),
         "GET /topics": () =>
           json(200, {
-            items: [{ id: "t1", name: "Оплата", color: "gray", position: 0, priority: 0, task_queue_id: null, member_ids: [] }],
+            items: [{ id: "t1", name: "Оплата", color: "gray", position: 0, priority: 0, task_queue_id: null, task_project_id: null, member_ids: [] }],
           }),
         "PUT /ai/bot": async (r) => json(200, await r.json()),
       },

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,8 +18,9 @@ import (
 )
 
 // The tools of the MCP server (mcp.go). Each one is the REST operation of
-// the same permission, with arguments an agent can fill: tasks by number,
-// "me" for the caller, partial changes.
+// the same permission, with arguments an agent can fill: tasks by ref
+// (CRM-41) or bare number, projects by key, "me" for the caller, partial
+// changes. Every task a tool reaches passes the visibility of ADR-0022.
 
 type mcpTool struct {
 	Name        string         `json:"name"`
@@ -41,7 +41,10 @@ func (e *toolArgError) Error() string { return e.msg }
 func argErr(format string, a ...any) error { return &toolArgError{msg: fmt.Sprintf(format, a...)} }
 
 var (
-	numberProp   = map[string]any{"type": "integer", "minimum": 1, "description": "The task number, e.g. 42 for #42."}
+	numberProp = map[string]any{
+		"type": []string{"string", "integer"}, "description": "The task: its ref, e.g. CRM-41, or a bare number of the default project.",
+	}
+	projectProp  = map[string]any{"type": "string", "description": "A project from list_projects: its key (CRM) or id."}
 	statusProp   = map[string]any{"type": "string", "enum": tasks.Statuses}
 	priorityProp = map[string]any{"type": "string", "enum": []string{"low", "normal", "high", "urgent"}}
 	assigneeProp = map[string]any{"type": "string", "description": `"me", "none" or a member id.`}
@@ -66,13 +69,14 @@ var mcpTools = []mcpTool{
 		Name: "list_tasks", Title: "List tasks",
 		Description: "Tasks, newest first. By default the open tasks assigned to you.",
 		InputSchema: object(nil, map[string]any{
+			"project":  withDescription(projectProp, "Only the tasks of this project: its key (CRM) or id from list_projects."),
 			"state":    map[string]any{"type": "string", "enum": []string{"open", "closed", "all"}, "default": "open"},
 			"status":   statusProp,
 			"assignee": map[string]any{"type": "string", "description": `"me" (default), "none", "anyone" or a member id.`},
 			"queue":    queueProp,
 			"tag":      map[string]any{"type": "string", "maxLength": tasks.MaxTagName, "description": "Only tasks with this tag: its name from list_tags."},
 			"blocked":  map[string]any{"type": "boolean", "description": "true: only the blocked tasks; false: only the others."},
-			"query":    map[string]any{"type": "string", "maxLength": 100, "description": "Part of the title, or a task number."},
+			"query":    map[string]any{"type": "string", "maxLength": 100, "description": "Part of the title, or a task number in its project."},
 			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
 			"cursor":   map[string]any{"type": "string", "description": "next_cursor of the previous page."},
 		}),
@@ -87,9 +91,17 @@ var mcpTools = []mcpTool{
 		perm:        authz.TasksView, run: toolGetTask,
 	},
 	{
-		Name: "list_queues", Title: "List queues",
-		Description: "Queues of tasks with the number of open tasks in each.",
+		Name: "list_projects", Title: "List projects",
+		Description: "Projects of tasks you see: each has its own board and numbers, KEY-N. " +
+			"member: you work in it. The default project takes bare numbers.",
 		InputSchema: object(nil, map[string]any{}),
+		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		perm:        authz.TasksView, run: toolListProjects,
+	},
+	{
+		Name: "list_queues", Title: "List queues",
+		Description: "Queues of tasks with the number of open tasks in each; a queue belongs to a project.",
+		InputSchema: object(nil, map[string]any{"project": withDescription(projectProp, "Only the queues of this project.")}),
 		Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		perm:        authz.TasksView, run: toolListQueues,
 	},
@@ -120,8 +132,10 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name: "create_task", Title: "Create a task",
-		Description: "Creates a task. The assignee, or the queue's members when there is none, are notified.",
+		Description: "Creates a task in a project (the default one when none is given). " +
+			"The assignee must work in the project; the assignee, or the queue's members when there is none, are notified.",
 		InputSchema: object([]string{"title"}, map[string]any{
+			"project":  projectProp,
 			"title":    map[string]any{"type": "string", "minLength": 1, "maxLength": tasks.MaxTitle},
 			"body":     map[string]any{"type": "string", "maxLength": tasks.MaxBody, "description": "The description, Markdown."},
 			"priority": priorityProp,
@@ -263,6 +277,8 @@ func queueRef(v string) (*uuid.UUID, error) {
 
 // mcpTask is a task as the model reads it.
 type mcpTask struct {
+	Ref       string     `json:"ref"` // CRM-41
+	Project   *mcpQueue  `json:"project"`
 	Number    int64      `json:"number"`
 	ID        uuid.UUID  `json:"id"`
 	Title     string     `json:"title"`
@@ -325,15 +341,19 @@ type mcpActivity struct {
 
 // names resolves members, queues, topics and tags for the answers.
 type names struct {
-	p      authz.Principal
-	people map[uuid.UUID]string
-	queues map[uuid.UUID]string
-	topics map[uuid.UUID]string
-	tags   map[uuid.UUID]string
+	p        authz.Principal
+	people   map[uuid.UUID]string
+	queues   map[uuid.UUID]string
+	topics   map[uuid.UUID]string
+	tags     map[uuid.UUID]string
+	projects map[uuid.UUID]string
 }
 
 func (s *server) names(r *http.Request, p authz.Principal) (names, error) {
-	n := names{p: p, people: map[uuid.UUID]string{}, queues: map[uuid.UUID]string{}, topics: map[uuid.UUID]string{}, tags: map[uuid.UUID]string{}}
+	n := names{
+		p: p, people: map[uuid.UUID]string{}, queues: map[uuid.UUID]string{}, topics: map[uuid.UUID]string{}, tags: map[uuid.UUID]string{},
+		projects: map[uuid.UUID]string{},
+	}
 	members, err := s.tenancy.Members(r.Context(), p.WorkspaceID)
 	if err != nil {
 		return n, err
@@ -341,12 +361,19 @@ func (s *server) names(r *http.Request, p authz.Principal) (names, error) {
 	for _, m := range members {
 		n.people[m.UserID] = m.Name
 	}
-	queues, err := s.tasks.Queues(r.Context(), p.WorkspaceID)
+	queues, err := s.tasks.Queues(r.Context(), p.WorkspaceID, nil)
 	if err != nil {
 		return n, err
 	}
 	for _, q := range queues {
 		n.queues[q.ID] = q.Name
+	}
+	projects, err := s.tasks.Projects(r.Context(), p.WorkspaceID, tasks.ViewerOf(p))
+	if err != nil {
+		return n, err
+	}
+	for _, x := range projects {
+		n.projects[x.ID] = x.Name
 	}
 	topics, err := s.conversations.Topics(r.Context(), p.WorkspaceID)
 	if err != nil {
@@ -374,6 +401,7 @@ func (n names) person(id *uuid.UUID) *mcpPerson {
 
 func (n names) task(t tasks.Task, full bool) mcpTask {
 	out := mcpTask{
+		Ref: t.Ref, Project: &mcpQueue{ID: t.ProjectID, Name: n.projects[t.ProjectID]},
 		Number: t.Number, ID: t.ID, Title: t.Title, Status: t.Status, Priority: t.Priority,
 		Assignee: n.person(t.AssigneeID), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt,
 		LinkedConversations: max(len(t.ConversationIDs), t.ConversationCount), Tags: make([]string, 0, len(t.TagIDs)),
@@ -397,6 +425,7 @@ func (n names) task(t tasks.Task, full bool) mcpTask {
 
 func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
+		Project  string `json:"project"`
 		State    string `json:"state"`
 		Status   string `json:"status"`
 		Assignee string `json:"assignee"`
@@ -407,10 +436,14 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 		Limit    int    `json:"limit"`
 		Cursor   string `json:"cursor"`
 	}
-	if err := decodeArgs(raw, &in); err != nil {
+	var err error
+	if err = decodeArgs(raw, &in); err != nil {
 		return nil, err
 	}
-	f := tasks.Filter{Status: in.Status, Query: in.Query, Blocked: in.Blocked, Limit: 20}
+	f := tasks.Filter{Viewer: tasks.ViewerOf(p), Status: in.Status, Query: in.Query, Blocked: in.Blocked, Limit: 20}
+	if f.ProjectID, err = s.projectRef(r, p, in.Project); err != nil {
+		return nil, err
+	}
 	switch in.State {
 	case "", "open":
 		f.State = "open"
@@ -453,11 +486,11 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 		f.Limit = in.Limit
 	}
 	if in.Cursor != "" {
-		n, err := strconv.ParseInt(in.Cursor, 10, 64)
-		if err != nil || n <= 0 {
+		id, err := uuid.Parse(in.Cursor)
+		if err != nil {
 			return nil, argErr("cursor is not one of this list")
 		}
-		f.Before = n
+		f.Before = &id
 	}
 	page, err := s.tasks.List(r.Context(), p.WorkspaceID, f)
 	if err != nil {
@@ -474,8 +507,8 @@ func toolListTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMe
 	for _, t := range page.Items {
 		out.Tasks = append(out.Tasks, n.task(t, false))
 	}
-	if page.Next > 0 {
-		out.NextCursor = strconv.FormatInt(page.Next, 10)
+	if page.Next != nil {
+		out.NextCursor = page.Next.String()
 	}
 	return out, nil
 }
@@ -485,7 +518,7 @@ const maxToolActivity = 100
 
 func toolGetTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
-		Number int64 `json:"number"`
+		Number taskArg `json:"number"`
 	}
 	if err := decodeArgs(raw, &in); err != nil {
 		return nil, err
@@ -546,16 +579,69 @@ func nameOf(names map[uuid.UUID]string, id string) string {
 	return id
 }
 
-func toolListQueues(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
+func toolListProjects(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	if err := decodeArgs(raw, &struct{}{}); err != nil {
 		return nil, err
 	}
-	queues, err := s.tasks.Queues(r.Context(), p.WorkspaceID)
+	ps, err := s.tasks.Projects(r.Context(), p.WorkspaceID, tasks.ViewerOf(p))
+	if err != nil {
+		return nil, err
+	}
+	type project struct {
+		ID        uuid.UUID `json:"id"`
+		Key       string    `json:"key"`
+		Name      string    `json:"name"`
+		Default   bool      `json:"default,omitempty"`
+		Member    bool      `json:"member"`
+		Archived  bool      `json:"archived,omitempty"`
+		OpenTasks int64     `json:"open_tasks"`
+	}
+	out := struct {
+		Projects []project `json:"projects"`
+	}{Projects: make([]project, 0, len(ps))}
+	for _, x := range ps {
+		out.Projects = append(out.Projects, project{
+			ID: x.ID, Key: x.Key, Name: x.Name, Default: x.IsDefault, Member: x.Member, Archived: x.ArchivedAt != nil, OpenTasks: x.OpenTasks,
+		})
+	}
+	return out, nil
+}
+
+// projectRef finds a project the caller sees by key or id; "" is none.
+func (s *server) projectRef(r *http.Request, p authz.Principal, v string) (*uuid.UUID, error) {
+	if v == "" {
+		return nil, nil
+	}
+	ps, err := s.tasks.Projects(r.Context(), p.WorkspaceID, tasks.ViewerOf(p))
+	if err != nil {
+		return nil, err
+	}
+	for _, x := range ps {
+		if strings.EqualFold(x.Key, v) || x.ID.String() == strings.ToLower(v) {
+			return &x.ID, nil
+		}
+	}
+	return nil, argErr("project must be a key or an id from list_projects")
+}
+
+func toolListQueues(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
+	var in struct {
+		Project string `json:"project"`
+	}
+	if err := decodeArgs(raw, &in); err != nil {
+		return nil, err
+	}
+	project, err := s.projectRef(r, p, in.Project)
+	if err != nil {
+		return nil, err
+	}
+	queues, err := s.tasks.Queues(r.Context(), p.WorkspaceID, project)
 	if err != nil {
 		return nil, err
 	}
 	type queue struct {
 		ID        uuid.UUID `json:"id"`
+		ProjectID uuid.UUID `json:"project_id"`
 		Name      string    `json:"name"`
 		OpenTasks int64     `json:"open_tasks"`
 	}
@@ -563,13 +649,14 @@ func toolListQueues(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		Queues []queue `json:"queues"`
 	}{Queues: make([]queue, 0, len(queues))}
 	for _, q := range queues {
-		out.Queues = append(out.Queues, queue{ID: q.ID, Name: q.Name, OpenTasks: q.OpenTasks})
+		out.Queues = append(out.Queues, queue{ID: q.ID, ProjectID: q.ProjectID, Name: q.Name, OpenTasks: q.OpenTasks})
 	}
 	return out, nil
 }
 
 func toolCreateTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
+		Project  string   `json:"project"`
 		Title    string   `json:"title"`
 		Body     string   `json:"body"`
 		Priority string   `json:"priority"`
@@ -595,8 +682,12 @@ func toolCreateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 	if err := s.checkMember(r.Context(), p.WorkspaceID, assignee); err != nil {
 		return nil, err
 	}
-	t, err := s.tasks.Create(r.Context(), p.WorkspaceID, p.UserID, tasks.NewTask{
-		Title: in.Title, Body: in.Body, Priority: in.Priority, AssigneeID: assignee, QueueID: queue, TagIDs: tagIDs,
+	project, err := s.projectRef(r, p, in.Project)
+	if err != nil {
+		return nil, err
+	}
+	t, err := s.tasks.Create(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), tasks.NewTask{
+		ProjectID: project, Title: in.Title, Body: in.Body, Priority: in.Priority, AssigneeID: assignee, QueueID: queue, TagIDs: tagIDs,
 	})
 	if err != nil {
 		return nil, err
@@ -610,7 +701,7 @@ func toolCreateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 
 func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
-		Number   int64     `json:"number"`
+		Number   taskArg   `json:"number"`
 		Title    *string   `json:"title"`
 		Body     *string   `json:"body"`
 		Status   *string   `json:"status"`
@@ -694,8 +785,8 @@ func toolUpdateTask(s *server, r *http.Request, p authz.Principal, raw json.RawM
 
 func toolCommentTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
-		Number int64  `json:"number"`
-		Text   string `json:"text"`
+		Number taskArg `json:"number"`
+		Text   string  `json:"text"`
 	}
 	if err := decodeArgs(raw, &in); err != nil {
 		return nil, err
@@ -708,14 +799,32 @@ func toolCommentTask(s *server, r *http.Request, p authz.Principal, raw json.Raw
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"commented": true, "task": t.Number, "comment_id": a.ID, "at": a.CreatedAt}, nil
+	return map[string]any{"commented": true, "task": t.Ref, "comment_id": a.ID, "at": a.CreatedAt}, nil
 }
 
-func (s *server) taskByNumber(r *http.Request, p authz.Principal, number int64) (tasks.Task, error) {
-	if number <= 0 {
-		return tasks.Task{}, argErr("number must be a task number, e.g. 42")
+// taskArg is a task as an agent names it: "CRM-41", "#41", "41" or 41.
+type taskArg string
+
+func (a *taskArg) UnmarshalJSON(b []byte) error {
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err == nil {
+		*a = taskArg(n.String())
+		return nil
 	}
-	id, err := s.tasks.IDByNumber(r.Context(), p.WorkspaceID, number)
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	*a = taskArg(s)
+	return nil
+}
+
+// taskByNumber finds a task the caller sees by its ref or bare number.
+func (s *server) taskByNumber(r *http.Request, p authz.Principal, ref taskArg) (tasks.Task, error) {
+	if _, _, ok := tasks.ParseRef(string(ref)); !ok {
+		return tasks.Task{}, argErr("number must be a task ref, e.g. CRM-41, or a number, e.g. 42")
+	}
+	id, err := s.tasks.IDByRef(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), string(ref))
 	if err != nil {
 		return tasks.Task{}, err
 	}
@@ -743,14 +852,14 @@ func toolReadFile(s *server, r *http.Request, p authz.Principal, raw json.RawMes
 	if err != nil {
 		return nil, argErr("file_id must be the id of a file from get_task")
 	}
-	f, link, err := s.tasks.FileLink(r.Context(), p.WorkspaceID, id)
+	f, link, err := s.tasks.FileLink(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 	if err != nil {
 		return nil, err
 	}
 	about := fmt.Sprintf("%s (%s, %d bytes)", f.FileName, f.ContentType, f.Size)
 	switch {
 	case strings.HasPrefix(f.ContentType, "image/") && f.Size <= maxToolImage:
-		_, data, err := s.tasks.ReadFile(r.Context(), p.WorkspaceID, id, maxToolImage)
+		_, data, err := s.tasks.ReadFile(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id, maxToolImage)
 		if err != nil {
 			return nil, err
 		}
@@ -759,7 +868,7 @@ func toolReadFile(s *server, r *http.Request, p authz.Principal, raw json.RawMes
 			{"type": "image", "mimeType": f.ContentType, "data": base64.StdEncoding.EncodeToString(data)},
 		}, nil
 	case textual(f.ContentType) && f.Size <= maxToolText:
-		_, data, err := s.tasks.ReadFile(r.Context(), p.WorkspaceID, id, maxToolText)
+		_, data, err := s.tasks.ReadFile(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id, maxToolText)
 		if err != nil {
 			return nil, err
 		}
@@ -777,11 +886,11 @@ func textual(ct string) bool {
 
 func toolAttachFile(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
 	var in struct {
-		Number        int64  `json:"number"`
-		FileName      string `json:"file_name"`
-		ContentType   string `json:"content_type"`
-		ContentBase64 string `json:"content_base64"`
-		Text          string `json:"text"`
+		Number        taskArg `json:"number"`
+		FileName      string  `json:"file_name"`
+		ContentType   string  `json:"content_type"`
+		ContentBase64 string  `json:"content_base64"`
+		Text          string  `json:"text"`
 	}
 	if err := decodeArgs(raw, &in); err != nil {
 		return nil, err
@@ -806,12 +915,12 @@ func toolAttachFile(s *server, r *http.Request, p authz.Principal, raw json.RawM
 		if _, err := s.tasks.Comment(r.Context(), p.WorkspaceID, p.UserID, t.ID, in.Text, ids); err != nil {
 			return nil, err
 		}
-		return map[string]any{"attached": true, "task": t.Number, "file_id": f.ID, "to": "comment"}, nil
+		return map[string]any{"attached": true, "task": t.Ref, "file_id": f.ID, "to": "comment"}, nil
 	}
 	if _, err := s.tasks.AddFiles(r.Context(), p.WorkspaceID, p.UserID, t.ID, ids); err != nil {
 		return nil, err
 	}
-	return map[string]any{"attached": true, "task": t.Number, "file_id": f.ID, "to": "description"}, nil
+	return map[string]any{"attached": true, "task": t.Ref, "file_id": f.ID, "to": "description"}, nil
 }
 
 func withDescription(prop map[string]any, description string) map[string]any {

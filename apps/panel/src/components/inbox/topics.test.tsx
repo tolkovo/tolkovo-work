@@ -11,8 +11,8 @@ const CRM_ID = "0199a000-0000-7000-8000-00000000c0a1";
 const OF_ID = "0199a000-0000-7000-8000-00000000c0a2";
 
 const topics: Topic[] = [
-  { id: CRM_ID, name: "CRM", color: "blue", position: 0, priority: 2, task_queue_id: null, member_ids: [] },
-  { id: OF_ID, name: "OnlyFans", color: "violet", position: 1, priority: 0, task_queue_id: null, member_ids: [] },
+  { id: CRM_ID, name: "CRM", color: "blue", position: 0, priority: 2, task_queue_id: null, task_project_id: null, member_ids: [] },
+  { id: OF_ID, name: "OnlyFans", color: "violet", position: 1, priority: 0, task_queue_id: null, task_project_id: null, member_ids: [] },
 ];
 
 describe("topics in the inbox", () => {

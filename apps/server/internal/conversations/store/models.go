@@ -128,13 +128,14 @@ type Tag struct {
 }
 
 type Topic struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Name        string
-	Color       string
-	Position    int32
-	Priority    int16
-	TaskQueueID *uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	Name          string
+	Color         string
+	Position      int32
+	Priority      int16
+	TaskQueueID   *uuid.UUID
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	TaskProjectID *uuid.UUID
 }

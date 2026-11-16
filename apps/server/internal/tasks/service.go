@@ -7,8 +7,11 @@
 // and while it is open they wait for the fix (docs/02 §8). Done, it brings
 // them back to their operators with a reply to send.
 //
-// Every member sees and works on tasks; queues, the settings and deleting
-// tasks are for owners and admins (internal/platform/authz).
+// Tasks live in projects (ADR-0022): a board with numbers KEY-N, members
+// and queues. A member sees the tasks of their projects, of projects open
+// to the team, and their own; owners and admins see all. Projects, queues,
+// the settings and deleting tasks are for owners and admins
+// (internal/platform/authz).
 package tasks
 
 import (
@@ -218,10 +221,14 @@ func dbError(err error, what string) error {
 	var pg *pgconn.PgError
 	if errors.As(err, &pg) {
 		switch {
-		case pg.Code == "23505" && pg.ConstraintName == "task_queues_name_uq":
+		case pg.Code == "23505" && (pg.ConstraintName == "task_queues_project_name_uq" || pg.ConstraintName == "task_queues_name_uq"):
 			return ErrQueueTaken
 		case pg.Code == "23505" && pg.ConstraintName == "task_tags_name_uq":
 			return ErrTagTaken
+		case pg.Code == "23505" && strings.HasPrefix(pg.ConstraintName, "task_projects_"):
+			return ErrProjectTaken
+		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "project_fk"):
+			return fmt.Errorf("%w: unknown project", ErrInvalid)
 		case pg.Code == "23503" && strings.HasSuffix(pg.ConstraintName, "tag_id_fkey"): // a tag deleted meanwhile
 			return fmt.Errorf("%w: unknown tag", ErrInvalid)
 		case pg.Code == "23503" && strings.Contains(pg.ConstraintName, "assignee"),
@@ -241,7 +248,7 @@ func dbError(err error, what string) error {
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, conversations.ErrNotFound) {
 		return ErrNotFound
 	}
-	for _, d := range []error{ErrInvalid, ErrNotFound, ErrConflict, ErrQueueTaken, ErrTagTaken, ErrMember, ErrLinked, ErrDisabled} {
+	for _, d := range []error{ErrInvalid, ErrNotFound, ErrConflict, ErrQueueTaken, ErrTagTaken, ErrMember, ErrLinked, ErrDisabled, ErrProjectTaken, ErrProjectNotEmpty} {
 		if errors.Is(err, d) {
 			return err
 		}
