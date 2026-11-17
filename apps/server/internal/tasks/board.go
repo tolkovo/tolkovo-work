@@ -121,11 +121,15 @@ func (s *Service) Board(ctx context.Context, workspaceID uuid.UUID, f BoardFilte
 			r := ruleFor(rules, f.QueueID, cols[i].Status)
 			cols[i].WIPLimit, cols[i].AgeDays = r.WIPLimit, r.AgeDays
 		}
+		refID, err := s.refQuery(ctx, q, workspaceID, f.Query)
+		if err != nil {
+			return err
+		}
 		rows, err := q.BoardTasks(ctx, store.BoardTasksParams{
 			WorkspaceID: workspaceID, PerColumn: BoardColumnLimit, ClosedSince: s.now().AddDate(0, 0, -f.ClosedDays), Canceled: f.Canceled,
 			ProjectID: f.ProjectID, Viewer: f.Viewer.UserID, SeeAll: f.Viewer.All,
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic,
-			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)),
+			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), RefID: refID,
 		})
 		if err != nil {
 			return err
@@ -181,6 +185,11 @@ func (s *Service) listFlow(ctx context.Context, workspaceID uuid.UUID, f Filter,
 	out := Page{Items: []Task{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		refID, err := s.refQuery(ctx, q, workspaceID, f.Query)
+		if err != nil {
+			return err
+		}
+		p.RefID = refID
 		rows, err := q.ListTasksFlow(ctx, p)
 		if err != nil {
 			return err

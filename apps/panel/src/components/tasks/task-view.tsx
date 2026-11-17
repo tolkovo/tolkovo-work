@@ -31,6 +31,7 @@ import { TaskPriorityMark, TaskStatusBadge, WaitingPlate, control } from "./task
 import { BlockDialog, BlockedNote } from "./task-block";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
 import { DuplicateButton, TaskLinks } from "./task-links";
+import { MoveButton } from "./task-move";
 import { ProjectName, projectMembers, projectQueues } from "./task-project";
 import { TaskTagsEditor, useTaskTagMap } from "./task-tags";
 
@@ -228,6 +229,7 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
       )}
       {!isClosed(task.status) && !task.blocked_reason && <BlockButton task={task} disabled={disabled} onChange={onChange} />}
       {!isClosed(task.status) && <DuplicateButton task={task} disabled={disabled} />}
+      <MoveButton task={task} disabled={disabled} />
       <Dates task={task} />
       {canManage && <DeleteTask task={task} />}
     </aside>
@@ -521,6 +523,9 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
       text = t(a.kind === "link_added" ? "tasks.activity.linkAdded" : "tasks.activity.linkRemoved", values);
       break;
     }
+    case "moved":
+      text = t("tasks.activity.moved", { from: a.from ?? "", to: a.to ?? "" });
+      break;
     default:
       text = "";
   }

@@ -207,6 +207,24 @@ var mcpTools = []mcpTool{
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
 		perm:        authz.TasksEdit, run: toolLinkTasks,
 	},
+	{
+		Name: "move_task", Title: "Move a task to another project",
+		Description: "Moves the task to another project, where it takes the next number; its old ref keeps opening it. " +
+			"Conversations, links, comments, files, tags, status and priority stay. The queue must be of the new project " +
+			"(see list_queues) or none. The assignee stays if they work in the new project; otherwise give another one, none, " +
+			"or add_assignee to add them to the project. Returns the task under its new ref.",
+		InputSchema: object([]string{"number", "project"}, map[string]any{
+			"number":  numberProp,
+			"project": withDescription(projectProp, "The new project, as key or id from list_projects."),
+			"queue":   withDescription(queueProp, `The queue in the new project; absent or "none" for none.`),
+			"assignee": map[string]any{
+				"type": "string", "description": `"keep" (the default), "me", "none" or a member id.`,
+			},
+			"add_assignee": map[string]any{"type": "boolean", "description": "Add the assignee to the new project if they are not in it."},
+		}),
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
+		perm:        authz.TasksEdit, run: toolMoveTask,
+	},
 }
 
 func toolByName(name string) (mcpTool, bool) {
@@ -239,6 +257,9 @@ func (s *server) toolMessage(err error) (string, bool) {
 	case errors.Is(err, tasks.ErrDisabled):
 		return "the tasks section is turned off in this workspace", true
 	case errors.Is(err, tasks.ErrMember):
+		if after, ok := strings.CutPrefix(err.Error(), tasks.ErrMember.Error()+": "); ok {
+			return after, true
+		}
 		return "the assignee is not an active member of the workspace", true
 	case errors.Is(err, tasks.ErrTagTaken):
 		return "a tag with this name exists; use it", true
@@ -825,6 +846,54 @@ func toolCommentTask(s *server, r *http.Request, p authz.Principal, raw json.Raw
 		return nil, err
 	}
 	return map[string]any{"commented": true, "task": t.Ref, "comment_id": a.ID, "at": a.CreatedAt}, nil
+}
+
+func toolMoveTask(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
+	var in struct {
+		Number      taskArg `json:"number"`
+		Project     string  `json:"project"`
+		Queue       string  `json:"queue"`
+		Assignee    string  `json:"assignee"`
+		AddAssignee bool    `json:"add_assignee"`
+	}
+	if err := decodeArgs(raw, &in); err != nil {
+		return nil, err
+	}
+	t, err := s.taskByNumber(r, p, in.Number)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.projectRef(r, p, in.Project)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, argErr("project is needed")
+	}
+	queue, err := queueRef(in.Queue)
+	if err != nil {
+		return nil, err
+	}
+	assignee := t.AssigneeID
+	if in.Assignee != "keep" && in.Assignee != "" {
+		if assignee, err = person(p, in.Assignee); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.checkMember(r.Context(), p.WorkspaceID, assignee); err != nil {
+		return nil, err
+	}
+	moved, err := s.tasks.Move(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), t.ID, tasks.Move{
+		ProjectID: *project, QueueID: queue, AssigneeID: assignee, AddAssignee: in.AddAssignee, Version: t.Version,
+	})
+	if err != nil {
+		return nil, err
+	}
+	n, err := s.names(r, p)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"moved_from": t.Ref, "task": n.task(moved, true)}, nil
 }
 
 func toolLinkTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {

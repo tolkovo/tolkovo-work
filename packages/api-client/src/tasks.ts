@@ -50,6 +50,7 @@ export type TaskLinkKind = Schemas["TaskLinkKind"];
 export type TaskBlocker = Schemas["TaskBlocker"];
 export type TaskProject = Schemas["TaskProject"];
 export type TaskProjectInput = Schemas["TaskProjectInput"];
+export type TaskMoveInput = Schemas["TaskMoveInput"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
 /** A tag of tasks has the shape of a conversation's tag, in a list of its own (GET /task-tags). */
 export type TaskTag = Schemas["Tag"];
@@ -171,6 +172,12 @@ export async function removeTaskLink(client: ApiClient, id: string, otherId: str
 /** Cancels the task read at `version` as a duplicate of the original; its conversations move there. */
 export async function closeTaskAsDuplicate(client: ApiClient, id: string, original: string, version: number): Promise<Task> {
   const data = await unwrap(client.POST("/tasks/{id}/duplicate", { params: { path: { id } }, body: { original, version } }));
+  return parseAnswer(taskSchema, data);
+}
+
+/** Moves the task to another project under its next number; its old ref keeps opening it. */
+export async function moveTask(client: ApiClient, id: string, body: TaskMoveInput): Promise<Task> {
+  const data = await unwrap(client.POST("/tasks/{id}/move", { params: { path: { id } }, body }));
   return parseAnswer(taskSchema, data);
 }
 

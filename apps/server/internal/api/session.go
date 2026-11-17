@@ -82,6 +82,7 @@ var tokenOperations = map[string]bool{
 	"POST /api/v1/tasks/{id}/links":              true,
 	"DELETE /api/v1/tasks/{id}/links/{other_id}": true,
 	"POST /api/v1/tasks/{id}/duplicate":          true,
+	"POST /api/v1/tasks/{id}/move":               true,
 }
 
 // sessionCookies writes and reads the session cookie.

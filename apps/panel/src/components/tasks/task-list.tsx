@@ -1,8 +1,9 @@
 import type { Task } from "@tolkovo/api-client";
-import { useTaskQueues, useTasks, useTaskSummary } from "@tolkovo/api-client/react";
+import { useCan, useTaskProjects, useTaskQueues, useTasks, useTaskSummary } from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { Plus } from "lucide-react";
+import { FolderInput, Plus } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { TASK_VIEWS, taskFilter, taskRef, type TasksSearch } from "../../lib/tasks/tasks";
@@ -10,6 +11,7 @@ import { useMemberNames } from "../inbox/presence";
 import { TopicPill, useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge, WaitingPlate } from "./task-bits";
 import { LayoutSwitch, TaskFilters } from "./task-filters";
+import { MoveDialog, moveTargets } from "./task-move";
 import { ProjectSwitch, useCurrentTaskProject } from "./task-project";
 import { TaskTagDots } from "./task-tags";
 
@@ -73,6 +75,14 @@ function ListBody({ search, selectedId }: { search: TasksSearch; selectedId?: st
   const { t } = useTranslation();
   const projectId = useCurrentTaskProject()?.id;
   const list = useTasks(taskFilter(search, projectId));
+  const canEdit = useCan("tasks.edit");
+  const canManage = useCan("tasks.manage");
+  const { data: projects } = useTaskProjects();
+  // Choosing tasks to move them to another project at once (ADR-0022, P4).
+  const [selecting, setSelecting] = useState(false);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [moving, setMoving] = useState<Task[] | null>(null);
+  const moveButton = useRef<HTMLButtonElement>(null);
   if (list.isPending) {
     return (
       <div className="flex flex-col gap-3 p-3" aria-busy="true" aria-label={t("app.loading")}>
@@ -101,27 +111,84 @@ function ListBody({ search, selectedId }: { search: TasksSearch; selectedId?: st
       </div>
     );
   }
+  const mayMove = canEdit && moveTargets(projects, canManage, items).length > 0;
+  const picked = items.filter((x) => chosen.has(x.id));
+  const stop = () => {
+    setSelecting(false);
+    setChosen(new Set());
+  };
+  const toggle = (id: string) =>
+    setChosen((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
-      <ul className="m-0 list-none p-0">
-        {items.map((task) => (
-          <li key={task.id}>
-            <TaskRow task={task} search={search} selected={task.id === selectedId} />
-          </li>
-        ))}
-      </ul>
-      {list.hasNextPage && (
-        <div className="p-3">
-          <Button variant="ghost" className="w-full" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-            {t("inbox.loadMore")}
-          </Button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {mayMove && (
+        <div className="flex min-h-10 items-center gap-2 border-b border-line-2 px-3 py-1.5 text-[12.5px] text-ink-2">
+          {selecting ? (
+            <>
+              <span className="mr-auto tabular-nums" aria-live="polite">
+                {t("tasks.select.count", { count: picked.length })}
+              </span>
+              <Button ref={moveButton} size="sm" variant="primary" disabled={picked.length === 0} onClick={() => setMoving(picked)}>
+                <FolderInput aria-hidden="true" className="size-4" />
+                {t("tasks.move.action")}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={stop}>
+                {t("tasks.select.done")}
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelecting(true)}>
+              {t("tasks.select.start")}
+            </Button>
+          )}
         </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <ul className="m-0 list-none p-0">
+          {items.map((task) => (
+            <li key={task.id} className={selecting ? "flex items-stretch border-b border-line-2" : undefined}>
+              {selecting && (
+                <label className="grid w-9 shrink-0 cursor-pointer place-items-center pl-2">
+                  <input
+                    type="checkbox"
+                    checked={chosen.has(task.id)}
+                    aria-label={t("tasks.select.label", { number: taskRef(task) })}
+                    onChange={() => toggle(task.id)}
+                    className="size-4"
+                  />
+                </label>
+              )}
+              <TaskRow task={task} search={search} selected={task.id === selectedId} className={selecting ? "min-w-0 flex-1 border-b-0 pl-2" : undefined} />
+            </li>
+          ))}
+        </ul>
+        {list.hasNextPage && (
+          <div className="p-3">
+            <Button variant="ghost" className="w-full" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+              {t("inbox.loadMore")}
+            </Button>
+          </div>
+        )}
+      </div>
+      {moving && (
+        <MoveDialog
+          tasks={moving}
+          onDone={stop}
+          onClose={() => {
+            setMoving(null);
+            requestAnimationFrame(() => moveButton.current?.focus());
+          }}
+        />
       )}
     </div>
   );
 }
 
-function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; selected: boolean }) {
+function TaskRow({ task, search, selected, className }: { task: Task; search: TasksSearch; selected: boolean; className?: string | undefined }) {
   const { t } = useTranslation();
   const names = useMemberNames();
   const topics = useTopicMap();
@@ -135,7 +202,7 @@ function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; 
       params={{ taskId: task.id }}
       search={search}
       aria-current={selected ? "page" : undefined}
-      className="flex flex-col gap-1 border-b border-line-2 px-4 py-2.5 text-ink no-underline hover:bg-hover aria-[current=page]:bg-sel"
+      className={cn("flex flex-col gap-1 border-b border-line-2 px-4 py-2.5 text-ink no-underline hover:bg-hover aria-[current=page]:bg-sel", className)}
     >
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 font-mono text-[12px] text-ink-3 tabular-nums">{taskRef(task)}</span>

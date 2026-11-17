@@ -5,6 +5,7 @@ import {
   addTaskFiles,
   addTaskLink,
   closeTaskAsDuplicate,
+  moveTask,
   fetchTaskLinks,
   removeTaskLink,
   commentTask,
@@ -58,6 +59,7 @@ import {
   type TaskStatus,
   type TaskQueueInput,
   type TaskProjectInput,
+  type TaskMoveInput,
   type TaskSettings,
   type TaskTagInput,
   type TaskUpdate,
@@ -285,6 +287,11 @@ export function useCloseTaskAsDuplicate() {
   return useTaskMutation((client, { taskId, original, version }: { taskId: string; original: string; version: number }) =>
     closeTaskAsDuplicate(client, taskId, original, version),
   );
+}
+
+/** Moves the task to another project (POST /tasks/{id}/move). */
+export function useMoveTaskToProject() {
+  return useTaskMutation((client, { taskId, ...body }: TaskMoveInput & { taskId: string }) => moveTask(client, taskId, body));
 }
 
 export function useCreateTaskQueue() {

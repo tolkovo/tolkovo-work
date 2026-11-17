@@ -2884,6 +2884,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the task to another project
+         * @description Puts the task read at `version` (`409 task_conflict` when it changed) in another project
+         *     under that project's next number. The old ref keeps opening it (`CRM-46` finds what is
+         *     `APP-19` now); conversations, links, comments, files, tags, status, priority and the block
+         *     stay. The queue must be of the target project; the assignee must work in it, unless
+         *     `add_assignee_to_project` adds them, which needs `tasks.manage`. The caller must work in
+         *     the target project or have `tasks.manage`. Requires `tasks.edit`.
+         */
+        post: operations["moveTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks/{id}/conversations": {
         parameters: {
             query?: never;
@@ -4033,6 +4060,20 @@ export interface components {
              */
             version: number;
         };
+        TaskMoveInput: {
+            project_id: string;
+            /** @description A queue of the target project; `null` for none. */
+            queue_id: string | null;
+            /** @description The assignee in the target project; `null` for none. */
+            assignee_id: string | null;
+            /** @description Adds an assignee who is not a member to the target project; needs `tasks.manage`. */
+            add_assignee_to_project?: boolean;
+            /**
+             * Format: int32
+             * @description The version of the task the caller read.
+             */
+            version: number;
+        };
         TaskTagInput: {
             /** @description Spaces are collapsed; must contain more than spaces. */
             name: string;
@@ -4239,10 +4280,10 @@ export interface components {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags" | "blocked" | "unblocked" | "link_added" | "link_removed";
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags" | "blocked" | "unblocked" | "link_added" | "link_removed" | "moved";
             /** @description The text of a comment; the reason of a blocked line. */
             body?: string;
-            /** @description The value a change moved from (a status, a priority, a member, queue or topic id); empty for none. */
+            /** @description The value a change moved from (a status, a priority, a member, queue or topic id, the old ref on `moved`); empty for none. */
             from?: string;
             /** @description The value a change moved to; empty for none. */
             to?: string;
@@ -4285,6 +4326,8 @@ export interface components {
             name: string;
             /** @description Starts the refs of its tasks: `CRM-41`. */
             key: string;
+            /** @description Keys it had before, oldest first. Their refs still open its tasks, and no other project takes them. */
+            former_keys: string[];
             /** @description One of the panel's icons; `null` shows the letters of the key. */
             icon: components["schemas"]["TaskProjectIcon"] | null;
             color: components["schemas"]["TagColor"];
@@ -4313,7 +4356,11 @@ export interface components {
         };
         TaskProjectInput: {
             name: string;
-            /** @description Required on create; 2–6 latin letters, stored upper case. */
+            /**
+             * @description Required on create; 2–6 latin letters, stored upper case. A new key on a change keeps the
+             *     old one as an alias: its refs still open the tasks, and no other project may take it
+             *     (`409 project_exists`, as for a key in use).
+             */
             key?: string;
             icon?: components["schemas"]["TaskProjectIcon"] | null;
             color?: components["schemas"]["TagColor"];
@@ -10205,6 +10252,37 @@ export interface operations {
         };
         responses: {
             /** @description The canceled task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    moveTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskMoveInput"];
+            };
+        };
+        responses: {
+            /** @description The moved task. */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -105,6 +105,22 @@ func (q *Queries) DeleteEmptyProject(ctx context.Context, arg DeleteEmptyProject
 	return result.RowsAffected(), nil
 }
 
+const deleteKeyAlias = `-- name: DeleteKeyAlias :exec
+DELETE FROM task_project_key_aliases WHERE workspace_id = $1 AND key = $2 AND project_id = $3
+`
+
+type DeleteKeyAliasParams struct {
+	WorkspaceID uuid.UUID
+	Key         string
+	ProjectID   uuid.UUID
+}
+
+// The project takes one of its former keys back.
+func (q *Queries) DeleteKeyAlias(ctx context.Context, arg DeleteKeyAliasParams) error {
+	_, err := q.db.Exec(ctx, deleteKeyAlias, arg.WorkspaceID, arg.Key, arg.ProjectID)
+	return err
+}
+
 const ensureDefaultProject = `-- name: EnsureDefaultProject :exec
 
 INSERT INTO task_projects (id, workspace_id, name, key, access, is_default, created_at, updated_at)
@@ -193,6 +209,29 @@ func (q *Queries) GetProjectForUpdate(ctx context.Context, arg GetProjectForUpda
 	return i, err
 }
 
+const insertKeyAlias = `-- name: InsertKeyAlias :exec
+INSERT INTO task_project_key_aliases (workspace_id, key, project_id, created_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+`
+
+type InsertKeyAliasParams struct {
+	WorkspaceID uuid.UUID
+	Key         string
+	ProjectID   uuid.UUID
+	CreatedAt   time.Time
+}
+
+func (q *Queries) InsertKeyAlias(ctx context.Context, arg InsertKeyAliasParams) error {
+	_, err := q.db.Exec(ctx, insertKeyAlias,
+		arg.WorkspaceID,
+		arg.Key,
+		arg.ProjectID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const insertProject = `-- name: InsertProject :one
 INSERT INTO task_projects (id, workspace_id, name, key, icon, color, access, position, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
@@ -267,6 +306,58 @@ func (q *Queries) IsProjectMember(ctx context.Context, arg IsProjectMemberParams
 	return exists, err
 }
 
+const keyAliases = `-- name: KeyAliases :many
+SELECT project_id, key FROM task_project_key_aliases
+WHERE workspace_id = $1
+ORDER BY created_at, key
+`
+
+type KeyAliasesRow struct {
+	ProjectID uuid.UUID
+	Key       string
+}
+
+// The former keys of every project, oldest first.
+func (q *Queries) KeyAliases(ctx context.Context, workspaceID uuid.UUID) ([]KeyAliasesRow, error) {
+	rows, err := q.db.Query(ctx, keyAliases, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KeyAliasesRow
+	for rows.Next() {
+		var i KeyAliasesRow
+		if err := rows.Scan(&i.ProjectID, &i.Key); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const keyTaken = `-- name: KeyTaken :one
+SELECT (EXISTS (SELECT 1 FROM task_projects p WHERE p.workspace_id = $1::uuid AND p.key = $2::text AND p.id <> $3::uuid)
+     OR EXISTS (SELECT 1 FROM task_project_key_aliases a WHERE a.workspace_id = $1::uuid AND a.key = $2::text AND a.project_id <> $3::uuid))::boolean AS taken
+`
+
+type KeyTakenParams struct {
+	WorkspaceID uuid.UUID
+	Key         string
+	ProjectID   uuid.UUID
+}
+
+// Whether another project has this key now or had it before: an old key
+// is never given away, or its refs would open another project's tasks.
+func (q *Queries) KeyTaken(ctx context.Context, arg KeyTakenParams) (bool, error) {
+	row := q.db.QueryRow(ctx, keyTaken, arg.WorkspaceID, arg.Key, arg.ProjectID)
+	var taken bool
+	err := row.Scan(&taken)
+	return taken, err
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT p.id, p.workspace_id, p.name, p.key, p.icon, p.color, p.access, p.is_default, p.position, p.last_number, p.archived_at, p.created_at, p.updated_at,
        coalesce((SELECT array_agg(m.user_id ORDER BY m.user_id) FROM task_project_members m
@@ -322,6 +413,16 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Li
 	return items, nil
 }
 
+const lockProjectKeys = `-- name: LockProjectKeys :exec
+SELECT id FROM task_projects WHERE workspace_id = $1 AND is_default FOR UPDATE
+`
+
+// Orders the writers of keys: the default project's row is the lock.
+func (q *Queries) LockProjectKeys(ctx context.Context, workspaceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockProjectKeys, workspaceID)
+	return err
+}
+
 const nextProjectNumber = `-- name: NextProjectNumber :one
 UPDATE task_projects SET last_number = last_number + 1
 WHERE workspace_id = $1 AND id = $2
@@ -352,6 +453,39 @@ type ProjectByKeyParams struct {
 
 func (q *Queries) ProjectByKey(ctx context.Context, arg ProjectByKeyParams) (TaskProject, error) {
 	row := q.db.QueryRow(ctx, projectByKey, arg.WorkspaceID, arg.Key)
+	var i TaskProject
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Key,
+		&i.Icon,
+		&i.Color,
+		&i.Access,
+		&i.IsDefault,
+		&i.Position,
+		&i.LastNumber,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const projectByKeyAlias = `-- name: ProjectByKeyAlias :one
+SELECT p.id, p.workspace_id, p.name, p.key, p.icon, p.color, p.access, p.is_default, p.position, p.last_number, p.archived_at, p.created_at, p.updated_at FROM task_project_key_aliases a
+JOIN task_projects p ON p.workspace_id = a.workspace_id AND p.id = a.project_id
+WHERE a.workspace_id = $1 AND a.key = $2
+`
+
+type ProjectByKeyAliasParams struct {
+	WorkspaceID uuid.UUID
+	Key         string
+}
+
+// The project that had this key before (ADR-0022, P4).
+func (q *Queries) ProjectByKeyAlias(ctx context.Context, arg ProjectByKeyAliasParams) (TaskProject, error) {
+	row := q.db.QueryRow(ctx, projectByKeyAlias, arg.WorkspaceID, arg.Key)
 	var i TaskProject
 	err := row.Scan(
 		&i.ID,
@@ -443,14 +577,15 @@ func (q *Queries) TaskVisible(ctx context.Context, arg TaskVisibleParams) (bool,
 
 const updateProject = `-- name: UpdateProject :one
 UPDATE task_projects
-SET name = $1, icon = $2, color = $3, access = $4, position = $5,
-    archived_at = $6, updated_at = $7
-WHERE workspace_id = $8 AND id = $9
+SET name = $1, key = $2, icon = $3, color = $4, access = $5, position = $6,
+    archived_at = $7, updated_at = $8
+WHERE workspace_id = $9 AND id = $10
 RETURNING id, workspace_id, name, key, icon, color, access, is_default, position, last_number, archived_at, created_at, updated_at
 `
 
 type UpdateProjectParams struct {
 	Name        string
+	Key         string
 	Icon        *string
 	Color       string
 	Access      string
@@ -464,6 +599,7 @@ type UpdateProjectParams struct {
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (TaskProject, error) {
 	row := q.db.QueryRow(ctx, updateProject,
 		arg.Name,
+		arg.Key,
 		arg.Icon,
 		arg.Color,
 		arg.Access,

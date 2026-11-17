@@ -4148,6 +4148,41 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/TaskConflict' }
 
+  /tasks/{id}/move:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [tasks]
+      operationId: moveTask
+      summary: Move the task to another project
+      description: |
+        Puts the task read at `version` (`409 task_conflict` when it changed) in another project
+        under that project's next number. The old ref keeps opening it (`CRM-46` finds what is
+        `APP-19` now); conversations, links, comments, files, tags, status, priority and the block
+        stay. The queue must be of the target project; the assignee must work in it, unless
+        `add_assignee_to_project` adds them, which needs `tasks.manage`. The caller must work in
+        the target project or have `tasks.manage`. Requires `tasks.edit`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+        - accessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskMoveInput' }
+      responses:
+        '200':
+          description: The moved task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TaskConflict' }
+
   /tasks/{id}/conversations:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -6305,6 +6340,30 @@ components:
           description: 'The original task: its ref or id.'
         version: { type: integer, format: int32, description: The version of the task the caller read. }
 
+    TaskMoveInput:
+      type: object
+      additionalProperties: false
+      required: [project_id, queue_id, assignee_id, version]
+      properties:
+        project_id:
+          type: string
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        queue_id:
+          description: A queue of the target project; `null` for none.
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        assignee_id:
+          description: The assignee in the target project; `null` for none.
+          type: [string, 'null']
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        add_assignee_to_project:
+          type: boolean
+          description: Adds an assignee who is not a member to the target project; needs `tasks.manage`.
+        version: { type: integer, format: int32, description: The version of the task the caller read. }
+
     TaskTagInput:
       type: object
       additionalProperties: false
@@ -6645,11 +6704,11 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         kind:
           type: string
-          enum: [comment, created, status, assignee, queue, priority, topic, edited, linked, unlinked, files, tags, blocked, unblocked, link_added, link_removed]
+          enum: [comment, created, status, assignee, queue, priority, topic, edited, linked, unlinked, files, tags, blocked, unblocked, link_added, link_removed, moved]
         body: { type: string, description: The text of a comment; the reason of a blocked line. }
         from:
           type: string
-          description: The value a change moved from (a status, a priority, a member, queue or topic id); empty for none.
+          description: The value a change moved from (a status, a priority, a member, queue or topic id, the old ref on `moved`); empty for none.
         to: { type: string, description: The value a change moved to; empty for none. }
         fields:
           type: array
@@ -6726,7 +6785,7 @@ components:
 
     TaskProject:
       type: object
-      required: [id, name, key, icon, color, access, is_default, position, member_ids, open_tasks, archived_at, member]
+      required: [id, name, key, former_keys, icon, color, access, is_default, position, member_ids, open_tasks, archived_at, member]
       properties:
         id:
           type: string
@@ -6734,6 +6793,10 @@ components:
           x-go-type-import: { path: github.com/google/uuid }
         name: { type: string }
         key: { type: string, description: 'Starts the refs of its tasks: `CRM-41`.' }
+        former_keys:
+          type: array
+          description: Keys it had before, oldest first. Their refs still open its tasks, and no other project takes them.
+          items: { type: string }
         icon:
           description: One of the panel's icons; `null` shows the letters of the key.
           oneOf:
@@ -6780,7 +6843,13 @@ components:
       required: [name, member_ids]
       properties:
         name: { type: string, minLength: 1, maxLength: 60 }
-        key: { type: string, pattern: '^[A-Za-z]{2,6}$', description: 'Required on create; 2–6 latin letters, stored upper case.' }
+        key:
+          type: string
+          pattern: '^[A-Za-z]{2,6}$'
+          description: |
+            Required on create; 2–6 latin letters, stored upper case. A new key on a change keeps the
+            old one as an alias: its refs still open the tasks, and no other project may take it
+            (`409 project_exists`, as for a key in use).
         icon:
           oneOf:
             - $ref: '#/components/schemas/TaskProjectIcon'

@@ -947,6 +947,7 @@ const (
 	TaskActivityKindLinkAdded   TaskActivityKind = "link_added"
 	TaskActivityKindLinkRemoved TaskActivityKind = "link_removed"
 	TaskActivityKindLinked      TaskActivityKind = "linked"
+	TaskActivityKindMoved       TaskActivityKind = "moved"
 	TaskActivityKindPriority    TaskActivityKind = "priority"
 	TaskActivityKindQueue       TaskActivityKind = "queue"
 	TaskActivityKindStatus      TaskActivityKind = "status"
@@ -976,6 +977,8 @@ func (e TaskActivityKind) Valid() bool {
 	case TaskActivityKindLinkRemoved:
 		return true
 	case TaskActivityKindLinked:
+		return true
+	case TaskActivityKindMoved:
 		return true
 	case TaskActivityKindPriority:
 		return true
@@ -3108,7 +3111,7 @@ type TaskActivity struct {
 	// FilesRemoved On `files`
 	FilesRemoved *int `json:"files_removed,omitempty"`
 
-	// From The value a change moved from (a status, a priority, a member, queue or topic id); empty for none.
+	// From The value a change moved from (a status, a priority, a member, queue or topic id, the old ref on `moved`); empty for none.
 	From *string          `json:"from,omitempty"`
 	Id   uuid.UUID        `json:"id"`
 	Kind TaskActivityKind `json:"kind"`
@@ -3420,6 +3423,22 @@ type TaskLinkRequest struct {
 	ConversationId uuid.UUID `json:"conversation_id"`
 }
 
+// TaskMoveInput defines model for TaskMoveInput.
+type TaskMoveInput struct {
+	// AddAssigneeToProject Adds an assignee who is not a member to the target project; needs `tasks.manage`.
+	AddAssigneeToProject *bool `json:"add_assignee_to_project,omitempty"`
+
+	// AssigneeId The assignee in the target project; `null` for none.
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+	ProjectId  uuid.UUID  `json:"project_id"`
+
+	// QueueId A queue of the target project; `null` for none.
+	QueueId *uuid.UUID `json:"queue_id"`
+
+	// Version The version of the task the caller read.
+	Version int32 `json:"version"`
+}
+
 // TaskPage defines model for TaskPage.
 type TaskPage struct {
 	Items      []Task  `json:"items"`
@@ -3437,6 +3456,9 @@ type TaskProject struct {
 
 	// Color A palette key of the panel, readable in both themes.
 	Color TagColor `json:"color"`
+
+	// FormerKeys Keys it had before, oldest first. Their refs still open its tasks, and no other project takes them.
+	FormerKeys []string `json:"former_keys"`
 
 	// Icon One of the panel's icons; `null` shows the letters of the key.
 	Icon *TaskProjectIcon `json:"icon"`
@@ -3472,7 +3494,9 @@ type TaskProjectInput struct {
 	Color *TagColor        `json:"color,omitempty"`
 	Icon  *TaskProjectIcon `json:"icon,omitempty"`
 
-	// Key Required on create; 2–6 latin letters, stored upper case.
+	// Key Required on create; 2–6 latin letters, stored upper case. A new key on a change keeps the
+	// old one as an alias: its refs still open the tasks, and no other project may take it
+	// (`409 project_exists`, as for a key in use).
 	Key       *string     `json:"key,omitempty"`
 	MemberIds []uuid.UUID `json:"member_ids"`
 	Name      string      `json:"name"`
@@ -4557,6 +4581,9 @@ type AddTaskFilesJSONRequestBody = TaskFilesAdd
 // AddTaskLinkJSONRequestBody defines body for AddTaskLink for application/json ContentType.
 type AddTaskLinkJSONRequestBody = TaskLinkInput
 
+// MoveTaskJSONRequestBody defines body for MoveTask for application/json ContentType.
+type MoveTaskJSONRequestBody = TaskMoveInput
+
 // CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
 type CreateTopicJSONRequestBody = TopicInput
 
@@ -5063,6 +5090,9 @@ type ServerInterface interface {
 	// RemoveTaskLink Remove the link of the task to another task
 	// (DELETE /tasks/{id}/links/{other_id})
 	RemoveTaskLink(w http.ResponseWriter, r *http.Request, id Id, otherId uuid.UUID)
+	// MoveTask Move the task to another project
+	// (POST /tasks/{id}/move)
+	MoveTask(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTopics The topics of questions, in the order of the buttons
 	// (GET /topics)
 	ListTopics(w http.ResponseWriter, r *http.Request)
@@ -6056,6 +6086,12 @@ func (_ Unimplemented) AddTaskLink(w http.ResponseWriter, r *http.Request, id Id
 // RemoveTaskLink Remove the link of the task to another task
 // (DELETE /tasks/{id}/links/{other_id})
 func (_ Unimplemented) RemoveTaskLink(w http.ResponseWriter, r *http.Request, id Id, otherId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MoveTask Move the task to another project
+// (POST /tasks/{id}/move)
+func (_ Unimplemented) MoveTask(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -10011,6 +10047,32 @@ func (siw *ServerInterfaceWrapper) RemoveTaskLink(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// MoveTask operation middleware
+func (siw *ServerInterfaceWrapper) MoveTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTopics operation middleware
 func (siw *ServerInterfaceWrapper) ListTopics(w http.ResponseWriter, r *http.Request) {
 
@@ -10864,6 +10926,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks/{id}/duplicate", wrapper.CloseTaskAsDuplicate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/move", wrapper.MoveTask)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks/{id}/conversations", wrapper.LinkTaskConversation)

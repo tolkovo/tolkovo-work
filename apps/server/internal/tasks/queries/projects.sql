@@ -34,6 +34,37 @@ SELECT * FROM task_projects WHERE workspace_id = @workspace_id AND id = @id FOR 
 -- name: ProjectByKey :one
 SELECT * FROM task_projects WHERE workspace_id = @workspace_id AND key = @key;
 
+-- name: ProjectByKeyAlias :one
+-- The project that had this key before (ADR-0022, P4).
+SELECT p.* FROM task_project_key_aliases a
+JOIN task_projects p ON p.workspace_id = a.workspace_id AND p.id = a.project_id
+WHERE a.workspace_id = @workspace_id AND a.key = @key;
+
+-- name: KeyAliases :many
+-- The former keys of every project, oldest first.
+SELECT project_id, key FROM task_project_key_aliases
+WHERE workspace_id = @workspace_id
+ORDER BY created_at, key;
+
+-- name: KeyTaken :one
+-- Whether another project has this key now or had it before: an old key
+-- is never given away, or its refs would open another project's tasks.
+SELECT (EXISTS (SELECT 1 FROM task_projects p WHERE p.workspace_id = @workspace_id::uuid AND p.key = @key::text AND p.id <> @project_id::uuid)
+     OR EXISTS (SELECT 1 FROM task_project_key_aliases a WHERE a.workspace_id = @workspace_id::uuid AND a.key = @key::text AND a.project_id <> @project_id::uuid))::boolean AS taken;
+
+-- name: LockProjectKeys :exec
+-- Orders the writers of keys: the default project's row is the lock.
+SELECT id FROM task_projects WHERE workspace_id = @workspace_id AND is_default FOR UPDATE;
+
+-- name: InsertKeyAlias :exec
+INSERT INTO task_project_key_aliases (workspace_id, key, project_id, created_at)
+VALUES (@workspace_id, @key, @project_id, @created_at)
+ON CONFLICT DO NOTHING;
+
+-- name: DeleteKeyAlias :exec
+-- The project takes one of its former keys back.
+DELETE FROM task_project_key_aliases WHERE workspace_id = @workspace_id AND key = @key AND project_id = @project_id;
+
 -- name: CountProjects :one
 SELECT count(*) FROM task_projects WHERE workspace_id = @workspace_id;
 
@@ -44,7 +75,7 @@ RETURNING *;
 
 -- name: UpdateProject :one
 UPDATE task_projects
-SET name = @name, icon = sqlc.narg(icon), color = @color, access = @access, position = @position,
+SET name = @name, key = @key, icon = sqlc.narg(icon), color = @color, access = @access, position = @position,
     archived_at = sqlc.narg(archived_at), updated_at = @updated_at
 WHERE workspace_id = @workspace_id AND id = @id
 RETURNING *;

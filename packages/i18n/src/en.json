@@ -477,9 +477,10 @@
       "projectName": "Name",
       "projectNameRequired": "Write the project name.",
       "projectKey": "Key",
-      "projectKeyHint": "2 to 6 Latin letters, like CRM. The key does not change later.",
+      "projectKeyHint": "2 to 6 Latin letters, like CRM.",
+      "projectKeyChangeHint": "The key can change: old refs ({key}-41) keep opening the tasks, and {key} stays with this project.",
+      "projectFormerKeys": "Former keys:",
       "projectKeyInvalid": "The key is 2 to 6 Latin letters.",
-      "projectKeyFixed": "Key:",
       "projectColor": "Colour",
       "projectAccess": "Who sees the tasks",
       "projectAccessOptions": {
@@ -1095,7 +1096,7 @@
     "lineExists": "A line with this name exists.",
     "tagExists": "A tag with this name exists.",
     "protectedMember": "Your own role and the owner's cannot be changed here.",
-    "projectExists": "A project with this name or key exists.",
+    "projectExists": "A project with this name or key exists, or another project had this key.",
     "projectNotEmpty": "The project has tasks — archive it instead.",
     "linkExists": "These tasks are linked already. Remove the link to change it.",
     "linkLoop": "The tasks would wait for each other in a loop. Remove one of the links."
@@ -1657,7 +1658,8 @@
       "blocked": "Blocked: {reason}",
       "unblocked": "Unblocked",
       "linkAdded": "Link: {kind} {ref}",
-      "linkRemoved": "Link removed: {kind} {ref}"
+      "linkRemoved": "Link removed: {kind} {ref}",
+      "moved": "Moved: {from} → {to}"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1888,6 +1890,28 @@
       "note": "The task will be canceled and linked to the original.",
       "conversations": "{count, plural, one {Its # conversation moves} other {Its # conversations move}} to the original and will wait for it.",
       "submit": "Close as duplicate"
+    },
+    "move": {
+      "action": "Move…",
+      "title": "Move {number}",
+      "titleMany": "{count, plural, one {Move # task} other {Move # tasks}}",
+      "project": "To project",
+      "queue": "Queue",
+      "note": "The task takes the next number in the project; its old number keeps opening it. Conversations, links, comments, files, tags and status stay.",
+      "noTargets": "Nowhere to move: you are in no other project.",
+      "outsider": "{name} is not a member of “{project}”.",
+      "outsiders": "{count, plural, one {# task has an assignee} other {# tasks have assignees}} outside “{project}”.",
+      "unassign": "Unassign",
+      "addMember": "Add to the project",
+      "skipped": "{count, plural, one {# task is in this project already and stays} other {# tasks are in this project already and stay}}.",
+      "failed": "{count, plural, one {# task was not moved} other {# tasks were not moved}}: {reason}",
+      "submit": "Move"
+    },
+    "select": {
+      "start": "Select",
+      "label": "Select {number}",
+      "count": "Selected: {count}",
+      "done": "Done"
     }
   },
   "notifications": {

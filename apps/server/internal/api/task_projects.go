@@ -124,7 +124,7 @@ func projectInput(req oapi.TaskProjectInput) tasks.ProjectInput {
 
 func projectBody(x tasks.Project) oapi.TaskProject {
 	out := oapi.TaskProject{
-		Id: x.ID, Name: x.Name, Key: x.Key, Color: oapi.TagColor(x.Color), Access: oapi.TaskProjectAccess(x.Access), IsDefault: x.IsDefault,
+		Id: x.ID, Name: x.Name, Key: x.Key, FormerKeys: nonNil(x.FormerKeys), Color: oapi.TagColor(x.Color), Access: oapi.TaskProjectAccess(x.Access), IsDefault: x.IsDefault,
 		Position: x.Position, MemberIds: nonNil(x.MemberIDs), OpenTasks: x.OpenTasks, ArchivedAt: x.ArchivedAt, Member: x.Member,
 	}
 	if x.Icon != nil {

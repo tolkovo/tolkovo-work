@@ -16,6 +16,7 @@ const project = (id: string, patch: Partial<TaskProject>): TaskProject => ({
   id,
   name: id,
   key: id.toUpperCase(),
+  former_keys: [],
   icon: null,
   color: "blue",
   access: "members",
@@ -183,7 +184,7 @@ describe("projects of tasks", () => {
     await user.click(screen.getByRole("radio", { name: /Вся команда/ }));
     await user.click(screen.getByRole("radio", { name: "Ракета" }));
     await user.click(screen.getByRole("button", { name: "Сохранить проект" }));
-    expect(await screen.findByText("Проект с таким названием или ключом уже есть.")).toBeInTheDocument();
+    expect(await screen.findByText("Проект с таким названием или ключом уже есть, или этот ключ был у другого проекта.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Сохранить проект" }));
     await waitFor(() => expect(api.calls.filter((c) => c.method === "POST" && c.path === "/task-projects")).toHaveLength(2));

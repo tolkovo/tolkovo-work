@@ -125,7 +125,7 @@ WITH ranked AS (
       AND ($15::uuid IS NULL OR EXISTS (
            SELECT 1 FROM task_tag_links l
            WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $15::uuid))
-      AND ($16::text = '' OR t.title ILIKE '%' || $16::text || '%' OR t.number::text = $16::text)
+      AND ($16::text = '' OR t.title ILIKE '%' || $16::text || '%' OR t.number::text = $16::text OR t.id = $17::uuid)
 )
 SELECT t.id, t.workspace_id, t.number, t.queue_id, t.title, t.body, t.status, t.priority, t.assignee_id, t.created_by, t.created_at, t.updated_at, t.closed_at, t.version, t.topic_id, t.status_changed_at, t.blocked_reason, t.review_from, t.project_id, r.column_count
 FROM ranked r
@@ -151,6 +151,7 @@ type BoardTasksParams struct {
 	Blocked     pgtype.Bool
 	TagID       *uuid.UUID
 	Query       string
+	RefID       *uuid.UUID
 }
 
 type BoardTasksRow struct {
@@ -181,6 +182,7 @@ func (q *Queries) BoardTasks(ctx context.Context, arg BoardTasksParams) ([]Board
 		arg.Blocked,
 		arg.TagID,
 		arg.Query,
+		arg.RefID,
 	)
 	if err != nil {
 		return nil, err
@@ -1017,6 +1019,30 @@ func (q *Queries) InsertQueue(ctx context.Context, arg InsertQueueParams) (TaskQ
 	return i, err
 }
 
+const insertRefAlias = `-- name: InsertRefAlias :exec
+INSERT INTO task_ref_aliases (workspace_id, project_id, number, task_id, created_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertRefAliasParams struct {
+	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
+	Number      int64
+	TaskID      uuid.UUID
+	CreatedAt   time.Time
+}
+
+func (q *Queries) InsertRefAlias(ctx context.Context, arg InsertRefAliasParams) error {
+	_, err := q.db.Exec(ctx, insertRefAlias,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.Number,
+		arg.TaskID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const insertTask = `-- name: InsertTask :one
 INSERT INTO tasks (id, workspace_id, project_id, number, queue_id, topic_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, status_changed_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10, $11, $12, $12, $12)
@@ -1406,9 +1432,9 @@ WHERE t.workspace_id = $1
   AND ($16::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $16::uuid))
-  AND ($17::text = '' OR t.title ILIKE '%' || $17::text || '%' OR t.number::text = $17::text)
+  AND ($17::text = '' OR t.title ILIKE '%' || $17::text || '%' OR t.number::text = $17::text OR t.id = $18::uuid)
 ORDER BY t.id DESC
-LIMIT $18
+LIMIT $19
 `
 
 type ListTasksParams struct {
@@ -1429,6 +1455,7 @@ type ListTasksParams struct {
 	Status      *string
 	TagID       *uuid.UUID
 	Query       string
+	RefID       *uuid.UUID
 	Lim         int32
 }
 
@@ -1456,6 +1483,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 		arg.Status,
 		arg.TagID,
 		arg.Query,
+		arg.RefID,
 		arg.Lim,
 	)
 	if err != nil {
@@ -1516,13 +1544,13 @@ WHERE t.workspace_id = $1 AND t.status = $2
   AND ($18::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $18::uuid))
-  AND ($19::text = '' OR t.title ILIKE '%' || $19::text || '%' OR t.number::text = $19::text)
+  AND ($19::text = '' OR t.title ILIKE '%' || $19::text || '%' OR t.number::text = $19::text OR t.id = $20::uuid)
 ORDER BY
   CASE WHEN NOT $5::boolean THEN CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END,
   CASE WHEN NOT $5::boolean THEN t.status_changed_at END,
   CASE WHEN NOT $5::boolean THEN t.id END,
   t.status_changed_at DESC, t.id DESC
-LIMIT $20
+LIMIT $21
 `
 
 type ListTasksFlowParams struct {
@@ -1545,6 +1573,7 @@ type ListTasksFlowParams struct {
 	Blocked      pgtype.Bool
 	TagID        *uuid.UUID
 	Query        string
+	RefID        *uuid.UUID
 	Lim          int32
 }
 
@@ -1573,6 +1602,7 @@ func (q *Queries) ListTasksFlow(ctx context.Context, arg ListTasksFlowParams) ([
 		arg.Blocked,
 		arg.TagID,
 		arg.Query,
+		arg.RefID,
 		arg.Lim,
 	)
 	if err != nil {
@@ -1749,6 +1779,62 @@ func (q *Queries) LooseTaskFilesToClean(ctx context.Context, arg LooseTaskFilesT
 		return nil, err
 	}
 	return items, nil
+}
+
+const moveTask = `-- name: MoveTask :one
+UPDATE tasks
+SET project_id = $1, number = $2, queue_id = $3, assignee_id = $4,
+    review_from = CASE WHEN $4::uuid IS NULL THEN NULL ELSE review_from END,
+    updated_at = $5, version = version + 1
+WHERE workspace_id = $6 AND id = $7
+RETURNING id, workspace_id, number, queue_id, title, body, status, priority, assignee_id, created_by, created_at, updated_at, closed_at, version, topic_id, status_changed_at, blocked_reason, review_from, project_id
+`
+
+type MoveTaskParams struct {
+	ProjectID   uuid.UUID
+	Number      int64
+	QueueID     *uuid.UUID
+	AssigneeID  *uuid.UUID
+	UpdatedAt   time.Time
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// Puts the task in another project under a new number, with its queue and
+// assignee there; the rest stays.
+func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error) {
+	row := q.db.QueryRow(ctx, moveTask,
+		arg.ProjectID,
+		arg.Number,
+		arg.QueueID,
+		arg.AssigneeID,
+		arg.UpdatedAt,
+		arg.WorkspaceID,
+		arg.ID,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Number,
+		&i.QueueID,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+		&i.Version,
+		&i.TopicID,
+		&i.StatusChangedAt,
+		&i.BlockedReason,
+		&i.ReviewFrom,
+		&i.ProjectID,
+	)
+	return i, err
 }
 
 const queueMemberIDs = `-- name: QueueMemberIDs :many
@@ -2012,6 +2098,24 @@ func (q *Queries) TaskFiles(ctx context.Context, arg TaskFilesParams) ([]TaskFil
 		return nil, err
 	}
 	return items, nil
+}
+
+const taskIDByAlias = `-- name: TaskIDByAlias :one
+SELECT task_id FROM task_ref_aliases WHERE workspace_id = $1 AND project_id = $2 AND number = $3
+`
+
+type TaskIDByAliasParams struct {
+	WorkspaceID uuid.UUID
+	ProjectID   uuid.UUID
+	Number      int64
+}
+
+// A task moved out of the project under this number (ADR-0022, P4).
+func (q *Queries) TaskIDByAlias(ctx context.Context, arg TaskIDByAliasParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, taskIDByAlias, arg.WorkspaceID, arg.ProjectID, arg.Number)
+	var task_id uuid.UUID
+	err := row.Scan(&task_id)
+	return task_id, err
 }
 
 const taskIDByNumber = `-- name: TaskIDByNumber :one

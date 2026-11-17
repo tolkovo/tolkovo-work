@@ -310,7 +310,8 @@ type Filter struct {
 	TagID *uuid.UUID
 	// Blocked, when set, keeps the blocked tasks or the others.
 	Blocked *bool
-	// Query matches the title, or the number exactly.
+	// Query matches the title, the number exactly, or the ref KEY-N, an old
+	// one of a moved task or a renamed project included.
 	Query string
 	// Before is the task to continue below; nil starts from the newest.
 	Before *uuid.UUID
@@ -361,10 +362,14 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	out := Page{Items: []Task{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		refID, err := s.refQuery(ctx, q, workspaceID, f.Query)
+		if err != nil {
+			return err
+		}
 		rows, err := q.ListTasks(ctx, store.ListTasksParams{
 			WorkspaceID: workspaceID, BeforeID: f.Before, ProjectID: f.ProjectID, Viewer: f.Viewer.UserID, SeeAll: f.Viewer.All, OpenOnly: f.State == "open", ClosedOnly: f.State == "closed",
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic, Status: status,
-			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
+			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), RefID: refID, Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 		})
 		if err != nil {
 			return err
@@ -744,12 +749,13 @@ type Activity struct {
 	ActorID *uuid.UUID
 	// Kind is comment, created, status, assignee, queue, priority, topic,
 	// edited, linked, unlinked, files, tags, blocked, unblocked,
-	// link_added or link_removed.
+	// link_added, link_removed or moved.
 	Kind string
 	// Body is the text of a comment.
 	Body string
 	// From and To are the values a change moved between: statuses,
-	// priorities, member, queue or topic ids ("" for none).
+	// priorities, member, queue or topic ids ("" for none), the refs of a
+	// moved task.
 	From string
 	To   string
 	// Fields are what an edit changed: title, body.

@@ -121,7 +121,7 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 	}
 	if got := agent.tools(); !slices.Equal(got, []string{
 		"list_tasks", "get_task", "list_projects", "list_queues", "list_tags", "create_tag", "read_file", "create_task", "update_task", "attach_file", "comment_task",
-		"link_tasks",
+		"link_tasks", "move_task",
 	}) {
 		t.Fatalf("tools: %v", got)
 	}

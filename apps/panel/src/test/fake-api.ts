@@ -133,7 +133,7 @@ export function fakeApi(
     "GET /task-projects": () =>
       json(200, {
         items: [
-          { id: "p1", name: "Задачи", key: "TSK", icon: null, color: "blue", access: "team", is_default: true, position: 0, member_ids: [], open_tasks: 1, archived_at: null, member: true },
+          { id: "p1", name: "Задачи", key: "TSK", former_keys: [], icon: null, color: "blue", access: "team", is_default: true, position: 0, member_ids: [], open_tasks: 1, archived_at: null, member: true },
         ],
       }),
     "GET /topics": () => json(200, { items: [] }),

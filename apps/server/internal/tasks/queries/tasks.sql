@@ -9,6 +9,24 @@ SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id;
 -- name: TaskIDByNumber :one
 SELECT id FROM tasks WHERE workspace_id = @workspace_id AND project_id = @project_id AND number = @number;
 
+-- name: TaskIDByAlias :one
+-- A task moved out of the project under this number (ADR-0022, P4).
+SELECT task_id FROM task_ref_aliases WHERE workspace_id = @workspace_id AND project_id = @project_id AND number = @number;
+
+-- name: InsertRefAlias :exec
+INSERT INTO task_ref_aliases (workspace_id, project_id, number, task_id, created_at)
+VALUES (@workspace_id, @project_id, @number, @task_id, @created_at);
+
+-- name: MoveTask :one
+-- Puts the task in another project under a new number, with its queue and
+-- assignee there; the rest stays.
+UPDATE tasks
+SET project_id = @project_id, number = @number, queue_id = sqlc.narg(queue_id), assignee_id = sqlc.narg(assignee_id),
+    review_from = CASE WHEN sqlc.narg(assignee_id)::uuid IS NULL THEN NULL ELSE review_from END,
+    updated_at = @updated_at, version = version + 1
+WHERE workspace_id = @workspace_id AND id = @id
+RETURNING *;
+
 -- name: GetTaskForUpdate :one
 SELECT * FROM tasks WHERE workspace_id = @workspace_id AND id = @id FOR UPDATE;
 
@@ -51,7 +69,7 @@ WHERE t.workspace_id = @workspace_id
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
-  AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text)
+  AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text OR t.id = sqlc.narg(ref_id)::uuid)
 ORDER BY t.id DESC
 LIMIT @lim;
 
@@ -84,7 +102,7 @@ WITH ranked AS (
       AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
            SELECT 1 FROM task_tag_links l
            WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
-      AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text)
+      AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text OR t.id = sqlc.narg(ref_id)::uuid)
 )
 SELECT sqlc.embed(t), r.column_count
 FROM ranked r
@@ -116,7 +134,7 @@ WHERE t.workspace_id = @workspace_id AND t.status = @status
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
-  AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text)
+  AND (@query::text = '' OR t.title ILIKE '%' || @query::text || '%' OR t.number::text = @query::text OR t.id = sqlc.narg(ref_id)::uuid)
 ORDER BY
   CASE WHEN NOT @closed_order::boolean THEN CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END,
   CASE WHEN NOT @closed_order::boolean THEN t.status_changed_at END,

@@ -79,8 +79,11 @@ type Project struct {
 	IsDefault bool
 	Position  int32
 	// MemberIDs are its members; with AccessTeam everyone works in it.
-	MemberIDs  []uuid.UUID
-	OpenTasks  int64
+	MemberIDs []uuid.UUID
+	OpenTasks int64
+	// FormerKeys are the keys it had before, oldest first: their refs still
+	// open its tasks, and no other project takes them.
+	FormerKeys []string
 	ArchivedAt *time.Time
 	CreatedAt  time.Time
 	// Member: the viewer works in it (a member, or the project is the
@@ -88,8 +91,8 @@ type Project struct {
 	Member bool
 }
 
-// ProjectInput is a project to create or change. Key is taken on create;
-// changing it comes with its aliases (ADR-0022, P4).
+// ProjectInput is a project to create or change. Key "" on a change keeps
+// the key; a new one leaves the old as an alias (ADR-0022, P4).
 type ProjectInput struct {
 	Name      string
 	Key       string
@@ -131,9 +134,13 @@ func (s *Service) Projects(ctx context.Context, workspaceID uuid.UUID, v Viewer)
 		if err != nil {
 			return err
 		}
+		former, err := formerKeys(ctx, q, workspaceID)
+		if err != nil {
+			return err
+		}
 		for _, r := range rows {
 			p := projectFrom(r.TaskProject, r.MemberIds, v)
-			p.OpenTasks = r.OpenTasks
+			p.OpenTasks, p.FormerKeys = r.OpenTasks, nonNilKeys(former[r.TaskProject.ID])
 			if p.Member || v.All {
 				out = append(out, p)
 			}
@@ -168,6 +175,9 @@ func (s *Service) CreateProject(ctx context.Context, workspaceID uuid.UUID, v Vi
 		if n >= MaxProjects {
 			return fmt.Errorf("%w: at most %d projects", ErrInvalid, MaxProjects)
 		}
+		if err := freeKey(ctx, q, workspaceID, id, in.Key); err != nil {
+			return err
+		}
 		row, err := q.InsertProject(ctx, store.InsertProjectParams{
 			ID: id, WorkspaceID: workspaceID, Name: in.Name, Key: in.Key, Icon: in.Icon, Color: in.Color, Access: in.Access,
 			Position: in.Position, CreatedAt: s.now(),
@@ -179,6 +189,7 @@ func (s *Service) CreateProject(ctx context.Context, workspaceID uuid.UUID, v Vi
 			return err
 		}
 		out = projectFrom(row, sorted(in.MemberIDs), v)
+		out.FormerKeys = []string{}
 		return projectChanged(ctx, tx, workspaceID, id)
 	})
 	if err != nil {
@@ -200,8 +211,12 @@ func (s *Service) UpdateProject(ctx context.Context, workspaceID, projectID uuid
 		if err != nil {
 			return err
 		}
+		key := cur.Key
 		if in.Key != "" && in.Key != cur.Key {
-			return fmt.Errorf("%w: the key of a project does not change yet", ErrInvalid)
+			if err := s.changeKey(ctx, q, cur, in.Key); err != nil {
+				return err
+			}
+			key = in.Key
 		}
 		archived := cur.ArchivedAt
 		switch {
@@ -214,7 +229,7 @@ func (s *Service) UpdateProject(ctx context.Context, workspaceID, projectID uuid
 			archived = nil
 		}
 		row, err := q.UpdateProject(ctx, store.UpdateProjectParams{
-			Name: in.Name, Icon: in.Icon, Color: in.Color, Access: in.Access, Position: in.Position, ArchivedAt: archived,
+			Name: in.Name, Key: key, Icon: in.Icon, Color: in.Color, Access: in.Access, Position: in.Position, ArchivedAt: archived,
 			UpdatedAt: s.now(), WorkspaceID: workspaceID, ID: projectID,
 		})
 		if err != nil {
@@ -227,6 +242,11 @@ func (s *Service) UpdateProject(ctx context.Context, workspaceID, projectID uuid
 			return err
 		}
 		out = projectFrom(row, sorted(in.MemberIDs), v)
+		former, err := formerKeys(ctx, q, workspaceID)
+		if err != nil {
+			return err
+		}
+		out.FormerKeys = nonNilKeys(former[projectID])
 		return projectChanged(ctx, tx, workspaceID, projectID)
 	})
 	if err != nil {
@@ -288,17 +308,8 @@ func (s *Service) IDByRef(ctx context.Context, workspaceID uuid.UUID, v Viewer, 
 	var id uuid.UUID
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		var p store.TaskProject
 		var err error
-		if key == "" {
-			p, err = s.defaultProject(ctx, q, workspaceID)
-		} else {
-			p, err = q.ProjectByKey(ctx, store.ProjectByKeyParams{WorkspaceID: workspaceID, Key: key})
-		}
-		if err != nil {
-			return err
-		}
-		if id, err = q.TaskIDByNumber(ctx, store.TaskIDByNumberParams{WorkspaceID: workspaceID, ProjectID: p.ID, Number: n}); err != nil {
+		if id, err = s.resolveRef(ctx, q, workspaceID, key, n); err != nil {
 			return err
 		}
 		ok, err := q.TaskVisible(ctx, store.TaskVisibleParams{Viewer: v.UserID, SeeAll: v.All, WorkspaceID: workspaceID, ID: id})
@@ -311,6 +322,96 @@ func (s *Service) IDByRef(ctx context.Context, workspaceID uuid.UUID, v Viewer, 
 		return uuid.Nil, dbError(err, "find task")
 	}
 	return id, nil
+}
+
+// resolveRef finds the task of KEY-N whoever sees it: by the project's key
+// or a former one, then by the number or the number the task had before it
+// moved (ADR-0022, P4). key "" is the default project.
+func (s *Service) resolveRef(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, key string, n int64) (uuid.UUID, error) {
+	var p store.TaskProject
+	var err error
+	if key == "" {
+		p, err = s.defaultProject(ctx, q, workspaceID)
+	} else {
+		p, err = q.ProjectByKey(ctx, store.ProjectByKeyParams{WorkspaceID: workspaceID, Key: key})
+		if errors.Is(err, pgx.ErrNoRows) {
+			p, err = q.ProjectByKeyAlias(ctx, store.ProjectByKeyAliasParams{WorkspaceID: workspaceID, Key: key})
+		}
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	id, err := q.TaskIDByNumber(ctx, store.TaskIDByNumberParams{WorkspaceID: workspaceID, ProjectID: p.ID, Number: n})
+	if errors.Is(err, pgx.ErrNoRows) {
+		id, err = q.TaskIDByAlias(ctx, store.TaskIDByAliasParams{WorkspaceID: workspaceID, ProjectID: p.ID, Number: n})
+	}
+	return id, err
+}
+
+// refQuery is the task a search query names as KEY-N, nil when it names
+// none: the lists find a task by its ref, old ones included. A bare number
+// matches the number in every project instead.
+func (s *Service) refQuery(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, query string) (*uuid.UUID, error) {
+	key, n, ok := ParseRef(query)
+	if !ok || key == "" {
+		return nil, nil
+	}
+	id, err := s.resolveRef(ctx, q, workspaceID, key, n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+// changeKey gives the project a new key; the old one becomes its alias and
+// stays taken. Taking back a former key of its own is allowed.
+func (s *Service) changeKey(ctx context.Context, q *store.Queries, cur store.TaskProject, key string) error {
+	if err := freeKey(ctx, q, cur.WorkspaceID, cur.ID, key); err != nil {
+		return err
+	}
+	if err := q.DeleteKeyAlias(ctx, store.DeleteKeyAliasParams{WorkspaceID: cur.WorkspaceID, Key: key, ProjectID: cur.ID}); err != nil {
+		return err
+	}
+	return q.InsertKeyAlias(ctx, store.InsertKeyAliasParams{WorkspaceID: cur.WorkspaceID, Key: cur.Key, ProjectID: cur.ID, CreatedAt: s.now()})
+}
+
+// freeKey refuses a key another project has or had; the lock orders the
+// writers of keys, so two of them cannot take one key at once.
+func freeKey(ctx context.Context, q *store.Queries, workspaceID, projectID uuid.UUID, key string) error {
+	if err := q.LockProjectKeys(ctx, workspaceID); err != nil {
+		return err
+	}
+	taken, err := q.KeyTaken(ctx, store.KeyTakenParams{WorkspaceID: workspaceID, Key: key, ProjectID: projectID})
+	if err != nil {
+		return err
+	}
+	if taken {
+		return ErrProjectTaken
+	}
+	return nil
+}
+
+// formerKeys maps the projects to the keys they had before.
+func formerKeys(ctx context.Context, q *store.Queries, workspaceID uuid.UUID) (map[uuid.UUID][]string, error) {
+	rows, err := q.KeyAliases(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[uuid.UUID][]string{}
+	for _, r := range rows {
+		out[r.ProjectID] = append(out[r.ProjectID], r.Key)
+	}
+	return out, nil
+}
+
+func nonNilKeys(keys []string) []string {
+	if keys == nil {
+		return []string{}
+	}
+	return keys
 }
 
 // defaultProject returns the workspace's default project, making it for a

@@ -164,18 +164,20 @@ function ProjectForm({ project, onDone }: { project?: TaskProject; onDone: () =>
     e.preventDefault();
     const next: { name?: string; key?: string } = {};
     if (!name.trim()) next.name = t("settings.tasks.projectNameRequired");
-    if (!project && !/^[A-Za-z]{2,6}$/.test(key)) next.key = t("settings.tasks.projectKeyInvalid");
+    if (!/^[A-Za-z]{2,6}$/.test(key)) next.key = t("settings.tasks.projectKeyInvalid");
     setErrors(next);
     if (next.name || next.key) {
       document.getElementById(next.name ? `${prefix}-name` : `${prefix}-key`)?.focus();
       return;
     }
     const change = { name: name.trim(), icon, color, access, member_ids: memberIds };
-    if (project) update.mutate({ id: project.id, ...projectBody(project, change) }, { onSuccess: onDone });
+    // A new key keeps the old one as an alias (ADR-0022): its refs still open the tasks.
+    const newKey = key.toUpperCase() !== project?.key ? { key: key.toUpperCase() } : {};
+    if (project) update.mutate({ id: project.id, ...projectBody(project, { ...change, ...newKey }) }, { onSuccess: onDone });
     else create.mutate({ ...change, key: key.toUpperCase() }, { onSuccess: onDone });
   };
 
-  const error = save.isError ? describeApiError(t, save.error, { project_exists: "name" }) : null;
+  const error = save.isError ? describeApiError(t, save.error, { project_exists: key.toUpperCase() !== project?.key ? "key" : "name" }) : null;
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-teal bg-surface p-3">
       <TextField
@@ -187,23 +189,22 @@ function ProjectForm({ project, onDone }: { project?: TaskProject; onDone: () =>
         error={errors.name ?? (error?.field === "name" ? error.message : undefined)}
         onChange={(e) => setName(e.currentTarget.value)}
       />
-      {project ? (
-        <p className="m-0 text-[13px] text-ink-2">
-          {t("settings.tasks.projectKeyFixed")} <span className="font-mono text-ink">{project.key}</span>
+      <TextField
+        id={`${prefix}-key`}
+        name="key"
+        label={t("settings.tasks.projectKey")}
+        hint={project ? t("settings.tasks.projectKeyChangeHint", { key: project.key }) : t("settings.tasks.projectKeyHint")}
+        value={key}
+        maxLength={6}
+        autoComplete="off"
+        error={errors.key ?? (error?.field === "key" ? error.message : undefined)}
+        onChange={(e) => setKey(e.currentTarget.value.replace(/[^A-Za-z]/g, "").toUpperCase())}
+        className="font-mono uppercase"
+      />
+      {project && project.former_keys.length > 0 && (
+        <p className="m-0 text-[12.5px] text-ink-2">
+          {t("settings.tasks.projectFormerKeys")} <span className="font-mono text-ink">{project.former_keys.join(", ")}</span>
         </p>
-      ) : (
-        <TextField
-          id={`${prefix}-key`}
-          name="key"
-          label={t("settings.tasks.projectKey")}
-          hint={t("settings.tasks.projectKeyHint")}
-          value={key}
-          maxLength={6}
-          autoComplete="off"
-          error={errors.key}
-          onChange={(e) => setKey(e.currentTarget.value.replace(/[^A-Za-z]/g, "").toUpperCase())}
-          className="font-mono uppercase"
-        />
       )}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={colorId}>{t("settings.tasks.projectColor")}</Label>
@@ -288,7 +289,7 @@ function ProjectForm({ project, onDone }: { project?: TaskProject; onDone: () =>
             </label>
           ))}
       </fieldset>
-      <FormMessage tone="error" message={error && error.field !== "name" ? error.message : null} />
+      <FormMessage tone="error" message={error && !error.field ? error.message : null} />
       <div className="flex gap-2">
         <Button type="submit" size="sm" variant="primary" disabled={save.isPending}>
           {t("settings.tasks.saveProject")}
