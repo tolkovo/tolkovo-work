@@ -121,7 +121,7 @@ WITH ranked AS (
       AND (NOT $11::boolean OR t.queue_id IS NULL)
       AND ($12::uuid IS NULL OR t.topic_id = $12::uuid)
       AND (NOT $13::boolean OR t.topic_id IS NULL)
-      AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $14::boolean)
+      AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id)) = $14::boolean)
       AND ($15::uuid IS NULL OR EXISTS (
            SELECT 1 FROM task_tag_links l
            WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $15::uuid))
@@ -361,7 +361,9 @@ func (q *Queries) ConversationTopic(ctx context.Context, arg ConversationTopicPa
 }
 
 const countOpenAssigned = `-- name: CountOpenAssigned :many
-SELECT project_id, count(*) AS n FROM tasks
+SELECT project_id, count(*) AS n,
+       count(*) FILTER (WHERE blocked_reason IS NOT NULL OR task_waiting(workspace_id, id)) AS waiting
+FROM tasks
 WHERE workspace_id = $1 AND assignee_id = $2 AND closed_at IS NULL
 GROUP BY project_id
 ORDER BY project_id
@@ -375,9 +377,11 @@ type CountOpenAssignedParams struct {
 type CountOpenAssignedRow struct {
 	ProjectID uuid.UUID
 	N         int64
+	Waiting   int64
 }
 
-// The open tasks of a member by project, for the counters in the menu (ADR-0022).
+// The open tasks of a member by project, for the counters in the menu
+// (ADR-0022), and how many of them are blocked or wait for another task.
 func (q *Queries) CountOpenAssigned(ctx context.Context, arg CountOpenAssignedParams) ([]CountOpenAssignedRow, error) {
 	rows, err := q.db.Query(ctx, countOpenAssigned, arg.WorkspaceID, arg.AssigneeID)
 	if err != nil {
@@ -387,7 +391,7 @@ func (q *Queries) CountOpenAssigned(ctx context.Context, arg CountOpenAssignedPa
 	var items []CountOpenAssignedRow
 	for rows.Next() {
 		var i CountOpenAssignedRow
-		if err := rows.Scan(&i.ProjectID, &i.N); err != nil {
+		if err := rows.Scan(&i.ProjectID, &i.N, &i.Waiting); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -671,7 +675,7 @@ func (q *Queries) FlowStatusChanges(ctx context.Context, arg FlowStatusChangesPa
 
 const flowTasks = `-- name: FlowTasks :many
 SELECT t.id, t.project_id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
-       (t.blocked_reason IS NOT NULL)::boolean AS blocked
+       (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id))::boolean AS blocked
 FROM tasks t
 WHERE t.workspace_id = $1
   AND (t.closed_at IS NULL OR t.closed_at >= $2::timestamptz)
@@ -1397,7 +1401,7 @@ WHERE t.workspace_id = $1
   AND (NOT $11::boolean OR t.queue_id IS NULL)
   AND ($12::uuid IS NULL OR t.topic_id = $12::uuid)
   AND (NOT $13::boolean OR t.topic_id IS NULL)
-  AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $14::boolean)
+  AND ($14::boolean IS NULL OR (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id)) = $14::boolean)
   AND ($15::text IS NULL OR t.status = $15::text)
   AND ($16::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
@@ -1508,7 +1512,7 @@ WHERE t.workspace_id = $1 AND t.status = $2
   AND (NOT $14::boolean OR t.queue_id IS NULL)
   AND ($15::uuid IS NULL OR t.topic_id = $15::uuid)
   AND (NOT $16::boolean OR t.topic_id IS NULL)
-  AND ($17::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = $17::boolean)
+  AND ($17::boolean IS NULL OR (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id)) = $17::boolean)
   AND ($18::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = $18::uuid))

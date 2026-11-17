@@ -68,7 +68,7 @@ type Bots interface {
 
 // Tasks reads the task a message is about; *tasks.Service implements it.
 type Tasks interface {
-	Get(ctx context.Context, workspaceID, taskID uuid.UUID) (tasks.Task, error)
+	Get(ctx context.Context, workspaceID uuid.UUID, v tasks.Viewer, taskID uuid.UUID) (tasks.Task, error)
 }
 
 // Jobs queues the messages in the caller's transaction; *jobs.Client
@@ -457,7 +457,7 @@ type TaskMessageArgs struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	TaskID      uuid.UUID `json:"task_id"`
 	UserID      uuid.UUID `json:"user_id"`
-	// About is tasks.NoticeAssigned or tasks.NoticeQueued.
+	// About is tasks.NoticeAssigned, tasks.NoticeQueued or tasks.NoticeUnblocked.
 	About string `json:"about"`
 }
 
@@ -534,7 +534,7 @@ func SendTaskMessage(ctx context.Context, o TelegramWorkerOptions, a TaskMessage
 	if err != nil || chat == 0 {
 		return err
 	}
-	task, err := o.Tasks.Get(ctx, a.WorkspaceID, a.TaskID)
+	task, err := o.Tasks.Get(ctx, a.WorkspaceID, tasks.Viewer{UserID: a.UserID}, a.TaskID)
 	if errors.Is(err, tasks.ErrNotFound) {
 		return nil
 	}
@@ -573,15 +573,20 @@ func taskMessage(locale, kind string, t tasks.Task, panel string) string {
 	if ref == "" {
 		ref = fmt.Sprintf("#%d", t.Number)
 	}
-	head := "Вам назначена задача " + ref
-	if kind == tasks.NoticeQueued {
-		head = "Новая задача в очереди: " + ref
-	}
-	if locale == "en" {
+	var head string
+	switch {
+	case locale == "en" && kind == tasks.NoticeQueued:
+		head = "New task in the queue: " + ref
+	case locale == "en" && kind == tasks.NoticeUnblocked:
+		head = "Unblocked: " + ref + " waits for nothing now"
+	case locale == "en":
 		head = "Task " + ref + " is assigned to you"
-		if kind == tasks.NoticeQueued {
-			head = "New task in the queue: " + ref
-		}
+	case kind == tasks.NoticeQueued:
+		head = "Новая задача в очереди: " + ref
+	case kind == tasks.NoticeUnblocked:
+		head = "Блокировка снята: " + ref + " больше ничего не ждёт"
+	default:
+		head = "Вам назначена задача " + ref
 	}
 	text := head + "\n" + t.Title
 	if panel != "" {

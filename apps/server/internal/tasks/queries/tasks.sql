@@ -46,7 +46,7 @@ WHERE t.workspace_id = @workspace_id
   AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
   AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
   AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
-  AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = sqlc.narg(blocked)::boolean)
+  AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id)) = sqlc.narg(blocked)::boolean)
   AND (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
@@ -80,7 +80,7 @@ WITH ranked AS (
       AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
       AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
       AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
-      AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = sqlc.narg(blocked)::boolean)
+      AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id)) = sqlc.narg(blocked)::boolean)
       AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
            SELECT 1 FROM task_tag_links l
            WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
@@ -112,7 +112,7 @@ WHERE t.workspace_id = @workspace_id AND t.status = @status
   AND (NOT @no_queue::boolean OR t.queue_id IS NULL)
   AND (sqlc.narg(topic_id)::uuid IS NULL OR t.topic_id = sqlc.narg(topic_id)::uuid)
   AND (NOT @no_topic::boolean OR t.topic_id IS NULL)
-  AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL) = sqlc.narg(blocked)::boolean)
+  AND (sqlc.narg(blocked)::boolean IS NULL OR (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id)) = sqlc.narg(blocked)::boolean)
   AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
        SELECT 1 FROM task_tag_links l
        WHERE l.workspace_id = t.workspace_id AND l.task_id = t.id AND l.tag_id = sqlc.narg(tag_id)::uuid))
@@ -131,8 +131,11 @@ WHERE workspace_id = @workspace_id AND task_id = ANY(@task_ids::uuid[])
 GROUP BY task_id;
 
 -- name: CountOpenAssigned :many
--- The open tasks of a member by project, for the counters in the menu (ADR-0022).
-SELECT project_id, count(*) AS n FROM tasks
+-- The open tasks of a member by project, for the counters in the menu
+-- (ADR-0022), and how many of them are blocked or wait for another task.
+SELECT project_id, count(*) AS n,
+       count(*) FILTER (WHERE blocked_reason IS NOT NULL OR task_waiting(workspace_id, id)) AS waiting
+FROM tasks
 WHERE workspace_id = @workspace_id AND assignee_id = @assignee_id AND closed_at IS NULL
 GROUP BY project_id
 ORDER BY project_id;
@@ -404,7 +407,7 @@ WHERE m.workspace_id = @workspace_id AND m.user_id = @user_id AND m.is_active;
 -- closed since the period began, the newest first, with the filters and
 -- the visibility of BoardTasks.
 SELECT t.id, t.project_id, t.number, t.title, t.status, t.created_at, t.status_changed_at, t.closed_at,
-       (t.blocked_reason IS NOT NULL)::boolean AS blocked
+       (t.blocked_reason IS NOT NULL OR task_waiting(t.workspace_id, t.id))::boolean AS blocked
 FROM tasks t
 WHERE t.workspace_id = @workspace_id
   AND (t.closed_at IS NULL OR t.closed_at >= @since::timestamptz)

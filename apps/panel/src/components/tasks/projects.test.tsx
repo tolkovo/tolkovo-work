@@ -53,6 +53,7 @@ const task: Task = {
   closed_at: null,
   status_changed_at: "2026-10-06T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 1,
   conversation_ids: [],
   conversation_count: 0,
@@ -66,7 +67,7 @@ function server(routes: FakeRoutes = {}) {
     routes: {
       "GET /task-projects": () => json(200, { items: projects }),
       "GET /tasks": () => json(200, { items: [task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 4, projects: [{ project_id: "p2", assigned_open: 3 }, { project_id: "p1", assigned_open: 1 }] }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 4, projects: [{ project_id: "p2", assigned_open: 3, waiting: 2 }, { project_id: "p1", assigned_open: 1, waiting: 0 }] }),
       "GET /tasks/t1": () => json(200, task),
       "GET /tasks/t1/activity": () => json(200, { items: [] }),
       "GET /task-queues": () =>
@@ -105,7 +106,7 @@ describe("projects of tasks", () => {
     const tiles = () => within(rail).getAllByRole("link").map((a) => a.getAttribute("title"));
     await waitFor(() => expect(tiles()).toEqual(["Задачи", "CRM", "Новый проект"]));
     const crm = within(rail).getByRole("link", { name: /CRM/ });
-    expect(crm).toHaveAccessibleName("CRM, 3 мои открытые задачи");
+    expect(crm).toHaveAccessibleName("CRM, 3 мои открытые задачи, 2 ждут");
     expect(crm).toHaveAttribute("aria-current", "page");
     expect(crm).toHaveAttribute("href", "/tasks?project=CRM");
     expect(within(rail).getByRole("link", { name: "Новый проект" })).toHaveAttribute("href", "/settings/tasks#projects");

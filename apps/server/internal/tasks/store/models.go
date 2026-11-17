@@ -66,6 +66,15 @@ type TaskFile struct {
 	AttachedAt  *time.Time
 }
 
+type TaskLink struct {
+	WorkspaceID uuid.UUID
+	FromTaskID  uuid.UUID
+	ToTaskID    uuid.UUID
+	Kind        string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}
+
 type TaskProject struct {
 	ID          uuid.UUID
 	WorkspaceID uuid.UUID

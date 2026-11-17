@@ -578,6 +578,25 @@ export const taskFileUploadSchema = z.object({
   upload: signedRequestSchema,
 }) satisfies z.ZodType<Schemas["TaskFileUpload"]>;
 
+/** An open task a task waits for (ADR-0022); `ref` is null when the caller does not see it. */
+export const taskBlockerSchema = z.object({ id: z.string(), ref: z.string().nullable() }) satisfies z.ZodType<Schemas["TaskBlocker"]>;
+
+export const taskLinkKindSchema = z.enum(["blocks", "waits_for", "relates", "duplicates", "duplicated_by"]) satisfies z.ZodType<
+  Schemas["TaskLinkKind"]
+>;
+
+export const taskLinkSchema = z.object({
+  kind: taskLinkKindSchema,
+  task_id: z.string(),
+  visible: z.boolean(),
+  ref: z.string().nullable(),
+  title: z.string().nullable(),
+  status: taskStatusSchema,
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskLink"]>;
+
+export const taskLinkListSchema = z.object({ items: z.array(taskLinkSchema) }) satisfies z.ZodType<Schemas["TaskLinkList"]>;
+
 export const taskSchema = z.object({
   id: z.string(),
   project_id: z.string(),
@@ -597,6 +616,7 @@ export const taskSchema = z.object({
   closed_at: z.string().nullable(),
   status_changed_at: z.string(),
   blocked_reason: z.string().nullable(),
+  waiting_on: z.array(taskBlockerSchema),
   version: z.number(),
   conversation_ids: z.array(z.string()),
   conversation_count: z.number(),
@@ -675,7 +695,7 @@ export const taskBoardSettingsSchema = z.object({
 
 export const taskSummarySchema = z.object({
   assigned_open: z.number(),
-  projects: z.array(z.object({ project_id: z.string(), assigned_open: z.number() })),
+  projects: z.array(z.object({ project_id: z.string(), assigned_open: z.number(), waiting: z.number() })),
 }) satisfies z.ZodType<Schemas["TaskSummary"]>;
 
 export const taskActivitySchema = z.object({
@@ -696,6 +716,8 @@ export const taskActivitySchema = z.object({
     "tags",
     "blocked",
     "unblocked",
+    "link_added",
+    "link_removed",
   ]),
   body: z.string().optional(),
   from: z.string().optional(),
@@ -707,6 +729,9 @@ export const taskActivitySchema = z.object({
   files_removed: z.number().optional(),
   tags_added: z.array(z.string()).optional(),
   tags_removed: z.array(z.string()).optional(),
+  link: taskLinkKindSchema.optional(),
+  link_task_id: z.string().optional(),
+  link_ref: z.string().nullable().optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["TaskActivity"]>;
 

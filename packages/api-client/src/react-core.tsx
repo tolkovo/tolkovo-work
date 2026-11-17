@@ -69,6 +69,7 @@ export const queryKeys = {
   taskFlow: (filter: TaskFlowFilter) => ["tasks", "flow", filter] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   taskActivity: (id: string) => ["tasks", "activity", id] as const,
+  taskLinks: (id: string) => ["tasks", "links", id] as const,
   taskSummary: ["tasks", "summary"] as const,
   taskQueues: ["tasks", "queues"] as const,
   /** Under the tasks root: task.changed and task.project_changed both refresh them. */

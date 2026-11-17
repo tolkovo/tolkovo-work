@@ -60,6 +60,9 @@ func (s *server) AddTaskFiles(w http.ResponseWriter, r *http.Request, id oapi.Id
 		return
 	}
 	t, err := s.tasks.AddFiles(r.Context(), p.WorkspaceID, p.UserID, id, req.FileIds)
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return

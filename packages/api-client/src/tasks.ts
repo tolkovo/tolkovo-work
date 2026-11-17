@@ -15,6 +15,7 @@ import {
   taskQueueSchema,
   signedRequestSchema,
   taskFileUploadSchema,
+  taskLinkListSchema,
   taskSchema,
   taskSettingsViewSchema,
   taskSummarySchema,
@@ -44,6 +45,9 @@ export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
 export type TaskQueue = Schemas["TaskQueue"];
 export type TaskSummary = Schemas["TaskSummary"];
+export type TaskLink = Schemas["TaskLink"];
+export type TaskLinkKind = Schemas["TaskLinkKind"];
+export type TaskBlocker = Schemas["TaskBlocker"];
 export type TaskProject = Schemas["TaskProject"];
 export type TaskProjectInput = Schemas["TaskProjectInput"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
@@ -147,6 +151,27 @@ export async function commentTask(client: ApiClient, id: string, body: string, f
 export async function linkTaskConversation(client: ApiClient, id: string, conversationId: string): Promise<Task> {
   const data = await unwrap(client.POST("/tasks/{id}/conversations", { params: { path: { id } }, body: { conversation_id: conversationId } }));
   return parseAnswer(taskSchema, data, 201);
+}
+
+/** Links of a task to other tasks (ADR-0022), oldest first; a hidden task shows by its status only. */
+export async function fetchTaskLinks(client: ApiClient, id: string): Promise<TaskLink[]> {
+  return parseAnswer(taskLinkListSchema, await unwrap(client.GET("/tasks/{id}/links", { params: { path: { id } } }))).items;
+}
+
+/** Links the task to another, named by its ref or id; the links of the task after. */
+export async function addTaskLink(client: ApiClient, id: string, kind: TaskLinkKind, task: string): Promise<TaskLink[]> {
+  const data = await unwrap(client.POST("/tasks/{id}/links", { params: { path: { id } }, body: { kind, task } }));
+  return parseAnswer(taskLinkListSchema, data, 201).items;
+}
+
+export async function removeTaskLink(client: ApiClient, id: string, otherId: string): Promise<void> {
+  await unwrap(client.DELETE("/tasks/{id}/links/{other_id}", { params: { path: { id, other_id: otherId } } }));
+}
+
+/** Cancels the task read at `version` as a duplicate of the original; its conversations move there. */
+export async function closeTaskAsDuplicate(client: ApiClient, id: string, original: string, version: number): Promise<Task> {
+  const data = await unwrap(client.POST("/tasks/{id}/duplicate", { params: { path: { id } }, body: { original, version } }));
+  return parseAnswer(taskSchema, data);
 }
 
 export async function unlinkTaskConversation(client: ApiClient, id: string, conversationId: string): Promise<void> {

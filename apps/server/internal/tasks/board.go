@@ -134,7 +134,7 @@ func (s *Service) Board(ctx context.Context, workspaceID uuid.UUID, f BoardFilte
 		for _, r := range rows {
 			all = append(all, taskFrom(r.Task))
 		}
-		if err := fillLists(ctx, q, workspaceID, all); err != nil {
+		if err := fillLists(ctx, q, workspaceID, f.Viewer, all); err != nil {
 			return err
 		}
 		for i, r := range rows {
@@ -195,7 +195,7 @@ func (s *Service) listFlow(ctx context.Context, workspaceID uuid.UUID, f Filter,
 			k := flowKey(out.Items[limit-1])
 			out.NextKey = &k
 		}
-		return fillLists(ctx, q, workspaceID, out.Items)
+		return fillLists(ctx, q, workspaceID, f.Viewer, out.Items)
 	})
 	if err != nil {
 		return Page{}, dbError(err, "list tasks")
@@ -203,13 +203,16 @@ func (s *Service) listFlow(ctx context.Context, workspaceID uuid.UUID, f Filter,
 	return out, nil
 }
 
-// fillLists fills what lists show of a page of tasks: refs, tags and the
-// number of linked conversations, one query each.
-func fillLists(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, items []Task) error {
+// fillLists fills what lists show of a page of tasks: refs, tags, what
+// each waits for and the number of linked conversations, one query each.
+func fillLists(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, v Viewer, items []Task) error {
 	if err := fillTags(ctx, q, workspaceID, items); err != nil || len(items) == 0 {
 		return err
 	}
 	if err := fillRefs(ctx, q, workspaceID, items); err != nil {
+		return err
+	}
+	if err := fillWaiting(ctx, q, workspaceID, v, items); err != nil {
 		return err
 	}
 	ids := make([]uuid.UUID, len(items))

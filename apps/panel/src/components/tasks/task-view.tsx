@@ -27,9 +27,10 @@ import { NEXT_STATUS, TASK_PRIORITIES, TASK_STATUSES, isClosed, taskRef, taskUpd
 import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
-import { TaskPriorityMark, TaskStatusBadge, control } from "./task-bits";
+import { TaskPriorityMark, TaskStatusBadge, WaitingPlate, control } from "./task-bits";
 import { BlockDialog, BlockedNote } from "./task-block";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
+import { DuplicateButton, TaskLinks } from "./task-links";
 import { ProjectName, projectMembers, projectQueues } from "./task-project";
 import { TaskTagsEditor, useTaskTagMap } from "./task-tags";
 
@@ -88,6 +89,7 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
         <div className="flex flex-wrap items-center gap-2">
           <ProjectName projectId={task.project_id} />
           <TaskStatusBadge status={task.status} />
+          <WaitingPlate task={task} />
           <TaskPriorityMark priority={task.priority} quietNormal={false} />
           <TaskTagsEditor selected={task.tag_ids} busy={update.isPending} onChange={(tag_ids) => change({ tag_ids })} />
         </div>
@@ -116,6 +118,7 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
             </section>
           )}
           <DescriptionFiles task={task} />
+          <TaskLinks task={task} />
           <Conversations task={task} />
           <Feed task={task} />
         </div>
@@ -224,6 +227,7 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
         </div>
       )}
       {!isClosed(task.status) && !task.blocked_reason && <BlockButton task={task} disabled={disabled} onChange={onChange} />}
+      {!isClosed(task.status) && <DuplicateButton task={task} disabled={disabled} />}
       <Dates task={task} />
       {canManage && <DeleteTask task={task} />}
     </aside>
@@ -511,6 +515,12 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
     case "unblocked":
       text = t("tasks.activity.unblocked");
       break;
+    case "link_added":
+    case "link_removed": {
+      const values = { kind: a.link ? t(`tasks.links.kind.${a.link}`) : "", ref: a.link_ref ?? t("tasks.links.hiddenShort") };
+      text = t(a.kind === "link_added" ? "tasks.activity.linkAdded" : "tasks.activity.linkRemoved", values);
+      break;
+    }
     default:
       text = "";
   }

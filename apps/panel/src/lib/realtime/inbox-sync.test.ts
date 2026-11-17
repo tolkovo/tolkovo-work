@@ -189,7 +189,7 @@ describe("createInboxSync", () => {
     const task = {
       id: "t1", project_id: "p1", project_key: "TSK", number: 7, ref: "TSK-7", queue_id: null, topic_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
       assignee_id: me, created_by: "u2", created_at: "2026-10-04T12:00:00Z", updated_at: "2026-10-04T12:00:00Z",
-      closed_at: null, status_changed_at: "2026-10-04T12:00:00Z", blocked_reason: null, version: 2, conversation_ids: [], conversation_count: 0, files: [], tag_ids: [],
+      closed_at: null, status_changed_at: "2026-10-04T12:00:00Z", blocked_reason: null, waiting_on: [] as { id: string; ref: string | null }[], version: 2, conversation_ids: [], conversation_count: 0, files: [], tag_ids: [],
     };
     const api = fakeApi({ routes: { "GET /tasks/t1": () => json(200, task) } });
     const queryClient = new QueryClient();
@@ -206,6 +206,34 @@ describe("createInboxSync", () => {
     sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: "u2", assigned: true }));
     await vi.advanceTimersByTimeAsync(50);
     expect(onTaskAssigned).toHaveBeenCalledWith(expect.objectContaining({ id: "t1", number: 7 }));
+    sync.stop();
+  });
+
+  it("tells the member their task waits for nothing now, unless they freed it themselves or it still waits", async () => {
+    vi.setSystemTime(new Date("2026-10-04T12:00:30Z"));
+    const me = ownerSession.user.id;
+    const task = {
+      id: "t1", project_id: "p1", project_key: "TSK", number: 7, ref: "TSK-7", queue_id: null, topic_id: null, title: "Сертификат", body: "", status: "open", priority: "high",
+      assignee_id: me, created_by: "u2", created_at: "2026-10-04T12:00:00Z", updated_at: "2026-10-04T12:00:00Z",
+      closed_at: null, status_changed_at: "2026-10-04T12:00:00Z", blocked_reason: null, waiting_on: [{ id: "t9", ref: "TSK-9" }] as { id: string; ref: string | null }[],
+      version: 2, conversation_ids: [], conversation_count: 0, files: [], tag_ids: [],
+    };
+    const api = fakeApi({ routes: { "GET /tasks/t1": () => json(200, task) } });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<Session>(queryKeys.session, ownerSession);
+    const client = createPanelApiClient(queryClient, { origin: "http://panel.test", fetch: api.fetch });
+    const onTaskUnblocked = vi.fn();
+    const sync = createInboxSync({ queryClient, api: client, onTaskUnblocked });
+
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: me, unblocked: true }));
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: "u2", unblocked: true })); // still waits for TSK-9
+    await vi.advanceTimersByTimeAsync(50);
+    expect(onTaskUnblocked).not.toHaveBeenCalled();
+
+    task.waiting_on = [];
+    sync.onEvent(event("task.changed", { task_id: "t1", assignee_id: me, actor_id: "u2", unblocked: true }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(onTaskUnblocked).toHaveBeenCalledWith(expect.objectContaining({ id: "t1", ref: "TSK-7" }));
     sync.stop();
   });
 

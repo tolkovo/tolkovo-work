@@ -3,6 +3,10 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import type { ApiClient } from "./client";
 import {
   addTaskFiles,
+  addTaskLink,
+  closeTaskAsDuplicate,
+  fetchTaskLinks,
+  removeTaskLink,
   commentTask,
   fetchTaskFileLink,
   removeTaskFile,
@@ -50,6 +54,7 @@ import {
   type TaskFlowFilter,
   type TaskCreate,
   type TaskFilter,
+  type TaskLinkKind,
   type TaskStatus,
   type TaskQueueInput,
   type TaskProjectInput,
@@ -137,6 +142,12 @@ export function useTask(id: string) {
 export function useTaskActivity(id: string) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskActivity(id), queryFn: () => fetchTaskActivity(client, id) });
+}
+
+/** Links of a task to other tasks (ADR-0022). */
+export function useTaskLinks(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskLinks(id), queryFn: () => fetchTaskLinks(client, id) });
 }
 
 /** Open tasks assigned to the caller, for the counter in the rail. */
@@ -257,6 +268,22 @@ export function useLinkTaskConversation() {
 export function useUnlinkTaskConversation() {
   return useTaskMutation((client, { taskId, conversationId }: { taskId: string; conversationId: string }) =>
     unlinkTaskConversation(client, taskId, conversationId),
+  );
+}
+
+export function useAddTaskLink() {
+  return useTaskMutation((client, { taskId, kind, task }: { taskId: string; kind: TaskLinkKind; task: string }) =>
+    addTaskLink(client, taskId, kind, task),
+  );
+}
+
+export function useRemoveTaskLink() {
+  return useTaskMutation((client, { taskId, otherId }: { taskId: string; otherId: string }) => removeTaskLink(client, taskId, otherId));
+}
+
+export function useCloseTaskAsDuplicate() {
+  return useTaskMutation((client, { taskId, original, version }: { taskId: string; original: string; version: number }) =>
+    closeTaskAsDuplicate(client, taskId, original, version),
   );
 }
 

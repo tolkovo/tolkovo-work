@@ -128,6 +128,10 @@ export function describeApiError<F extends string = string>(
       return { message: t("errors.projectExists"), ...(field ? { field } : {}) };
     case "project_not_empty":
       return { message: t("errors.projectNotEmpty") };
+    case "link_exists":
+      return { message: t("errors.linkExists"), ...(field ? { field } : {}) };
+    case "link_loop":
+      return { message: t("errors.linkLoop"), ...(field ? { field } : {}) };
     case "tasks_disabled":
       return { message: t("errors.tasksDisabled") };
     case "no_notify_bot":

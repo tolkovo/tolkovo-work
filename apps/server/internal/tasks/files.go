@@ -363,7 +363,7 @@ func (s *Service) AddFiles(ctx context.Context, workspaceID, actorID, taskID uui
 	if err != nil {
 		return Task{}, dbError(err, "add files")
 	}
-	return s.Get(ctx, workspaceID, taskID)
+	return s.Get(ctx, workspaceID, Viewer{UserID: actorID, All: true}, taskID)
 }
 
 // RemoveFile takes a file out of a task's description; files of comments

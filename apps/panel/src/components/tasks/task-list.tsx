@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { TASK_VIEWS, taskFilter, taskRef, type TasksSearch } from "../../lib/tasks/tasks";
 import { useMemberNames } from "../inbox/presence";
 import { TopicPill, useTopicMap } from "../inbox/topics";
-import { TaskPriorityMark, TaskStatusBadge } from "./task-bits";
+import { TaskPriorityMark, TaskStatusBadge, WaitingPlate } from "./task-bits";
 import { LayoutSwitch, TaskFilters } from "./task-filters";
 import { ProjectSwitch, useCurrentTaskProject } from "./task-project";
 import { TaskTagDots } from "./task-tags";
@@ -143,6 +143,7 @@ function TaskRow({ task, search, selected }: { task: Task; search: TasksSearch; 
       </span>
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-2">
         <TaskStatusBadge status={task.status} />
+        <WaitingPlate task={task} />
         <TaskPriorityMark priority={task.priority} />
         <span className="min-w-0 truncate">{assignee}</span>
         {queue && <span className="min-w-0 truncate text-ink-3">· {queue}</span>}

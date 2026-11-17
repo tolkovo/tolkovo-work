@@ -938,20 +938,22 @@ func (e TaskActivityFields) Valid() bool {
 
 // Defines values for TaskActivityKind.
 const (
-	TaskActivityKindAssignee  TaskActivityKind = "assignee"
-	TaskActivityKindBlocked   TaskActivityKind = "blocked"
-	TaskActivityKindComment   TaskActivityKind = "comment"
-	TaskActivityKindCreated   TaskActivityKind = "created"
-	TaskActivityKindEdited    TaskActivityKind = "edited"
-	TaskActivityKindFiles     TaskActivityKind = "files"
-	TaskActivityKindLinked    TaskActivityKind = "linked"
-	TaskActivityKindPriority  TaskActivityKind = "priority"
-	TaskActivityKindQueue     TaskActivityKind = "queue"
-	TaskActivityKindStatus    TaskActivityKind = "status"
-	TaskActivityKindTags      TaskActivityKind = "tags"
-	TaskActivityKindTopic     TaskActivityKind = "topic"
-	TaskActivityKindUnblocked TaskActivityKind = "unblocked"
-	TaskActivityKindUnlinked  TaskActivityKind = "unlinked"
+	TaskActivityKindAssignee    TaskActivityKind = "assignee"
+	TaskActivityKindBlocked     TaskActivityKind = "blocked"
+	TaskActivityKindComment     TaskActivityKind = "comment"
+	TaskActivityKindCreated     TaskActivityKind = "created"
+	TaskActivityKindEdited      TaskActivityKind = "edited"
+	TaskActivityKindFiles       TaskActivityKind = "files"
+	TaskActivityKindLinkAdded   TaskActivityKind = "link_added"
+	TaskActivityKindLinkRemoved TaskActivityKind = "link_removed"
+	TaskActivityKindLinked      TaskActivityKind = "linked"
+	TaskActivityKindPriority    TaskActivityKind = "priority"
+	TaskActivityKindQueue       TaskActivityKind = "queue"
+	TaskActivityKindStatus      TaskActivityKind = "status"
+	TaskActivityKindTags        TaskActivityKind = "tags"
+	TaskActivityKindTopic       TaskActivityKind = "topic"
+	TaskActivityKindUnblocked   TaskActivityKind = "unblocked"
+	TaskActivityKindUnlinked    TaskActivityKind = "unlinked"
 )
 
 // Valid indicates whether the value is a known member of the TaskActivityKind enum.
@@ -968,6 +970,10 @@ func (e TaskActivityKind) Valid() bool {
 	case TaskActivityKindEdited:
 		return true
 	case TaskActivityKindFiles:
+		return true
+	case TaskActivityKindLinkAdded:
+		return true
+	case TaskActivityKindLinkRemoved:
 		return true
 	case TaskActivityKindLinked:
 		return true
@@ -1065,6 +1071,33 @@ func (e TaskDraftDraftedBy) Valid() bool {
 	case TaskDraftDraftedByAi:
 		return true
 	case TaskDraftDraftedByTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskLinkKind.
+const (
+	Blocks       TaskLinkKind = "blocks"
+	DuplicatedBy TaskLinkKind = "duplicated_by"
+	Duplicates   TaskLinkKind = "duplicates"
+	Relates      TaskLinkKind = "relates"
+	WaitsFor     TaskLinkKind = "waits_for"
+)
+
+// Valid indicates whether the value is a known member of the TaskLinkKind enum.
+func (e TaskLinkKind) Valid() bool {
+	switch e {
+	case Blocks:
+		return true
+	case DuplicatedBy:
+		return true
+	case Duplicates:
+		return true
+	case Relates:
+		return true
+	case WaitsFor:
 		return true
 	default:
 		return false
@@ -3046,6 +3079,10 @@ type Task struct {
 	TopicId   *uuid.UUID `json:"topic_id"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	Version   int32      `json:"version"`
+
+	// WaitingOn The open tasks that block this one (links `blocks`, ADR-0022), oldest link first. A
+	// task waits while this is not empty; the `blocked` filter takes these as well.
+	WaitingOn []TaskBlocker `json:"waiting_on"`
 }
 
 // TaskActivity defines model for TaskActivity.
@@ -3076,6 +3113,17 @@ type TaskActivity struct {
 	Id   uuid.UUID        `json:"id"`
 	Kind TaskActivityKind `json:"kind"`
 
+	// Link A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+	// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+	// original), `duplicated_by` (the other repeats this one).
+	Link *TaskLinkKind `json:"link,omitempty"`
+
+	// LinkRef The ref of the other task; `null` when the caller does not see it.
+	LinkRef *string `json:"link_ref,omitempty"`
+
+	// LinkTaskId On `link_added` and `link_removed`, the other task.
+	LinkTaskId *uuid.UUID `json:"link_task_id,omitempty"`
+
 	// TagsAdded On `tags`, the tags put on the task.
 	TagsAdded *[]uuid.UUID `json:"tags_added,omitempty"`
 
@@ -3095,6 +3143,14 @@ type TaskActivityKind string
 // TaskActivityList defines model for TaskActivityList.
 type TaskActivityList struct {
 	Items []TaskActivity `json:"items"`
+}
+
+// TaskBlocker defines model for TaskBlocker.
+type TaskBlocker struct {
+	Id uuid.UUID `json:"id"`
+
+	// Ref `null` when the caller does not see the task.
+	Ref *string `json:"ref"`
 }
 
 // TaskBoard defines model for TaskBoard.
@@ -3201,6 +3257,15 @@ type TaskDraftAiFallback string
 // TaskDraftDraftedBy defines model for TaskDraft.DraftedBy.
 type TaskDraftDraftedBy string
 
+// TaskDuplicateInput defines model for TaskDuplicateInput.
+type TaskDuplicateInput struct {
+	// Original The original task: its ref or id.
+	Original string `json:"original"`
+
+	// Version The version of the task the caller read.
+	Version int32 `json:"version"`
+}
+
 // TaskFile defines model for TaskFile.
 type TaskFile struct {
 	ContentType string    `json:"content_type"`
@@ -3306,6 +3371,50 @@ type TaskFlowWeek struct {
 	Week openapi_types.Date `json:"week"`
 }
 
+// TaskLink defines model for TaskLink.
+type TaskLink struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Kind A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+	// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+	// original), `duplicated_by` (the other repeats this one).
+	Kind TaskLinkKind `json:"kind"`
+	Ref  *string      `json:"ref"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status TaskStatus `json:"status"`
+
+	// TaskId The other task.
+	TaskId uuid.UUID `json:"task_id"`
+	Title  *string   `json:"title"`
+
+	// Visible The caller sees the other task; otherwise `ref` and `title` are `null`.
+	Visible bool `json:"visible"`
+}
+
+// TaskLinkInput defines model for TaskLinkInput.
+type TaskLinkInput struct {
+	// Kind A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+	// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+	// original), `duplicated_by` (the other repeats this one).
+	Kind TaskLinkKind `json:"kind"`
+
+	// Task The other task: its ref (`CRM-41`, `#41` or `41` for the default project) or id.
+	Task string `json:"task"`
+}
+
+// TaskLinkKind A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+// original), `duplicated_by` (the other repeats this one).
+type TaskLinkKind string
+
+// TaskLinkList defines model for TaskLinkList.
+type TaskLinkList struct {
+	Items []TaskLink `json:"items"`
+}
+
 // TaskLinkRequest defines model for TaskLinkRequest.
 type TaskLinkRequest struct {
 	ConversationId uuid.UUID `json:"conversation_id"`
@@ -3379,6 +3488,9 @@ type TaskProjectList struct {
 type TaskProjectSummary struct {
 	AssignedOpen int64     `json:"assigned_open"`
 	ProjectId    uuid.UUID `json:"project_id"`
+
+	// Waiting Of them, blocked or waiting for another task.
+	Waiting int64 `json:"waiting"`
 }
 
 // TaskQueue defines model for TaskQueue.
@@ -4436,8 +4548,14 @@ type CommentTaskJSONRequestBody = TaskComment
 // LinkTaskConversationJSONRequestBody defines body for LinkTaskConversation for application/json ContentType.
 type LinkTaskConversationJSONRequestBody = TaskLinkRequest
 
+// CloseTaskAsDuplicateJSONRequestBody defines body for CloseTaskAsDuplicate for application/json ContentType.
+type CloseTaskAsDuplicateJSONRequestBody = TaskDuplicateInput
+
 // AddTaskFilesJSONRequestBody defines body for AddTaskFiles for application/json ContentType.
 type AddTaskFilesJSONRequestBody = TaskFilesAdd
+
+// AddTaskLinkJSONRequestBody defines body for AddTaskLink for application/json ContentType.
+type AddTaskLinkJSONRequestBody = TaskLinkInput
 
 // CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
 type CreateTopicJSONRequestBody = TopicInput
@@ -4927,12 +5045,24 @@ type ServerInterface interface {
 	// UnlinkTaskConversation Unlink a conversation from the task
 	// (DELETE /tasks/{id}/conversations/{conversation_id})
 	UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID)
+	// CloseTaskAsDuplicate Close the task as a duplicate of another
+	// (POST /tasks/{id}/duplicate)
+	CloseTaskAsDuplicate(w http.ResponseWriter, r *http.Request, id Id)
 	// AddTaskFiles Add uploaded files to a task's description
 	// (POST /tasks/{id}/files)
 	AddTaskFiles(w http.ResponseWriter, r *http.Request, id Id)
 	// RemoveTaskFile Take a file out of a task's description
 	// (DELETE /tasks/{id}/files/{file_id})
 	RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID)
+	// ListTaskLinks Links of the task to other tasks, oldest first
+	// (GET /tasks/{id}/links)
+	ListTaskLinks(w http.ResponseWriter, r *http.Request, id Id)
+	// AddTaskLink Link the task to another task
+	// (POST /tasks/{id}/links)
+	AddTaskLink(w http.ResponseWriter, r *http.Request, id Id)
+	// RemoveTaskLink Remove the link of the task to another task
+	// (DELETE /tasks/{id}/links/{other_id})
+	RemoveTaskLink(w http.ResponseWriter, r *http.Request, id Id, otherId uuid.UUID)
 	// ListTopics The topics of questions, in the order of the buttons
 	// (GET /topics)
 	ListTopics(w http.ResponseWriter, r *http.Request)
@@ -5893,6 +6023,12 @@ func (_ Unimplemented) UnlinkTaskConversation(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// CloseTaskAsDuplicate Close the task as a duplicate of another
+// (POST /tasks/{id}/duplicate)
+func (_ Unimplemented) CloseTaskAsDuplicate(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // AddTaskFiles Add uploaded files to a task's description
 // (POST /tasks/{id}/files)
 func (_ Unimplemented) AddTaskFiles(w http.ResponseWriter, r *http.Request, id Id) {
@@ -5902,6 +6038,24 @@ func (_ Unimplemented) AddTaskFiles(w http.ResponseWriter, r *http.Request, id I
 // RemoveTaskFile Take a file out of a task's description
 // (DELETE /tasks/{id}/files/{file_id})
 func (_ Unimplemented) RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskLinks Links of the task to other tasks, oldest first
+// (GET /tasks/{id}/links)
+func (_ Unimplemented) ListTaskLinks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddTaskLink Link the task to another task
+// (POST /tasks/{id}/links)
+func (_ Unimplemented) AddTaskLink(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveTaskLink Remove the link of the task to another task
+// (DELETE /tasks/{id}/links/{other_id})
+func (_ Unimplemented) RemoveTaskLink(w http.ResponseWriter, r *http.Request, id Id, otherId uuid.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -9683,6 +9837,32 @@ func (siw *ServerInterfaceWrapper) UnlinkTaskConversation(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// CloseTaskAsDuplicate operation middleware
+func (siw *ServerInterfaceWrapper) CloseTaskAsDuplicate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseTaskAsDuplicate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AddTaskFiles operation middleware
 func (siw *ServerInterfaceWrapper) AddTaskFiles(w http.ResponseWriter, r *http.Request) {
 
@@ -9735,6 +9915,93 @@ func (siw *ServerInterfaceWrapper) RemoveTaskFile(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveTaskFile(w, r, id, fileId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTaskLinks operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskLinks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskLinks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTaskLink operation middleware
+func (siw *ServerInterfaceWrapper) AddTaskLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTaskLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTaskLink operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTaskLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "other_id" -------------
+	var otherId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "other_id", chi.URLParam(r, "other_id"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "other_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTaskLink(w, r, id, otherId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10585,6 +10852,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks/{id}/activity", wrapper.CommentTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}/links", wrapper.ListTaskLinks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/links", wrapper.AddTaskLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/links/{other_id}", wrapper.RemoveTaskLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/duplicate", wrapper.CloseTaskAsDuplicate)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks/{id}/conversations", wrapper.LinkTaskConversation)

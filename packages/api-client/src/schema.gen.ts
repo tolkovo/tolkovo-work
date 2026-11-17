@@ -2805,6 +2805,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks/{id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Links of the task to other tasks, oldest first
+         * @description Links cross projects (ADR-0022): a task the caller does not see shows by its status
+         *     only. Requires `tasks.view`.
+         */
+        get: operations["listTaskLinks"];
+        put?: never;
+        /**
+         * Link the task to another task
+         * @description Both tasks must be visible to the caller. Two tasks have one link at most
+         *     (`409 link_exists`), tasks may not wait for each other in a loop (`409 link_loop`), a
+         *     task has 50 links at most. A task waits while a task that blocks it is open; when the
+         *     last one closes, its assignee is notified. Requires `tasks.edit`.
+         */
+        post: operations["addTaskLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/links/{other_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                /** @description The other task of the link. */
+                other_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove the link of the task to another task
+         * @description The other task may be one the caller does not see. Requires `tasks.edit`.
+         */
+        delete: operations["removeTaskLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close the task as a duplicate of another
+         * @description Cancels the open task read at `version` (`409 task_conflict` when it changed), links it
+         *     as a `duplicates` of the original and moves its conversations to the original: they
+         *     wait for it while it is open. Both tasks must be visible to the caller. Requires
+         *     `tasks.edit`.
+         */
+        post: operations["closeTaskAsDuplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks/{id}/conversations": {
         parameters: {
             query?: never;
@@ -3897,6 +3976,11 @@ export interface components {
             status_changed_at: string;
             /** @description Set while an open task is blocked, with what blocks it; a mark over the status, not a step. */
             blocked_reason: string | null;
+            /**
+             * @description The open tasks that block this one (links `blocks`, ADR-0022), oldest link first. A
+             *     task waits while this is not empty; the `blocked` filter takes these as well.
+             */
+            waiting_on: components["schemas"]["TaskBlocker"][];
             /** Format: int32 */
             version: number;
             /** @description Linked conversations, oldest link first; empty in lists. */
@@ -3907,6 +3991,47 @@ export interface components {
             files: components["schemas"]["TaskFile"][];
             /** @description Tags of tasks (`GET /task-tags`), in the order they were put on; in lists too. */
             tag_ids: string[];
+        };
+        TaskBlocker: {
+            id: string;
+            /** @description `null` when the caller does not see the task. */
+            ref: string | null;
+        };
+        /**
+         * @description A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+         *     other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+         *     original), `duplicated_by` (the other repeats this one).
+         * @enum {string}
+         */
+        TaskLinkKind: "blocks" | "waits_for" | "relates" | "duplicates" | "duplicated_by";
+        TaskLink: {
+            kind: components["schemas"]["TaskLinkKind"];
+            /** @description The other task. */
+            task_id: string;
+            /** @description The caller sees the other task; otherwise `ref` and `title` are `null`. */
+            visible: boolean;
+            ref: string | null;
+            title: string | null;
+            status: components["schemas"]["TaskStatus"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskLinkList: {
+            items: components["schemas"]["TaskLink"][];
+        };
+        TaskLinkInput: {
+            kind: components["schemas"]["TaskLinkKind"];
+            /** @description The other task: its ref (`CRM-41`, `#41` or `41` for the default project) or id. */
+            task: string;
+        };
+        TaskDuplicateInput: {
+            /** @description The original task: its ref or id. */
+            original: string;
+            /**
+             * Format: int32
+             * @description The version of the task the caller read.
+             */
+            version: number;
         };
         TaskTagInput: {
             /** @description Spaces are collapsed; must contain more than spaces. */
@@ -4104,12 +4229,17 @@ export interface components {
             project_id: string;
             /** Format: int64 */
             assigned_open: number;
+            /**
+             * Format: int64
+             * @description Of them, blocked or waiting for another task.
+             */
+            waiting: number;
         };
         TaskActivity: {
             id: string;
             actor_id: string | null;
             /** @enum {string} */
-            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags" | "blocked" | "unblocked";
+            kind: "comment" | "created" | "status" | "assignee" | "queue" | "priority" | "topic" | "edited" | "linked" | "unlinked" | "files" | "tags" | "blocked" | "unblocked" | "link_added" | "link_removed";
             /** @description The text of a comment; the reason of a blocked line. */
             body?: string;
             /** @description The value a change moved from (a status, a priority, a member, queue or topic id); empty for none. */
@@ -4130,6 +4260,11 @@ export interface components {
             tags_added?: string[];
             /** @description On `tags`, the tags taken off it. */
             tags_removed?: string[];
+            link?: components["schemas"]["TaskLinkKind"];
+            /** @description On `link_added` and `link_removed`, the other task. */
+            link_task_id?: string;
+            /** @description The ref of the other task; `null` when the caller does not see it. */
+            link_ref?: string | null;
             /** Format: date-time */
             created_at: string;
         };
@@ -5495,7 +5630,8 @@ export interface components {
          * @description `task_conflict` (the task changed since `version`), `task_linked` (the conversation
          *     is linked to this task already), `queue_exists` (a queue has this name),
          *     `project_exists` (a project has this name or key), `project_not_empty` (the project has
-         *     tasks; archive it) or `tasks_disabled` (the section is turned off).
+         *     tasks; archive it), `link_exists` (the two tasks are linked already), `link_loop` (the
+         *     tasks would wait for each other) or `tasks_disabled` (the section is turned off).
          */
         TaskConflict: {
             headers: {
@@ -9970,6 +10106,118 @@ export interface operations {
             404: components["responses"]["NotFound"];
             422: components["responses"]["TaskFileRejected"];
             503: components["responses"]["TaskFilesUnavailable"];
+        };
+    };
+    listTaskLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLinkList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTaskLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskLinkInput"];
+            };
+        };
+        responses: {
+            /** @description Linked; the links of the task. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLinkList"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
+        };
+    };
+    removeTaskLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                /** @description The other task of the link. */
+                other_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    closeTaskAsDuplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskDuplicateInput"];
+            };
+        };
+        responses: {
+            /** @description The canceled task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TaskConflict"];
         };
     };
     linkTaskConversation: {

@@ -78,7 +78,7 @@ func TestTaskProjects_AccessAndNumbers(t *testing.T) {
 			return nil
 		}
 		routes++
-		path := strings.NewReplacer("{id}", secret.Id.String(), "{conversation_id}", uuid.NewString(), "{file_id}", uuid.NewString()).Replace(route)
+		path := strings.NewReplacer("{id}", secret.Id.String(), "{conversation_id}", uuid.NewString(), "{file_id}", uuid.NewString(), "{other_id}", uuid.NewString()).Replace(route)
 		if rec := op.do(method, path, map[string]any{}); rec.Code != http.StatusNotFound {
 			t.Errorf("%s %s: %d %s", method, route, rec.Code, rec.Body)
 		}

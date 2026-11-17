@@ -75,6 +75,8 @@ export type Notifier = {
   notify: (events: readonly RealtimeEvent[], c: Conversation, meId: string | undefined) => void;
   /** A task someone else gave to the member (ADR-0015): critical, like an assigned conversation. */
   notifyTask: (task: Task) => void;
+  /** A task of the member that waits for nothing now (ADR-0022): the quiet sound of the queue. */
+  notifyUnblocked: (task: Task) => void;
   /** «Отправить тестовое уведомление»: a sound and a desktop notification, here and now. */
   test: () => void;
 };
@@ -113,6 +115,16 @@ export function createNotifier({ sound, leader, t, openConversationId, openConve
       if (settings.sounds.assigned) sound.play("assigned", settings.volume);
       if (settings.desktop) {
         showDesktop(t("notifications.alert.task", { number: taskRef(task) }), task.title, `task-${task.id}`, () => openTask?.(task.id));
+      }
+    },
+    notifyUnblocked(task) {
+      if (!leader.isLeader()) return;
+      const settings = useNotifySettings.getState();
+      if (settings.sounds.queued) sound.play("queued", settings.volume);
+      if (settings.desktop) {
+        showDesktop(t("notifications.alert.unblocked", { number: taskRef(task) }), task.title, `task-unblocked-${task.id}`, () =>
+          openTask?.(task.id),
+        );
       }
     },
     test() {

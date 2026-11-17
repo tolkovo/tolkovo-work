@@ -39,6 +39,7 @@ const baseTask: Task = {
   closed_at: null,
   status_changed_at: "2026-10-07T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 1,
   conversation_ids: [],
   conversation_count: 0,

@@ -159,7 +159,9 @@ export function fakeApi(
       headers: request.headers,
       body: text ? parseBody(text) : undefined,
     });
-    const handler = table[`${request.method} ${path}`];
+    // Every task has no links unless a test says otherwise (ADR-0022).
+    const handler =
+      table[`${request.method} ${path}`] ?? (request.method === "GET" && /^\/tasks\/[^/]+\/links$/.test(path) ? () => json(200, { items: [] }) : undefined);
     if (!handler) throw new Error(`fakeApi: no handler for ${request.method} ${path}`);
     return handler(request);
   });

@@ -2,11 +2,13 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -191,6 +193,20 @@ var mcpTools = []mcpTool{
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
 		perm:        authz.TasksEdit, run: toolCommentTask,
 	},
+	{
+		Name: "link_tasks", Title: "Link two tasks",
+		Description: "Links the task to another, or removes their link (remove: true). blocks: the task blocks the other, " +
+			"which waits for it while it is open; waits_for: the other blocks the task; relates; duplicates: the task repeats " +
+			"the other. Two tasks have one link at most. Returns the links of the task.",
+		InputSchema: object([]string{"number", "other"}, map[string]any{
+			"number": numberProp,
+			"other":  map[string]any{"type": []string{"string", "integer"}, "description": "The other task, as number."},
+			"kind":   map[string]any{"type": "string", "enum": tasks.LinkKinds, "description": "Needed to link; absent to remove."},
+			"remove": map[string]any{"type": "boolean", "description": "Remove the link of the two tasks instead."},
+		}),
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
+		perm:        authz.TasksEdit, run: toolLinkTasks,
+	},
 }
 
 func toolByName(name string) (mcpTool, bool) {
@@ -226,6 +242,10 @@ func (s *server) toolMessage(err error) (string, bool) {
 		return "the assignee is not an active member of the workspace", true
 	case errors.Is(err, tasks.ErrTagTaken):
 		return "a tag with this name exists; use it", true
+	case errors.Is(err, tasks.ErrLinkExists):
+		return "the tasks are linked already; remove the link first to change it", true
+	case errors.Is(err, tasks.ErrLinkLoop):
+		return "the tasks would wait for each other in a loop", true
 	case errors.Is(err, tasks.ErrInvalid):
 		return strings.TrimPrefix(err.Error(), tasks.ErrInvalid.Error()+": "), true
 	case errors.As(err, new(*tasks.FileError)):
@@ -294,6 +314,8 @@ type mcpTask struct {
 	ClosedAt  *time.Time `json:"closed_at,omitempty"`
 	// BlockedReason is set while the task is blocked.
 	BlockedReason *string `json:"blocked_reason,omitempty"`
+	// WaitingOn are the open tasks that block it ("hidden" for one the caller does not see).
+	WaitingOn []string `json:"waiting_on,omitempty"`
 	// LinkedConversations counts the customer conversations waiting for it.
 	LinkedConversations int           `json:"linked_conversations"`
 	Files               []mcpFile     `json:"files,omitempty"`
@@ -406,6 +428,9 @@ func (n names) task(t tasks.Task, full bool) mcpTask {
 		Assignee: n.person(t.AssigneeID), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt,
 		LinkedConversations: max(len(t.ConversationIDs), t.ConversationCount), Tags: make([]string, 0, len(t.TagIDs)),
 		BlockedReason: t.BlockedReason,
+	}
+	for _, b := range t.WaitingOn {
+		out.WaitingOn = append(out.WaitingOn, cmp.Or(b.Ref, "hidden"))
 	}
 	for _, id := range t.TagIDs {
 		out.Tags = append(out.Tags, nameOf(n.tags, id.String()))
@@ -527,7 +552,7 @@ func toolGetTask(s *server, r *http.Request, p authz.Principal, raw json.RawMess
 	if err != nil {
 		return nil, err
 	}
-	feed, err := s.tasks.Activity(r.Context(), p.WorkspaceID, t.ID)
+	feed, err := s.tasks.Activity(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), t.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -802,6 +827,61 @@ func toolCommentTask(s *server, r *http.Request, p authz.Principal, raw json.Raw
 	return map[string]any{"commented": true, "task": t.Ref, "comment_id": a.ID, "at": a.CreatedAt}, nil
 }
 
+func toolLinkTasks(s *server, r *http.Request, p authz.Principal, raw json.RawMessage) (any, error) {
+	var in struct {
+		Number taskArg `json:"number"`
+		Other  taskArg `json:"other"`
+		Kind   string  `json:"kind"`
+		Remove bool    `json:"remove"`
+	}
+	if err := decodeArgs(raw, &in); err != nil {
+		return nil, err
+	}
+	if !in.Remove && !slices.Contains(tasks.LinkKinds, in.Kind) {
+		return nil, argErr("kind must be one of %s", strings.Join(tasks.LinkKinds, ", "))
+	}
+	t, err := s.taskByNumber(r, p, in.Number)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, ok := tasks.ParseRef(string(in.Other)); !ok {
+		return nil, argErr("other must be a task ref, e.g. CRM-41, or a number, e.g. 42")
+	}
+	v := tasks.ViewerOf(p)
+	var ls []tasks.Link
+	if in.Remove {
+		other, err := s.tasks.IDByRef(r.Context(), p.WorkspaceID, tasks.Viewer{UserID: p.UserID, All: true}, string(in.Other))
+		if err == nil {
+			err = s.tasks.RemoveLink(r.Context(), p.WorkspaceID, v, t.ID, other)
+		}
+		if err == nil {
+			ls, err = s.tasks.Links(r.Context(), p.WorkspaceID, v, t.ID)
+		}
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		other, err := s.tasks.IDByRef(r.Context(), p.WorkspaceID, v, string(in.Other))
+		if err == nil {
+			ls, err = s.tasks.AddLink(r.Context(), p.WorkspaceID, v, t.ID, other, in.Kind)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	type link struct {
+		Kind   string `json:"kind"`
+		Task   string `json:"task"`
+		Title  string `json:"title,omitempty"`
+		Status string `json:"status"`
+	}
+	out := make([]link, 0, len(ls))
+	for _, l := range ls {
+		out = append(out, link{Kind: l.Kind, Task: cmp.Or(l.Ref, "hidden"), Title: l.Title, Status: l.Status})
+	}
+	return map[string]any{"task": t.Ref, "links": out}, nil
+}
+
 // taskArg is a task as an agent names it: "CRM-41", "#41", "41" or 41.
 type taskArg string
 
@@ -828,7 +908,7 @@ func (s *server) taskByNumber(r *http.Request, p authz.Principal, ref taskArg) (
 	if err != nil {
 		return tasks.Task{}, err
 	}
-	return s.tasks.Get(r.Context(), p.WorkspaceID, id)
+	return s.tasks.Get(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 }
 
 // Limits of files through MCP: what a model can take in, what fits a request.

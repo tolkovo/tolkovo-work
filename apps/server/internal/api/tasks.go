@@ -37,6 +37,10 @@ var taskProblems = []struct {
 	{tasks.ErrProjectNotEmpty, Problem{
 		Status: http.StatusConflict, Code: "project_not_empty", Title: "Conflict", Detail: "the project has tasks, archive it instead",
 	}},
+	{tasks.ErrLinkExists, Problem{Status: http.StatusConflict, Code: "link_exists", Title: "Conflict", Detail: "the tasks are linked already"}},
+	{tasks.ErrLinkLoop, Problem{
+		Status: http.StatusConflict, Code: "link_loop", Title: "Conflict", Detail: "the tasks would wait for each other",
+	}},
 	{tasks.ErrDisabled, Problem{
 		Status: http.StatusConflict, Code: "tasks_disabled", Title: "Conflict", Detail: "the tasks section is turned off",
 	}},
@@ -423,6 +427,9 @@ func (s *server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		in.Priority = string(*req.Priority)
 	}
 	t, err := s.tasks.Create(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), in)
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -442,8 +449,8 @@ func (s *server) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projects := make([]oapi.TaskProjectSummary, 0, len(n.ByProject))
-	for id, open := range n.ByProject {
-		projects = append(projects, oapi.TaskProjectSummary{ProjectId: id, AssignedOpen: open})
+	for id, c := range n.ByProject {
+		projects = append(projects, oapi.TaskProjectSummary{ProjectId: id, AssignedOpen: c.Open, Waiting: c.Waiting})
 	}
 	slices.SortFunc(projects, func(a, b oapi.TaskProjectSummary) int {
 		return strings.Compare(a.ProjectId.String(), b.ProjectId.String())
@@ -457,7 +464,7 @@ func (s *server) GetTask(w http.ResponseWriter, r *http.Request, id oapi.Id) {
 	if !ok {
 		return
 	}
-	t, err := s.tasks.Get(r.Context(), p.WorkspaceID, id)
+	t, err := s.tasks.Get(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -484,6 +491,9 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 		Version: req.Version, Title: req.Title, Body: req.Body, Status: string(req.Status), Priority: string(req.Priority),
 		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId, TagIDs: req.TagIds, BlockedReason: req.BlockedReason,
 	})
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -510,7 +520,7 @@ func (s *server) ListTaskActivity(w http.ResponseWriter, r *http.Request, id oap
 	if !ok {
 		return
 	}
-	items, err := s.tasks.Activity(r.Context(), p.WorkspaceID, id)
+	items, err := s.tasks.Activity(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -553,6 +563,9 @@ func (s *server) LinkTaskConversation(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	t, err := s.tasks.Link(r.Context(), p.WorkspaceID, p.UserID, id, req.ConversationId)
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -783,6 +796,7 @@ func taskBody(t tasks.Task) oapi.Task {
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, StatusChangedAt: t.StatusChangedAt, BlockedReason: t.BlockedReason, Version: t.Version,
 		ConversationIds: nonNil(t.ConversationIDs), ConversationCount: t.ConversationCount, Files: taskFileList(t.Files), TagIds: nonNil(t.TagIDs),
+		WaitingOn: blockerList(t.WaitingOn),
 	}
 }
 
@@ -804,12 +818,19 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 		out.Body = &a.Body
 	}
 	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" &&
-		a.Kind != "tags" && a.Kind != "blocked" && a.Kind != "unblocked" {
+		a.Kind != "tags" && a.Kind != "blocked" && a.Kind != "unblocked" && a.Kind != "link_added" && a.Kind != "link_removed" {
 		out.From, out.To = &a.From, &a.To
 	}
 	if a.Kind == "comment" {
 		files := taskFileList(a.Files)
 		out.Files = &files
+	}
+	if a.Kind == "link_added" || a.Kind == "link_removed" {
+		kind := oapi.TaskLinkKind(a.Link)
+		out.Link, out.LinkTaskId = &kind, a.LinkTaskID
+		if a.LinkRef != "" {
+			out.LinkRef = &a.LinkRef
+		}
 	}
 	if a.Kind == "files" {
 		out.FilesAdded, out.FilesRemoved = &a.FilesAdded, &a.FilesRemoved

@@ -16,7 +16,8 @@
     "projects": {
       "label": "Projects",
       "moved": "{name}: place {position} of {count}",
-      "reorderHint": "Alt+↑ or Alt+↓ to move"
+      "reorderHint": "Alt+↑ or Alt+↓ to move",
+      "waiting": "{count} waiting"
     }
   },
   "topbar": {
@@ -1095,7 +1096,9 @@
     "tagExists": "A tag with this name exists.",
     "protectedMember": "Your own role and the owner's cannot be changed here.",
     "projectExists": "A project with this name or key exists.",
-    "projectNotEmpty": "The project has tasks — archive it instead."
+    "projectNotEmpty": "The project has tasks — archive it instead.",
+    "linkExists": "These tasks are linked already. Remove the link to change it.",
+    "linkLoop": "The tasks would wait for each other in a loop. Remove one of the links."
   },
   "error": {
     "title": "Something went wrong",
@@ -1652,7 +1655,9 @@
       "tagsAdded": "Tags added: {names}",
       "tagsRemoved": "Tags removed: {names}",
       "blocked": "Blocked: {reason}",
-      "unblocked": "Unblocked"
+      "unblocked": "Unblocked",
+      "linkAdded": "Link: {kind} {ref}",
+      "linkRemoved": "Link removed: {kind} {ref}"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1843,14 +1848,55 @@
       "label": "Project: {name}"
     },
     "projectOfTopic": "The topic's, or the main one",
-    "projectDefault": "Main"
+    "projectDefault": "Main",
+    "waiting": {
+      "on": "waits for {ref}",
+      "onHidden": "waits for a task",
+      "hidden": "hidden task",
+      "title": "Waits for: {refs}"
+    },
+    "links": {
+      "title": "Links",
+      "add": "Add a link",
+      "loadError": "Could not load the links. Reload the page.",
+      "kind": {
+        "blocks": "Blocks",
+        "waits_for": "Waits for",
+        "relates": "Related to",
+        "duplicates": "Duplicate of",
+        "duplicated_by": "Duplicated by"
+      },
+      "hidden": "A task in a project you are not in",
+      "hiddenShort": "hidden task",
+      "remove": "Remove the link to {name}",
+      "removeTitle": "Remove the link",
+      "kindLabel": "Link",
+      "task": "Task",
+      "taskPlaceholder": "Its number, e.g. {ref}",
+      "hint": {
+        "waits_for": "While that task is open, this one shows «waits for».",
+        "blocks": "While this task is open, that one waits for it.",
+        "relates": "The tasks are related; nobody waits."
+      },
+      "submit": "Link",
+      "notFound": "No such task, or it is hidden from you. Check the number: CRM-41."
+    },
+    "duplicate": {
+      "action": "Close as duplicate…",
+      "title": "Close {number} as a duplicate",
+      "original": "Number of the original",
+      "note": "The task will be canceled and linked to the original.",
+      "conversations": "{count, plural, one {Its # conversation moves} other {Its # conversations move}} to the original and will wait for it.",
+      "submit": "Close as duplicate"
+    }
   },
   "notifications": {
     "alert": {
       "assigned": "Conversation #{number} is yours",
       "message": "New message · #{number}",
       "queued": "New conversation in the queue · #{number}",
-      "task": "Task {number} is assigned to you"
+      "task": "Task {number} is assigned to you",
+      "unblocked": "Unblocked: {number} waits for nothing now"
     },
     "test": {
       "title": "Tolkovo: test",

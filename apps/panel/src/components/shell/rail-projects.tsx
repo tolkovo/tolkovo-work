@@ -79,7 +79,9 @@ export function RailProjects({ summary }: { summary: TaskSummary | undefined }) 
         className="m-0 flex min-h-0 w-full list-none flex-col items-center overflow-x-hidden overflow-y-auto p-0 [scrollbar-width:none]"
       >
         {mine.map((p, i) => {
-          const open = summary?.projects.find((x) => x.project_id === p.id)?.assigned_open ?? 0;
+          const counts = summary?.projects.find((x) => x.project_id === p.id);
+          const open = counts?.assigned_open ?? 0;
+          const waiting = counts?.waiting ?? 0;
           return (
             <li
               key={p.id}
@@ -123,6 +125,12 @@ export function RailProjects({ summary }: { summary: TaskSummary | undefined }) 
                       <span className="absolute top-px right-[5px] h-4 min-w-4 rounded-lg bg-teal px-1 text-center font-mono text-[10px] leading-4 font-semibold text-teal-ink tabular-nums">
                         <span className="sr-only">, {t("nav.myTasks", { count: open })}</span>
                         <span aria-hidden="true">{open}</span>
+                      </span>
+                    )}
+                    {waiting > 0 && (
+                      <span className="absolute top-[23px] right-[5px] h-3.5 min-w-3.5 rounded-[7px] bg-lamp-soft px-[3px] shadow-[inset_0_0_0_1px_var(--lamp)] text-center font-mono text-[9px] leading-3.5 font-semibold text-lamp-ink tabular-nums">
+                        <span className="sr-only">, {t("nav.projects.waiting", { count: waiting })}</span>
+                        <span aria-hidden="true">{waiting}</span>
                       </span>
                     )}
                   </>
