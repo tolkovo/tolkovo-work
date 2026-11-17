@@ -16,6 +16,8 @@ import {
   signedRequestSchema,
   taskFileUploadSchema,
   taskLinkListSchema,
+  taskArticleListSchema,
+  taskBriefListSchema,
   taskSchema,
   taskSettingsViewSchema,
   taskSummarySchema,
@@ -51,6 +53,9 @@ export type TaskBlocker = Schemas["TaskBlocker"];
 export type TaskProject = Schemas["TaskProject"];
 export type TaskProjectInput = Schemas["TaskProjectInput"];
 export type TaskMoveInput = Schemas["TaskMoveInput"];
+export type TaskArticle = Schemas["TaskArticle"];
+export type TaskBrief = Schemas["TaskBrief"];
+export type TaskBriefList = Schemas["TaskBriefList"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
 /** A tag of tasks has the shape of a conversation's tag, in a list of its own (GET /task-tags). */
 export type TaskTag = Schemas["Tag"];
@@ -173,6 +178,31 @@ export async function removeTaskLink(client: ApiClient, id: string, otherId: str
 export async function closeTaskAsDuplicate(client: ApiClient, id: string, original: string, version: number): Promise<Task> {
   const data = await unwrap(client.POST("/tasks/{id}/duplicate", { params: { path: { id } }, body: { original, version } }));
   return parseAnswer(taskSchema, data);
+}
+
+/** Articles of the knowledge base linked to the task (ADR-0022, P5), in the order they were linked. */
+export async function fetchTaskArticles(client: ApiClient, id: string): Promise<TaskArticle[]> {
+  return parseAnswer(taskArticleListSchema, await unwrap(client.GET("/tasks/{id}/articles", { params: { path: { id } } }))).items;
+}
+
+/** Links an article to the task; the articles of the task after. */
+export async function addTaskArticle(client: ApiClient, id: string, articleId: string): Promise<TaskArticle[]> {
+  const data = await unwrap(client.POST("/tasks/{id}/articles", { params: { path: { id } }, body: { article_id: articleId } }));
+  return parseAnswer(taskArticleListSchema, data, 201).items;
+}
+
+export async function removeTaskArticle(client: ApiClient, id: string, articleId: string): Promise<void> {
+  await unwrap(client.DELETE("/tasks/{id}/articles/{article_id}", { params: { path: { id, article_id: articleId } } }));
+}
+
+/** Tasks of a contact in every project; the hidden ones only counted. */
+export async function fetchContactTasks(client: ApiClient, contactId: string): Promise<TaskBriefList> {
+  return parseAnswer(taskBriefListSchema, await unwrap(client.GET("/contacts/{id}/tasks", { params: { path: { id: contactId } } })));
+}
+
+/** Tasks an article of the knowledge base is linked to; the hidden ones only counted. */
+export async function fetchKBArticleTasks(client: ApiClient, articleId: string): Promise<TaskBriefList> {
+  return parseAnswer(taskBriefListSchema, await unwrap(client.GET("/kb/articles/{id}/tasks", { params: { path: { id: articleId } } })));
 }
 
 /** Moves the task to another project under its next number; its old ref keeps opening it. */

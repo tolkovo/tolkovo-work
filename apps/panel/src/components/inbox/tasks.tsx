@@ -1,5 +1,14 @@
 import type { Conversation, MessageEvent } from "@tolkovo/api-client";
-import { useCan, useConversationTasks, useLinkTaskConversation, useTaskDraft, useTasks } from "@tolkovo/api-client/react";
+import type { TaskBrief } from "@tolkovo/api-client";
+import {
+  useCan,
+  useContactTasks,
+  useConversationTasks,
+  useLinkTaskConversation,
+  useTaskDraft,
+  useTaskProjects,
+  useTasks,
+} from "@tolkovo/api-client/react";
 import { Link } from "@tanstack/react-router";
 import { Button, Skeleton } from "@tolkovo/ui";
 import { ListTodo } from "lucide-react";
@@ -231,6 +240,65 @@ export function ConversationTasksList({ conversation: c }: { conversation: Conve
       ))}
     </ul>
   );
+}
+
+/** Whether the card shows the customer's tasks: tasks and contacts to see (ADR-0022, P5). */
+export function useContactTasksInCard(): boolean {
+  const canTasks = useCan("tasks.view");
+  const canContacts = useCan("contacts.view");
+  return canTasks && canContacts;
+}
+
+/**
+ * The tasks of the customer across their conversations and projects, grouped by project. A task
+ * in a project the member is not in is only counted, its project not named.
+ */
+export function ContactTasksList({ contactId }: { contactId: string }) {
+  const { t } = useTranslation();
+  const tasks = useContactTasks(contactId);
+  const { data: projects } = useTaskProjects();
+  if (tasks.isPending) return <Skeleton className="h-10" />;
+  if (tasks.isError) {
+    return (
+      <p role="alert" className="m-0 text-[13px] text-ink-2">
+        {t("inbox.tasks.loadError")}
+      </p>
+    );
+  }
+  const { items, hidden } = tasks.data;
+  if (items.length === 0 && hidden === 0) return <p className="m-0 text-[13px] text-ink-3">{t("inbox.tasks.contactNone")}</p>;
+  const groups = new Map<string, TaskBrief[]>();
+  for (const task of items) groups.set(task.project_id, [...(groups.get(task.project_id) ?? []), task]);
+  const named = groups.size > 1 || (projects?.length ?? 0) > 1;
+  return (
+    <div className="flex flex-col gap-3">
+      {[...groups].sort(([a], [b]) => projectOrder(projects, a) - projectOrder(projects, b)).map(([projectId, list]) => {
+        const name = projects?.find((p) => p.id === projectId)?.name ?? list[0]?.ref.split("-")[0] ?? "";
+        return (
+          <div key={projectId} className="flex flex-col gap-1.5">
+            {named && <p className="m-0 text-[12px] font-medium text-ink-2">{name}</p>}
+            <ul aria-label={named ? name : undefined} className="m-0 flex list-none flex-col gap-2 p-0">
+              {list.map((task) => (
+                <li key={task.id} className="flex min-w-0 items-start gap-2 text-[13px]">
+                  <TaskStatusBadge status={task.status} />
+                  <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="min-w-0 break-words text-ink">
+                    <span className="font-mono text-ink-2">{task.ref}</span> {task.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+      {hidden > 0 && <p className="m-0 text-[12.5px] text-ink-3">{t("inbox.tasks.contactHidden", { count: hidden })}</p>}
+    </div>
+  );
+}
+
+/** The place of a project in the switch; an unknown one goes last. */
+function projectOrder(projects: { id: string }[] | undefined, id: string): number {
+  const i = projects?.findIndex((p) => p.id === id) ?? -1;
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
 }
 
 /** Whether the card shows the tasks section: the right and the section on. */

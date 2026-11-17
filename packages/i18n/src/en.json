@@ -1391,7 +1391,8 @@
         "tasks": "Tasks",
         "history": "Conversation history",
         "tech": "Technical details",
-        "issues": "GitHub issues"
+        "issues": "GitHub issues",
+        "contact-tasks": "Customer's tasks"
       },
       "email": "Email",
       "phone": "Phone",
@@ -1550,7 +1551,9 @@
       "linked": "The conversation is linked to task {number}.",
       "loadError": "Could not load the tasks.",
       "none": "No tasks. Create one in the \"More actions\" menu.",
-      "done": "Task {number} is done. A draft reply:"
+      "done": "Task {number} is done. A draft reply:",
+      "contactNone": "No tasks for this customer.",
+      "contactHidden": "More tasks in projects you are not in: {count}"
     },
     "rating": {
       "short": "Rated {score} of 5",
@@ -1912,6 +1915,24 @@
       "label": "Select {number}",
       "count": "Selected: {count}",
       "done": "Done"
+    },
+    "articles": {
+      "title": "Articles",
+      "add": "Link an article",
+      "loadError": "Couldn't load the articles. Refresh the page.",
+      "none": "No knowledge base articles linked.",
+      "remove": "Unlink the article “{title}”",
+      "removeTitle": "Unlink the article",
+      "search": "Knowledge base article",
+      "searchPlaceholder": "Article title",
+      "found": "Articles found",
+      "nothing": "No articles with this title.",
+      "baseEmpty": "The knowledge base is empty. Articles are added in Settings → Knowledge base.",
+      "more": "And {count} more. Refine the title.",
+      "tasks": "Tasks of the article",
+      "tasksOf": "Tasks of the article “{title}”",
+      "noTasks": "The article is not linked to tasks.",
+      "hiddenTasks": "More tasks in projects you are not in: {count}"
     }
   },
   "notifications": {

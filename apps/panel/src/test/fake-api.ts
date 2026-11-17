@@ -159,9 +159,15 @@ export function fakeApi(
       headers: request.headers,
       body: text ? parseBody(text) : undefined,
     });
-    // Every task has no links unless a test says otherwise (ADR-0022).
+    // Every task has no links and no articles, every customer and article no tasks, unless a
+    // test says otherwise (ADR-0022).
     const handler =
-      table[`${request.method} ${path}`] ?? (request.method === "GET" && /^\/tasks\/[^/]+\/links$/.test(path) ? () => json(200, { items: [] }) : undefined);
+      table[`${request.method} ${path}`] ??
+      (request.method === "GET" && /^\/tasks\/[^/]+\/(links|articles)$/.test(path)
+        ? () => json(200, { items: [] })
+        : request.method === "GET" && /^\/(contacts|kb\/articles)\/[^/]+\/tasks$/.test(path)
+          ? () => json(200, { items: [], hidden: 0 })
+          : undefined);
     if (!handler) throw new Error(`fakeApi: no handler for ${request.method} ${path}`);
     return handler(request);
   });

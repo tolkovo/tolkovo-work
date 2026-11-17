@@ -1751,6 +1751,45 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /kb/articles/{id}/tasks:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [ai]
+      operationId: listKBArticleTasks
+      summary: Tasks the entry is linked to
+      description: |
+        Open first, then the last changed, at most 200 (ADR-0022). Tasks the caller does not
+        see are only counted in `hidden`. Requires `knowledge.manage` and `tasks.view`.
+      responses:
+        '200':
+          description: The tasks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskBriefList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /contacts/{id}/tasks:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [contacts]
+      operationId: listContactTasks
+      summary: Tasks of the contact in every project
+      description: |
+        Tasks linked to the contact's conversations, open first, then the last changed, at most
+        200 (ADR-0022). Tasks the caller does not see are only counted in `hidden`, without their
+        project. Requires `contacts.view` and `tasks.view`.
+      responses:
+        '200':
+          description: The tasks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskBriefList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /kb/search:
     get:
       tags: [ai]
@@ -4115,6 +4154,77 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /tasks/{id}/articles:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [tasks]
+      operationId: listTaskArticles
+      summary: Articles of the knowledge base linked to the task
+      description: |
+        In the order they were linked (ADR-0022). Who sees the task sees the titles of its
+        articles. Requires `tasks.view`.
+      responses:
+        '200':
+          description: The articles.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskArticleList' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [tasks]
+      operationId: addTaskArticle
+      summary: Link an article of the knowledge base to the task
+      description: |
+        Linking it again changes nothing; a task has 20 articles at most. Requires `tasks.edit`
+        and `knowledge.manage` (who reads the knowledge base).
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskArticleInput' }
+      responses:
+        '201':
+          description: Linked; the articles of the task.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskArticleList' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks/{id}/articles/{article_id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: article_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+    delete:
+      tags: [tasks]
+      operationId: removeTaskArticle
+      summary: Unlink an article from the task
+      description: Requires `tasks.edit` and `knowledge.manage`.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Unlinked.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /tasks/{id}/duplicate:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -6307,6 +6417,76 @@ components:
         title: { type: [string, 'null'] }
         status: { $ref: '#/components/schemas/TaskStatus' }
         created_at: { type: string, format: date-time }
+
+    TaskArticle:
+      type: object
+      required: [id, kind, title, published, linked_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        kind: { $ref: '#/components/schemas/KBArticleKind' }
+        title: { type: string }
+        published: { type: boolean }
+        linked_at: { type: string, format: date-time }
+
+    TaskArticleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskArticle' }
+
+    TaskArticleInput:
+      type: object
+      additionalProperties: false
+      required: [article_id]
+      properties:
+        article_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+
+    TaskBrief:
+      type: object
+      description: A task in the list of a contact or an article.
+      required: [id, project_id, ref, title, status, assignee_id, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        project_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        ref: { type: string, description: 'CRM-41.' }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        assignee_id:
+          type: [string, 'null']
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import: { path: github.com/google/uuid }
+        updated_at: { type: string, format: date-time }
+
+    TaskBriefList:
+      type: object
+      required: [items, hidden]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TaskBrief' }
+        hidden:
+          type: integer
+          format: int32
+          description: Tasks the caller does not see.
 
     TaskLinkList:
       type: object

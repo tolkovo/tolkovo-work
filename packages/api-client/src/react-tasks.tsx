@@ -6,6 +6,11 @@ import {
   addTaskLink,
   closeTaskAsDuplicate,
   moveTask,
+  fetchTaskArticles,
+  addTaskArticle,
+  removeTaskArticle,
+  fetchContactTasks,
+  fetchKBArticleTasks,
   fetchTaskLinks,
   removeTaskLink,
   commentTask,
@@ -150,6 +155,31 @@ export function useTaskActivity(id: string) {
 export function useTaskLinks(id: string) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskLinks(id), queryFn: () => fetchTaskLinks(client, id) });
+}
+
+export function useTaskArticles(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskArticles(id), queryFn: () => fetchTaskArticles(client, id) });
+}
+
+export function useAddTaskArticle() {
+  return useTaskMutation((client, { taskId, articleId }: { taskId: string; articleId: string }) => addTaskArticle(client, taskId, articleId));
+}
+
+export function useRemoveTaskArticle() {
+  return useTaskMutation((client, { taskId, articleId }: { taskId: string; articleId: string }) => removeTaskArticle(client, taskId, articleId));
+}
+
+/** Tasks of a contact in every project (ADR-0022, P5); off while `enabled` is false. */
+export function useContactTasks(contactId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.contactTasks(contactId), queryFn: () => fetchContactTasks(client, contactId), enabled });
+}
+
+/** Tasks an article of the knowledge base is linked to; off while `enabled` is false. */
+export function useKBArticleTasks(articleId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.kbArticleTasks(articleId), queryFn: () => fetchKBArticleTasks(client, articleId), enabled });
 }
 
 /** Open tasks assigned to the caller, for the counter in the rail. */

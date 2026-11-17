@@ -1302,6 +1302,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/kb/articles/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Tasks the entry is linked to
+         * @description Open first, then the last changed, at most 200 (ADR-0022). Tasks the caller does not
+         *     see are only counted in `hidden`. Requires `knowledge.manage` and `tasks.view`.
+         */
+        get: operations["listKBArticleTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Tasks of the contact in every project
+         * @description Tasks linked to the contact's conversations, open first, then the last changed, at most
+         *     200 (ADR-0022). Tasks the caller does not see are only counted in `hidden`, without their
+         *     project. Requires `contacts.view` and `tasks.view`.
+         */
+        get: operations["listContactTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/kb/search": {
         parameters: {
             query?: never;
@@ -2859,6 +2906,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks/{id}/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Articles of the knowledge base linked to the task
+         * @description In the order they were linked (ADR-0022). Who sees the task sees the titles of its
+         *     articles. Requires `tasks.view`.
+         */
+        get: operations["listTaskArticles"];
+        put?: never;
+        /**
+         * Link an article of the knowledge base to the task
+         * @description Linking it again changes nothing; a task has 20 articles at most. Requires `tasks.edit`
+         *     and `knowledge.manage` (who reads the knowledge base).
+         */
+        post: operations["addTaskArticle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/articles/{article_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                article_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink an article from the task
+         * @description Requires `tasks.edit` and `knowledge.manage`.
+         */
+        delete: operations["removeTaskArticle"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks/{id}/duplicate": {
         parameters: {
             query?: never;
@@ -4042,6 +4140,45 @@ export interface components {
             status: components["schemas"]["TaskStatus"];
             /** Format: date-time */
             created_at: string;
+        };
+        TaskArticle: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["KBArticleKind"];
+            title: string;
+            published: boolean;
+            /** Format: date-time */
+            linked_at: string;
+        };
+        TaskArticleList: {
+            items: components["schemas"]["TaskArticle"][];
+        };
+        TaskArticleInput: {
+            /** Format: uuid */
+            article_id: string;
+        };
+        /** @description A task in the list of a contact or an article. */
+        TaskBrief: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** @description CRM-41. */
+            ref: string;
+            title: string;
+            status: components["schemas"]["TaskStatus"];
+            /** Format: uuid */
+            assignee_id: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TaskBriefList: {
+            items: components["schemas"]["TaskBrief"][];
+            /**
+             * Format: int32
+             * @description Tasks the caller does not see.
+             */
+            hidden: number;
         };
         TaskLinkList: {
             items: components["schemas"]["TaskLink"][];
@@ -7677,6 +7814,54 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listKBArticleTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBriefList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listContactTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBriefList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     searchKB: {
         parameters: {
             query: {
@@ -10225,6 +10410,85 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTaskArticles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The articles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskArticleList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTaskArticle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskArticleInput"];
+            };
+        };
+        responses: {
+            /** @description Linked; the articles of the task. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskArticleList"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeTaskArticle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                article_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked. */
             204: {
                 headers: {
                     [name: string]: unknown;

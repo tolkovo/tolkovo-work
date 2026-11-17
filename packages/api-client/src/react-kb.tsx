@@ -43,7 +43,9 @@ export function useKBSearch(q: string, topic: string | null) {
 export function useKBMutations() {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const onSettled = () => queryClient.invalidateQueries({ queryKey: ["kb"] });
+  // A changed or deleted entry changes the articles shown in tasks too (ADR-0022, P5).
+  const onSettled = () =>
+    Promise.all([queryClient.invalidateQueries({ queryKey: ["kb"] }), queryClient.invalidateQueries({ queryKey: ["tasks", "articles"] })]);
   return {
     create: useMutation({ mutationFn: (body: KBArticleInput) => createKBArticle(client, body), onSettled }),
     update: useMutation({

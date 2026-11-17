@@ -3148,6 +3148,27 @@ type TaskActivityList struct {
 	Items []TaskActivity `json:"items"`
 }
 
+// TaskArticle defines model for TaskArticle.
+type TaskArticle struct {
+	Id uuid.UUID `json:"id"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind      KBArticleKind `json:"kind"`
+	LinkedAt  time.Time     `json:"linked_at"`
+	Published bool          `json:"published"`
+	Title     string        `json:"title"`
+}
+
+// TaskArticleInput defines model for TaskArticleInput.
+type TaskArticleInput struct {
+	ArticleId uuid.UUID `json:"article_id"`
+}
+
+// TaskArticleList defines model for TaskArticleList.
+type TaskArticleList struct {
+	Items []TaskArticle `json:"items"`
+}
+
 // TaskBlocker defines model for TaskBlocker.
 type TaskBlocker struct {
 	Id uuid.UUID `json:"id"`
@@ -3191,6 +3212,30 @@ type TaskBoardColumn struct {
 type TaskBoardSettings struct {
 	// Rules One rule a column and queue; a rule with neither a limit nor an age is dropped.
 	Rules []TaskColumnRule `json:"rules"`
+}
+
+// TaskBrief A task in the list of a contact or an article.
+type TaskBrief struct {
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+	Id         uuid.UUID  `json:"id"`
+	ProjectId  uuid.UUID  `json:"project_id"`
+
+	// Ref CRM-41.
+	Ref string `json:"ref"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status    TaskStatus `json:"status"`
+	Title     string     `json:"title"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// TaskBriefList defines model for TaskBriefList.
+type TaskBriefList struct {
+	// Hidden Tasks the caller does not see.
+	Hidden int32       `json:"hidden"`
+	Items  []TaskBrief `json:"items"`
 }
 
 // TaskButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
@@ -4569,6 +4614,9 @@ type UpdateTaskJSONRequestBody = TaskUpdate
 // CommentTaskJSONRequestBody defines body for CommentTask for application/json ContentType.
 type CommentTaskJSONRequestBody = TaskComment
 
+// AddTaskArticleJSONRequestBody defines body for AddTaskArticle for application/json ContentType.
+type AddTaskArticleJSONRequestBody = TaskArticleInput
+
 // LinkTaskConversationJSONRequestBody defines body for LinkTaskConversation for application/json ContentType.
 type LinkTaskConversationJSONRequestBody = TaskLinkRequest
 
@@ -4733,6 +4781,9 @@ type ServerInterface interface {
 	// UpdateContact Change a contact
 	// (PATCH /contacts/{id})
 	UpdateContact(w http.ResponseWriter, r *http.Request, id Id)
+	// ListContactTasks Tasks of the contact in every project
+	// (GET /contacts/{id}/tasks)
+	ListContactTasks(w http.ResponseWriter, r *http.Request, id Id)
 	// ListConversations The inbox, most recent activity first
 	// (GET /conversations)
 	ListConversations(w http.ResponseWriter, r *http.Request, params ListConversationsParams)
@@ -4862,6 +4913,9 @@ type ServerInterface interface {
 	// UpdateKBArticle Replace an entry
 	// (PUT /kb/articles/{id})
 	UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// ListKBArticleTasks Tasks the entry is linked to
+	// (GET /kb/articles/{id}/tasks)
+	ListKBArticleTasks(w http.ResponseWriter, r *http.Request, id Id)
 	// GetKBGuide What the bot always knows
 	// (GET /kb/guide)
 	GetKBGuide(w http.ResponseWriter, r *http.Request)
@@ -5066,6 +5120,15 @@ type ServerInterface interface {
 	// CommentTask Comment a task
 	// (POST /tasks/{id}/activity)
 	CommentTask(w http.ResponseWriter, r *http.Request, id Id)
+	// ListTaskArticles Articles of the knowledge base linked to the task
+	// (GET /tasks/{id}/articles)
+	ListTaskArticles(w http.ResponseWriter, r *http.Request, id Id)
+	// AddTaskArticle Link an article of the knowledge base to the task
+	// (POST /tasks/{id}/articles)
+	AddTaskArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// RemoveTaskArticle Unlink an article from the task
+	// (DELETE /tasks/{id}/articles/{article_id})
+	RemoveTaskArticle(w http.ResponseWriter, r *http.Request, id Id, articleId uuid.UUID)
 	// LinkTaskConversation Link a conversation to the task
 	// (POST /tasks/{id}/conversations)
 	LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id)
@@ -5375,6 +5438,12 @@ func (_ Unimplemented) UpdateContact(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListContactTasks Tasks of the contact in every project
+// (GET /contacts/{id}/tasks)
+func (_ Unimplemented) ListContactTasks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListConversations The inbox, most recent activity first
 // (GET /conversations)
 func (_ Unimplemented) ListConversations(w http.ResponseWriter, r *http.Request, params ListConversationsParams) {
@@ -5630,6 +5699,12 @@ func (_ Unimplemented) GetKBArticle(w http.ResponseWriter, r *http.Request, id I
 // UpdateKBArticle Replace an entry
 // (PUT /kb/articles/{id})
 func (_ Unimplemented) UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListKBArticleTasks Tasks the entry is linked to
+// (GET /kb/articles/{id}/tasks)
+func (_ Unimplemented) ListKBArticleTasks(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6038,6 +6113,24 @@ func (_ Unimplemented) ListTaskActivity(w http.ResponseWriter, r *http.Request, 
 // CommentTask Comment a task
 // (POST /tasks/{id}/activity)
 func (_ Unimplemented) CommentTask(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskArticles Articles of the knowledge base linked to the task
+// (GET /tasks/{id}/articles)
+func (_ Unimplemented) ListTaskArticles(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddTaskArticle Link an article of the knowledge base to the task
+// (POST /tasks/{id}/articles)
+func (_ Unimplemented) AddTaskArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveTaskArticle Unlink an article from the task
+// (DELETE /tasks/{id}/articles/{article_id})
+func (_ Unimplemented) RemoveTaskArticle(w http.ResponseWriter, r *http.Request, id Id, articleId uuid.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6944,6 +7037,32 @@ func (siw *ServerInterfaceWrapper) UpdateContact(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListContactTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListContactTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListContactTasks(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8190,6 +8309,32 @@ func (siw *ServerInterfaceWrapper) UpdateKBArticle(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateKBArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListKBArticleTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListKBArticleTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKBArticleTasks(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9812,6 +9957,93 @@ func (siw *ServerInterfaceWrapper) CommentTask(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListTaskArticles operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskArticles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskArticles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTaskArticle operation middleware
+func (siw *ServerInterfaceWrapper) AddTaskArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTaskArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTaskArticle operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTaskArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "article_id" -------------
+	var articleId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "article_id", chi.URLParam(r, "article_id"), &articleId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "article_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTaskArticle(w, r, id, articleId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LinkTaskConversation operation middleware
 func (siw *ServerInterfaceWrapper) LinkTaskConversation(w http.ResponseWriter, r *http.Request) {
 
@@ -10688,6 +10920,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/kb/articles/{id}", wrapper.UpdateKBArticle)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/articles/{id}/tasks", wrapper.ListKBArticleTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/contacts/{id}/tasks", wrapper.ListContactTasks)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/kb/search", wrapper.SearchKB)
 	})
 	r.Group(func(r chi.Router) {
@@ -10923,6 +11161,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/tasks/{id}/links/{other_id}", wrapper.RemoveTaskLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}/articles", wrapper.ListTaskArticles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/articles", wrapper.AddTaskArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/articles/{article_id}", wrapper.RemoveTaskArticle)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks/{id}/duplicate", wrapper.CloseTaskAsDuplicate)

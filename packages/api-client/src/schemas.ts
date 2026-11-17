@@ -866,3 +866,27 @@ export const kbImportResultSchema = z.object({
   updated: z.number(),
   unknown_topics: z.array(z.string()),
 }) satisfies z.ZodType<Schemas["KBImportResult"]>;
+
+/** An article of the knowledge base linked to a task (ADR-0022, P5). */
+export const taskArticleSchema = z.object({
+  id: z.string(),
+  kind: kbArticleKindSchema,
+  title: z.string(),
+  published: z.boolean(),
+  linked_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskArticle"]>;
+
+export const taskArticleListSchema = z.object({ items: z.array(taskArticleSchema) }) satisfies z.ZodType<Schemas["TaskArticleList"]>;
+
+/** A task in the list of a contact or an article; the tasks the caller does not see are counted in `hidden`. */
+export const taskBriefSchema = z.object({
+  id: z.string(),
+  project_id: z.string(),
+  ref: z.string(),
+  title: z.string(),
+  status: taskStatusSchema,
+  assignee_id: z.string().nullable(),
+  updated_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskBrief"]>;
+
+export const taskBriefListSchema = z.object({ items: z.array(taskBriefSchema), hidden: z.number() }) satisfies z.ZodType<Schemas["TaskBriefList"]>;

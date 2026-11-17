@@ -29,6 +29,7 @@ import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
 import { TaskPriorityMark, TaskStatusBadge, WaitingPlate, control } from "./task-bits";
 import { BlockDialog, BlockedNote } from "./task-block";
+import { TaskArticles } from "./task-articles";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
 import { DuplicateButton, TaskLinks } from "./task-links";
 import { MoveButton } from "./task-move";
@@ -120,6 +121,7 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
           )}
           <DescriptionFiles task={task} />
           <TaskLinks task={task} />
+          <TaskArticles task={task} />
           <Conversations task={task} />
           <Feed task={task} />
         </div>
