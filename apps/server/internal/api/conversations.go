@@ -15,6 +15,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/conversations"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/authz"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/storage"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 )
 
 func (s *server) ListConversations(w http.ResponseWriter, r *http.Request, params oapi.ListConversationsParams) {
@@ -619,6 +620,9 @@ func eventBody(e *conversations.Event) *oapi.MessageEvent {
 	}
 	if e.Task != nil {
 		out.Task = &oapi.MessageEventTask{TaskId: e.Task.TaskID, Number: e.Task.Number}
+		if e.Task.Ref != "" {
+			out.Task.Ref = &e.Task.Ref
+		}
 		if e.Task.Reason != "" {
 			r := oapi.MessageEventTaskReason(e.Task.Reason)
 			out.Task.Reason = &r
@@ -669,7 +673,7 @@ func (s *server) seesConversation(ctx context.Context, p authz.Principal, id uui
 	if !p.Can(authz.ConversationsViewLinked) {
 		return authz.ErrForbidden
 	}
-	linked, err := s.tasks.IsLinked(ctx, p.WorkspaceID, id)
+	linked, err := s.tasks.IsLinked(ctx, p.WorkspaceID, tasks.ViewerOf(p), id)
 	switch {
 	case err != nil:
 		return err

@@ -3,6 +3,16 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import type { ApiClient } from "./client";
 import {
   addTaskFiles,
+  addTaskLink,
+  closeTaskAsDuplicate,
+  moveTask,
+  fetchTaskArticles,
+  addTaskArticle,
+  removeTaskArticle,
+  fetchContactTasks,
+  fetchKBArticleTasks,
+  fetchTaskLinks,
+  removeTaskLink,
   commentTask,
   fetchTaskFileLink,
   removeTaskFile,
@@ -11,6 +21,10 @@ import {
   createTaskTag,
   deleteTask,
   deleteTaskQueue,
+  createTaskProject,
+  deleteTaskProject,
+  fetchTaskProjects,
+  updateTaskProject,
   deleteTaskTag,
   fetchConversationTasks,
   fetchTask,
@@ -46,8 +60,11 @@ import {
   type TaskFlowFilter,
   type TaskCreate,
   type TaskFilter,
+  type TaskLinkKind,
   type TaskStatus,
   type TaskQueueInput,
+  type TaskProjectInput,
+  type TaskMoveInput,
   type TaskSettings,
   type TaskTagInput,
   type TaskUpdate,
@@ -134,15 +151,53 @@ export function useTaskActivity(id: string) {
   return useQuery({ queryKey: queryKeys.taskActivity(id), queryFn: () => fetchTaskActivity(client, id) });
 }
 
+/** Links of a task to other tasks (ADR-0022). */
+export function useTaskLinks(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskLinks(id), queryFn: () => fetchTaskLinks(client, id) });
+}
+
+export function useTaskArticles(id: string) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskArticles(id), queryFn: () => fetchTaskArticles(client, id) });
+}
+
+export function useAddTaskArticle() {
+  return useTaskMutation((client, { taskId, articleId }: { taskId: string; articleId: string }) => addTaskArticle(client, taskId, articleId));
+}
+
+export function useRemoveTaskArticle() {
+  return useTaskMutation((client, { taskId, articleId }: { taskId: string; articleId: string }) => removeTaskArticle(client, taskId, articleId));
+}
+
+/** Tasks of a contact in every project (ADR-0022, P5); off while `enabled` is false. */
+export function useContactTasks(contactId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.contactTasks(contactId), queryFn: () => fetchContactTasks(client, contactId), enabled });
+}
+
+/** Tasks an article of the knowledge base is linked to; off while `enabled` is false. */
+export function useKBArticleTasks(articleId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.kbArticleTasks(articleId), queryFn: () => fetchKBArticleTasks(client, articleId), enabled });
+}
+
 /** Open tasks assigned to the caller, for the counter in the rail. */
 export function useTaskSummary({ enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskSummary, queryFn: () => fetchTaskSummary(client), enabled });
 }
 
+/** Queues of every project; a project's are those with its `project_id`. */
 export function useTaskQueues({ enabled = true }: { enabled?: boolean } = {}) {
   const client = useApiClient();
   return useQuery({ queryKey: queryKeys.taskQueues, queryFn: () => fetchTaskQueues(client), enabled });
+}
+
+/** Projects of tasks the member sees (ADR-0022), in the switcher's order. */
+export function useTaskProjects({ enabled = true }: { enabled?: boolean } = {}) {
+  const client = useApiClient();
+  return useQuery({ queryKey: queryKeys.taskProjects, queryFn: () => fetchTaskProjects(client), enabled, staleTime: 60_000 });
 }
 
 /** Tags of tasks, a list apart from the tags of conversations (useTags). */
@@ -248,6 +303,27 @@ export function useUnlinkTaskConversation() {
   );
 }
 
+export function useAddTaskLink() {
+  return useTaskMutation((client, { taskId, kind, task }: { taskId: string; kind: TaskLinkKind; task: string }) =>
+    addTaskLink(client, taskId, kind, task),
+  );
+}
+
+export function useRemoveTaskLink() {
+  return useTaskMutation((client, { taskId, otherId }: { taskId: string; otherId: string }) => removeTaskLink(client, taskId, otherId));
+}
+
+export function useCloseTaskAsDuplicate() {
+  return useTaskMutation((client, { taskId, original, version }: { taskId: string; original: string; version: number }) =>
+    closeTaskAsDuplicate(client, taskId, original, version),
+  );
+}
+
+/** Moves the task to another project (POST /tasks/{id}/move). */
+export function useMoveTaskToProject() {
+  return useTaskMutation((client, { taskId, ...body }: TaskMoveInput & { taskId: string }) => moveTask(client, taskId, body));
+}
+
 export function useCreateTaskQueue() {
   return useTaskMutation((client, body: TaskQueueInput) => createTaskQueue(client, body));
 }
@@ -258,6 +334,18 @@ export function useUpdateTaskQueue() {
 
 export function useDeleteTaskQueue() {
   return useTaskMutation((client, id: string) => deleteTaskQueue(client, id));
+}
+
+export function useCreateTaskProject() {
+  return useTaskMutation((client, body: TaskProjectInput) => createTaskProject(client, body));
+}
+
+export function useUpdateTaskProject() {
+  return useTaskMutation((client, { id, ...body }: TaskProjectInput & { id: string }) => updateTaskProject(client, id, body));
+}
+
+export function useDeleteTaskProject() {
+  return useTaskMutation((client, id: string) => deleteTaskProject(client, id));
 }
 
 export function useCreateTaskTag() {

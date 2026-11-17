@@ -8,7 +8,7 @@ import { renderApp } from "../../test/render-app";
 
 const admin = { ...ownerSession, permissions: [...ownerSession.permissions, "knowledge.manage"] };
 const CRM_ID = "0199a000-0000-7000-8000-00000000c0a1";
-const topics = [{ id: CRM_ID, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, member_ids: [] }];
+const topics = [{ id: CRM_ID, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, task_project_id: null, member_ids: [] }];
 const emptyGuide = { about: "", handoff_rules: "", task_checklist: "", updated_at: null };
 
 const entry = (id: string, patch: Partial<KBArticle> = {}): KBArticle => ({

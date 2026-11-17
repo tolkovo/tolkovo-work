@@ -1,11 +1,12 @@
 import type { KBArticle, KBArticleKind, KBImport, Topic } from "@tolkovo/api-client";
 import { useKBArticle, useKBArticles, useKBGuide, useKBMutations, useKBSearch, useSetKBGuide, useTopics } from "@tolkovo/api-client/react";
 import { Button, Skeleton, cn } from "@tolkovo/ui";
-import { useId, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
 import { FormMessage, SelectField, TextAreaField, TextField } from "../form/fields";
+import { KBArticleTasks, kbArticleAnchor } from "../tasks/task-articles";
 
 /** Limits of the knowledge base (KBArticleInput and KBGuide in api/openapi.yaml). */
 const MAX_TITLE = 200;
@@ -342,6 +343,11 @@ function ArticleItem({ article, topics }: { article: KBArticle; topics: Topic[] 
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const full = useKBArticle(editing ? article.id : null);
+  const item = useRef<HTMLLIElement>(null);
+  // A link from a task (#kb-article-…) arrives before the list does: scroll once it is drawn.
+  useEffect(() => {
+    if (window.location.hash === `#${kbArticleAnchor(article.id)}`) item.current?.scrollIntoView?.({ block: "start" });
+  }, [article.id]);
   if (editing) {
     return (
       <li>
@@ -362,7 +368,7 @@ function ArticleItem({ article, topics }: { article: KBArticle; topics: Topic[] 
   }
   const names = article.topic_ids.map((id) => topics.find((x) => x.id === id)?.name).filter(Boolean);
   return (
-    <li className="flex flex-wrap items-start gap-2 rounded-lg border border-line px-3 py-2 text-[13px]">
+    <li ref={item} id={kbArticleAnchor(article.id)} className="flex scroll-mt-4 flex-wrap items-start gap-2 rounded-lg border border-line px-3 py-2 text-[13px]">
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="font-medium">
           {article.title}
@@ -400,6 +406,7 @@ function ArticleItem({ article, topics }: { article: KBArticle; topics: Topic[] 
           </Button>
         </span>
       )}
+      <KBArticleTasks articleId={article.id} title={article.title} />
       {remove.isError && (
         <p role="alert" className="m-0 w-full text-danger">
           {describeApiError(t, remove.error).message}

@@ -17,18 +17,24 @@ SELECT count(*) FROM topics WHERE workspace_id = @workspace_id;
 
 -- name: CreateTopic :one
 -- No row when the name is taken (case-insensitive). A new topic goes last.
-INSERT INTO topics (id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at)
+INSERT INTO topics (id, workspace_id, name, color, position, priority, task_queue_id, task_project_id, created_at, updated_at)
 VALUES (@id, @workspace_id, @name, @color,
         (SELECT coalesce(max(position) + 1, 0) FROM topics WHERE workspace_id = @workspace_id),
-        @priority, sqlc.narg(task_queue_id), @now, @now)
+        @priority, sqlc.narg(task_queue_id), sqlc.narg(task_project_id), @now, @now)
 ON CONFLICT (workspace_id, name) DO NOTHING
 RETURNING *;
 
 -- name: UpdateTopic :one
 UPDATE topics
-SET name = @name, color = @color, priority = @priority, task_queue_id = sqlc.narg(task_queue_id), updated_at = @now
+SET name = @name, color = @color, priority = @priority, task_queue_id = sqlc.narg(task_queue_id),
+    task_project_id = sqlc.narg(task_project_id), updated_at = @now
 WHERE workspace_id = @workspace_id AND id = @id
 RETURNING *;
+
+-- name: TaskQueueProject :one
+-- The project of a task queue (task_queues belongs to tasks; read only):
+-- a topic's queue is of the topic's project (ADR-0022).
+SELECT project_id FROM task_queues WHERE workspace_id = @workspace_id AND id = @id;
 
 -- name: SetTopicPosition :execrows
 UPDATE topics SET position = @position

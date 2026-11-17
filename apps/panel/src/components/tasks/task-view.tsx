@@ -10,6 +10,7 @@ import {
   useSession,
   useTask,
   useTaskActivity,
+  useTaskProjects,
   useTaskQueues,
   useTopics,
   useUnlinkTaskConversation,
@@ -22,13 +23,17 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { describeApiError } from "../../lib/api-errors";
-import { NEXT_STATUS, TASK_PRIORITIES, TASK_STATUSES, isClosed, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
+import { NEXT_STATUS, TASK_PRIORITIES, TASK_STATUSES, isClosed, taskRef, taskUpdate, type TasksSearch } from "../../lib/tasks/tasks";
 import { FormMessage, TextField } from "../form/fields";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
-import { TaskPriorityMark, TaskStatusBadge, control } from "./task-bits";
+import { TaskPriorityMark, TaskStatusBadge, WaitingPlate, control } from "./task-bits";
 import { BlockDialog, BlockedNote } from "./task-block";
+import { TaskArticles } from "./task-articles";
 import { AttachArea, TaskFileList, useFileDrafts } from "./task-files";
+import { DuplicateButton, TaskLinks } from "./task-links";
+import { MoveButton } from "./task-move";
+import { ProjectName, projectMembers, projectQueues } from "./task-project";
 import { TaskTagsEditor, useTaskTagMap } from "./task-tags";
 
 /** The open task (ADR-0015): its fields, description, conversations and feed. */
@@ -74,7 +79,7 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
         </Link>
         <div className="flex min-w-0 items-start gap-3">
           <h2 id="task-title" ref={heading} tabIndex={-1} className="m-0 mr-auto min-w-0 text-[17px] leading-snug font-semibold break-words outline-none">
-            <span className="mr-2 font-mono text-[14px] font-normal text-ink-3">{t("tasks.number", { number: task.number })}</span>
+            <span className="mr-2 font-mono text-[14px] font-normal text-ink-3">{taskRef(task)}</span>
             {task.title}
           </h2>
           {!editing && (
@@ -84,7 +89,9 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ProjectName projectId={task.project_id} />
           <TaskStatusBadge status={task.status} />
+          <WaitingPlate task={task} />
           <TaskPriorityMark priority={task.priority} quietNormal={false} />
           <TaskTagsEditor selected={task.tag_ids} busy={update.isPending} onChange={(tag_ids) => change({ tag_ids })} />
         </div>
@@ -113,6 +120,8 @@ function Loaded({ task, search }: { task: Task; search: TasksSearch }) {
             </section>
           )}
           <DescriptionFiles task={task} />
+          <TaskLinks task={task} />
+          <TaskArticles task={task} />
           <Conversations task={task} />
           <Feed task={task} />
         </div>
@@ -129,11 +138,19 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
   const { data: members } = useMembers();
   const { data: queues } = useTaskQueues();
   const { data: topics } = useTopics();
+  const { data: projects } = useTaskProjects();
   const canManage = useCan("tasks.manage");
   const ids = { status: useId(), priority: useId(), assignee: useId(), queue: useId(), topic: useId() };
   const me = session?.user.id;
   const next = NEXT_STATUS[task.status];
-  const taking = me !== undefined && task.assignee_id !== me && !isClosed(task.status);
+  // The assignee works in the task's project (ADR-0022); one there from before stays in the list.
+  const project = projects?.find((p) => p.id === task.project_id);
+  const assignees = projectMembers(members, project);
+  const shownAssignees = assignees.some((m) => m.user_id === task.assignee_id)
+    ? assignees
+    : [...assignees, ...(members ?? []).filter((m) => m.user_id === task.assignee_id)];
+  const mayTake = me !== undefined && assignees.some((m) => m.user_id === me);
+  const taking = mayTake && task.assignee_id !== me && !isClosed(task.status);
   return (
     <aside aria-label={t("tasks.fieldsLabel")} className="flex flex-col gap-3">
       {taking && (
@@ -180,7 +197,7 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
         <Label htmlFor={ids.assignee}>{t("tasks.fields.assignee")}</Label>
         <Select id={ids.assignee} value={task.assignee_id ?? ""} disabled={disabled} onChange={(e) => onChange({ assignee_id: e.currentTarget.value || null })}>
           <option value="">{t("tasks.unassigned")}</option>
-          {members?.map((m) => (
+          {shownAssignees.map((m) => (
             <option key={m.user_id} value={m.user_id}>
               {m.name}
             </option>
@@ -191,7 +208,7 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
         <Label htmlFor={ids.queue}>{t("tasks.fields.queue")}</Label>
         <Select id={ids.queue} value={task.queue_id ?? ""} disabled={disabled} onChange={(e) => onChange({ queue_id: e.currentTarget.value || null })}>
           <option value="">{t("tasks.noQueue")}</option>
-          {queues?.map((q) => (
+          {projectQueues(queues, task.project_id).map((q) => (
             <option key={q.id} value={q.id}>
               {q.name}
             </option>
@@ -213,6 +230,8 @@ function Fields({ task, disabled, onChange }: { task: Task; disabled: boolean; o
         </div>
       )}
       {!isClosed(task.status) && !task.blocked_reason && <BlockButton task={task} disabled={disabled} onChange={onChange} />}
+      {!isClosed(task.status) && <DuplicateButton task={task} disabled={disabled} />}
+      <MoveButton task={task} disabled={disabled} />
       <Dates task={task} />
       {canManage && <DeleteTask task={task} />}
     </aside>
@@ -232,7 +251,7 @@ function BlockButton({ task, disabled, onChange }: { task: Task; disabled: boole
       </Button>
       {asking && (
         <BlockDialog
-          number={t("tasks.number", { number: task.number })}
+          number={taskRef(task)}
           onCancel={() => {
             setAsking(false);
             button.current?.focus();
@@ -499,6 +518,15 @@ function ActivityLine({ activity: a }: { activity: TaskActivity }) {
       break;
     case "unblocked":
       text = t("tasks.activity.unblocked");
+      break;
+    case "link_added":
+    case "link_removed": {
+      const values = { kind: a.link ? t(`tasks.links.kind.${a.link}`) : "", ref: a.link_ref ?? t("tasks.links.hiddenShort") };
+      text = t(a.kind === "link_added" ? "tasks.activity.linkAdded" : "tasks.activity.linkRemoved", values);
+      break;
+    }
+    case "moved":
+      text = t("tasks.activity.moved", { from: a.from ?? "", to: a.to ?? "" });
       break;
     default:
       text = "";

@@ -72,7 +72,8 @@ describe("GitHub issues in a conversation", () => {
     const user = userEvent.setup();
     const { api } = server({ repository: null, items: [] });
     renderApp("/inbox/c1", { api });
-    expect(await screen.findByText(/GitHub не подключён/)).toBeInTheDocument();
+    // The first look waits for the lazy route, slow under a full parallel run.
+    expect(await screen.findByText(/GitHub не подключён/, undefined, { timeout: 3000 })).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Ещё действия" }));
     expect(screen.queryByRole("menuitem", { name: "Создать issue" })).not.toBeInTheDocument();
   });

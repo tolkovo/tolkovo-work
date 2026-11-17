@@ -40,7 +40,7 @@ func (s *server) GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	_, req, err := s.tasks.FileLink(r.Context(), p.WorkspaceID, id)
+	_, req, err := s.tasks.FileLink(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -60,6 +60,9 @@ func (s *server) AddTaskFiles(w http.ResponseWriter, r *http.Request, id oapi.Id
 		return
 	}
 	t, err := s.tasks.AddFiles(r.Context(), p.WorkspaceID, p.UserID, id, req.FileIds)
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return

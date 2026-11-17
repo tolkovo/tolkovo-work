@@ -363,7 +363,7 @@ func (s *Service) AddFiles(ctx context.Context, workspaceID, actorID, taskID uui
 	if err != nil {
 		return Task{}, dbError(err, "add files")
 	}
-	return s.Get(ctx, workspaceID, taskID)
+	return s.Get(ctx, workspaceID, Viewer{UserID: actorID, All: true}, taskID)
 }
 
 // RemoveFile takes a file out of a task's description; files of comments
@@ -394,12 +394,12 @@ func (s *Service) RemoveFile(ctx context.Context, workspaceID, actorID, taskID, 
 }
 
 // FileLink signs a download of a file of a live task.
-func (s *Service) FileLink(ctx context.Context, workspaceID, fileID uuid.UUID) (File, storage.SignedRequest, error) {
+func (s *Service) FileLink(ctx context.Context, workspaceID uuid.UUID, v Viewer, fileID uuid.UUID) (File, storage.SignedRequest, error) {
 	files, err := s.storage()
 	if err != nil {
 		return File{}, storage.SignedRequest{}, err
 	}
-	row, err := s.attachedFile(ctx, workspaceID, fileID)
+	row, err := s.attachedFile(ctx, workspaceID, v, fileID)
 	if err != nil {
 		return File{}, storage.SignedRequest{}, err
 	}
@@ -412,12 +412,12 @@ func (s *Service) FileLink(ctx context.Context, workspaceID, fileID uuid.UUID) (
 
 // ReadFile returns the content of a file of a live task, up to limit
 // bytes; a bigger file is ErrInvalid.
-func (s *Service) ReadFile(ctx context.Context, workspaceID, fileID uuid.UUID, limit int64) (File, []byte, error) {
+func (s *Service) ReadFile(ctx context.Context, workspaceID uuid.UUID, v Viewer, fileID uuid.UUID, limit int64) (File, []byte, error) {
 	files, err := s.storage()
 	if err != nil {
 		return File{}, nil, err
 	}
-	row, err := s.attachedFile(ctx, workspaceID, fileID)
+	row, err := s.attachedFile(ctx, workspaceID, v, fileID)
 	if err != nil {
 		return File{}, nil, err
 	}
@@ -436,12 +436,21 @@ func (s *Service) ReadFile(ctx context.Context, workspaceID, fileID uuid.UUID, l
 	return fileFrom(row), data, nil
 }
 
-func (s *Service) attachedFile(ctx context.Context, workspaceID, fileID uuid.UUID) (store.TaskFile, error) {
+func (s *Service) attachedFile(ctx context.Context, workspaceID uuid.UUID, v Viewer, fileID uuid.UUID) (store.TaskFile, error) {
 	var row store.TaskFile
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
+		q := store.New(tx)
 		var err error
-		row, err = store.New(tx).GetTaskFile(ctx, store.GetTaskFileParams{WorkspaceID: workspaceID, ID: fileID})
+		row, err = q.GetTaskFile(ctx, store.GetTaskFileParams{WorkspaceID: workspaceID, ID: fileID})
 		if err == nil && row.TaskID == nil {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		// A file of a task the viewer does not see is not there (ADR-0022).
+		ok, err := q.TaskVisible(ctx, store.TaskVisibleParams{Viewer: v.UserID, SeeAll: v.All, WorkspaceID: workspaceID, ID: *row.TaskID})
+		if err == nil && !ok {
 			return ErrNotFound
 		}
 		return err

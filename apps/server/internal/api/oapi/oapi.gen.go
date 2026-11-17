@@ -938,20 +938,23 @@ func (e TaskActivityFields) Valid() bool {
 
 // Defines values for TaskActivityKind.
 const (
-	TaskActivityKindAssignee  TaskActivityKind = "assignee"
-	TaskActivityKindBlocked   TaskActivityKind = "blocked"
-	TaskActivityKindComment   TaskActivityKind = "comment"
-	TaskActivityKindCreated   TaskActivityKind = "created"
-	TaskActivityKindEdited    TaskActivityKind = "edited"
-	TaskActivityKindFiles     TaskActivityKind = "files"
-	TaskActivityKindLinked    TaskActivityKind = "linked"
-	TaskActivityKindPriority  TaskActivityKind = "priority"
-	TaskActivityKindQueue     TaskActivityKind = "queue"
-	TaskActivityKindStatus    TaskActivityKind = "status"
-	TaskActivityKindTags      TaskActivityKind = "tags"
-	TaskActivityKindTopic     TaskActivityKind = "topic"
-	TaskActivityKindUnblocked TaskActivityKind = "unblocked"
-	TaskActivityKindUnlinked  TaskActivityKind = "unlinked"
+	TaskActivityKindAssignee    TaskActivityKind = "assignee"
+	TaskActivityKindBlocked     TaskActivityKind = "blocked"
+	TaskActivityKindComment     TaskActivityKind = "comment"
+	TaskActivityKindCreated     TaskActivityKind = "created"
+	TaskActivityKindEdited      TaskActivityKind = "edited"
+	TaskActivityKindFiles       TaskActivityKind = "files"
+	TaskActivityKindLinkAdded   TaskActivityKind = "link_added"
+	TaskActivityKindLinkRemoved TaskActivityKind = "link_removed"
+	TaskActivityKindLinked      TaskActivityKind = "linked"
+	TaskActivityKindMoved       TaskActivityKind = "moved"
+	TaskActivityKindPriority    TaskActivityKind = "priority"
+	TaskActivityKindQueue       TaskActivityKind = "queue"
+	TaskActivityKindStatus      TaskActivityKind = "status"
+	TaskActivityKindTags        TaskActivityKind = "tags"
+	TaskActivityKindTopic       TaskActivityKind = "topic"
+	TaskActivityKindUnblocked   TaskActivityKind = "unblocked"
+	TaskActivityKindUnlinked    TaskActivityKind = "unlinked"
 )
 
 // Valid indicates whether the value is a known member of the TaskActivityKind enum.
@@ -969,7 +972,13 @@ func (e TaskActivityKind) Valid() bool {
 		return true
 	case TaskActivityKindFiles:
 		return true
+	case TaskActivityKindLinkAdded:
+		return true
+	case TaskActivityKindLinkRemoved:
+		return true
 	case TaskActivityKindLinked:
+		return true
+	case TaskActivityKindMoved:
 		return true
 	case TaskActivityKindPriority:
 		return true
@@ -1071,6 +1080,33 @@ func (e TaskDraftDraftedBy) Valid() bool {
 	}
 }
 
+// Defines values for TaskLinkKind.
+const (
+	Blocks       TaskLinkKind = "blocks"
+	DuplicatedBy TaskLinkKind = "duplicated_by"
+	Duplicates   TaskLinkKind = "duplicates"
+	Relates      TaskLinkKind = "relates"
+	WaitsFor     TaskLinkKind = "waits_for"
+)
+
+// Valid indicates whether the value is a known member of the TaskLinkKind enum.
+func (e TaskLinkKind) Valid() bool {
+	switch e {
+	case Blocks:
+		return true
+	case DuplicatedBy:
+		return true
+	case Duplicates:
+		return true
+	case Relates:
+		return true
+	case WaitsFor:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskPriority.
 const (
 	High   TaskPriority = "high"
@@ -1089,6 +1125,60 @@ func (e TaskPriority) Valid() bool {
 	case Normal:
 		return true
 	case Urgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskProjectAccess.
+const (
+	Members TaskProjectAccess = "members"
+	Team    TaskProjectAccess = "team"
+)
+
+// Valid indicates whether the value is a known member of the TaskProjectAccess enum.
+func (e TaskProjectAccess) Valid() bool {
+	switch e {
+	case Members:
+		return true
+	case Team:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskProjectIcon.
+const (
+	Cart    TaskProjectIcon = "cart"
+	Chart   TaskProjectIcon = "chart"
+	Globe   TaskProjectIcon = "globe"
+	Heart   TaskProjectIcon = "heart"
+	Monitor TaskProjectIcon = "monitor"
+	Phone   TaskProjectIcon = "phone"
+	Rocket  TaskProjectIcon = "rocket"
+	Server  TaskProjectIcon = "server"
+)
+
+// Valid indicates whether the value is a known member of the TaskProjectIcon enum.
+func (e TaskProjectIcon) Valid() bool {
+	switch e {
+	case Cart:
+		return true
+	case Chart:
+		return true
+	case Globe:
+		return true
+	case Heart:
+		return true
+	case Monitor:
+		return true
+	case Phone:
+		return true
+	case Rocket:
+		return true
+	case Server:
 		return true
 	default:
 		return false
@@ -1818,6 +1908,10 @@ type ConversationStatus string
 
 // ConversationTasks defines model for ConversationTasks.
 type ConversationTasks struct {
+	// HiddenCount Linked tasks of projects the caller does not see (ADR-0022).
+	HiddenCount int `json:"hidden_count"`
+
+	// Items The tasks the caller sees.
 	Items []Task `json:"items"`
 
 	// ReplyDraft The reply the operator may send once a task of the conversation is done; `null`
@@ -2665,7 +2759,10 @@ type MessageEventTask struct {
 
 	// Reason Only with `task_closed`.
 	Reason *MessageEventTaskReason `json:"reason,omitempty"`
-	TaskId uuid.UUID               `json:"task_id"`
+
+	// Ref KEY-N of the task's project (ADR-0022); absent on lines written before projects.
+	Ref    *string   `json:"ref,omitempty"`
+	TaskId uuid.UUID `json:"task_id"`
 }
 
 // MessageEventTaskReason Only with `task_closed`.
@@ -2952,11 +3049,22 @@ type Task struct {
 	CreatedBy *uuid.UUID `json:"created_by"`
 
 	// Files Files of the description, in the order they came; empty in lists.
-	Files    []TaskFile   `json:"files"`
-	Id       uuid.UUID    `json:"id"`
+	Files []TaskFile `json:"files"`
+	Id    uuid.UUID  `json:"id"`
+
+	// Number The number in the project.
 	Number   int64        `json:"number"`
 	Priority TaskPriority `json:"priority"`
-	QueueId  *uuid.UUID   `json:"queue_id"`
+
+	// ProjectId The project (`GET /task-projects`, ADR-0022).
+	ProjectId uuid.UUID `json:"project_id"`
+
+	// ProjectKey The key of the project, as `CRM`.
+	ProjectKey string     `json:"project_key"`
+	QueueId    *uuid.UUID `json:"queue_id"`
+
+	// Ref How people call the task: `CRM-41`.
+	Ref string `json:"ref"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
@@ -2974,6 +3082,10 @@ type Task struct {
 	TopicId   *uuid.UUID `json:"topic_id"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	Version   int32      `json:"version"`
+
+	// WaitingOn The open tasks that block this one (links `blocks`, ADR-0022), oldest link first. A
+	// task waits while this is not empty; the `blocked` filter takes these as well.
+	WaitingOn []TaskBlocker `json:"waiting_on"`
 }
 
 // TaskActivity defines model for TaskActivity.
@@ -2999,10 +3111,21 @@ type TaskActivity struct {
 	// FilesRemoved On `files`
 	FilesRemoved *int `json:"files_removed,omitempty"`
 
-	// From The value a change moved from (a status, a priority, a member, queue or topic id); empty for none.
+	// From The value a change moved from (a status, a priority, a member, queue or topic id, the old ref on `moved`); empty for none.
 	From *string          `json:"from,omitempty"`
 	Id   uuid.UUID        `json:"id"`
 	Kind TaskActivityKind `json:"kind"`
+
+	// Link A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+	// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+	// original), `duplicated_by` (the other repeats this one).
+	Link *TaskLinkKind `json:"link,omitempty"`
+
+	// LinkRef The ref of the other task; `null` when the caller does not see it.
+	LinkRef *string `json:"link_ref,omitempty"`
+
+	// LinkTaskId On `link_added` and `link_removed`, the other task.
+	LinkTaskId *uuid.UUID `json:"link_task_id,omitempty"`
 
 	// TagsAdded On `tags`, the tags put on the task.
 	TagsAdded *[]uuid.UUID `json:"tags_added,omitempty"`
@@ -3023,6 +3146,35 @@ type TaskActivityKind string
 // TaskActivityList defines model for TaskActivityList.
 type TaskActivityList struct {
 	Items []TaskActivity `json:"items"`
+}
+
+// TaskArticle defines model for TaskArticle.
+type TaskArticle struct {
+	Id uuid.UUID `json:"id"`
+
+	// Kind `article`: a text with a title; `qa`: a question (`title`) with its answer (`body`).
+	Kind      KBArticleKind `json:"kind"`
+	LinkedAt  time.Time     `json:"linked_at"`
+	Published bool          `json:"published"`
+	Title     string        `json:"title"`
+}
+
+// TaskArticleInput defines model for TaskArticleInput.
+type TaskArticleInput struct {
+	ArticleId uuid.UUID `json:"article_id"`
+}
+
+// TaskArticleList defines model for TaskArticleList.
+type TaskArticleList struct {
+	Items []TaskArticle `json:"items"`
+}
+
+// TaskBlocker defines model for TaskBlocker.
+type TaskBlocker struct {
+	Id uuid.UUID `json:"id"`
+
+	// Ref `null` when the caller does not see the task.
+	Ref *string `json:"ref"`
 }
 
 // TaskBoard defines model for TaskBoard.
@@ -3060,6 +3212,30 @@ type TaskBoardColumn struct {
 type TaskBoardSettings struct {
 	// Rules One rule a column and queue; a rule with neither a limit nor an age is dropped.
 	Rules []TaskColumnRule `json:"rules"`
+}
+
+// TaskBrief A task in the list of a contact or an article.
+type TaskBrief struct {
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+	Id         uuid.UUID  `json:"id"`
+	ProjectId  uuid.UUID  `json:"project_id"`
+
+	// Ref CRM-41.
+	Ref string `json:"ref"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status    TaskStatus `json:"status"`
+	Title     string     `json:"title"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// TaskBriefList defines model for TaskBriefList.
+type TaskBriefList struct {
+	// Hidden Tasks the caller does not see.
+	Hidden int32       `json:"hidden"`
+	Items  []TaskBrief `json:"items"`
 }
 
 // TaskButton Which buttons a conversation shows: "Create task", "Create issue" (only with GitHub
@@ -3100,7 +3276,10 @@ type TaskCreate struct {
 	FileIds  *[]uuid.UUID  `json:"file_ids,omitempty"`
 	Priority *TaskPriority `json:"priority,omitempty"`
 
-	// QueueId Absent or `null` with a topic that has a task queue — that queue.
+	// ProjectId Absent or `null` — the topic's project, or the default one.
+	ProjectId *uuid.UUID `json:"project_id,omitempty"`
+
+	// QueueId A queue of the task's project. Absent or `null` with a topic that has a task queue in that project — that queue.
 	QueueId *uuid.UUID `json:"queue_id,omitempty"`
 
 	// TagIds Tags of tasks (`GET /task-tags`), unique.
@@ -3125,6 +3304,15 @@ type TaskDraftAiFallback string
 
 // TaskDraftDraftedBy defines model for TaskDraft.DraftedBy.
 type TaskDraftDraftedBy string
+
+// TaskDuplicateInput defines model for TaskDuplicateInput.
+type TaskDuplicateInput struct {
+	// Original The original task: its ref or id.
+	Original string `json:"original"`
+
+	// Version The version of the task the caller read.
+	Version int32 `json:"version"`
+}
 
 // TaskFile defines model for TaskFile.
 type TaskFile struct {
@@ -3194,6 +3382,7 @@ type TaskFlowAging struct {
 	// Days In the current status
 	Days   float64 `json:"days"`
 	Number int64   `json:"number"`
+	Ref    string  `json:"ref"`
 
 	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
 	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
@@ -3209,6 +3398,7 @@ type TaskFlowCycle struct {
 	Days   float64   `json:"days"`
 	DoneAt time.Time `json:"done_at"`
 	Number int64     `json:"number"`
+	Ref    string    `json:"ref"`
 	TaskId uuid.UUID `json:"task_id"`
 	Title  string    `json:"title"`
 }
@@ -3229,9 +3419,69 @@ type TaskFlowWeek struct {
 	Week openapi_types.Date `json:"week"`
 }
 
+// TaskLink defines model for TaskLink.
+type TaskLink struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Kind A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+	// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+	// original), `duplicated_by` (the other repeats this one).
+	Kind TaskLinkKind `json:"kind"`
+	Ref  *string      `json:"ref"`
+
+	// Status `open`: new; `in_progress`: someone works on it; `review`: on the dev server, being checked;
+	// `verified`: checked, waits for production; `done`: in production; `canceled`: will not be done.
+	// `review` and `verified` are open statuses. Any status may follow any other.
+	Status TaskStatus `json:"status"`
+
+	// TaskId The other task.
+	TaskId uuid.UUID `json:"task_id"`
+	Title  *string   `json:"title"`
+
+	// Visible The caller sees the other task; otherwise `ref` and `title` are `null`.
+	Visible bool `json:"visible"`
+}
+
+// TaskLinkInput defines model for TaskLinkInput.
+type TaskLinkInput struct {
+	// Kind A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+	// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+	// original), `duplicated_by` (the other repeats this one).
+	Kind TaskLinkKind `json:"kind"`
+
+	// Task The other task: its ref (`CRM-41`, `#41` or `41` for the default project) or id.
+	Task string `json:"task"`
+}
+
+// TaskLinkKind A link as this task sees it: `blocks` (this task blocks the other), `waits_for` (the
+// other blocks this one), `relates`, `duplicates` (this task repeats the other, the
+// original), `duplicated_by` (the other repeats this one).
+type TaskLinkKind string
+
+// TaskLinkList defines model for TaskLinkList.
+type TaskLinkList struct {
+	Items []TaskLink `json:"items"`
+}
+
 // TaskLinkRequest defines model for TaskLinkRequest.
 type TaskLinkRequest struct {
 	ConversationId uuid.UUID `json:"conversation_id"`
+}
+
+// TaskMoveInput defines model for TaskMoveInput.
+type TaskMoveInput struct {
+	// AddAssigneeToProject Adds an assignee who is not a member to the target project; needs `tasks.manage`.
+	AddAssigneeToProject *bool `json:"add_assignee_to_project,omitempty"`
+
+	// AssigneeId The assignee in the target project; `null` for none.
+	AssigneeId *uuid.UUID `json:"assignee_id"`
+	ProjectId  uuid.UUID  `json:"project_id"`
+
+	// QueueId A queue of the target project; `null` for none.
+	QueueId *uuid.UUID `json:"queue_id"`
+
+	// Version The version of the task the caller read.
+	Version int32 `json:"version"`
 }
 
 // TaskPage defines model for TaskPage.
@@ -3243,20 +3493,95 @@ type TaskPage struct {
 // TaskPriority defines model for TaskPriority.
 type TaskPriority string
 
+// TaskProject defines model for TaskProject.
+type TaskProject struct {
+	// Access `members` — its members see it; `team` — every member of the workspace.
+	Access     TaskProjectAccess `json:"access"`
+	ArchivedAt *time.Time        `json:"archived_at"`
+
+	// Color A palette key of the panel, readable in both themes.
+	Color TagColor `json:"color"`
+
+	// FormerKeys Keys it had before, oldest first. Their refs still open its tasks, and no other project takes them.
+	FormerKeys []string `json:"former_keys"`
+
+	// Icon One of the panel's icons; `null` shows the letters of the key.
+	Icon *TaskProjectIcon `json:"icon"`
+	Id   uuid.UUID        `json:"id"`
+
+	// IsDefault The project of tasks from before projects, of bare numbers and of topics without a project.
+	IsDefault bool `json:"is_default"`
+
+	// Key Starts the refs of its tasks: `CRM-41`.
+	Key string `json:"key"`
+
+	// Member The caller works in it (a member, or the project is open to the team).
+	Member    bool        `json:"member"`
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+	OpenTasks int64       `json:"open_tasks"`
+	Position  int32       `json:"position"`
+}
+
+// TaskProjectAccess `members` — its members see it; `team` — every member of the workspace.
+type TaskProjectAccess string
+
+// TaskProjectIcon defines model for TaskProjectIcon.
+type TaskProjectIcon string
+
+// TaskProjectInput defines model for TaskProjectInput.
+type TaskProjectInput struct {
+	// Access `members` — its members see it; `team` — every member of the workspace.
+	Access   *TaskProjectAccess `json:"access,omitempty"`
+	Archived *bool              `json:"archived,omitempty"`
+
+	// Color A palette key of the panel, readable in both themes.
+	Color *TagColor        `json:"color,omitempty"`
+	Icon  *TaskProjectIcon `json:"icon,omitempty"`
+
+	// Key Required on create; 2–6 latin letters, stored upper case. A new key on a change keeps the
+	// old one as an alias: its refs still open the tasks, and no other project may take it
+	// (`409 project_exists`, as for a key in use).
+	Key       *string     `json:"key,omitempty"`
+	MemberIds []uuid.UUID `json:"member_ids"`
+	Name      string      `json:"name"`
+	Position  *int32      `json:"position,omitempty"`
+}
+
+// TaskProjectList defines model for TaskProjectList.
+type TaskProjectList struct {
+	Items []TaskProject `json:"items"`
+}
+
+// TaskProjectSummary defines model for TaskProjectSummary.
+type TaskProjectSummary struct {
+	AssignedOpen int64     `json:"assigned_open"`
+	ProjectId    uuid.UUID `json:"project_id"`
+
+	// Waiting Of them, blocked or waiting for another task.
+	Waiting int64 `json:"waiting"`
+}
+
 // TaskQueue defines model for TaskQueue.
 type TaskQueue struct {
 	Id uuid.UUID `json:"id"`
 
 	// MemberIds Members told about new tasks without an assignee in the queue.
 	MemberIds []uuid.UUID `json:"member_ids"`
-	Name      string      `json:"name"`
-	OpenTasks int64       `json:"open_tasks"`
+
+	// Name Unique in its project.
+	Name      string    `json:"name"`
+	OpenTasks int64     `json:"open_tasks"`
+	ProjectId uuid.UUID `json:"project_id"`
 }
 
 // TaskQueueInput defines model for TaskQueueInput.
 type TaskQueueInput struct {
 	MemberIds []uuid.UUID `json:"member_ids"`
 	Name      string      `json:"name"`
+
+	// ProjectId Taken on create (absent or `null` — the default project); a queue stays in its project.
+	ProjectId *uuid.UUID `json:"project_id,omitempty"`
 }
 
 // TaskQueueList defines model for TaskQueueList.
@@ -3267,9 +3592,10 @@ type TaskQueueList struct {
 // TaskReplyDraft defines model for TaskReplyDraft.
 type TaskReplyDraft struct {
 	Number int64     `json:"number"`
+	Ref    string    `json:"ref"`
 	TaskId uuid.UUID `json:"task_id"`
 
-	// Text The section's reply in the contact's language, `{name}` and `{task_number}` filled.
+	// Text The section's reply in the contact's language, `{name}` and `{task_number}` (the full ref, `CRM-41`) filled.
 	Text string `json:"text"`
 }
 
@@ -3304,6 +3630,9 @@ type TaskStatus string
 type TaskSummary struct {
 	// AssignedOpen Open tasks assigned to the caller.
 	AssignedOpen int64 `json:"assigned_open"`
+
+	// Projects The same by project (ADR-0022), for the project tiles; projects without such tasks are absent.
+	Projects []TaskProjectSummary `json:"projects"`
 }
 
 // TaskTagInput defines model for TaskTagInput.
@@ -3411,6 +3740,9 @@ type Topic struct {
 	// Higher conversations are taken from the queue first.
 	Priority int `json:"priority"`
 
+	// TaskProjectId The project of tasks created from its conversations (ADR-0022); `null` — the default one. The queue is of this project.
+	TaskProjectId *uuid.UUID `json:"task_project_id"`
+
 	// TaskQueueId The queue of tasks created from its conversations; `null` — none.
 	TaskQueueId *uuid.UUID `json:"task_queue_id"`
 }
@@ -3421,10 +3753,13 @@ type TopicInput struct {
 	Color *TagColor `json:"color,omitempty"`
 
 	// MemberIds Active members of the workspace; absent or empty — everyone.
-	MemberIds   *[]uuid.UUID `json:"member_ids,omitempty"`
-	Name        string       `json:"name"`
-	Priority    *int         `json:"priority,omitempty"`
-	TaskQueueId *uuid.UUID   `json:"task_queue_id,omitempty"`
+	MemberIds *[]uuid.UUID `json:"member_ids,omitempty"`
+	Name      string       `json:"name"`
+	Priority  *int         `json:"priority,omitempty"`
+
+	// TaskProjectId Absent or `null` with a queue — the queue's project; another one than the queue's is 400.
+	TaskProjectId *uuid.UUID `json:"task_project_id,omitempty"`
+	TaskQueueId   *uuid.UUID `json:"task_queue_id,omitempty"`
 }
 
 // TopicList defines model for TopicList.
@@ -3762,6 +4097,9 @@ type MessageId = uuid.UUID
 // ReportToken defines model for ReportToken.
 type ReportToken = string
 
+// TaskProjectFilter defines model for TaskProjectFilter.
+type TaskProjectFilter = uuid.UUID
+
 // ChannelExists RFC 9457 problem details.
 type ChannelExists = Problem
 
@@ -3946,11 +4284,20 @@ type SearchKBParams struct {
 	Topic *uuid.UUID `form:"topic,omitempty" json:"topic,omitempty"`
 }
 
+// ListTaskQueuesParams defines parameters for ListTaskQueues.
+type ListTaskQueuesParams struct {
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
+}
+
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
 	// State `open` (new or in progress), `closed` (done or canceled); all when absent.
 	State  *ListTasksParamsState `form:"state,omitempty" json:"state,omitempty"`
 	Status *TaskStatus           `form:"status,omitempty" json:"status,omitempty"`
+
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
 
 	// Assignee `me`, `none` or a member id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
@@ -3964,7 +4311,7 @@ type ListTasksParams struct {
 	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
 	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
 
-	// Q Part of the title, or the task number.
+	// Q Part of the title, or the task number in its project.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Blocked `true` only the blocked tasks, `false` only the others.
@@ -3992,6 +4339,9 @@ type ListTasksParamsSort string
 
 // GetTaskBoardParams defines parameters for GetTaskBoard.
 type GetTaskBoardParams struct {
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
+
 	// Assignee `me`, `none` or a member id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
 
@@ -4004,7 +4354,7 @@ type GetTaskBoardParams struct {
 	// Tag A tag of tasks (`GET /task-tags`); only the tasks with it.
 	Tag *uuid.UUID `form:"tag,omitempty" json:"tag,omitempty"`
 
-	// Q Part of the title, or the task number.
+	// Q Part of the title, or the task number in its project.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Blocked `true` only the blocked tasks, `false` only the others.
@@ -4021,6 +4371,9 @@ type GetTaskBoardParams struct {
 type GetTaskFlowParams struct {
 	// Days How many days back the period reaches, 7–90; 30 when absent.
 	Days *int `form:"days,omitempty" json:"days,omitempty"`
+
+	// Project A project of tasks (`GET /task-projects`); only its tasks.
+	Project *TaskProjectFilter `form:"project,omitempty" json:"project,omitempty"`
 
 	// Assignee `me`, `none` or a member id.
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
@@ -4228,6 +4581,12 @@ type UpdateTaskBoardSettingsJSONRequestBody = TaskBoardSettings
 // CreateTaskFileUploadJSONRequestBody defines body for CreateTaskFileUpload for application/json ContentType.
 type CreateTaskFileUploadJSONRequestBody = TaskFileUploadRequest
 
+// CreateTaskProjectJSONRequestBody defines body for CreateTaskProject for application/json ContentType.
+type CreateTaskProjectJSONRequestBody = TaskProjectInput
+
+// UpdateTaskProjectJSONRequestBody defines body for UpdateTaskProject for application/json ContentType.
+type UpdateTaskProjectJSONRequestBody = TaskProjectInput
+
 // CreateTaskQueueJSONRequestBody defines body for CreateTaskQueue for application/json ContentType.
 type CreateTaskQueueJSONRequestBody = TaskQueueInput
 
@@ -4255,11 +4614,23 @@ type UpdateTaskJSONRequestBody = TaskUpdate
 // CommentTaskJSONRequestBody defines body for CommentTask for application/json ContentType.
 type CommentTaskJSONRequestBody = TaskComment
 
+// AddTaskArticleJSONRequestBody defines body for AddTaskArticle for application/json ContentType.
+type AddTaskArticleJSONRequestBody = TaskArticleInput
+
 // LinkTaskConversationJSONRequestBody defines body for LinkTaskConversation for application/json ContentType.
 type LinkTaskConversationJSONRequestBody = TaskLinkRequest
 
+// CloseTaskAsDuplicateJSONRequestBody defines body for CloseTaskAsDuplicate for application/json ContentType.
+type CloseTaskAsDuplicateJSONRequestBody = TaskDuplicateInput
+
 // AddTaskFilesJSONRequestBody defines body for AddTaskFiles for application/json ContentType.
 type AddTaskFilesJSONRequestBody = TaskFilesAdd
+
+// AddTaskLinkJSONRequestBody defines body for AddTaskLink for application/json ContentType.
+type AddTaskLinkJSONRequestBody = TaskLinkInput
+
+// MoveTaskJSONRequestBody defines body for MoveTask for application/json ContentType.
+type MoveTaskJSONRequestBody = TaskMoveInput
 
 // CreateTopicJSONRequestBody defines body for CreateTopic for application/json ContentType.
 type CreateTopicJSONRequestBody = TopicInput
@@ -4410,6 +4781,9 @@ type ServerInterface interface {
 	// UpdateContact Change a contact
 	// (PATCH /contacts/{id})
 	UpdateContact(w http.ResponseWriter, r *http.Request, id Id)
+	// ListContactTasks Tasks of the contact in every project
+	// (GET /contacts/{id}/tasks)
+	ListContactTasks(w http.ResponseWriter, r *http.Request, id Id)
 	// ListConversations The inbox, most recent activity first
 	// (GET /conversations)
 	ListConversations(w http.ResponseWriter, r *http.Request, params ListConversationsParams)
@@ -4539,6 +4913,9 @@ type ServerInterface interface {
 	// UpdateKBArticle Replace an entry
 	// (PUT /kb/articles/{id})
 	UpdateKBArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// ListKBArticleTasks Tasks the entry is linked to
+	// (GET /kb/articles/{id}/tasks)
+	ListKBArticleTasks(w http.ResponseWriter, r *http.Request, id Id)
 	// GetKBGuide What the bot always knows
 	// (GET /kb/guide)
 	GetKBGuide(w http.ResponseWriter, r *http.Request)
@@ -4662,9 +5039,21 @@ type ServerInterface interface {
 	// GetTaskFileDownloadLink A short-lived signed download request for a file of a task
 	// (GET /task-files/{id}/download-link)
 	GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Request, id Id)
+	// ListTaskProjects Projects of tasks the caller sees (ADR-0022)
+	// (GET /task-projects)
+	ListTaskProjects(w http.ResponseWriter, r *http.Request)
+	// CreateTaskProject Add a project
+	// (POST /task-projects)
+	CreateTaskProject(w http.ResponseWriter, r *http.Request)
+	// DeleteTaskProject Delete a project without tasks
+	// (DELETE /task-projects/{id})
+	DeleteTaskProject(w http.ResponseWriter, r *http.Request, id Id)
+	// UpdateTaskProject Change a project and replace its members
+	// (PUT /task-projects/{id})
+	UpdateTaskProject(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTaskQueues Queues of tasks, by name
 	// (GET /task-queues)
-	ListTaskQueues(w http.ResponseWriter, r *http.Request)
+	ListTaskQueues(w http.ResponseWriter, r *http.Request, params ListTaskQueuesParams)
 	// CreateTaskQueue Add a queue
 	// (POST /task-queues)
 	CreateTaskQueue(w http.ResponseWriter, r *http.Request)
@@ -4731,18 +5120,42 @@ type ServerInterface interface {
 	// CommentTask Comment a task
 	// (POST /tasks/{id}/activity)
 	CommentTask(w http.ResponseWriter, r *http.Request, id Id)
+	// ListTaskArticles Articles of the knowledge base linked to the task
+	// (GET /tasks/{id}/articles)
+	ListTaskArticles(w http.ResponseWriter, r *http.Request, id Id)
+	// AddTaskArticle Link an article of the knowledge base to the task
+	// (POST /tasks/{id}/articles)
+	AddTaskArticle(w http.ResponseWriter, r *http.Request, id Id)
+	// RemoveTaskArticle Unlink an article from the task
+	// (DELETE /tasks/{id}/articles/{article_id})
+	RemoveTaskArticle(w http.ResponseWriter, r *http.Request, id Id, articleId uuid.UUID)
 	// LinkTaskConversation Link a conversation to the task
 	// (POST /tasks/{id}/conversations)
 	LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id)
 	// UnlinkTaskConversation Unlink a conversation from the task
 	// (DELETE /tasks/{id}/conversations/{conversation_id})
 	UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id, conversationId uuid.UUID)
+	// CloseTaskAsDuplicate Close the task as a duplicate of another
+	// (POST /tasks/{id}/duplicate)
+	CloseTaskAsDuplicate(w http.ResponseWriter, r *http.Request, id Id)
 	// AddTaskFiles Add uploaded files to a task's description
 	// (POST /tasks/{id}/files)
 	AddTaskFiles(w http.ResponseWriter, r *http.Request, id Id)
 	// RemoveTaskFile Take a file out of a task's description
 	// (DELETE /tasks/{id}/files/{file_id})
 	RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID)
+	// ListTaskLinks Links of the task to other tasks, oldest first
+	// (GET /tasks/{id}/links)
+	ListTaskLinks(w http.ResponseWriter, r *http.Request, id Id)
+	// AddTaskLink Link the task to another task
+	// (POST /tasks/{id}/links)
+	AddTaskLink(w http.ResponseWriter, r *http.Request, id Id)
+	// RemoveTaskLink Remove the link of the task to another task
+	// (DELETE /tasks/{id}/links/{other_id})
+	RemoveTaskLink(w http.ResponseWriter, r *http.Request, id Id, otherId uuid.UUID)
+	// MoveTask Move the task to another project
+	// (POST /tasks/{id}/move)
+	MoveTask(w http.ResponseWriter, r *http.Request, id Id)
 	// ListTopics The topics of questions, in the order of the buttons
 	// (GET /topics)
 	ListTopics(w http.ResponseWriter, r *http.Request)
@@ -5025,6 +5438,12 @@ func (_ Unimplemented) UpdateContact(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListContactTasks Tasks of the contact in every project
+// (GET /contacts/{id}/tasks)
+func (_ Unimplemented) ListContactTasks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListConversations The inbox, most recent activity first
 // (GET /conversations)
 func (_ Unimplemented) ListConversations(w http.ResponseWriter, r *http.Request, params ListConversationsParams) {
@@ -5283,6 +5702,12 @@ func (_ Unimplemented) UpdateKBArticle(w http.ResponseWriter, r *http.Request, i
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListKBArticleTasks Tasks the entry is linked to
+// (GET /kb/articles/{id}/tasks)
+func (_ Unimplemented) ListKBArticleTasks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetKBGuide What the bot always knows
 // (GET /kb/guide)
 func (_ Unimplemented) GetKBGuide(w http.ResponseWriter, r *http.Request) {
@@ -5529,9 +5954,33 @@ func (_ Unimplemented) GetTaskFileDownloadLink(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListTaskProjects Projects of tasks the caller sees (ADR-0022)
+// (GET /task-projects)
+func (_ Unimplemented) ListTaskProjects(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTaskProject Add a project
+// (POST /task-projects)
+func (_ Unimplemented) CreateTaskProject(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTaskProject Delete a project without tasks
+// (DELETE /task-projects/{id})
+func (_ Unimplemented) DeleteTaskProject(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTaskProject Change a project and replace its members
+// (PUT /task-projects/{id})
+func (_ Unimplemented) UpdateTaskProject(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListTaskQueues Queues of tasks, by name
 // (GET /task-queues)
-func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListTaskQueues(w http.ResponseWriter, r *http.Request, params ListTaskQueuesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5667,6 +6116,24 @@ func (_ Unimplemented) CommentTask(w http.ResponseWriter, r *http.Request, id Id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListTaskArticles Articles of the knowledge base linked to the task
+// (GET /tasks/{id}/articles)
+func (_ Unimplemented) ListTaskArticles(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddTaskArticle Link an article of the knowledge base to the task
+// (POST /tasks/{id}/articles)
+func (_ Unimplemented) AddTaskArticle(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveTaskArticle Unlink an article from the task
+// (DELETE /tasks/{id}/articles/{article_id})
+func (_ Unimplemented) RemoveTaskArticle(w http.ResponseWriter, r *http.Request, id Id, articleId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // LinkTaskConversation Link a conversation to the task
 // (POST /tasks/{id}/conversations)
 func (_ Unimplemented) LinkTaskConversation(w http.ResponseWriter, r *http.Request, id Id) {
@@ -5679,6 +6146,12 @@ func (_ Unimplemented) UnlinkTaskConversation(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// CloseTaskAsDuplicate Close the task as a duplicate of another
+// (POST /tasks/{id}/duplicate)
+func (_ Unimplemented) CloseTaskAsDuplicate(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // AddTaskFiles Add uploaded files to a task's description
 // (POST /tasks/{id}/files)
 func (_ Unimplemented) AddTaskFiles(w http.ResponseWriter, r *http.Request, id Id) {
@@ -5688,6 +6161,30 @@ func (_ Unimplemented) AddTaskFiles(w http.ResponseWriter, r *http.Request, id I
 // RemoveTaskFile Take a file out of a task's description
 // (DELETE /tasks/{id}/files/{file_id})
 func (_ Unimplemented) RemoveTaskFile(w http.ResponseWriter, r *http.Request, id Id, fileId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTaskLinks Links of the task to other tasks, oldest first
+// (GET /tasks/{id}/links)
+func (_ Unimplemented) ListTaskLinks(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddTaskLink Link the task to another task
+// (POST /tasks/{id}/links)
+func (_ Unimplemented) AddTaskLink(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveTaskLink Remove the link of the task to another task
+// (DELETE /tasks/{id}/links/{other_id})
+func (_ Unimplemented) RemoveTaskLink(w http.ResponseWriter, r *http.Request, id Id, otherId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MoveTask Move the task to another project
+// (POST /tasks/{id}/move)
+func (_ Unimplemented) MoveTask(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6540,6 +7037,32 @@ func (siw *ServerInterfaceWrapper) UpdateContact(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListContactTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListContactTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListContactTasks(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7795,6 +8318,32 @@ func (siw *ServerInterfaceWrapper) UpdateKBArticle(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListKBArticleTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListKBArticleTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKBArticleTasks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetKBGuide operation middleware
 func (siw *ServerInterfaceWrapper) GetKBGuide(w http.ResponseWriter, r *http.Request) {
 
@@ -8497,11 +9046,110 @@ func (siw *ServerInterfaceWrapper) GetTaskFileDownloadLink(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// ListTaskProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskProjects(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTaskProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskProject(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskProject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTaskProject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTaskProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTaskProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTaskProject operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTaskProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTaskProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTaskQueues operation middleware
 func (siw *ServerInterfaceWrapper) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTaskQueuesParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTaskQueues(w, r)
+		siw.Handler.ListTaskQueues(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8762,6 +9410,19 @@ func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "assignee" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8926,6 +9587,19 @@ func (siw *ServerInterfaceWrapper) GetTaskBoard(w http.ResponseWriter, r *http.R
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTaskBoardParams
 
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "assignee" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -9059,6 +9733,19 @@ func (siw *ServerInterfaceWrapper) GetTaskFlow(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
 		}
 		return
 	}
@@ -9270,6 +9957,93 @@ func (siw *ServerInterfaceWrapper) CommentTask(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListTaskArticles operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskArticles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskArticles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTaskArticle operation middleware
+func (siw *ServerInterfaceWrapper) AddTaskArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTaskArticle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTaskArticle operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTaskArticle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "article_id" -------------
+	var articleId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "article_id", chi.URLParam(r, "article_id"), &articleId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "article_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTaskArticle(w, r, id, articleId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LinkTaskConversation operation middleware
 func (siw *ServerInterfaceWrapper) LinkTaskConversation(w http.ResponseWriter, r *http.Request) {
 
@@ -9331,6 +10105,32 @@ func (siw *ServerInterfaceWrapper) UnlinkTaskConversation(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// CloseTaskAsDuplicate operation middleware
+func (siw *ServerInterfaceWrapper) CloseTaskAsDuplicate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseTaskAsDuplicate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AddTaskFiles operation middleware
 func (siw *ServerInterfaceWrapper) AddTaskFiles(w http.ResponseWriter, r *http.Request) {
 
@@ -9383,6 +10183,119 @@ func (siw *ServerInterfaceWrapper) RemoveTaskFile(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveTaskFile(w, r, id, fileId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTaskLinks operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskLinks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskLinks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTaskLink operation middleware
+func (siw *ServerInterfaceWrapper) AddTaskLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTaskLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTaskLink operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTaskLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "other_id" -------------
+	var otherId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "other_id", chi.URLParam(r, "other_id"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "other_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTaskLink(w, r, id, otherId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveTask operation middleware
+func (siw *ServerInterfaceWrapper) MoveTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveTask(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10007,6 +10920,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/kb/articles/{id}", wrapper.UpdateKBArticle)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/kb/articles/{id}/tasks", wrapper.ListKBArticleTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/contacts/{id}/tasks", wrapper.ListContactTasks)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/kb/search", wrapper.SearchKB)
 	})
 	r.Group(func(r chi.Router) {
@@ -10235,6 +11154,30 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/tasks/{id}/activity", wrapper.CommentTask)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}/links", wrapper.ListTaskLinks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/links", wrapper.AddTaskLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/links/{other_id}", wrapper.RemoveTaskLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tasks/{id}/articles", wrapper.ListTaskArticles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/articles", wrapper.AddTaskArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tasks/{id}/articles/{article_id}", wrapper.RemoveTaskArticle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/duplicate", wrapper.CloseTaskAsDuplicate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks/{id}/move", wrapper.MoveTask)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tasks/{id}/conversations", wrapper.LinkTaskConversation)
 	})
 	r.Group(func(r chi.Router) {
@@ -10254,6 +11197,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/tasks/{id}/files/{file_id}", wrapper.RemoveTaskFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/task-projects", wrapper.ListTaskProjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/task-projects", wrapper.CreateTaskProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/task-projects/{id}", wrapper.DeleteTaskProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/task-projects/{id}", wrapper.UpdateTaskProject)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/task-queues", wrapper.ListTaskQueues)

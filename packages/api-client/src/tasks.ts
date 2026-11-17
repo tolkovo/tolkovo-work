@@ -9,10 +9,15 @@ import {
   taskFlowSchema,
   taskDraftSchema,
   taskPageSchema,
+  taskProjectListSchema,
+  taskProjectSchema,
   taskQueueListSchema,
   taskQueueSchema,
   signedRequestSchema,
   taskFileUploadSchema,
+  taskLinkListSchema,
+  taskArticleListSchema,
+  taskBriefListSchema,
   taskSchema,
   taskSettingsViewSchema,
   taskSummarySchema,
@@ -41,6 +46,16 @@ export type TaskCreate = Schemas["TaskCreate"];
 export type TaskUpdate = Schemas["TaskUpdate"];
 export type TaskActivity = Schemas["TaskActivity"];
 export type TaskQueue = Schemas["TaskQueue"];
+export type TaskSummary = Schemas["TaskSummary"];
+export type TaskLink = Schemas["TaskLink"];
+export type TaskLinkKind = Schemas["TaskLinkKind"];
+export type TaskBlocker = Schemas["TaskBlocker"];
+export type TaskProject = Schemas["TaskProject"];
+export type TaskProjectInput = Schemas["TaskProjectInput"];
+export type TaskMoveInput = Schemas["TaskMoveInput"];
+export type TaskArticle = Schemas["TaskArticle"];
+export type TaskBrief = Schemas["TaskBrief"];
+export type TaskBriefList = Schemas["TaskBriefList"];
 export type TaskQueueInput = Schemas["TaskQueueInput"];
 /** A tag of tasks has the shape of a conversation's tag, in a list of its own (GET /task-tags). */
 export type TaskTag = Schemas["Tag"];
@@ -54,10 +69,12 @@ export type TelegramLinkStart = Schemas["TelegramLinkStart"];
 export type TelegramBotState = Schemas["TelegramBotState"];
 
 /**
- * Filter of GET /tasks; `assignee` is `me`, `none` or a member id, `queue` and `topic` are
- * `none` or an id, `tag` is a tag id.
+ * Filter of GET /tasks; `project` is a project id (ADR-0022; absent: every project the member
+ * sees), `assignee` is `me`, `none` or a member id, `queue` and `topic` are `none` or an id,
+ * `tag` is a tag id.
  */
 export type TaskFilter = {
+  project?: string;
   state?: "open" | "closed";
   status?: TaskStatus;
   assignee?: string;
@@ -83,7 +100,7 @@ export async function fetchTaskBoard(client: ApiClient, filter: TaskBoardFilter)
 
 /** Soft limits and age thresholds of the board's open columns, the workspace's and the queues'. */
 /** Filter of the flow metrics (ADR-0019, K3): the board's people, queue, topic and tag, and the days back. */
-export type TaskFlowFilter = Pick<TaskFilter, "assignee" | "queue" | "topic" | "tag"> & { days?: number };
+export type TaskFlowFilter = Pick<TaskFilter, "project" | "assignee" | "queue" | "topic" | "tag"> & { days?: number };
 
 export async function fetchTaskFlow(client: ApiClient, filter: TaskFlowFilter): Promise<TaskFlow> {
   return parseAnswer(taskFlowSchema, await unwrap(client.GET("/tasks/flow", { params: { query: filter } })));
@@ -108,8 +125,9 @@ export async function fetchTask(client: ApiClient, id: string): Promise<Task> {
   return parseAnswer(taskSchema, await unwrap(client.GET("/tasks/{id}", { params: { path: { id } } })));
 }
 
-export async function fetchTaskSummary(client: ApiClient): Promise<number> {
-  return parseAnswer(taskSummarySchema, await unwrap(client.GET("/tasks/summary"))).assigned_open;
+/** My open tasks: in all, and by project for the project tiles (ADR-0022). */
+export async function fetchTaskSummary(client: ApiClient): Promise<TaskSummary> {
+  return parseAnswer(taskSummarySchema, await unwrap(client.GET("/tasks/summary")));
 }
 
 export async function createTask(client: ApiClient, body: TaskCreate): Promise<Task> {
@@ -141,12 +159,89 @@ export async function linkTaskConversation(client: ApiClient, id: string, conver
   return parseAnswer(taskSchema, data, 201);
 }
 
+/** Links of a task to other tasks (ADR-0022), oldest first; a hidden task shows by its status only. */
+export async function fetchTaskLinks(client: ApiClient, id: string): Promise<TaskLink[]> {
+  return parseAnswer(taskLinkListSchema, await unwrap(client.GET("/tasks/{id}/links", { params: { path: { id } } }))).items;
+}
+
+/** Links the task to another, named by its ref or id; the links of the task after. */
+export async function addTaskLink(client: ApiClient, id: string, kind: TaskLinkKind, task: string): Promise<TaskLink[]> {
+  const data = await unwrap(client.POST("/tasks/{id}/links", { params: { path: { id } }, body: { kind, task } }));
+  return parseAnswer(taskLinkListSchema, data, 201).items;
+}
+
+export async function removeTaskLink(client: ApiClient, id: string, otherId: string): Promise<void> {
+  await unwrap(client.DELETE("/tasks/{id}/links/{other_id}", { params: { path: { id, other_id: otherId } } }));
+}
+
+/** Cancels the task read at `version` as a duplicate of the original; its conversations move there. */
+export async function closeTaskAsDuplicate(client: ApiClient, id: string, original: string, version: number): Promise<Task> {
+  const data = await unwrap(client.POST("/tasks/{id}/duplicate", { params: { path: { id } }, body: { original, version } }));
+  return parseAnswer(taskSchema, data);
+}
+
+/** Articles of the knowledge base linked to the task (ADR-0022, P5), in the order they were linked. */
+export async function fetchTaskArticles(client: ApiClient, id: string): Promise<TaskArticle[]> {
+  return parseAnswer(taskArticleListSchema, await unwrap(client.GET("/tasks/{id}/articles", { params: { path: { id } } }))).items;
+}
+
+/** Links an article to the task; the articles of the task after. */
+export async function addTaskArticle(client: ApiClient, id: string, articleId: string): Promise<TaskArticle[]> {
+  const data = await unwrap(client.POST("/tasks/{id}/articles", { params: { path: { id } }, body: { article_id: articleId } }));
+  return parseAnswer(taskArticleListSchema, data, 201).items;
+}
+
+export async function removeTaskArticle(client: ApiClient, id: string, articleId: string): Promise<void> {
+  await unwrap(client.DELETE("/tasks/{id}/articles/{article_id}", { params: { path: { id, article_id: articleId } } }));
+}
+
+/** Tasks of a contact in every project; the hidden ones only counted. */
+export async function fetchContactTasks(client: ApiClient, contactId: string): Promise<TaskBriefList> {
+  return parseAnswer(taskBriefListSchema, await unwrap(client.GET("/contacts/{id}/tasks", { params: { path: { id: contactId } } })));
+}
+
+/** Tasks an article of the knowledge base is linked to; the hidden ones only counted. */
+export async function fetchKBArticleTasks(client: ApiClient, articleId: string): Promise<TaskBriefList> {
+  return parseAnswer(taskBriefListSchema, await unwrap(client.GET("/kb/articles/{id}/tasks", { params: { path: { id: articleId } } })));
+}
+
+/** Moves the task to another project under its next number; its old ref keeps opening it. */
+export async function moveTask(client: ApiClient, id: string, body: TaskMoveInput): Promise<Task> {
+  const data = await unwrap(client.POST("/tasks/{id}/move", { params: { path: { id } }, body }));
+  return parseAnswer(taskSchema, data);
+}
+
 export async function unlinkTaskConversation(client: ApiClient, id: string, conversationId: string): Promise<void> {
   await unwrap(client.DELETE("/tasks/{id}/conversations/{conversation_id}", { params: { path: { id, conversation_id: conversationId } } }));
 }
 
-export async function fetchTaskQueues(client: ApiClient): Promise<TaskQueue[]> {
-  return parseAnswer(taskQueueListSchema, await unwrap(client.GET("/task-queues"))).items;
+/** Queues of one project, or of every project without one. */
+export async function fetchTaskQueues(client: ApiClient, project?: string): Promise<TaskQueue[]> {
+  const query = project ? { project } : {};
+  return parseAnswer(taskQueueListSchema, await unwrap(client.GET("/task-queues", { params: { query } }))).items;
+}
+
+/**
+ * Projects of tasks (ADR-0022) in the switcher's order: the member's own; admins get every one,
+ * `member` telling theirs apart.
+ */
+export async function fetchTaskProjects(client: ApiClient): Promise<TaskProject[]> {
+  return parseAnswer(taskProjectListSchema, await unwrap(client.GET("/task-projects"))).items;
+}
+
+/** Admins add a project; a taken name or key answers `409 project_exists`. */
+export async function createTaskProject(client: ApiClient, body: TaskProjectInput): Promise<TaskProject> {
+  return parseAnswer(taskProjectSchema, await unwrap(client.POST("/task-projects", { body })), 201);
+}
+
+/** The key does not change; the default project is never archived. */
+export async function updateTaskProject(client: ApiClient, id: string, body: TaskProjectInput): Promise<TaskProject> {
+  return parseAnswer(taskProjectSchema, await unwrap(client.PUT("/task-projects/{id}", { params: { path: { id } }, body })));
+}
+
+/** Only a project without tasks; one with tasks answers `409 project_not_empty`. */
+export async function deleteTaskProject(client: ApiClient, id: string): Promise<void> {
+  await unwrap(client.DELETE("/task-projects/{id}", { params: { path: { id } } }));
 }
 
 export async function createTaskQueue(client: ApiClient, body: TaskQueueInput): Promise<TaskQueue> {

@@ -134,7 +134,7 @@ func topicFilter(v string) (by bool, id *uuid.UUID, err error) {
 func topicInput(req oapi.TopicInput) conversations.TopicInput {
 	return conversations.TopicInput{
 		Name: req.Name, Color: string(deref(req.Color)), Priority: deref(req.Priority),
-		TaskQueueID: req.TaskQueueId, MemberIDs: deref(req.MemberIds),
+		TaskQueueID: req.TaskQueueId, TaskProjectID: req.TaskProjectId, MemberIDs: deref(req.MemberIds),
 	}
 }
 
@@ -149,6 +149,6 @@ func topicList(topics []conversations.Topic) oapi.TopicList {
 func topicBody(t conversations.Topic) oapi.Topic {
 	return oapi.Topic{
 		Id: t.ID, Name: t.Name, Color: oapi.TagColor(t.Color), Position: t.Position, Priority: t.Priority,
-		TaskQueueId: t.TaskQueueID, MemberIds: nonNil(t.MemberIDs),
+		TaskQueueId: t.TaskQueueID, TaskProjectId: t.TaskProjectID, MemberIds: nonNil(t.MemberIDs),
 	}
 }

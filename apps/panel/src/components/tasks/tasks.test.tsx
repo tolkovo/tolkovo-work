@@ -15,7 +15,10 @@ const admin: Session = { ...ownerSession, permissions: [...ownerSession.permissi
 
 const task = (id: string, patch: Partial<Task> = {}): Task => ({
   id,
+  project_id: "p1",
+  project_key: "TSK",
   number: 12,
+  ref: "TSK-12",
   queue_id: null,
   topic_id: null,
   title: "Обновить сертификат на сервере",
@@ -29,6 +32,7 @@ const task = (id: string, patch: Partial<Task> = {}): Task => ({
   closed_at: null,
   status_changed_at: "2026-10-06T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 3,
   conversation_ids: [],
   conversation_count: 0,
@@ -45,10 +49,10 @@ function server(session: Session, routes: FakeRoutes = {}) {
     session,
     routes: {
       "GET /tasks": () => json(200, { items: [state.task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /tasks/t1": () => json(200, state.task),
       "GET /tasks/t1/activity": () => json(200, { items: [{ id: "a1", actor_id: admin.user.id, kind: "created", created_at: "2026-10-06T10:00:00Z" }] }),
-      "GET /task-queues": () => json(200, { items: [{ id: "q-dev", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
+      "GET /task-queues": () => json(200, { items: [{ id: "q-dev", project_id: "p1", name: "Разработка", member_ids: [], open_tasks: 1 }] }),
       "GET /task-settings": () => json(200, { settings, defaults: { reply_ru: "Готово", reply_en: "Done" }, placeholders: ["name", "task_number"] }),
       "GET /task-board-settings": () => json(200, { rules: [] }),
       ...routes,
@@ -76,7 +80,7 @@ describe("the tasks section", () => {
     });
     renderApp("/tasks?view=open", { api });
     await user.click(await screen.findByRole("link", { name: /Обновить сертификат на сервере/ }, firstLook));
-    const heading = await screen.findByRole("heading", { name: /#12.*Обновить сертификат на сервере/ });
+    const heading = await screen.findByRole("heading", { name: /TSK-12.*Обновить сертификат на сервере/ });
     expect(heading).toHaveFocus();
     expect(screen.getByText("Истекает в пятницу")).toBeInTheDocument();
     expect(await screen.findByText(/Задача создана/)).toBeInTheDocument();
@@ -109,7 +113,7 @@ describe("the tasks section", () => {
     });
     state.task = task("t1", { status: "review", assignee_id: admin.user.id });
     renderApp("/tasks/t1", { api });
-    expect(await screen.findByRole("heading", { name: /#12/ }, firstLook)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /TSK-12/ }, firstLook)).toBeInTheDocument();
 
     // Taking a task in review keeps it in review.
     await user.click(screen.getByRole("button", { name: "Взять в работу" }));
@@ -149,7 +153,7 @@ describe("the tasks section", () => {
       queue_id: "q-dev",
       assignee_id: null,
     });
-    expect(await screen.findByRole("heading", { name: /#12/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /TSK-12/ })).toBeInTheDocument();
   });
 
   it("files a task under a topic, filters by it and names its change in the feed", async () => {
@@ -157,7 +161,7 @@ describe("the tasks section", () => {
     const crm = "0199a000-0000-7000-8000-00000000c0a1";
     const { api } = server(member, {
       "GET /topics": () =>
-        json(200, { items: [{ id: crm, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, member_ids: [] }] }),
+        json(200, { items: [{ id: crm, name: "CRM", color: "blue", position: 0, priority: 0, task_queue_id: null, task_project_id: null, member_ids: [] }] }),
       "GET /tasks": () => json(200, { items: [task("t1", { topic_id: crm })], next_cursor: null }),
       "GET /tasks/t1": () => json(200, task("t1", { topic_id: crm })),
       "GET /tasks/t1/activity": () =>
@@ -299,7 +303,7 @@ describe("the tasks section", () => {
   it("lets admins add a queue in the settings", async () => {
     const user = userEvent.setup();
     const { api } = server(admin, {
-      "POST /task-queues": () => json(201, { id: "q-it", name: "Инфраструктура", member_ids: [], open_tasks: 0 }),
+      "POST /task-queues": () => json(201, { id: "q-it", project_id: "p1", name: "Инфраструктура", member_ids: [], open_tasks: 0 }),
     });
     renderApp("/settings/tasks", { api });
     await user.click(await screen.findByRole("button", { name: "Добавить очередь" }, firstLook));
@@ -319,7 +323,8 @@ describe("tasks in a conversation", () => {
     drafted_by: "ai",
   };
 
-  function inbox(conversationTasks: ConversationTasks, extra: FakeRoutes = {}) {
+  function inbox(given: Omit<ConversationTasks, "hidden_count">, extra: FakeRoutes = {}) {
+    const conversationTasks: ConversationTasks = { hidden_count: 0, ...given };
     return fakeApi({
       session: member,
       routes: {
@@ -332,7 +337,7 @@ describe("tasks in a conversation", () => {
         "GET /conversations/c1/tasks/draft": () => json(200, draft),
         "GET /task-queues": () => json(200, { items: [] }),
         "GET /task-settings": () => json(200, { settings, defaults: { reply_ru: "Готово", reply_en: "Done" }, placeholders: [] }),
-        "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+        "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
         ...extra,
       },
     });
@@ -358,7 +363,7 @@ describe("tasks in a conversation", () => {
       assignee_id: null,
       conversation_id: "c1",
     });
-    expect(await screen.findByText("Задача #12 создана. Диалог ждёт, пока её не закроют.")).toBeInTheDocument();
+    expect(await screen.findByText("Задача TSK-12 создана. Диалог ждёт, пока её не закроют.")).toBeInTheDocument();
   });
 
   it("offers the reply about a done task and no task button when the workspace keeps only GitHub", async () => {
@@ -366,10 +371,10 @@ describe("tasks in a conversation", () => {
     const api = inbox({
       items: [task("t1", { status: "done", closed_at: "2026-10-06T11:00:00Z", conversation_ids: ["c1"] })],
       settings: { enabled: true, conversation_button: "github" },
-      reply_draft: { task_id: "t1", number: 12, text: "Марина, задачу выполнили." },
+      reply_draft: { task_id: "t1", number: 12, ref: "TSK-12", text: "Марина, задачу выполнили." },
     });
     renderApp("/inbox/c1", { api });
-    expect(await screen.findByText("Задача #12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
+    expect(await screen.findByText("Задача TSK-12 выполнена. Черновик ответа:", undefined, firstLook)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Вставить в ответ" }));
     expect(screen.getByLabelText("Ответ клиенту")).toHaveValue("Марина, задачу выполнили.");
     await user.click(screen.getByRole("button", { name: "Ещё действия" }));

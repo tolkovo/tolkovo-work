@@ -9,7 +9,10 @@ import { renderApp } from "../../test/render-app";
 
 const task: Task = {
   id: "t1",
+  project_id: "p1",
+  project_key: "TSK",
   number: 12,
+  ref: "TSK-12",
   queue_id: null,
   topic_id: null,
   title: "Двойное списание при оплате",
@@ -23,6 +26,7 @@ const task: Task = {
   closed_at: null,
   status_changed_at: "2026-10-06T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 3,
   conversation_ids: ["c1"],
   conversation_count: 1,
@@ -35,7 +39,7 @@ function server() {
     session: programmerSession,
     routes: {
       "GET /tasks": () => json(200, { items: [task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 1 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 1, projects: [] }),
       "GET /tasks/t1": () => json(200, task),
       "GET /tasks/t1/activity": () => json(200, { items: [] }),
       "GET /task-queues": () => json(200, { items: [] }),
@@ -80,6 +84,6 @@ describe("the programmer (ADR-0020)", () => {
     expect(screen.queryByRole("button", { name: "Ответ" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Назад к задаче" }));
-    expect(await screen.findByRole("heading", { name: /#12.*Двойное списание при оплате/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /TSK-12.*Двойное списание при оплате/ })).toBeInTheDocument();
   });
 });

@@ -12,7 +12,13 @@
     "analytics": "Analytics",
     "kb": "Knowledge",
     "settings": "Settings",
-    "myTasks": "{count, plural, one {# open task of mine} other {# open tasks of mine}}"
+    "myTasks": "{count, plural, one {# open task of mine} other {# open tasks of mine}}",
+    "projects": {
+      "label": "Projects",
+      "moved": "{name}: place {position} of {count}",
+      "reorderHint": "Alt+↑ or Alt+↓ to move",
+      "waiting": "{count} waiting"
+    }
   },
   "topbar": {
     "theme": {
@@ -455,6 +461,51 @@
         "saved": "Saved",
         "hint": "An empty field means no limit or no threshold. A queue's rules apply when the board shows that queue alone.",
         "fields": "limit · days"
+      },
+      "projects": "Projects",
+      "projectsHint": "Each project has its own key and task numbers (CRM-41). Its members or the whole team see its tasks.",
+      "addProject": "Add project",
+      "editProject": "Edit",
+      "archiveProject": "Archive",
+      "restoreProject": "Restore",
+      "deleteProject": "Delete",
+      "saveProject": "Save project",
+      "projectDefault": "main",
+      "projectArchived": "archived",
+      "projectTeam": "Whole team",
+      "projectNobody": "No members",
+      "projectName": "Name",
+      "projectNameRequired": "Write the project name.",
+      "projectKey": "Key",
+      "projectKeyHint": "2 to 6 Latin letters, like CRM.",
+      "projectKeyChangeHint": "The key can change: old refs ({key}-41) keep opening the tasks, and {key} stays with this project.",
+      "projectFormerKeys": "Former keys:",
+      "projectKeyInvalid": "The key is 2 to 6 Latin letters.",
+      "projectColor": "Colour",
+      "projectAccess": "Who sees the tasks",
+      "projectAccessOptions": {
+        "members": "Members",
+        "team": "Whole team"
+      },
+      "projectAccessHints": {
+        "members": "Only those checked below, and admins.",
+        "team": "Everyone with access to tasks."
+      },
+      "projectMembers": "Members",
+      "projectMembersHint": "Members see the project on the left and can be assignees.",
+      "projectMembersTeam": "The whole team sees the tasks; members see the project on the left.",
+      "deleteProjectConfirm": "Delete the project with its queues?",
+      "projectIcon": "Icon",
+      "projectIcons": {
+        "key": "Key letters",
+        "chart": "Chart",
+        "monitor": "Monitor",
+        "server": "Server",
+        "phone": "Phone",
+        "cart": "Cart",
+        "rocket": "Rocket",
+        "heart": "Heart",
+        "globe": "Globe"
       }
     },
     "team": {
@@ -605,7 +656,10 @@
       "queue": "Task queue",
       "queueHint": "A task from a conversation of this topic goes to this queue unless another is picked.",
       "noQueue": "No queue",
-      "save": "Save topic"
+      "save": "Save topic",
+      "project": "Task project",
+      "projectHint": "Tasks from conversations of this topic go to this project.",
+      "projectShort": "Project: {name}"
     },
     "ai": {
       "nav": "AI",
@@ -1041,7 +1095,11 @@
     "topicExists": "A topic with this name exists.",
     "lineExists": "A line with this name exists.",
     "tagExists": "A tag with this name exists.",
-    "protectedMember": "Your own role and the owner's cannot be changed here."
+    "protectedMember": "Your own role and the owner's cannot be changed here.",
+    "projectExists": "A project with this name or key exists, or another project had this key.",
+    "projectNotEmpty": "The project has tasks — archive it instead.",
+    "linkExists": "These tasks are linked already. Remove the link to change it.",
+    "linkLoop": "The tasks would wait for each other in a loop. Remove one of the links."
   },
   "error": {
     "title": "Something went wrong",
@@ -1333,7 +1391,8 @@
         "tasks": "Tasks",
         "history": "Conversation history",
         "tech": "Technical details",
-        "issues": "GitHub issues"
+        "issues": "GitHub issues",
+        "contact-tasks": "Customer's tasks"
       },
       "email": "Email",
       "phone": "Phone",
@@ -1482,17 +1541,19 @@
         "budget_exceeded": "The month's AI budget is spent, so the draft is the customer's words.",
         "failed": "The AI could not write a draft, so it is the customer's words."
       },
-      "created": "Task #{number} created. The conversation waits until it is closed.",
+      "created": "Task {number} created. The conversation waits until it is closed.",
       "search": "Find a task",
       "searchHint": "By title or number.",
       "pickRequired": "Pick a task from the list.",
       "noOpen": "No open tasks found.",
       "openTasks": "Open tasks",
       "linkSubmit": "Link",
-      "linked": "The conversation is linked to task #{number}.",
+      "linked": "The conversation is linked to task {number}.",
       "loadError": "Could not load the tasks.",
       "none": "No tasks. Create one in the \"More actions\" menu.",
-      "done": "Task #{number} is done. A draft reply:"
+      "done": "Task {number} is done. A draft reply:",
+      "contactNone": "No tasks for this customer.",
+      "contactHidden": "More tasks in projects you are not in: {count}"
     },
     "rating": {
       "short": "Rated {score} of 5",
@@ -1520,7 +1581,6 @@
     "queueFilter": "Filter by queue",
     "noQueue": "No queue",
     "unassigned": "Unassigned",
-    "number": "#{number}",
     "status": {
       "open": "New",
       "in_progress": "In progress",
@@ -1542,7 +1602,8 @@
       "priority": "Priority",
       "assignee": "Assignee",
       "queue": "Queue",
-      "topic": "Topic"
+      "topic": "Topic",
+      "project": "Project"
     },
     "fieldsLabel": "Task fields",
     "loadError": "Could not load the tasks.",
@@ -1598,7 +1659,10 @@
       "tagsAdded": "Tags added: {names}",
       "tagsRemoved": "Tags removed: {names}",
       "blocked": "Blocked: {reason}",
-      "unblocked": "Unblocked"
+      "unblocked": "Unblocked",
+      "linkAdded": "Link: {kind} {ref}",
+      "linkRemoved": "Link removed: {kind} {ref}",
+      "moved": "Moved: {from} → {to}"
     },
     "queueDeleted": "a deleted queue",
     "comment": "Comment",
@@ -1780,6 +1844,95 @@
         "status": "Column",
         "days": "In the column"
       }
+    },
+    "projects": {
+      "all": "All projects",
+      "notMine": "Without you",
+      "new": "New project",
+      "manage": "Manage",
+      "label": "Project: {name}"
+    },
+    "projectOfTopic": "The topic's, or the main one",
+    "projectDefault": "Main",
+    "waiting": {
+      "on": "waits for {ref}",
+      "onHidden": "waits for a task",
+      "hidden": "hidden task",
+      "title": "Waits for: {refs}"
+    },
+    "links": {
+      "title": "Links",
+      "add": "Add a link",
+      "loadError": "Could not load the links. Reload the page.",
+      "kind": {
+        "blocks": "Blocks",
+        "waits_for": "Waits for",
+        "relates": "Related to",
+        "duplicates": "Duplicate of",
+        "duplicated_by": "Duplicated by"
+      },
+      "hidden": "A task in a project you are not in",
+      "hiddenShort": "hidden task",
+      "remove": "Remove the link to {name}",
+      "removeTitle": "Remove the link",
+      "kindLabel": "Link",
+      "task": "Task",
+      "taskPlaceholder": "Its number, e.g. {ref}",
+      "hint": {
+        "waits_for": "While that task is open, this one shows «waits for».",
+        "blocks": "While this task is open, that one waits for it.",
+        "relates": "The tasks are related; nobody waits."
+      },
+      "submit": "Link",
+      "notFound": "No such task, or it is hidden from you. Check the number: CRM-41."
+    },
+    "duplicate": {
+      "action": "Close as duplicate…",
+      "title": "Close {number} as a duplicate",
+      "original": "Number of the original",
+      "note": "The task will be canceled and linked to the original.",
+      "conversations": "{count, plural, one {Its # conversation moves} other {Its # conversations move}} to the original and will wait for it.",
+      "submit": "Close as duplicate"
+    },
+    "move": {
+      "action": "Move…",
+      "title": "Move {number}",
+      "titleMany": "{count, plural, one {Move # task} other {Move # tasks}}",
+      "project": "To project",
+      "queue": "Queue",
+      "note": "The task takes the next number in the project; its old number keeps opening it. Conversations, links, comments, files, tags and status stay.",
+      "noTargets": "Nowhere to move: you are in no other project.",
+      "outsider": "{name} is not a member of “{project}”.",
+      "outsiders": "{count, plural, one {# task has an assignee} other {# tasks have assignees}} outside “{project}”.",
+      "unassign": "Unassign",
+      "addMember": "Add to the project",
+      "skipped": "{count, plural, one {# task is in this project already and stays} other {# tasks are in this project already and stay}}.",
+      "failed": "{count, plural, one {# task was not moved} other {# tasks were not moved}}: {reason}",
+      "submit": "Move"
+    },
+    "select": {
+      "start": "Select",
+      "label": "Select {number}",
+      "count": "Selected: {count}",
+      "done": "Done"
+    },
+    "articles": {
+      "title": "Articles",
+      "add": "Link an article",
+      "loadError": "Couldn't load the articles. Refresh the page.",
+      "none": "No knowledge base articles linked.",
+      "remove": "Unlink the article “{title}”",
+      "removeTitle": "Unlink the article",
+      "search": "Knowledge base article",
+      "searchPlaceholder": "Article title",
+      "found": "Articles found",
+      "nothing": "No articles with this title.",
+      "baseEmpty": "The knowledge base is empty. Articles are added in Settings → Knowledge base.",
+      "more": "And {count} more. Refine the title.",
+      "tasks": "Tasks of the article",
+      "tasksOf": "Tasks of the article “{title}”",
+      "noTasks": "The article is not linked to tasks.",
+      "hiddenTasks": "More tasks in projects you are not in: {count}"
     }
   },
   "notifications": {
@@ -1787,7 +1940,8 @@
       "assigned": "Conversation #{number} is yours",
       "message": "New message · #{number}",
       "queued": "New conversation in the queue · #{number}",
-      "task": "Task #{number} is assigned to you"
+      "task": "Task {number} is assigned to you",
+      "unblocked": "Unblocked: {number} waits for nothing now"
     },
     "test": {
       "title": "Tolkovo: test",

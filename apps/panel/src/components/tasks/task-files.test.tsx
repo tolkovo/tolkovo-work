@@ -22,7 +22,10 @@ const log: TaskFile = { ...shot, id: "f-log", file_name: "app.log", content_type
 
 const baseTask: Task = {
   id: "t1",
+  project_id: "p1",
+  project_key: "TSK",
   number: 12,
+  ref: "TSK-12",
   queue_id: null,
   topic_id: null,
   title: "Кнопка не нажимается",
@@ -36,6 +39,7 @@ const baseTask: Task = {
   closed_at: null,
   status_changed_at: "2026-10-07T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 1,
   conversation_ids: [],
   conversation_count: 0,
@@ -49,7 +53,7 @@ function server(routes: FakeRoutes = {}) {
     session: member,
     routes: {
       "GET /tasks": () => json(200, { items: [state.task], next_cursor: null }),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /tasks/t1": () => json(200, state.task),
       "GET /tasks/t1/activity": () => json(200, { items: state.feed }),
       "GET /task-queues": () => json(200, { items: [] }),

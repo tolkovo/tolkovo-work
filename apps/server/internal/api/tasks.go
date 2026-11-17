@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,11 +33,16 @@ var taskProblems = []struct {
 	{tasks.ErrLinked, Problem{Status: http.StatusConflict, Code: "task_linked", Title: "Conflict"}},
 	{tasks.ErrQueueTaken, Problem{Status: http.StatusConflict, Code: "queue_exists", Title: "Conflict"}},
 	{tasks.ErrTagTaken, Problem{Status: http.StatusConflict, Code: "tag_exists", Title: "Conflict"}},
+	{tasks.ErrProjectTaken, Problem{Status: http.StatusConflict, Code: "project_exists", Title: "Conflict"}},
+	{tasks.ErrProjectNotEmpty, Problem{
+		Status: http.StatusConflict, Code: "project_not_empty", Title: "Conflict", Detail: "the project has tasks, archive it instead",
+	}},
+	{tasks.ErrLinkExists, Problem{Status: http.StatusConflict, Code: "link_exists", Title: "Conflict", Detail: "the tasks are linked already"}},
+	{tasks.ErrLinkLoop, Problem{
+		Status: http.StatusConflict, Code: "link_loop", Title: "Conflict", Detail: "the tasks would wait for each other",
+	}},
 	{tasks.ErrDisabled, Problem{
 		Status: http.StatusConflict, Code: "tasks_disabled", Title: "Conflict", Detail: "the tasks section is turned off",
-	}},
-	{tasks.ErrMember, Problem{
-		Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: "not a member of the workspace",
 	}},
 }
 
@@ -46,6 +53,10 @@ func (s *server) writeTaskError(w http.ResponseWriter, r *http.Request, err erro
 			writeProblem(w, r, c.prob)
 			return true
 		}
+	}
+	if errors.Is(err, tasks.ErrMember) {
+		writeProblem(w, r, Problem{Status: http.StatusBadRequest, Code: "invalid_request", Title: "Bad Request", Detail: memberDetail(err)})
+		return true
 	}
 	var rejected *tasks.FileError
 	if errors.As(err, &rejected) {
@@ -94,18 +105,18 @@ func (s *server) ListConversationTasks(w http.ResponseWriter, r *http.Request, i
 	if !ok {
 		return
 	}
-	got, err := s.tasks.ConversationTasks(r.Context(), p.WorkspaceID, id, workspaceLocale(r))
+	got, err := s.tasks.ConversationTasks(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id, workspaceLocale(r))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	out := oapi.ConversationTasks{Items: make([]oapi.Task, 0, len(got.Items))}
+	out := oapi.ConversationTasks{Items: make([]oapi.Task, 0, len(got.Items)), HiddenCount: got.Hidden}
 	for _, t := range got.Items {
 		out.Items = append(out.Items, taskBody(t))
 	}
 	out.Settings.Enabled, out.Settings.ConversationButton = got.Settings.Enabled, oapi.TaskButton(got.Settings.ConversationButton)
 	if d := got.ReplyDraft; d != nil {
-		out.ReplyDraft = &oapi.TaskReplyDraft{TaskId: d.TaskID, Number: d.Number, Text: d.Text}
+		out.ReplyDraft = &oapi.TaskReplyDraft{TaskId: d.TaskID, Number: d.Number, Ref: d.Ref, Text: d.Text}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -141,6 +152,7 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 		return
 	}
 	f := tasks.Filter{
+		Viewer: tasks.ViewerOf(p), ProjectID: params.Project,
 		Query: deref(params.Q), Limit: deref(params.Limit), AssigneeID: sc.assigneeID, Unassigned: sc.unassigned,
 		QueueID: sc.queueID, NoQueue: sc.noQueue, TopicID: sc.topicID, NoTopic: sc.noTopic, TagID: params.Tag,
 		Flow: deref(params.Sort) == oapi.Flow, ClosedDays: deref(params.ClosedDays), Blocked: params.Blocked,
@@ -155,9 +167,11 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 		if f.Flow {
 			f.After, err = parseFlowCursor(c)
 		} else {
-			f.Before, err = strconv.ParseInt(c, 10, 64)
-			if err == nil && f.Before <= 0 {
-				err = errors.New("not positive")
+			var id uuid.UUID
+			if id, err = uuid.Parse(c); err == nil && c == id.String() {
+				f.Before = &id
+			} else if err == nil {
+				err = errors.New("not canonical")
 			}
 		}
 		if err != nil {
@@ -174,8 +188,8 @@ func (s *server) ListTasks(w http.ResponseWriter, r *http.Request, params oapi.L
 	for _, t := range page.Items {
 		out.Items = append(out.Items, taskBody(t))
 	}
-	if page.Next > 0 {
-		c := strconv.FormatInt(page.Next, 10)
+	if page.Next != nil {
+		c := page.Next.String()
 		out.NextCursor = &c
 	}
 	if page.NextKey != nil {
@@ -197,6 +211,7 @@ func (s *server) GetTaskBoard(w http.ResponseWriter, r *http.Request, params oap
 		return
 	}
 	cols, err := s.tasks.Board(r.Context(), p.WorkspaceID, tasks.BoardFilter{
+		Viewer: tasks.ViewerOf(p), ProjectID: params.Project,
 		AssigneeID: sc.assigneeID, Unassigned: sc.unassigned, QueueID: sc.queueID, NoQueue: sc.noQueue, TopicID: sc.topicID,
 		NoTopic: sc.noTopic, TagID: params.Tag, Query: deref(params.Q), ClosedDays: deref(params.ClosedDays), Canceled: deref(params.Canceled),
 		Blocked: params.Blocked,
@@ -234,6 +249,7 @@ func (s *server) GetTaskFlow(w http.ResponseWriter, r *http.Request, params oapi
 		return
 	}
 	f, err := s.tasks.Flow(r.Context(), p.WorkspaceID, tasks.FlowFilter{
+		Viewer: tasks.ViewerOf(p), ProjectID: params.Project,
 		AssigneeID: sc.assigneeID, Unassigned: sc.unassigned, QueueID: sc.queueID, NoQueue: sc.noQueue,
 		TopicID: sc.topicID, NoTopic: sc.noTopic, TagID: params.Tag, Days: deref(params.Days),
 	})
@@ -248,7 +264,7 @@ func (s *server) GetTaskFlow(w http.ResponseWriter, r *http.Request, params oapi
 		Throughput: make([]oapi.TaskFlowWeek, 0, len(f.Throughput)), Cfd: make([]oapi.TaskFlowDay, 0, len(f.CFD)),
 	}
 	for _, c := range f.Cycle {
-		out.Cycle = append(out.Cycle, oapi.TaskFlowCycle{TaskId: c.TaskID, Number: c.Number, Title: c.Title, DoneAt: c.DoneAt, Days: c.Days})
+		out.Cycle = append(out.Cycle, oapi.TaskFlowCycle{TaskId: c.TaskID, Number: c.Number, Ref: c.Ref, Title: c.Title, DoneAt: c.DoneAt, Days: c.Days})
 	}
 	for _, w := range f.Throughput {
 		out.Throughput = append(out.Throughput, oapi.TaskFlowWeek{Done: w.Done, Week: openapi_types.Date{Time: w.Week}})
@@ -260,7 +276,7 @@ func (s *server) GetTaskFlow(w http.ResponseWriter, r *http.Request, params oapi
 	}
 	for _, a := range f.Aging {
 		out.Aging = append(out.Aging, oapi.TaskFlowAging{
-			TaskId: a.TaskID, Number: a.Number, Title: a.Title, Status: oapi.TaskStatus(a.Status), Days: a.Days, Blocked: a.Blocked,
+			TaskId: a.TaskID, Number: a.Number, Ref: a.Ref, Title: a.Title, Status: oapi.TaskStatus(a.Status), Days: a.Days, Blocked: a.Blocked,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -356,21 +372,32 @@ func parseTaskScope(me uuid.UUID, assignee, queue, topic string) (taskScope, err
 }
 
 // flowCursor writes the place of a task in its board column as
-// "f<rank>.<status changed, µs>.<number>"; parseFlowCursor reads it back.
+// "f<rank>.<status changed, µs>.<task id>"; parseFlowCursor reads it back.
+// The id breaks ties: numbers repeat across projects (ADR-0022).
 func flowCursor(k tasks.FlowKey) string {
-	return fmt.Sprintf("f%d.%d.%d", k.Rank, k.Changed.UnixMicro(), k.Number)
+	return fmt.Sprintf("f%d.%d.%s", k.Rank, k.Changed.UnixMicro(), k.ID)
 }
 
 func parseFlowCursor(c string) (*tasks.FlowKey, error) {
-	var rank int32
-	var micros, number int64
-	if n, err := fmt.Sscanf(c, "f%d.%d.%d", &rank, &micros, &number); err != nil || n != 3 || number <= 0 || rank < 0 || rank > 3 {
+	head, idText, ok := strings.Cut(strings.TrimPrefix(c, "f"), ".")
+	if !ok || !strings.HasPrefix(c, "f") {
 		return nil, errors.New("not a cursor of the board")
 	}
-	if c != fmt.Sprintf("f%d.%d.%d", rank, micros, number) {
+	microsText, idText, ok := strings.Cut(idText, ".")
+	if !ok {
 		return nil, errors.New("not a cursor of the board")
 	}
-	return &tasks.FlowKey{Rank: rank, Changed: time.UnixMicro(micros).UTC(), Number: number}, nil
+	rank, err1 := strconv.ParseInt(head, 10, 32)
+	micros, err2 := strconv.ParseInt(microsText, 10, 64)
+	id, err3 := uuid.Parse(idText)
+	if err1 != nil || err2 != nil || err3 != nil || rank < 0 || rank > 3 {
+		return nil, errors.New("not a cursor of the board")
+	}
+	k := tasks.FlowKey{Rank: int32(rank), Changed: time.UnixMicro(micros).UTC(), ID: id}
+	if flowCursor(k) != c {
+		return nil, errors.New("not a cursor of the board")
+	}
+	return &k, nil
 }
 
 // CreateTask implements POST /tasks.
@@ -393,13 +420,16 @@ func (s *server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := tasks.NewTask{
-		Title: req.Title, Body: deref(req.Body), QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
+		Title: req.Title, Body: deref(req.Body), ProjectID: req.ProjectId, QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId,
 		ConversationID: req.ConversationId, FileIDs: deref(req.FileIds), TagIDs: deref(req.TagIds),
 	}
 	if req.Priority != nil {
 		in.Priority = string(*req.Priority)
 	}
-	t, err := s.tasks.Create(r.Context(), p.WorkspaceID, p.UserID, in)
+	t, err := s.tasks.Create(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), in)
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -418,7 +448,14 @@ func (s *server) GetTaskSummary(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, oapi.TaskSummary{AssignedOpen: n})
+	projects := make([]oapi.TaskProjectSummary, 0, len(n.ByProject))
+	for id, c := range n.ByProject {
+		projects = append(projects, oapi.TaskProjectSummary{ProjectId: id, AssignedOpen: c.Open, Waiting: c.Waiting})
+	}
+	slices.SortFunc(projects, func(a, b oapi.TaskProjectSummary) int {
+		return strings.Compare(a.ProjectId.String(), b.ProjectId.String())
+	})
+	writeJSON(w, http.StatusOK, oapi.TaskSummary{AssignedOpen: n.Open, Projects: projects})
 }
 
 // GetTask implements GET /tasks/{id}.
@@ -427,7 +464,7 @@ func (s *server) GetTask(w http.ResponseWriter, r *http.Request, id oapi.Id) {
 	if !ok {
 		return
 	}
-	t, err := s.tasks.Get(r.Context(), p.WorkspaceID, id)
+	t, err := s.tasks.Get(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -454,6 +491,9 @@ func (s *server) UpdateTask(w http.ResponseWriter, r *http.Request, id oapi.Id) 
 		Version: req.Version, Title: req.Title, Body: req.Body, Status: string(req.Status), Priority: string(req.Priority),
 		QueueID: req.QueueId, TopicID: req.TopicId, AssigneeID: req.AssigneeId, TagIDs: req.TagIds, BlockedReason: req.BlockedReason,
 	})
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -480,7 +520,7 @@ func (s *server) ListTaskActivity(w http.ResponseWriter, r *http.Request, id oap
 	if !ok {
 		return
 	}
-	items, err := s.tasks.Activity(r.Context(), p.WorkspaceID, id)
+	items, err := s.tasks.Activity(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), id)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -523,6 +563,9 @@ func (s *server) LinkTaskConversation(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	t, err := s.tasks.Link(r.Context(), p.WorkspaceID, p.UserID, id, req.ConversationId)
+	if err == nil {
+		err = s.tasks.FillWaiting(r.Context(), p.WorkspaceID, tasks.ViewerOf(p), &t)
+	}
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -544,12 +587,12 @@ func (s *server) UnlinkTaskConversation(w http.ResponseWriter, r *http.Request, 
 }
 
 // ListTaskQueues implements GET /task-queues.
-func (s *server) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+func (s *server) ListTaskQueues(w http.ResponseWriter, r *http.Request, params oapi.ListTaskQueuesParams) {
 	p, ok := s.requirePrincipal(w, r, authz.TasksView)
 	if !ok {
 		return
 	}
-	qs, err := s.tasks.Queues(r.Context(), p.WorkspaceID)
+	qs, err := s.tasks.Queues(r.Context(), p.WorkspaceID, params.Project)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -572,7 +615,7 @@ func (s *server) CreateTaskQueue(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	q, err := s.tasks.CreateQueue(r.Context(), p.WorkspaceID, tasks.QueueInput{Name: req.Name, MemberIDs: req.MemberIds})
+	q, err := s.tasks.CreateQueue(r.Context(), p.WorkspaceID, tasks.QueueInput{ProjectID: req.ProjectId, Name: req.Name, MemberIDs: req.MemberIds})
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -739,12 +782,21 @@ func (s *server) checkMember(ctx context.Context, workspaceID uuid.UUID, userID 
 	return err
 }
 
+// memberDetail says which membership an assignee lacks.
+func memberDetail(err error) string {
+	if after, ok := strings.CutPrefix(err.Error(), tasks.ErrMember.Error()+": "); ok {
+		return after
+	}
+	return "not a member of the workspace"
+}
+
 func taskBody(t tasks.Task) oapi.Task {
 	return oapi.Task{
-		Id: t.ID, Number: t.Number, QueueId: t.QueueID, TopicId: t.TopicID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
+		Id: t.ID, ProjectId: t.ProjectID, ProjectKey: t.ProjectKey, Number: t.Number, Ref: t.Ref, QueueId: t.QueueID, TopicId: t.TopicID, Title: t.Title, Body: t.Body, Status: oapi.TaskStatus(t.Status),
 		Priority: oapi.TaskPriority(t.Priority), AssigneeId: t.AssigneeID, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt, StatusChangedAt: t.StatusChangedAt, BlockedReason: t.BlockedReason, Version: t.Version,
 		ConversationIds: nonNil(t.ConversationIDs), ConversationCount: t.ConversationCount, Files: taskFileList(t.Files), TagIds: nonNil(t.TagIDs),
+		WaitingOn: blockerList(t.WaitingOn),
 	}
 }
 
@@ -766,12 +818,19 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 		out.Body = &a.Body
 	}
 	if a.Kind != "comment" && a.Kind != "created" && a.Kind != "edited" && a.Kind != "linked" && a.Kind != "unlinked" && a.Kind != "files" &&
-		a.Kind != "tags" && a.Kind != "blocked" && a.Kind != "unblocked" {
+		a.Kind != "tags" && a.Kind != "blocked" && a.Kind != "unblocked" && a.Kind != "link_added" && a.Kind != "link_removed" {
 		out.From, out.To = &a.From, &a.To
 	}
 	if a.Kind == "comment" {
 		files := taskFileList(a.Files)
 		out.Files = &files
+	}
+	if a.Kind == "link_added" || a.Kind == "link_removed" {
+		kind := oapi.TaskLinkKind(a.Link)
+		out.Link, out.LinkTaskId = &kind, a.LinkTaskID
+		if a.LinkRef != "" {
+			out.LinkRef = &a.LinkRef
+		}
 	}
 	if a.Kind == "files" {
 		out.FilesAdded, out.FilesRemoved = &a.FilesAdded, &a.FilesRemoved
@@ -791,7 +850,7 @@ func activityBody(a tasks.Activity) oapi.TaskActivity {
 }
 
 func queueBody(q tasks.Queue) oapi.TaskQueue {
-	return oapi.TaskQueue{Id: q.ID, Name: q.Name, MemberIds: nonNil(q.MemberIDs), OpenTasks: q.OpenTasks}
+	return oapi.TaskQueue{Id: q.ID, ProjectId: q.ProjectID, Name: q.Name, MemberIds: nonNil(q.MemberIDs), OpenTasks: q.OpenTasks}
 }
 
 func taskSettingsBody(set tasks.Settings) oapi.TaskSettingsView {

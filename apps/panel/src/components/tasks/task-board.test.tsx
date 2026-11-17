@@ -14,7 +14,10 @@ const member: Session = { ...inboxOperator, permissions: [...inboxOperator.permi
 
 const task = (number: number, patch: Partial<Task> = {}): Task => ({
   id: `t${number}`,
+  project_id: "p1",
+  project_key: "TSK",
   number,
+  ref: `TSK-${number}`,
   queue_id: null,
   topic_id: null,
   title: `Задача ${number}`,
@@ -28,6 +31,7 @@ const task = (number: number, patch: Partial<Task> = {}): Task => ({
   closed_at: null,
   status_changed_at: "2026-10-10T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 1,
   conversation_ids: [],
   conversation_count: 0,
@@ -55,7 +59,7 @@ function server(tasks: Task[], put?: (body: Task) => Response, rules: Rules = {}
     session: member,
     routes: {
       "GET /tasks/board": () => json(200, boardOf(state.tasks, rules)),
-      "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+      "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
       "GET /task-queues": () => json(200, { items: [] }),
       "GET /tasks": () => json(200, { items: state.tasks, next_cursor: null }),
       "GET /tasks/t1": () => json(200, state.tasks.find((x) => x.id === "t1")),
@@ -113,8 +117,8 @@ describe("the board of tasks", () => {
     ]);
     renderApp("/tasks?layout=board", { api });
     const open = await screen.findByRole("region", { name: /^Новые/ }, firstLook);
-    const cards = within(open).getAllByRole("link", { name: /^#\d+/ });
-    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual(["#2, Задача 2", "#1, Задача 1"]);
+    const cards = within(open).getAllByRole("link", { name: /^TSK-\d+/ });
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual(["TSK-2, Задача 2", "TSK-1, Задача 1"]);
     // "Urgent" heads the column and marks the card.
     expect(within(open).getAllByText("Срочно")).toHaveLength(2);
     expect(within(open).getAllByText(/3 клиента ждут эту задачу/).length).toBeGreaterThan(0);
@@ -129,24 +133,24 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(1), task(2, { status: "in_progress" })]);
     renderApp("/tasks?layout=board", { api });
-    const card = await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
+    const card = await screen.findByRole("link", { name: "TSK-1, Задача 1" }, firstLook);
     card.focus();
     await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
     await waitFor(() => expect(puts(api, "t1")).toHaveLength(1));
     // In progress without an assignee: the server gives it to whoever moved it.
     expect(puts(api, "t1")[0]?.body).toMatchObject({ version: 1, status: "in_progress", assignee_id: null });
-    expect(await within(column(/^В работе/)).findByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
-    expect(await screen.findByText("#1 — в колонке «В работе»")).toBeInTheDocument();
+    expect(await within(column(/^В работе/)).findByRole("link", { name: "TSK-1, Задача 1" })).toBeInTheDocument();
+    expect(await screen.findByText("TSK-1 — в колонке «В работе»")).toBeInTheDocument();
   });
 
   it("walks the cards with the arrows and moves one by its menu", async () => {
     const user = userEvent.setup();
     const { api } = server([task(1), task(2, { status: "review" })]);
     renderApp("/tasks?layout=board", { api });
-    const first = await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
+    const first = await screen.findByRole("link", { name: "TSK-1, Задача 1" }, firstLook);
     first.focus();
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("link", { name: "#2, Задача 2" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "TSK-2, Задача 2" })).toHaveFocus();
 
     await user.keyboard("m");
     const menu = await screen.findByRole("menu");
@@ -161,7 +165,7 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(5, { status: "verified", conversation_count: 2 })]);
     renderApp("/tasks?layout=board", { api });
-    const card = await screen.findByRole("link", { name: "#5, Задача 5" }, firstLook);
+    const card = await screen.findByRole("link", { name: "TSK-5, Задача 5" }, firstLook);
     card.focus();
     await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
     let dialog = await screen.findByRole("dialog", { name: "Задача в проде?" });
@@ -181,11 +185,11 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(1)], () => problem(409, "task_conflict"));
     renderApp("/tasks?layout=board", { api });
-    const card = await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
+    const card = await screen.findByRole("link", { name: "TSK-1, Задача 1" }, firstLook);
     card.focus();
     await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
     expect(await screen.findByRole("alert")).toHaveTextContent("Задачу успели изменить");
-    expect(within(column(/^Новые/)).getByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
+    expect(within(column(/^Новые/)).getByRole("link", { name: "TSK-1, Задача 1" })).toBeInTheDocument();
   });
 
   it("says when there are no tasks, and offers to retry after an error", async () => {
@@ -200,7 +204,7 @@ describe("the board of tasks", () => {
       session: member,
       routes: {
         "GET /tasks/board": () => (fail ? problem(403, "forbidden") : json(200, boardOf([task(1)]))),
-        "GET /tasks/summary": () => json(200, { assigned_open: 0 }),
+        "GET /tasks/summary": () => json(200, { assigned_open: 0, projects: [] }),
         "GET /task-queues": () => json(200, { items: [] }),
       },
     });
@@ -208,7 +212,7 @@ describe("the board of tasks", () => {
     expect(await screen.findByText("Не удалось загрузить доску.", undefined, firstLook)).toBeInTheDocument();
     fail = false;
     await user.click(screen.getByRole("button", { name: "Повторить" }));
-    expect(await screen.findByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "TSK-1, Задача 1" })).toBeInTheDocument();
   });
 
   it("shows the soft limit, the cards standing too long and the blocked ones", async () => {
@@ -223,10 +227,10 @@ describe("the board of tasks", () => {
     renderApp("/tasks?layout=board", { api });
     const work = await screen.findByRole("region", { name: /^В работе/ }, firstLook);
     expect(within(work).getByTitle("Больше лимита (1): сначала закончить начатое")).toHaveTextContent("2/1");
-    const card = within(work).getByRole("link", { name: "#2, Задача 2" }).closest("[data-task-id]") as HTMLElement;
+    const card = within(work).getByRole("link", { name: "TSK-2, Задача 2" }).closest("[data-task-id]") as HTMLElement;
     expect(within(card).getByText("Заблокирована")).toBeInTheDocument();
     expect(within(card).getByTitle("Ждём доступ к стенду")).toBeInTheDocument();
-    const old = within(work).getByRole("link", { name: "#1, Задача 1" }).closest("[data-task-id]") as HTMLElement;
+    const old = within(work).getByRole("link", { name: "TSK-1, Задача 1" }).closest("[data-task-id]") as HTMLElement;
     expect(within(old).getByText(/Стоит дольше порога: 3 д/)).toBeInTheDocument();
   });
 
@@ -234,18 +238,18 @@ describe("the board of tasks", () => {
     const user = userEvent.setup();
     const { api } = server([task(1, { status: "in_progress" })]);
     renderApp("/tasks?layout=board", { api });
-    await screen.findByRole("link", { name: "#1, Задача 1" }, firstLook);
-    await user.click(screen.getByRole("button", { name: "Действия с задачей #1" }));
+    await screen.findByRole("link", { name: "TSK-1, Задача 1" }, firstLook);
+    await user.click(screen.getByRole("button", { name: "Действия с задачей TSK-1" }));
     await user.click(screen.getByRole("menuitem", { name: "Заблокировать…" }));
-    const dialog = screen.getByRole("dialog", { name: "Заблокировать задачу #1" });
+    const dialog = screen.getByRole("dialog", { name: "Заблокировать задачу TSK-1" });
     const submit = within(dialog).getByRole("button", { name: "Заблокировать" });
     expect(submit).toBeDisabled();
     await user.type(within(dialog).getByLabelText("Что мешает"), "Ждём ответа бухгалтерии");
     await user.click(submit);
     await waitFor(() => expect(puts(api, "t1")[0]?.body).toMatchObject({ status: "in_progress", blocked_reason: "Ждём ответа бухгалтерии" }));
-    expect(await screen.findByText("#1 заблокирована")).toBeInTheDocument();
+    expect(await screen.findByText("TSK-1 заблокирована")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Действия с задачей #1" }));
+    await user.click(screen.getByRole("button", { name: "Действия с задачей TSK-1" }));
     await user.click(screen.getByRole("menuitem", { name: "Снять блокировку" }));
     await waitFor(() => expect(puts(api, "t1")[1]?.body).toMatchObject({ blocked_reason: "" }));
   });
@@ -257,11 +261,11 @@ describe("the board of tasks", () => {
     const urgent = await screen.findByRole("button", { name: /^Срочно\s*1$/ }, firstLook);
     const low = screen.getByRole("button", { name: /^Низкий\s*2$/ });
     expect(urgent.compareDocumentPosition(low) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole("link", { name: "#3, Задача 3" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "TSK-3, Задача 3" })).toBeInTheDocument();
     await user.click(low);
     expect(low).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("link", { name: "#3, Задача 3" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "#1, Задача 1" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "TSK-3, Задача 3" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "TSK-1, Задача 1" })).toBeInTheDocument();
   });
 
   it("opens the task as a page and back, and the board's links never carry it", async () => {
@@ -270,7 +274,7 @@ describe("the board of tasks", () => {
     renderApp("/tasks/t1?layout=board", { api });
     const page = await screen.findByRole("link", { name: "Открыть на всю страницу" }, firstLook);
     expect(page.getAttribute("href")).toContain("full=true");
-    expect((await screen.findByRole("link", { name: "#2, Задача 2" })).getAttribute("href")).not.toContain("full");
+    expect((await screen.findByRole("link", { name: "TSK-2, Задача 2" })).getAttribute("href")).not.toContain("full");
 
     await user.click(page);
     const side = await screen.findByRole("link", { name: "Вернуть в боковую панель" });

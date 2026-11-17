@@ -25,6 +25,7 @@
     { "$ref": "#/$defs/contactCreated" },
     { "$ref": "#/$defs/contactUpdated" },
     { "$ref": "#/$defs/taskChanged" },
+    { "$ref": "#/$defs/taskProjectChanged" },
     { "$ref": "#/$defs/memberChanged" }
   ],
   "$defs": {
@@ -52,6 +53,7 @@
         "contact.created",
         "contact.updated",
         "task.changed",
+        "task.project_changed",
         "member.changed"
       ]
     },
@@ -334,9 +336,24 @@
           "required": ["task_id", "assignee_id", "actor_id", "assigned"],
           "properties": {
             "task_id": { "$ref": "#/$defs/uuid" },
+            "project_id": { "$ref": "#/$defs/uuid", "description": "The task's project (ADR-0022). A member who does not see the task gets 404 on fetching it." },
             "assignee_id": { "$ref": "#/$defs/nullableUuid" },
             "actor_id": { "$ref": "#/$defs/nullableUuid", "description": "Who made the change; null for the AI bot, which creates tasks it collected (ADR-0018)." },
             "assigned": { "type": "boolean", "description": "This change gave the task to assignee_id: their panel may tell them, unless they did it themselves (actor_id)." }
+          }
+        }
+      }
+    },
+    "taskProjectChanged": {
+      "description": "A project of tasks was created, changed or deleted, or its members changed (ADR-0022); clients fetch the projects over REST.",
+      "allOf": [{ "$ref": "#/$defs/event" }],
+      "properties": {
+        "type": { "const": "task.project_changed" },
+        "data": {
+          "type": "object",
+          "required": ["project_id"],
+          "properties": {
+            "project_id": { "$ref": "#/$defs/uuid" }
           }
         }
       }

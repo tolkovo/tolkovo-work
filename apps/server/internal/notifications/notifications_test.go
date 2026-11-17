@@ -19,6 +19,7 @@ import (
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/dbtest"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/jobs"
 	"github.com/tolkovo/tolkovo/apps/server/internal/platform/mail/mailtest"
+	"github.com/tolkovo/tolkovo/apps/server/internal/tasks"
 	"github.com/tolkovo/tolkovo/apps/server/internal/tenancy"
 )
 
@@ -362,5 +363,21 @@ func TestMissedEmail_Skips(t *testing.T) {
 				t.Fatalf("an email went out")
 			}
 		})
+	}
+}
+
+// The messages about tasks name the task, its title and the link only.
+func TestTaskMessage(t *testing.T) {
+	task := tasks.Task{ID: uuid.MustParse("00000000-0000-0000-0000-000000000007"), Ref: "APP-7", Title: "Экран оплаты"}
+	for _, c := range []struct{ locale, kind, want string }{
+		{"ru", tasks.NoticeAssigned, "Вам назначена задача APP-7\nЭкран оплаты\nhttps://p/tasks/" + task.ID.String()},
+		{"ru", tasks.NoticeQueued, "Новая задача в очереди: APP-7\n"},
+		{"ru", tasks.NoticeUnblocked, "Блокировка снята: APP-7 больше ничего не ждёт\n"},
+		{"en", tasks.NoticeUnblocked, "Unblocked: APP-7 waits for nothing now\n"},
+		{"en", tasks.NoticeAssigned, "Task APP-7 is assigned to you\n"},
+	} {
+		if got := taskMessage(c.locale, c.kind, task, "https://p"); !strings.HasPrefix(got, c.want) {
+			t.Errorf("%s %s: %q", c.locale, c.kind, got)
+		}
 	}
 }

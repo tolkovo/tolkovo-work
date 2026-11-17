@@ -131,12 +131,12 @@ type fakeTasks struct {
 	off            bool
 }
 
-func (t *fakeTasks) CreateFromBot(_ context.Context, _ pgx.Tx, _, _ uuid.UUID, title, body string) (int64, error) {
+func (t *fakeTasks) CreateFromBot(_ context.Context, _ pgx.Tx, _, _ uuid.UUID, title, body string) (string, error) {
 	if t.off {
-		return 0, nil
+		return "", nil
 	}
 	t.titles, t.bodies = append(t.titles, title), append(t.bodies, body)
-	return 42, nil
+	return "CRM-42", nil
 }
 
 func botAnswer(a map[string]any) fakeAnswer {
@@ -308,7 +308,7 @@ func TestBot_AnswersCollectsAndCreatesTask(t *testing.T) {
 			reply = m.Body
 		}
 	}
-	if reply != "Спасибо!\n\nЗадача №42 передана технической команде. Ответ придёт сюда, в этот чат." ||
+	if reply != "Спасибо!\n\nЗадача CRM-42 передана технической команде. Ответ придёт сюда, в этот чат." ||
 		!strings.Contains(note, "Вылет при входе.") || !strings.Contains(note, "ivan@example.com") {
 		t.Fatalf("reply %q, note %q", reply, note)
 	}

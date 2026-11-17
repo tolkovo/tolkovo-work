@@ -6,7 +6,10 @@ import { taskUpdate } from "./tasks";
 
 const task = (number: number, patch: Partial<Task> = {}): Task => ({
   id: `t${number}`,
+  project_id: "p1",
+  project_key: "TSK",
   number,
+  ref: `TSK-${number}`,
   queue_id: null,
   topic_id: null,
   title: `Задача ${number}`,
@@ -20,6 +23,7 @@ const task = (number: number, patch: Partial<Task> = {}): Task => ({
   closed_at: null,
   status_changed_at: "2026-10-10T10:00:00Z",
   blocked_reason: null,
+  waiting_on: [],
   version: 1,
   conversation_ids: [],
   conversation_count: 0,

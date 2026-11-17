@@ -291,7 +291,7 @@ export const messageEventSchema = z.object({
     })
     .optional() satisfies z.ZodType<Schemas["MessageEventIssue"] | undefined>,
   task: z
-    .object({ task_id: z.string(), number: z.number(), reason: z.enum(["done", "canceled"]).optional() })
+    .object({ task_id: z.string(), number: z.number(), ref: z.string().optional(), reason: z.enum(["done", "canceled"]).optional() })
     .optional() satisfies z.ZodType<Schemas["MessageEventTask"] | undefined>,
   topic_id: z.string().nullable().optional(),
   previous_topic_id: z.string().nullable().optional(),
@@ -369,6 +369,7 @@ export const topicSchema = z.object({
   position: z.number(),
   priority: z.number(),
   task_queue_id: z.string().nullable(),
+  task_project_id: z.string().nullable(),
   member_ids: z.array(z.string()),
 }) satisfies z.ZodType<Schemas["Topic"]>;
 
@@ -577,9 +578,31 @@ export const taskFileUploadSchema = z.object({
   upload: signedRequestSchema,
 }) satisfies z.ZodType<Schemas["TaskFileUpload"]>;
 
+/** An open task a task waits for (ADR-0022); `ref` is null when the caller does not see it. */
+export const taskBlockerSchema = z.object({ id: z.string(), ref: z.string().nullable() }) satisfies z.ZodType<Schemas["TaskBlocker"]>;
+
+export const taskLinkKindSchema = z.enum(["blocks", "waits_for", "relates", "duplicates", "duplicated_by"]) satisfies z.ZodType<
+  Schemas["TaskLinkKind"]
+>;
+
+export const taskLinkSchema = z.object({
+  kind: taskLinkKindSchema,
+  task_id: z.string(),
+  visible: z.boolean(),
+  ref: z.string().nullable(),
+  title: z.string().nullable(),
+  status: taskStatusSchema,
+  created_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskLink"]>;
+
+export const taskLinkListSchema = z.object({ items: z.array(taskLinkSchema) }) satisfies z.ZodType<Schemas["TaskLinkList"]>;
+
 export const taskSchema = z.object({
   id: z.string(),
+  project_id: z.string(),
+  project_key: z.string(),
   number: z.number(),
+  ref: z.string(),
   queue_id: z.string().nullable(),
   topic_id: z.string().nullable(),
   title: z.string(),
@@ -593,6 +616,7 @@ export const taskSchema = z.object({
   closed_at: z.string().nullable(),
   status_changed_at: z.string(),
   blocked_reason: z.string().nullable(),
+  waiting_on: z.array(taskBlockerSchema),
   version: z.number(),
   conversation_ids: z.array(z.string()),
   conversation_count: z.number(),
@@ -625,6 +649,7 @@ export const taskFlowSchema = z.object({
     z.object({
       task_id: z.string(),
       number: z.number(),
+      ref: z.string(),
       title: z.string(),
       done_at: z.string(),
       days: z.number(),
@@ -647,6 +672,7 @@ export const taskFlowSchema = z.object({
     z.object({
       task_id: z.string(),
       number: z.number(),
+      ref: z.string(),
       title: z.string(),
       status: taskStatusSchema,
       days: z.number(),
@@ -667,7 +693,10 @@ export const taskBoardSettingsSchema = z.object({
   ),
 }) satisfies z.ZodType<Schemas["TaskBoardSettings"]>;
 
-export const taskSummarySchema = z.object({ assigned_open: z.number() }) satisfies z.ZodType<Schemas["TaskSummary"]>;
+export const taskSummarySchema = z.object({
+  assigned_open: z.number(),
+  projects: z.array(z.object({ project_id: z.string(), assigned_open: z.number(), waiting: z.number() })),
+}) satisfies z.ZodType<Schemas["TaskSummary"]>;
 
 export const taskActivitySchema = z.object({
   id: z.string(),
@@ -687,6 +716,9 @@ export const taskActivitySchema = z.object({
     "tags",
     "blocked",
     "unblocked",
+    "link_added",
+    "link_removed",
+    "moved",
   ]),
   body: z.string().optional(),
   from: z.string().optional(),
@@ -698,6 +730,9 @@ export const taskActivitySchema = z.object({
   files_removed: z.number().optional(),
   tags_added: z.array(z.string()).optional(),
   tags_removed: z.array(z.string()).optional(),
+  link: taskLinkKindSchema.optional(),
+  link_task_id: z.string().optional(),
+  link_ref: z.string().nullable().optional(),
   created_at: z.string(),
 }) satisfies z.ZodType<Schemas["TaskActivity"]>;
 
@@ -705,10 +740,29 @@ export const taskActivityListSchema = z.object({ items: z.array(taskActivitySche
 
 export const taskQueueSchema = z.object({
   id: z.string(),
+  project_id: z.string(),
   name: z.string(),
   member_ids: z.array(z.string()),
   open_tasks: z.number(),
 }) satisfies z.ZodType<Schemas["TaskQueue"]>;
+
+export const taskProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  key: z.string(),
+  former_keys: z.array(z.string()),
+  icon: z.enum(["chart", "monitor", "server", "phone", "cart", "rocket", "heart", "globe"]).nullable(),
+  color: tagColorSchema,
+  access: z.enum(["members", "team"]),
+  is_default: z.boolean(),
+  position: z.number(),
+  member_ids: z.array(z.string()),
+  open_tasks: z.number(),
+  archived_at: z.string().nullable(),
+  member: z.boolean(),
+}) satisfies z.ZodType<Schemas["TaskProject"]>;
+
+export const taskProjectListSchema = z.object({ items: z.array(taskProjectSchema) }) satisfies z.ZodType<Schemas["TaskProjectList"]>;
 
 export const taskQueueListSchema = z.object({ items: z.array(taskQueueSchema) }) satisfies z.ZodType<Schemas["TaskQueueList"]>;
 
@@ -727,8 +781,9 @@ export const taskSettingsViewSchema = z.object({
 
 export const conversationTasksSchema = z.object({
   items: z.array(taskSchema),
+  hidden_count: z.number(),
   settings: z.object({ enabled: z.boolean(), conversation_button: taskButtonSchema }),
-  reply_draft: z.object({ task_id: z.string(), number: z.number(), text: z.string() }).nullable(),
+  reply_draft: z.object({ task_id: z.string(), number: z.number(), ref: z.string(), text: z.string() }).nullable(),
 }) satisfies z.ZodType<Schemas["ConversationTasks"]>;
 
 export const taskDraftSchema = z.object({
@@ -811,3 +866,27 @@ export const kbImportResultSchema = z.object({
   updated: z.number(),
   unknown_topics: z.array(z.string()),
 }) satisfies z.ZodType<Schemas["KBImportResult"]>;
+
+/** An article of the knowledge base linked to a task (ADR-0022, P5). */
+export const taskArticleSchema = z.object({
+  id: z.string(),
+  kind: kbArticleKindSchema,
+  title: z.string(),
+  published: z.boolean(),
+  linked_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskArticle"]>;
+
+export const taskArticleListSchema = z.object({ items: z.array(taskArticleSchema) }) satisfies z.ZodType<Schemas["TaskArticleList"]>;
+
+/** A task in the list of a contact or an article; the tasks the caller does not see are counted in `hidden`. */
+export const taskBriefSchema = z.object({
+  id: z.string(),
+  project_id: z.string(),
+  ref: z.string(),
+  title: z.string(),
+  status: taskStatusSchema,
+  assignee_id: z.string().nullable(),
+  updated_at: z.string(),
+}) satisfies z.ZodType<Schemas["TaskBrief"]>;
+
+export const taskBriefListSchema = z.object({ items: z.array(taskBriefSchema), hidden: z.number() }) satisfies z.ZodType<Schemas["TaskBriefList"]>;

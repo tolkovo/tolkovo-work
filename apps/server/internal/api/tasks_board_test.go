@@ -130,8 +130,8 @@ func TestTasks_Board(t *testing.T) {
 	}
 
 	// A column shows 50 tasks and continues by sort=flow in the same order.
-	e.ownerExec(`INSERT INTO tasks (id, workspace_id, number, title, status, priority, created_at, updated_at, status_changed_at)
-		SELECT gen_random_uuid(), workspace_id, 100 + n, 'Задача ' || n, 'review', 'normal', now(), now(), now() - n * interval '1 minute'
+	e.ownerExec(`INSERT INTO tasks (id, workspace_id, project_id, number, title, status, priority, created_at, updated_at, status_changed_at)
+		SELECT gen_random_uuid(), workspace_id, project_id, 100 + n, 'Задача ' || n, 'review', 'normal', now(), now(), now() - n * interval '1 minute'
 		FROM tasks, generate_series(1, 53) n WHERE id = $1`, one.Id)
 	review := boardColumn(t, board(""), oapi.TaskStatusReview)
 	if review.Count != 53 || len(review.Items) != 50 || review.Items[0].Number != 153 || review.NextCursor == nil {

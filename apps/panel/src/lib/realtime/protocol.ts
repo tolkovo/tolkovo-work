@@ -42,6 +42,7 @@ export const EVENT_TYPES = [
   "contact.created",
   "contact.updated",
   "task.changed",
+  "task.project_changed",
   "member.changed",
 ] as const;
 

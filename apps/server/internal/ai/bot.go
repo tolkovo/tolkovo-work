@@ -248,9 +248,10 @@ type BotInbox interface {
 }
 
 // BotTasks creates the tasks the bot collects; *tasks.Service implements
-// it. The number is 0, without an error, while the tasks section is off.
+// it. It returns the task's ref, CRM-41 (ADR-0022), and "", without an
+// error, while the tasks section is off.
 type BotTasks interface {
-	CreateFromBot(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, title, body string) (int64, error)
+	CreateFromBot(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, title, body string) (string, error)
 }
 
 type replyWorker struct {
@@ -416,14 +417,14 @@ func (s *Service) apply(
 	}
 	turn := p.turn
 	if p.task != nil {
-		var n int64
+		var ref string
 		if tasks != nil {
-			if n, err = tasks.CreateFromBot(ctx, tx, ws, convID, p.task.title, p.task.body); err != nil {
+			if ref, err = tasks.CreateFromBot(ctx, tx, ws, convID, p.task.title, p.task.body); err != nil {
 				return err
 			}
 		}
-		if n > 0 {
-			turn.Reply = strings.TrimSpace(turn.Reply + "\n\n" + fmt.Sprintf(phrase(p.locale, phraseTask), n))
+		if ref != "" {
+			turn.Reply = strings.TrimSpace(turn.Reply + "\n\n" + fmt.Sprintf(phrase(p.locale, phraseTask), ref))
 			turn.HandOff, turn.Reason = true, conversations.HandoffTask
 		} else {
 			// No tasks: people take the details from the note.

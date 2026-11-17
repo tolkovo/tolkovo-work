@@ -21,6 +21,8 @@ type InboxSyncOptions = {
   onConversation?: (events: RealtimeEvent[], c: Conversation, meId: string | undefined) => void;
   /** Hears a task someone else just gave to the signed-in member, freshly fetched (ADR-0015). */
   onTaskAssigned?: (task: Task) => void;
+  /** Hears a task of the signed-in member that waits for nothing now (ADR-0022), freshly fetched. */
+  onTaskUnblocked?: (task: Task) => void;
 };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -30,7 +32,7 @@ const str = (v: unknown): string | undefined => (typeof v === "string" ? v : und
  * carry ids only, so a changed conversation is fetched once and patched into every cached list;
  * the counters and an open feed are refetched. Everything else is invalidated as before.
  */
-export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onConversation, onTaskAssigned }: InboxSyncOptions) {
+export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onConversation, onTaskAssigned, onTaskUnblocked }: InboxSyncOptions) {
   const conversations = new Set<string>();
   /** Events of each conversation in the current batch, for onConversation. */
   const batchEvents = new Map<string, RealtimeEvent[]>();
@@ -154,6 +156,24 @@ export function createInboxSync({ queryClient, api, batchMs = SYNC_BATCH_MS, onC
             () => undefined, // deleted or unreachable meanwhile: nothing to tell
           );
         }
+        if (
+          onTaskUnblocked &&
+          taskId &&
+          me &&
+          event.data.unblocked === true &&
+          str(event.data.assignee_id) === me &&
+          str(event.data.actor_id) !== me &&
+          Date.now() - Date.parse(event.ts) < STALE_EVENT_MS
+        ) {
+          void fetchTask(api, taskId).then(
+            (task) => !stopped && task.assignee_id === me && task.waiting_on.length === 0 && onTaskUnblocked(task),
+            () => undefined,
+          );
+        }
+      } else if (event.type === "task.project_changed") {
+        // A project was added, changed or its members changed (ADR-0022): the switcher, and
+        // the tasks a member now sees or no longer does.
+        roots.set("tasks", queryKeys.tasks);
       } else if (event.type === "member.changed") {
         // A role changed or someone left the team (ADR-0020): the team, and for the member
         // themselves their permissions, then everything those permissions show.

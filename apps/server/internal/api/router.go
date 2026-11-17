@@ -129,8 +129,8 @@ func NewRouter(d Deps) http.Handler {
 			BaseURL:    "/api/v1",
 			BaseRouter: r,
 			// Runs after routing, so authenticate sees the route pattern. The
-			// last one runs first: authenticate, then lineScope.
-			Middlewares:      []oapi.MiddlewareFunc{srv.lineScope, srv.authenticate},
+			// last one runs first: authenticate, then lineScope and projectScope.
+			Middlewares:      []oapi.MiddlewareFunc{srv.projectScope, srv.lineScope, srv.authenticate},
 			ErrorHandlerFunc: srv.paramError,
 		})
 	})

@@ -6,12 +6,12 @@ import { Ellipsis, Lock, MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BOARD_STATUSES, daysInColumn, hoursInColumn, nextStep, standsTooLong } from "../../lib/tasks/board";
-import type { TasksSearch } from "../../lib/tasks/tasks";
+import { taskRef, type TasksSearch } from "../../lib/tasks/tasks";
 import { TAG_DOT } from "../inbox/palette";
 import { useMemberNames } from "../inbox/presence";
 import { useTopicMap } from "../inbox/topics";
 import { Menu, type MenuItem } from "../menu";
-import { TaskPriorityMark } from "./task-bits";
+import { isWaiting, TaskPriorityMark, WaitingPlate } from "./task-bits";
 import { useTaskTagMap } from "./task-tags";
 
 type TaskCardProps = {
@@ -41,11 +41,12 @@ export function TaskCard({ task, search, current, open, dragging, me, now, ageDa
   const names = useMemberNames();
   const topics = useTopicMap();
   const tags = useTaskTagMap();
-  const number = t("tasks.number", { number: task.number });
+  const number = taskRef(task);
   const closed = task.status === "done" || task.status === "canceled";
   const age = ageText(t, task, now);
   const old = standsTooLong(task, ageDays, now);
   const blocked = task.blocked_reason !== null && !closed;
+  const waiting = isWaiting(task);
   const topic = task.topic_id ? topics.get(task.topic_id) : undefined;
   const assignee = task.assignee_id ? (names.get(task.assignee_id) ?? t("inbox.colleague")) : t("tasks.unassigned");
   return (
@@ -59,12 +60,12 @@ export function TaskCard({ task, search, current, open, dragging, me, now, ageDa
       className={cn(
         "group relative flex cursor-grab flex-col gap-1.5 rounded-[10px] border border-line bg-surface py-2 pr-2.5 pl-3",
         "hover:border-ink-3 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-1 has-[a:focus-visible]:outline-ring",
-        blocked && "border-lamp/45 bg-[color-mix(in_srgb,var(--color-lamp-soft)_45%,var(--color-surface))]",
+        (blocked || waiting) && "border-lamp/45 bg-[color-mix(in_srgb,var(--color-lamp-soft)_45%,var(--color-surface))]",
         open && "border-teal shadow-[inset_0_0_0_1px_var(--color-teal)]",
         dragging && "opacity-40",
       )}
     >
-      {blocked ? (
+      {blocked || waiting ? (
         <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.75 rounded-l-[10px] bg-[repeating-linear-gradient(180deg,var(--color-lamp)_0_6px,transparent_6px_10px)]" />
       ) : (
         topic && <span aria-hidden="true" title={topic.name} className={cn("absolute inset-y-0 left-0 w-0.75 rounded-l-[10px]", TAG_DOT[topic.color])} />
@@ -79,6 +80,7 @@ export function TaskCard({ task, search, current, open, dragging, me, now, ageDa
             <span className="sr-only">: {task.blocked_reason}</span>
           </span>
         )}
+        <WaitingPlate task={task} className="min-w-0" />
         <span className="ml-auto" />
         <CardMenu task={task} me={me} onMove={onMove} onTake={onTake} onBlock={onBlock} />
       </span>
@@ -160,7 +162,7 @@ function CardMenu({ task, me, onMove, onTake, onBlock }: Pick<TaskCardProps, "ta
   ];
   return (
     <Menu
-      label={t("tasks.board.actions", { number: t("tasks.number", { number: task.number }) })}
+      label={t("tasks.board.actions", { number: taskRef(task) })}
       trigger={<Ellipsis aria-hidden="true" className="size-4" />}
       items={items}
       triggerClassName={cn(

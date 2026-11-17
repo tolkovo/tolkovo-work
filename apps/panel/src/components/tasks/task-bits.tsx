@@ -1,5 +1,6 @@
-import type { TaskPriority, TaskStatus } from "@tolkovo/api-client";
+import type { Task, TaskPriority, TaskStatus } from "@tolkovo/api-client";
 import { cn } from "@tolkovo/ui";
+import { Hourglass } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 /** Small pieces shared by the task list, the task page and the forms (ADR-0015). */
@@ -37,6 +38,37 @@ export function TaskPriorityMark({ priority, quietNormal = true }: { priority: T
       )}
     >
       {t(`tasks.priority.${priority}`)}
+    </span>
+  );
+}
+
+/** Whether an open task waits for an open task that blocks it (ADR-0022). */
+export function isWaiting(task: Pick<Task, "status" | "waiting_on">): boolean {
+  return task.waiting_on.length > 0 && task.status !== "done" && task.status !== "canceled";
+}
+
+/**
+ * The amber «ждёт OPS-3» of a task that waits: the first task it waits for, and how many more. A
+ * task the member does not see is named only as a task.
+ */
+export function WaitingPlate({ task, className }: { task: Pick<Task, "status" | "waiting_on">; className?: string }) {
+  const { t } = useTranslation();
+  if (!isWaiting(task)) return null;
+  const [first] = task.waiting_on;
+  const more = task.waiting_on.length - 1;
+  const refs = task.waiting_on.map((b) => b.ref ?? t("tasks.waiting.hidden")).join(", ");
+  return (
+    <span
+      title={t("tasks.waiting.title", { refs })}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-sm bg-lamp-soft px-1.5 py-px text-[11px] font-medium whitespace-nowrap text-lamp-ink",
+        className,
+      )}
+    >
+      <Hourglass aria-hidden="true" className="size-3" />
+      {first?.ref ? t("tasks.waiting.on", { ref: first.ref }) : t("tasks.waiting.onHidden")}
+      {more > 0 && <span className="font-mono tabular-nums">+{more}</span>}
+      <span className="sr-only">{t("tasks.waiting.title", { refs })}</span>
     </span>
   );
 }

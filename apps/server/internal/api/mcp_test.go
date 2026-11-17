@@ -120,7 +120,8 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 		t.Fatalf("notification: %d %s", rec.Code, rec.Body)
 	}
 	if got := agent.tools(); !slices.Equal(got, []string{
-		"list_tasks", "get_task", "list_queues", "list_tags", "create_tag", "read_file", "create_task", "update_task", "attach_file", "comment_task",
+		"list_tasks", "get_task", "list_projects", "list_queues", "list_tags", "create_tag", "read_file", "create_task", "update_task", "attach_file", "comment_task",
+		"link_tasks", "move_task",
 	}) {
 		t.Fatalf("tools: %v", got)
 	}
@@ -237,7 +238,8 @@ func TestMCP_AgentWorksATask(t *testing.T) {
 		want string
 	}{
 		{"get_task", map[string]any{"number": 999}, "not found"},
-		{"get_task", map[string]any{"number": 0}, "task number"},
+		{"get_task", map[string]any{"number": 0}, "task ref"},
+		{"get_task", map[string]any{"number": "NOPE-1"}, "no such task"},
 		{"get_task", map[string]any{"number": 1, "extra": true}, "wrong arguments"},
 		{"update_task", map[string]any{"number": filed.Number, "status": "shipped"}, "status"},
 		{"update_task", map[string]any{"number": filed.Number, "assignee": "bob"}, "assignee"},
@@ -257,7 +259,7 @@ func TestMCP_ScopesAndProtocol(t *testing.T) {
 	in := setupInbox(t)
 	e, op := in.e, in.op
 	agent := &mcpAgent{t: t, c: e.client(), secret: issueToken(t, op, "reader", "tasks:read").Secret}
-	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_queues", "list_tags", "read_file"}) {
+	if got := agent.tools(); !slices.Equal(got, []string{"list_tasks", "get_task", "list_projects", "list_queues", "list_tags", "read_file"}) {
 		t.Fatalf("read tools: %v", got)
 	}
 	if msg := agent.call("create_task", map[string]any{"title": "x"}, nil); !strings.Contains(msg, "does not allow") {

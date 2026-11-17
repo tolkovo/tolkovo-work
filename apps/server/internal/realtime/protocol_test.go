@@ -33,7 +33,8 @@ var samplePayloads = map[string]string{
 	"message.delivery":            `{"conversation_id":"%c","message_id":"%m","status":"failed","error":"blocked"}`,
 	"contact.created":             `{"contact_id":"%k"}`,
 	"contact.updated":             `{"contact_id":"%k"}`,
-	"task.changed":                `{"task_id":"%t","assignee_id":"%u","actor_id":"%u","assigned":true}`,
+	"task.changed":                `{"task_id":"%t","project_id":"%k","assignee_id":"%u","actor_id":"%u","assigned":true}`,
+	"task.project_changed":        `{"project_id":"%k"}`,
 	"member.changed":              `{"user_id":"%u"}`,
 }
 

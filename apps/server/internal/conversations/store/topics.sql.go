@@ -61,22 +61,23 @@ func (q *Queries) CountTopics(ctx context.Context, workspaceID uuid.UUID) (int64
 }
 
 const createTopic = `-- name: CreateTopic :one
-INSERT INTO topics (id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at)
+INSERT INTO topics (id, workspace_id, name, color, position, priority, task_queue_id, task_project_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         (SELECT coalesce(max(position) + 1, 0) FROM topics WHERE workspace_id = $2),
-        $5, $6, $7, $7)
+        $5, $6, $7, $8, $8)
 ON CONFLICT (workspace_id, name) DO NOTHING
-RETURNING id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at
+RETURNING id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at, task_project_id
 `
 
 type CreateTopicParams struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Name        string
-	Color       string
-	Priority    int16
-	TaskQueueID *uuid.UUID
-	Now         time.Time
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	Name          string
+	Color         string
+	Priority      int16
+	TaskQueueID   *uuid.UUID
+	TaskProjectID *uuid.UUID
+	Now           time.Time
 }
 
 // No row when the name is taken (case-insensitive). A new topic goes last.
@@ -88,6 +89,7 @@ func (q *Queries) CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic
 		arg.Color,
 		arg.Priority,
 		arg.TaskQueueID,
+		arg.TaskProjectID,
 		arg.Now,
 	)
 	var i Topic
@@ -101,6 +103,7 @@ func (q *Queries) CreateTopic(ctx context.Context, arg CreateTopicParams) (Topic
 		&i.TaskQueueID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskProjectID,
 	)
 	return i, err
 }
@@ -123,7 +126,7 @@ func (q *Queries) DeleteTopic(ctx context.Context, arg DeleteTopicParams) (int64
 }
 
 const getTopic = `-- name: GetTopic :one
-SELECT id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at FROM topics WHERE workspace_id = $1 AND id = $2
+SELECT id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at, task_project_id FROM topics WHERE workspace_id = $1 AND id = $2
 `
 
 type GetTopicParams struct {
@@ -144,12 +147,13 @@ func (q *Queries) GetTopic(ctx context.Context, arg GetTopicParams) (Topic, erro
 		&i.TaskQueueID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskProjectID,
 	)
 	return i, err
 }
 
 const listTopics = `-- name: ListTopics :many
-SELECT t.id, t.workspace_id, t.name, t.color, t.position, t.priority, t.task_queue_id, t.created_at, t.updated_at,
+SELECT t.id, t.workspace_id, t.name, t.color, t.position, t.priority, t.task_queue_id, t.created_at, t.updated_at, t.task_project_id,
        coalesce((SELECT array_agg(m.user_id ORDER BY m.user_id) FROM topic_members m
                  WHERE m.workspace_id = t.workspace_id AND m.topic_id = t.id), '{}')::uuid[] AS member_ids
 FROM topics t
@@ -189,6 +193,7 @@ func (q *Queries) ListTopics(ctx context.Context, arg ListTopicsParams) ([]ListT
 			&i.Topic.TaskQueueID,
 			&i.Topic.CreatedAt,
 			&i.Topic.UpdatedAt,
+			&i.Topic.TaskProjectID,
 			&i.MemberIds,
 		); err != nil {
 			return nil, err
@@ -275,6 +280,24 @@ func (q *Queries) SetTopicPosition(ctx context.Context, arg SetTopicPositionPara
 	return result.RowsAffected(), nil
 }
 
+const taskQueueProject = `-- name: TaskQueueProject :one
+SELECT project_id FROM task_queues WHERE workspace_id = $1 AND id = $2
+`
+
+type TaskQueueProjectParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+// The project of a task queue (task_queues belongs to tasks; read only):
+// a topic's queue is of the topic's project (ADR-0022).
+func (q *Queries) TaskQueueProject(ctx context.Context, arg TaskQueueProjectParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, taskQueueProject, arg.WorkspaceID, arg.ID)
+	var project_id uuid.UUID
+	err := row.Scan(&project_id)
+	return project_id, err
+}
+
 const topicMemberIDs = `-- name: TopicMemberIDs :many
 SELECT user_id FROM topic_members
 WHERE workspace_id = $1 AND topic_id = $2
@@ -343,19 +366,21 @@ func (q *Queries) TopicMembersOf(ctx context.Context, arg TopicMembersOfParams) 
 
 const updateTopic = `-- name: UpdateTopic :one
 UPDATE topics
-SET name = $1, color = $2, priority = $3, task_queue_id = $4, updated_at = $5
-WHERE workspace_id = $6 AND id = $7
-RETURNING id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at
+SET name = $1, color = $2, priority = $3, task_queue_id = $4,
+    task_project_id = $5, updated_at = $6
+WHERE workspace_id = $7 AND id = $8
+RETURNING id, workspace_id, name, color, position, priority, task_queue_id, created_at, updated_at, task_project_id
 `
 
 type UpdateTopicParams struct {
-	Name        string
-	Color       string
-	Priority    int16
-	TaskQueueID *uuid.UUID
-	Now         time.Time
-	WorkspaceID uuid.UUID
-	ID          uuid.UUID
+	Name          string
+	Color         string
+	Priority      int16
+	TaskQueueID   *uuid.UUID
+	TaskProjectID *uuid.UUID
+	Now           time.Time
+	WorkspaceID   uuid.UUID
+	ID            uuid.UUID
 }
 
 func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic, error) {
@@ -364,6 +389,7 @@ func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic
 		arg.Color,
 		arg.Priority,
 		arg.TaskQueueID,
+		arg.TaskProjectID,
 		arg.Now,
 		arg.WorkspaceID,
 		arg.ID,
@@ -379,6 +405,7 @@ func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic
 		&i.TaskQueueID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskProjectID,
 	)
 	return i, err
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,9 +21,14 @@ import (
 
 // Task is a task of the section.
 type Task struct {
-	ID      uuid.UUID
-	Number  int64
-	QueueID *uuid.UUID
+	ID uuid.UUID
+	// ProjectID is the project (ADR-0022); Number counts in it, and Ref,
+	// KEY-N, is how people call the task.
+	ProjectID  uuid.UUID
+	ProjectKey string
+	Number     int64
+	Ref        string
+	QueueID    *uuid.UUID
 	// TopicID is the topic of conversations (docs/02 §7.3); a task from a
 	// conversation takes the conversation's.
 	TopicID    *uuid.UUID
@@ -51,13 +57,18 @@ type Task struct {
 	Files []File
 	// TagIDs are the task's tags (Tags), in the order they were put on.
 	TagIDs []uuid.UUID
+	// WaitingOn are the open tasks that block this one (ADR-0022, P3):
+	// filled by lists, the board and Get.
+	WaitingOn []Blocker
 }
 
 // NewTask is a task to create.
 type NewTask struct {
-	Title   string
-	Body    string
-	QueueID *uuid.UUID
+	Title string
+	Body  string
+	// ProjectID, when nil, is the topic's project, or the default one.
+	ProjectID *uuid.UUID
+	QueueID   *uuid.UUID
 	// TopicID, when nil, is the conversation's topic for a task from a
 	// conversation; a topic with a task queue gives a task without one
 	// that queue.
@@ -73,9 +84,10 @@ type NewTask struct {
 	TagIDs []uuid.UUID
 }
 
-// Create records a task by actorID. A task from a conversation is linked
-// to it at once.
-func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in NewTask) (Task, error) {
+// Create records a task by the viewer, in a project they see. A task from
+// a conversation is linked to it at once.
+func (s *Service) Create(ctx context.Context, workspaceID uuid.UUID, v Viewer, in NewTask) (Task, error) {
+	actorID := v.UserID
 	title, err := validTitle(in.Title)
 	if err != nil {
 		return Task{}, err
@@ -102,7 +114,7 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 	in.Title, in.Body = title, body
 	var out Task
 	err = s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		out, err = s.create(ctx, tx, workspaceID, &actorID, in)
+		out, err = s.create(ctx, tx, workspaceID, &v, in)
 		return err
 	})
 	if err != nil {
@@ -114,35 +126,39 @@ func (s *Service) Create(ctx context.Context, workspaceID, actorID uuid.UUID, in
 // CreateFromBot records, in the caller's transaction, a task the AI bot
 // collected from the customer in a conversation (ADR-0018), and returns
 // its number: nobody created it, it is linked to the conversation and
-// takes its topic and the topic's queue. While the section is off it
-// creates nothing and returns 0.
-func (s *Service) CreateFromBot(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, title, body string) (int64, error) {
+// takes its topic with the topic's project and queue. It returns the ref,
+// KEY-N. While the section is off it creates nothing and returns "".
+func (s *Service) CreateFromBot(ctx context.Context, tx pgx.Tx, workspaceID, conversationID uuid.UUID, title, body string) (string, error) {
 	title, err := validTitle(title)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	if body, err = validBody(body); err != nil {
-		return 0, err
+		return "", err
 	}
 	if s.opts.Conversations == nil {
-		return 0, errors.New("tasks: no conversations to link")
+		return "", errors.New("tasks: no conversations to link")
 	}
 	out, err := s.create(ctx, tx, workspaceID, nil, NewTask{Title: title, Body: body, Priority: PriorityNormal, ConversationID: &conversationID})
 	if errors.Is(err, ErrDisabled) {
-		return 0, nil // checked first: nothing was written
+		return "", nil // checked first: nothing was written
 	}
 	if err != nil {
-		return 0, dbError(err, "create task from bot")
+		return "", dbError(err, "create task from bot")
 	}
-	return out.Number, nil
+	return out.Ref, nil
 }
 
-// create records a checked task in tx; actor is nil for the AI bot, whose
-// tasks have no files.
-func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, actor *uuid.UUID, in NewTask) (Task, error) {
+// create records a checked task in tx; v is nil for the AI bot, whose
+// tasks have no files and go to any project.
+func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, v *Viewer, in NewTask) (Task, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return Task{}, err
+	}
+	var actor *uuid.UUID
+	if v != nil {
+		actor = &v.UserID
 	}
 	q := store.New(tx)
 	if err := s.enabled(ctx, q, workspaceID); err != nil {
@@ -151,12 +167,22 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 	if err := s.topicDefaults(ctx, q, workspaceID, &in); err != nil {
 		return Task{}, err
 	}
-	n, err := q.NextTaskNumber(ctx, workspaceID)
+	project, err := s.taskProject(ctx, q, workspaceID, v, in.ProjectID)
+	if err != nil {
+		return Task{}, err
+	}
+	if err := checkQueue(ctx, q, workspaceID, project.ID, in.QueueID); err != nil {
+		return Task{}, err
+	}
+	if err := checkAssignee(ctx, q, workspaceID, project.ID, in.AssigneeID); err != nil {
+		return Task{}, err
+	}
+	n, err := q.NextProjectNumber(ctx, store.NextProjectNumberParams{WorkspaceID: workspaceID, ID: project.ID})
 	if err != nil {
 		return Task{}, err
 	}
 	row, err := q.InsertTask(ctx, store.InsertTaskParams{
-		ID: id, WorkspaceID: workspaceID, Number: n, QueueID: in.QueueID, TopicID: in.TopicID, Title: in.Title, Body: in.Body,
+		ID: id, WorkspaceID: workspaceID, ProjectID: project.ID, Number: n, QueueID: in.QueueID, TopicID: in.TopicID, Title: in.Title, Body: in.Body,
 		Priority: in.Priority, AssigneeID: in.AssigneeID, CreatedBy: actor, CreatedAt: s.now(),
 	})
 	if err != nil {
@@ -166,6 +192,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 		return Task{}, err
 	}
 	out := taskFrom(row)
+	out.ProjectKey, out.Ref = project.Key, Ref(project.Key, row.Number)
 	if out.TagIDs, _, err = s.setTags(ctx, q, row, in.TagIDs); err != nil {
 		return Task{}, err
 	}
@@ -180,7 +207,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 		return Task{}, err
 	}
 	if in.ConversationID != nil {
-		if err := s.link(ctx, tx, q, row, *in.ConversationID, actor, conversations.EventTaskCreated); err != nil {
+		if err := s.link(ctx, tx, q, row, out.Ref, *in.ConversationID, actor, conversations.EventTaskCreated); err != nil {
 			return Task{}, err
 		}
 		out.ConversationIDs, out.ConversationCount = []uuid.UUID{*in.ConversationID}, 1
@@ -192,8 +219,9 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, 
 }
 
 // topicDefaults fills what a new task takes from topics: the topic of the
-// conversation it is created from, and the topic's queue for a task
-// without one. A topic that does not exist is ErrInvalid.
+// conversation it is created from, the topic's project for a task without
+// one, and the topic's queue for a task of that project without a queue.
+// A topic that does not exist is ErrInvalid.
 func (s *Service) topicDefaults(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, in *NewTask) error {
 	if in.TopicID == nil && in.ConversationID != nil {
 		topic, err := q.ConversationTopic(ctx, store.ConversationTopicParams{WorkspaceID: workspaceID, ID: *in.ConversationID})
@@ -212,31 +240,27 @@ func (s *Service) topicDefaults(ctx context.Context, q *store.Queries, workspace
 	if err != nil {
 		return err
 	}
-	if in.QueueID == nil {
+	if in.ProjectID == nil {
+		in.ProjectID = t.TaskProjectID
+	}
+	if in.QueueID == nil && sameID(in.ProjectID, t.TaskProjectID) {
 		in.QueueID = t.TaskQueueID
 	}
 	return nil
 }
 
 // Get returns a task with its linked conversations.
-func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task, error) {
+func (s *Service) Get(ctx context.Context, workspaceID uuid.UUID, v Viewer, taskID uuid.UUID) (Task, error) {
 	var out Task
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		row, err := q.GetTask(ctx, store.GetTaskParams{WorkspaceID: workspaceID, ID: taskID})
-		if err != nil {
+		var err error
+		if out, err = loadTask(ctx, q, workspaceID, taskID); err != nil {
 			return err
 		}
-		out = taskFrom(row)
-		out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
-		if err != nil {
-			return err
-		}
-		out.ConversationCount = len(out.ConversationIDs)
-		if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
-			return err
-		}
-		out.TagIDs, err = taskTagIDs(ctx, q, workspaceID, taskID)
+		items := []Task{out}
+		err = fillWaiting(ctx, q, workspaceID, v, items)
+		out = items[0]
 		return err
 	})
 	if err != nil {
@@ -245,23 +269,34 @@ func (s *Service) Get(ctx context.Context, workspaceID, taskID uuid.UUID) (Task,
 	return out, nil
 }
 
-// IDByNumber finds a task by its number in the workspace (#42), as people
-// and agents call it.
-func (s *Service) IDByNumber(ctx context.Context, workspaceID uuid.UUID, number int64) (uuid.UUID, error) {
-	var id uuid.UUID
-	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		var err error
-		id, err = store.New(tx).TaskIDByNumber(ctx, store.TaskIDByNumberParams{WorkspaceID: workspaceID, Number: number})
-		return err
-	})
+// loadTask reads one task with its ref, conversations, files and tags.
+func loadTask(ctx context.Context, q *store.Queries, workspaceID, taskID uuid.UUID) (Task, error) {
+	row, err := q.GetTask(ctx, store.GetTaskParams{WorkspaceID: workspaceID, ID: taskID})
 	if err != nil {
-		return uuid.Nil, dbError(err, "find task")
+		return Task{}, err
 	}
-	return id, nil
+	out := taskFrom(row)
+	if err := fillRef(ctx, q, workspaceID, &out); err != nil {
+		return Task{}, err
+	}
+	out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
+	if err != nil {
+		return Task{}, err
+	}
+	out.ConversationCount = len(out.ConversationIDs)
+	if out.Files, _, err = taskFiles(ctx, q, workspaceID, taskID); err != nil {
+		return Task{}, err
+	}
+	out.TagIDs, err = taskTagIDs(ctx, q, workspaceID, taskID)
+	return out, err
 }
 
 // Filter narrows the list. Zero values do not filter.
 type Filter struct {
+	// Viewer sees the tasks of the list (task_visible).
+	Viewer Viewer
+	// ProjectID keeps the tasks of one project.
+	ProjectID *uuid.UUID
 	// State is "open" (not done or canceled), "closed" or "" for all.
 	State      string
 	Status     string
@@ -275,10 +310,11 @@ type Filter struct {
 	TagID *uuid.UUID
 	// Blocked, when set, keeps the blocked tasks or the others.
 	Blocked *bool
-	// Query matches the title, or the number exactly.
+	// Query matches the title, the number exactly, or the ref KEY-N, an old
+	// one of a moved task or a renamed project included.
 	Query string
-	// Before is the number to continue below; 0 starts from the newest.
-	Before int64
+	// Before is the task to continue below; nil starts from the newest.
+	Before *uuid.UUID
 	Limit  int
 	// Flow orders the tasks of Status as its column of the board (Board),
 	// continuing after the task at After when set; ClosedDays, when set,
@@ -288,12 +324,12 @@ type Filter struct {
 	ClosedDays int
 }
 
-// Page is one page of tasks; Next is the number to pass as Before for the
-// next one, 0 on the last page. With Filter.Flow it is NextKey, nil on the
-// last page.
+// Page is one page of tasks; Next is the task to pass as Before for the
+// next one, nil on the last page. With Filter.Flow it is NextKey, nil on
+// the last page.
 type Page struct {
 	Items   []Task
-	Next    int64
+	Next    *uuid.UUID
 	NextKey *FlowKey
 }
 
@@ -326,22 +362,27 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	out := Page{Items: []Task{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		refID, err := s.refQuery(ctx, q, workspaceID, f.Query)
+		if err != nil {
+			return err
+		}
 		rows, err := q.ListTasks(ctx, store.ListTasksParams{
-			WorkspaceID: workspaceID, BeforeNumber: f.Before, OpenOnly: f.State == "open", ClosedOnly: f.State == "closed",
+			WorkspaceID: workspaceID, BeforeID: f.Before, ProjectID: f.ProjectID, Viewer: f.Viewer.UserID, SeeAll: f.Viewer.All, OpenOnly: f.State == "open", ClosedOnly: f.State == "closed",
 			AssigneeID: f.AssigneeID, Unassigned: f.Unassigned, QueueID: f.QueueID, NoQueue: f.NoQueue, TopicID: f.TopicID, NoTopic: f.NoTopic, Status: status,
-			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
+			TagID: f.TagID, Blocked: boolOf(f.Blocked), Query: likeEscape(strings.TrimSpace(f.Query)), RefID: refID, Lim: int32(limit + 1), //nolint:gosec // G115: bounded by pageLimit
 		})
 		if err != nil {
 			return err
 		}
 		for i, r := range rows {
 			if i == limit {
-				out.Next = rows[limit-1].Number
+				next := rows[limit-1].ID
+				out.Next = &next
 				break
 			}
 			out.Items = append(out.Items, taskFrom(r))
 		}
-		return fillLists(ctx, q, workspaceID, out.Items)
+		return fillLists(ctx, q, workspaceID, f.Viewer, out.Items)
 	})
 	if err != nil {
 		return Page{}, dbError(err, "list tasks")
@@ -349,18 +390,34 @@ func (s *Service) List(ctx context.Context, workspaceID uuid.UUID, f Filter) (Pa
 	return out, nil
 }
 
+// Assigned is the open tasks of a member: in all, and by project for the project tiles.
+type Assigned struct {
+	Open      int64
+	ByProject map[uuid.UUID]ProjectCount
+}
+
+// ProjectCount is a member's open tasks in a project; Waiting of them are
+// blocked or wait for another task.
+type ProjectCount struct {
+	Open    int64
+	Waiting int64
+}
+
 // OpenAssigned counts the open tasks of a member, for the menu.
-func (s *Service) OpenAssigned(ctx context.Context, workspaceID, userID uuid.UUID) (int64, error) {
-	var n int64
+func (s *Service) OpenAssigned(ctx context.Context, workspaceID, userID uuid.UUID) (Assigned, error) {
+	out := Assigned{ByProject: map[uuid.UUID]ProjectCount{}}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
-		var err error
-		n, err = store.New(tx).CountOpenAssigned(ctx, store.CountOpenAssignedParams{WorkspaceID: workspaceID, AssigneeID: &userID})
+		rows, err := store.New(tx).CountOpenAssigned(ctx, store.CountOpenAssignedParams{WorkspaceID: workspaceID, AssigneeID: &userID})
+		for _, r := range rows {
+			out.Open += r.N
+			out.ByProject[r.ProjectID] = ProjectCount{Open: r.N, Waiting: r.Waiting}
+		}
 		return err
 	})
 	if err != nil {
-		return 0, dbError(err, "count tasks")
+		return Assigned{}, dbError(err, "count tasks")
 	}
-	return n, nil
+	return out, nil
 }
 
 // Update is the whole changeable state of a task, read at Version.
@@ -419,6 +476,16 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 		if cur.Version != in.Version {
 			return ErrConflict
 		}
+		if !sameID(in.QueueID, cur.QueueID) {
+			if err := checkQueue(ctx, q, workspaceID, cur.ProjectID, in.QueueID); err != nil {
+				return err
+			}
+		}
+		if !sameID(in.AssigneeID, cur.AssigneeID) {
+			if err := checkAssignee(ctx, q, workspaceID, cur.ProjectID, in.AssigneeID); err != nil {
+				return err
+			}
+		}
 		assignee, reviewFrom, err := s.handBack(ctx, q, cur, in)
 		if err != nil {
 			return err
@@ -465,6 +532,9 @@ func (s *Service) Update(ctx context.Context, workspaceID, actorID, taskID uuid.
 			return err
 		}
 		out = taskFrom(row)
+		if err := fillRef(ctx, q, workspaceID, &out); err != nil {
+			return err
+		}
 		out.ConversationIDs, err = q.TaskConversationIDs(ctx, store.TaskConversationIDsParams{WorkspaceID: workspaceID, TaskID: taskID})
 		if err != nil {
 			return err
@@ -585,6 +655,11 @@ func (s *Service) recordChanges(ctx context.Context, tx pgx.Tx, q *store.Queries
 		if err := s.recordStatus(ctx, tx, q, cur, row, actorID, act); err != nil {
 			return err
 		}
+		if closed(cur.Status) != closed(row.Status) {
+			if err := s.recordBlocks(ctx, tx, q, row, &actorID); err != nil {
+				return err
+			}
+		}
 	}
 	return changed(ctx, tx, row, &actorID, row.AssigneeID != nil && !sameID(cur.AssigneeID, row.AssigneeID))
 }
@@ -608,13 +683,17 @@ func (s *Service) recordStatus(ctx context.Context, tx pgx.Tx, q *store.Queries,
 	if err != nil || len(convs) == 0 || s.opts.Conversations == nil {
 		return err
 	}
+	ref, err := taskRef(ctx, q, row)
+	if err != nil {
+		return err
+	}
 	for _, c := range convs {
 		open, err := q.HasOpenTask(ctx, store.HasOpenTaskParams{WorkspaceID: row.WorkspaceID, ConversationID: c})
 		if err != nil {
 			return err
 		}
 		if err := s.opts.Conversations.RecordTask(ctx, tx, row.WorkspaceID, c, conversations.TaskNote{
-			Type: typ, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number, Reason: reason},
+			Type: typ, Task: conversations.TaskRef{TaskID: row.ID, Number: row.Number, Ref: ref, Reason: reason},
 			ActorID: &actorID, AwaitingFix: open, Key: act.String(),
 		}); err != nil {
 			return err
@@ -643,8 +722,18 @@ func (s *Service) Delete(ctx context.Context, workspaceID, actorID, taskID uuid.
 				return err
 			}
 		}
+		// The tasks it blocked wait for it no more: their plates change.
+		freed, err := q.BlockedBy(ctx, store.BlockedByParams{WorkspaceID: workspaceID, TaskID: taskID})
+		if err != nil {
+			return err
+		}
 		if err := q.DeleteTask(ctx, store.DeleteTaskParams{WorkspaceID: workspaceID, ID: taskID}); err != nil {
 			return err
+		}
+		for _, f := range freed {
+			if err := changed(ctx, tx, f.Task, &actorID, false); err != nil {
+				return err
+			}
 		}
 		return changed(ctx, tx, row, &actorID, false)
 	})
@@ -659,12 +748,14 @@ type Activity struct {
 	ID      uuid.UUID
 	ActorID *uuid.UUID
 	// Kind is comment, created, status, assignee, queue, priority, topic,
-	// edited, linked, unlinked, files or tags.
+	// edited, linked, unlinked, files, tags, blocked, unblocked,
+	// link_added, link_removed or moved.
 	Kind string
 	// Body is the text of a comment.
 	Body string
 	// From and To are the values a change moved between: statuses,
-	// priorities, member, queue or topic ids ("" for none).
+	// priorities, member, queue or topic ids ("" for none), the refs of a
+	// moved task.
 	From string
 	To   string
 	// Fields are what an edit changed: title, body.
@@ -681,11 +772,17 @@ type Activity struct {
 	// and took off it.
 	TagsAdded   []uuid.UUID
 	TagsRemoved []uuid.UUID
-	CreatedAt   time.Time
+	// Link, LinkTaskID and LinkRef are of a link_added or link_removed
+	// line: the kind as this task sees it and the other task, its ref ""
+	// when the viewer does not see it.
+	Link       string
+	LinkTaskID *uuid.UUID
+	LinkRef    string
+	CreatedAt  time.Time
 }
 
 // Activity returns the feed of a task, oldest first.
-func (s *Service) Activity(ctx context.Context, workspaceID, taskID uuid.UUID) ([]Activity, error) {
+func (s *Service) Activity(ctx context.Context, workspaceID uuid.UUID, v Viewer, taskID uuid.UUID) ([]Activity, error) {
 	out := []Activity{}
 	err := s.db.InTenantTx(ctx, workspaceID, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -710,7 +807,7 @@ func (s *Service) Activity(ctx context.Context, workspaceID, taskID uuid.UUID) (
 			}
 			out = append(out, a)
 		}
-		return nil
+		return hideLinks(ctx, q, workspaceID, v, out)
 	})
 	if err != nil {
 		return nil, dbError(err, "task activity")
@@ -815,9 +912,30 @@ func (s *Service) notify(ctx context.Context, tx pgx.Tx, row store.Task, kind st
 // this change gave the task to its assignee, so their panel may tell them.
 // actor is nil for the AI bot.
 func changed(ctx context.Context, tx pgx.Tx, row store.Task, actor *uuid.UUID, assigned bool) error {
+	return changedWith(ctx, tx, row, actor, assigned, false)
+}
+
+// changedWith is changed with unblocked: the task waits for nothing now,
+// so its assignee's panel may tell them (ADR-0022, P3).
+func changedWith(ctx context.Context, tx pgx.Tx, row store.Task, actor *uuid.UUID, assigned, unblocked bool) error {
 	return outbox.Add(ctx, tx, row.WorkspaceID, "task.changed", map[string]any{
-		"task_id": row.ID, "assignee_id": row.AssigneeID, "actor_id": actor, "assigned": assigned,
+		"task_id": row.ID, "project_id": row.ProjectID, "assignee_id": row.AssigneeID, "actor_id": actor, "assigned": assigned,
+		"unblocked": unblocked,
 	})
+}
+
+// projectChanged tells clients to fetch the projects again.
+func projectChanged(ctx context.Context, tx pgx.Tx, workspaceID, projectID uuid.UUID) error {
+	return outbox.Add(ctx, tx, workspaceID, "task.project_changed", map[string]any{"project_id": projectID})
+}
+
+// taskRef is the KEY-N of a stored task.
+func taskRef(ctx context.Context, q *store.Queries, row store.Task) (string, error) {
+	p, err := q.GetProject(ctx, store.GetProjectParams{WorkspaceID: row.WorkspaceID, ID: row.ProjectID})
+	if err != nil {
+		return "", err
+	}
+	return Ref(p.Key, row.Number), nil
 }
 
 // conversationChanged tells clients to fetch the conversation's tasks again.
@@ -842,7 +960,7 @@ func (s *Service) enabled(ctx context.Context, q *store.Queries, workspaceID uui
 
 func taskFrom(r store.Task) Task {
 	return Task{
-		ID: r.ID, Number: r.Number, QueueID: r.QueueID, TopicID: r.TopicID, Title: r.Title, Body: r.Body, Status: r.Status, Priority: r.Priority,
+		ID: r.ID, ProjectID: r.ProjectID, Number: r.Number, QueueID: r.QueueID, TopicID: r.TopicID, Title: r.Title, Body: r.Body, Status: r.Status, Priority: r.Priority,
 		AssigneeID: r.AssigneeID, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ClosedAt: r.ClosedAt,
 		StatusChangedAt: r.StatusChangedAt, BlockedReason: r.BlockedReason, Version: r.Version,
 	}
@@ -862,6 +980,9 @@ func activityFrom(r store.TaskActivity) Activity {
 		Removed        int         `json:"removed"`
 		TagsAdded      []uuid.UUID `json:"tags_added"`
 		TagsRemoved    []uuid.UUID `json:"tags_removed"`
+		Link           string      `json:"link"`
+		TaskID         *uuid.UUID  `json:"task_id"`
+		Ref            string      `json:"ref"`
 	}
 	if json.Unmarshal(r.Meta, &meta) == nil {
 		out.FilesAdded, out.FilesRemoved = meta.Added, meta.Removed
@@ -873,8 +994,33 @@ func activityFrom(r store.TaskActivity) Activity {
 			out.To = *meta.To
 		}
 		out.Fields, out.ConversationID = meta.Fields, meta.ConversationID
+		out.Link, out.LinkTaskID, out.LinkRef = meta.Link, meta.TaskID, meta.Ref
 	}
 	return out
+}
+
+// hideLinks clears the refs of the link lines whose other task the viewer
+// does not see, or that is gone.
+func hideLinks(ctx context.Context, q *store.Queries, workspaceID uuid.UUID, v Viewer, lines []Activity) error {
+	var ids []uuid.UUID
+	for _, a := range lines {
+		if a.LinkTaskID != nil {
+			ids = append(ids, *a.LinkTaskID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	seen, err := q.VisibleTaskIDs(ctx, store.VisibleTaskIDsParams{WorkspaceID: workspaceID, Ids: ids, Viewer: v.UserID, SeeAll: v.All})
+	if err != nil {
+		return err
+	}
+	for i, a := range lines {
+		if a.LinkTaskID != nil && !slices.Contains(seen, *a.LinkTaskID) {
+			lines[i].LinkRef = ""
+		}
+	}
+	return nil
 }
 
 func sameText(a, b *string) bool {

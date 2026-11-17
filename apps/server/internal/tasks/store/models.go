@@ -30,6 +30,7 @@ type Task struct {
 	StatusChangedAt time.Time
 	BlockedReason   *string
 	ReviewFrom      *uuid.UUID
+	ProjectID       uuid.UUID
 }
 
 type TaskActivity struct {
@@ -65,11 +66,37 @@ type TaskFile struct {
 	AttachedAt  *time.Time
 }
 
+type TaskLink struct {
+	WorkspaceID uuid.UUID
+	FromTaskID  uuid.UUID
+	ToTaskID    uuid.UUID
+	Kind        string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+}
+
+type TaskProject struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Name        string
+	Key         string
+	Icon        *string
+	Color       string
+	Access      string
+	IsDefault   bool
+	Position    int32
+	LastNumber  int64
+	ArchivedAt  *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type TaskQueue struct {
 	ID          uuid.UUID
 	WorkspaceID uuid.UUID
 	Name        string
 	CreatedAt   time.Time
+	ProjectID   uuid.UUID
 }
 
 type TaskSetting struct {
